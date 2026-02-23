@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>射手座之日 原型版</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="panel">
+        <h1>射手座之日</h1>
+        <p class="subtitle">凉宫春日主题太空即时对战原型</p>
+
+        <section class="status">
+          <div><span>舰体</span><strong id="hullValue">100%</strong></div>
+          <div><span>能量</span><strong id="energyValue">100%</strong></div>
+          <div><span>分离</span><strong id="splitValue">编队</strong></div>
+          <div><span>选中</span><strong id="selectedValue">主舰</strong></div>
+        </section>
+
+        <section class="controls">
+          <h2>舰队控制</h2>
+          <div class="btn-row">
+            <button id="splitOneBtn">一级分离</button>
+            <button id="splitTwoBtn">二级分离</button>
+          </div>
+          <p class="hint">拖拽已选舰船设置目标点与推进档位。</p>
+          <p class="hint">上拖提高推进，下拖降低推进。</p>
+        </section>
+
+        <section class="controls">
+          <h2>战区行动</h2>
+          <div class="zone-pick">
+            <label for="zoneSelect">目标战区</label>
+            <select id="zoneSelect"></select>
+          </div>
+          <div class="btn-col">
+            <button id="scoutBtn">派出侦查机</button>
+            <button id="haruhiBtn">春日技能：战斗僚机</button>
+            <button id="mikuruBtn">实玖瑠技能：光束（地图瞄准）</button>
+          </div>
+        </section>
+
+        <section class="controls">
+          <h2>舰长技能</h2>
+          <ul class="captain-list">
+            <li>凉宫春日（主舰）：向指定战区派遣战斗僚机。</li>
+            <li>朝比奈实玖瑠（副舰2）：二级分离后可发射远程光束。</li>
+            <li>长门有希（副舰1）：一级分离后获得更大视野。</li>
+          </ul>
+        </section>
+
+        <section class="controls">
+          <h2>战斗日志</h2>
+          <div id="log" class="log"></div>
+        </section>
+      </aside>
+
+      <main class="game-wrap">
+        <canvas id="gameCanvas" width="1800" height="1080"></canvas>
+        <div id="overlay" class="overlay hidden">
+          <h2 id="overlayTitle"></h2>
+          <button id="restartBtn">重新开始</button>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./src/game.js"></script>
+  </body>
+</html>
