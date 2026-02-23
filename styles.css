@@ -135,6 +135,23 @@ button:disabled {
   margin-bottom: 8px;
 }
 
+.slider-wrap {
+  display: grid;
+  gap: 4px;
+  margin-top: 8px;
+  margin-bottom: 8px;
+}
+
+.slider-wrap strong {
+  color: var(--accent-2);
+  font-size: 0.88rem;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: #6ed6ff;
+}
+
 .captain-list {
   margin: 0;
   padding-left: 18px;
@@ -159,14 +176,16 @@ button:disabled {
 
 .game-wrap {
   position: relative;
-  min-height: 70vh;
   display: flex;
+  justify-content: center;
+  align-items: flex-start;
 }
 
 #gameCanvas {
-  width: 100%;
+  width: min(100%, calc(100vh - 24px));
   height: auto;
-  aspect-ratio: 5 / 3;
+  aspect-ratio: 1 / 1;
+  display: block;
   border-radius: 14px;
   border: 1px solid #173453;
   background: #060f1a;

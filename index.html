@@ -25,8 +25,23 @@
             <button id="splitOneBtn">一级分离</button>
             <button id="splitTwoBtn">二级分离</button>
           </div>
-          <p class="hint">拖拽已选舰船设置目标点与推进档位。</p>
-          <p class="hint">上拖提高推进，下拖降低推进。</p>
+          <div class="slider-wrap">
+            <label for="powerSlider">推进功率</label>
+            <input id="powerSlider" type="range" min="25" max="140" step="1" value="100" />
+            <strong id="powerValue">100%</strong>
+          </div>
+          <div class="zone-pick">
+            <label for="shipSelect">操作舰船</label>
+            <select id="shipSelect">
+              <option value="main">主舰·凉宫春日</option>
+              <option value="sub1">副舰一·长门有希</option>
+              <option value="sub2">副舰二·朝比奈实玖瑠</option>
+            </select>
+          </div>
+          <button id="clearRouteBtn">清除当前舰船航线</button>
+          <p class="hint">左键单击地图：选择战区。</p>
+          <p class="hint">左键双击地图：设定目标点并生成贝塞尔航线。</p>
+          <p class="hint">拖拽曲线控制点或终点，系统会自动约束为可行曲率。</p>
         </section>
 
         <section class="controls">
@@ -58,7 +73,7 @@
       </aside>
 
       <main class="game-wrap">
-        <canvas id="gameCanvas" width="1800" height="1080"></canvas>
+        <canvas id="gameCanvas" width="1440" height="1440"></canvas>
         <div id="overlay" class="overlay hidden">
           <h2 id="overlayTitle"></h2>
           <button id="restartBtn">重新开始</button>

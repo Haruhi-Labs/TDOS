@@ -8,6 +8,10 @@ const ui = {
   selectedValue: document.getElementById("selectedValue"),
   splitOneBtn: document.getElementById("splitOneBtn"),
   splitTwoBtn: document.getElementById("splitTwoBtn"),
+  powerSlider: document.getElementById("powerSlider"),
+  powerValue: document.getElementById("powerValue"),
+  shipSelect: document.getElementById("shipSelect"),
+  clearRouteBtn: document.getElementById("clearRouteBtn"),
   scoutBtn: document.getElementById("scoutBtn"),
   haruhiBtn: document.getElementById("haruhiBtn"),
   mikuruBtn: document.getElementById("mikuruBtn"),
@@ -46,6 +50,10 @@ function distanceSq(ax, ay, bx, by) {
   return dx * dx + dy * dy;
 }
 
+function dot(ax, ay, bx, by) {
+  return ax * bx + ay * by;
+}
+
 function shortestAngleDelta(from, to) {
   let delta = (to - from + Math.PI) % TAU;
   if (delta < 0) {
@@ -79,10 +87,45 @@ function linePointDistance(x1, y1, x2, y2, px, py) {
   };
 }
 
+function quadraticPoint(p0, p1, p2, t) {
+  const inv = 1 - t;
+  return {
+    x: inv * inv * p0.x + 2 * inv * t * p1.x + t * t * p2.x,
+    y: inv * inv * p0.y + 2 * inv * t * p1.y + t * t * p2.y,
+  };
+}
+
+function quadraticLengthApprox(p0, p1, p2, steps = 22) {
+  let total = 0;
+  let prev = { x: p0.x, y: p0.y };
+  for (let i = 1; i <= steps; i += 1) {
+    const t = i / steps;
+    const curr = quadraticPoint(p0, p1, p2, t);
+    total += distance(prev.x, prev.y, curr.x, curr.y);
+    prev = curr;
+  }
+  return Math.max(1, total);
+}
+
+function quadraticStartCurvature(p0, p1, p2) {
+  const vx = p1.x - p0.x;
+  const vy = p1.y - p0.y;
+  const speed = Math.hypot(vx, vy);
+  if (speed < 1e-4) {
+    return Infinity;
+  }
+  const ax = p2.x - 2 * p1.x + p0.x;
+  const ay = p2.y - 2 * p1.y + p0.y;
+  const cross = Math.abs(vx * ay - vy * ax);
+  return cross / (2 * speed * speed * speed);
+}
+
 function buildZones() {
   const zones = [];
-  const zoneWidth = WORLD.width / 3;
-  const zoneHeight = WORLD.height / 3;
+  const battleSize = Math.min(WORLD.width, WORLD.height);
+  const zoneSize = battleSize / 3;
+  const startX = (WORLD.width - battleSize) * 0.5;
+  const startY = (WORLD.height - battleSize) * 0.5;
   let id = 1;
   for (let row = 0; row < 3; row += 1) {
     for (let col = 0; col < 3; col += 1) {
@@ -90,18 +133,36 @@ function buildZones() {
         id,
         row,
         col,
-        x: col * zoneWidth,
-        y: row * zoneHeight,
-        width: zoneWidth,
-        height: zoneHeight,
+        x: startX + col * zoneSize,
+        y: startY + row * zoneSize,
+        width: zoneSize,
+        height: zoneSize,
       });
       id += 1;
     }
   }
-  return zones;
+  return {
+    zones,
+    bounds: {
+      x: startX,
+      y: startY,
+      size: battleSize,
+      zoneSize,
+    },
+  };
 }
 
-const ZONES = buildZones();
+const ZONE_LAYOUT = buildZones();
+const ZONES = ZONE_LAYOUT.zones;
+const MAP_BOUNDS = ZONE_LAYOUT.bounds;
+
+function clampToMapX(value, padding = 0) {
+  return clamp(value, MAP_BOUNDS.x + padding, MAP_BOUNDS.x + MAP_BOUNDS.size - padding);
+}
+
+function clampToMapY(value, padding = 0) {
+  return clamp(value, MAP_BOUNDS.y + padding, MAP_BOUNDS.y + MAP_BOUNDS.size - padding);
+}
 
 let ENTITY_ID = 1;
 function nextEntityId() {
@@ -355,6 +416,7 @@ class Ship extends Unit {
     this.angle = key === "main" ? 0 : rand(-0.3, 0.3);
     this.command = { x, y };
     this.throttle = 1.0;
+    this.route = null;
     this.cooldown = rand(0, 0.5);
     this.separated = key === "main";
     this.formationOffset = { x: 0, y: 0 };
@@ -413,10 +475,200 @@ class Ship extends Unit {
     return this.base.damage * this.team.attrModifier;
   }
 
+  routeAnchorShip() {
+    if (this.route && this.route.anchorToMain) {
+      const main = this.team.ships.main;
+      if (main && main.alive) {
+        return main;
+      }
+    }
+    return this;
+  }
+
+  routeConstraintProfile() {
+    const anchor = this.routeAnchorShip();
+    const throttleFactor = 0.2 + clamp(this.throttle, 0.25, 1.4) * 0.38;
+    const turnRate = Math.max(0.05, anchor.effectiveTurnRate() * throttleFactor);
+    const speedRef = Math.max(anchor.speed, anchor.effectiveSpeed() * Math.max(0.32, this.throttle), 8);
+    const minTurnRadius = clamp((speedRef / turnRate) * 1.05, 36, 520);
+    const maxStartDeviation = (Math.PI / 180) * clamp(48 - speedRef * 0.24, 14, 36);
+    const minForward = clamp(minTurnRadius * 0.3, 14, 180);
+    const heading = anchor.angle;
+    const forward = { x: Math.cos(heading), y: Math.sin(heading) };
+    const left = { x: -forward.y, y: forward.x };
+    return {
+      anchor,
+      minTurnRadius,
+      maxStartDeviation,
+      minForward,
+      forward,
+      left,
+    };
+  }
+
+  suggestControlForCurrentEndpoint() {
+    if (!this.route) {
+      return { x: this.x, y: this.y };
+    }
+    const profile = this.routeConstraintProfile();
+    const p0 = { x: profile.anchor.x, y: profile.anchor.y };
+    const relX = this.route.p2.x - p0.x;
+    const relY = this.route.p2.y - p0.y;
+    const ex = dot(relX, relY, profile.forward.x, profile.forward.y);
+    const ey = dot(relX, relY, profile.left.x, profile.left.y);
+
+    const bearingToEnd = Math.atan2(relY, relX);
+    const deltaToEnd = shortestAngleDelta(profile.anchor.angle, bearingToEnd);
+    const sideSign = deltaToEnd >= 0 ? 1 : -1;
+    let sideEy = ey;
+    if (ex < 0 && Math.abs(sideEy) < profile.minTurnRadius * 0.08) {
+      sideEy = sideSign * profile.minTurnRadius * 0.34;
+    }
+
+    let u = Math.max(profile.minForward, Math.sqrt(Math.max(0, Math.abs(sideEy) * profile.minTurnRadius * 0.5)));
+    if (ex < 0) {
+      u = Math.max(u, profile.minForward + Math.abs(ex) * 0.22);
+    } else {
+      u = Math.max(u, ex * 0.25);
+    }
+    const maxLat = Math.max(8, u * Math.tan(profile.maxStartDeviation));
+    const v = clamp(sideEy * 0.34, -maxLat, maxLat);
+    return {
+      x: p0.x + profile.forward.x * u + profile.left.x * v,
+      y: p0.y + profile.forward.y * u + profile.left.y * v,
+    };
+  }
+
+  enforceRouteFeasibility(desiredControlPoint = null, resetProgress = true) {
+    if (!this.route) {
+      return;
+    }
+    const profile = this.routeConstraintProfile();
+    const p0 = { x: profile.anchor.x, y: profile.anchor.y };
+    this.route.p0 = p0;
+    this.route.p2 = {
+      x: clampToMapX(this.route.p2.x, 20),
+      y: clampToMapY(this.route.p2.y, 20),
+    };
+
+    const desired = desiredControlPoint || this.route.p1 || this.suggestControlForCurrentEndpoint();
+    const relX = desired.x - p0.x;
+    const relY = desired.y - p0.y;
+    let u = dot(relX, relY, profile.forward.x, profile.forward.y);
+    let v = dot(relX, relY, profile.left.x, profile.left.y);
+
+    const endRelX = this.route.p2.x - p0.x;
+    const endRelY = this.route.p2.y - p0.y;
+    const ex = dot(endRelX, endRelY, profile.forward.x, profile.forward.y);
+    const ey = dot(endRelX, endRelY, profile.left.x, profile.left.y);
+    const bearingToEnd = Math.atan2(endRelY, endRelX);
+    const deltaToEnd = shortestAngleDelta(profile.anchor.angle, bearingToEnd);
+    const sideSign = deltaToEnd >= 0 ? 1 : -1;
+    const reverseRatio = clamp(-ex / Math.max(80, profile.minTurnRadius * 1.2), 0, 1.4);
+    const dynamicDeviation = profile.maxStartDeviation + reverseRatio * (Math.PI / 180) * 34;
+    const dFromCurvature = Math.sqrt(Math.max(0, Math.abs(ey) * profile.minTurnRadius * 0.42));
+    const reversePenalty = ex < 0 ? Math.abs(ex) * 0.24 : ex * 0.06;
+    u = Math.max(u, profile.minForward, dFromCurvature, profile.minForward + reversePenalty);
+
+    let maxLat = Math.max(8, u * Math.tan(dynamicDeviation));
+    v = clamp(v, -maxLat, maxLat);
+    if (reverseRatio > 0.45) {
+      const minLatForReverse = Math.min(maxLat * 0.7, profile.minTurnRadius * 0.35);
+      if (Math.abs(v) < minLatForReverse) {
+        v = sideSign * minLatForReverse;
+      }
+    }
+
+    let p1 = {
+      x: p0.x + profile.forward.x * u + profile.left.x * v,
+      y: p0.y + profile.forward.y * u + profile.left.y * v,
+    };
+    const maxCurvature = 1 / Math.max(1, profile.minTurnRadius);
+    let curvature = quadraticStartCurvature(p0, p1, this.route.p2);
+    let guard = 0;
+    while (curvature > maxCurvature && guard < 16) {
+      u *= 1.09;
+      maxLat = Math.max(8, u * Math.tan(dynamicDeviation));
+      v = clamp(v, -maxLat, maxLat);
+      p1 = {
+        x: p0.x + profile.forward.x * u + profile.left.x * v,
+        y: p0.y + profile.forward.y * u + profile.left.y * v,
+      };
+      curvature = quadraticStartCurvature(p0, p1, this.route.p2);
+      guard += 1;
+    }
+
+    this.route.p1 = {
+      x: p1.x,
+      y: p1.y,
+    };
+    if (resetProgress) {
+      this.route.t = 0;
+    }
+    this.route.length = quadraticLengthApprox(this.route.p0, this.route.p1, this.route.p2);
+    this.command.x = this.route.p2.x;
+    this.command.y = this.route.p2.y;
+  }
+
   setCommand(x, y, throttle) {
-    this.command.x = clamp(x, 20, WORLD.width - 20);
-    this.command.y = clamp(y, 20, WORLD.height - 20);
+    this.route = null;
+    this.command.x = clampToMapX(x, 20);
+    this.command.y = clampToMapY(y, 20);
     this.throttle = clamp(throttle, 0.25, 1.4);
+  }
+
+  setBezierRoute(controlX, controlY, endX, endY, throttle, anchorToMain = false) {
+    this.throttle = clamp(throttle, 0.25, 1.4);
+    this.route = {
+      anchorToMain,
+      p0: { x: this.x, y: this.y },
+      p1: { x: this.x, y: this.y },
+      p2: {
+        x: clampToMapX(endX, 20),
+        y: clampToMapY(endY, 20),
+      },
+      t: 0,
+      length: 1,
+    };
+    const hasControl = Number.isFinite(controlX) && Number.isFinite(controlY);
+    const desiredControl = hasControl
+      ? {
+          x: clampToMapX(controlX, 20),
+          y: clampToMapY(controlY, 20),
+        }
+      : this.suggestControlForCurrentEndpoint();
+    this.enforceRouteFeasibility(desiredControl, true);
+  }
+
+  recalcRouteFromCurrent() {
+    if (!this.route) {
+      return;
+    }
+    this.enforceRouteFeasibility(this.route.p1, true);
+  }
+
+  setRouteEndpoint(endX, endY, resetProgress = true) {
+    if (!this.route) {
+      return;
+    }
+    this.route.p2 = {
+      x: clampToMapX(endX, 20),
+      y: clampToMapY(endY, 20),
+    };
+    this.enforceRouteFeasibility(this.route.p1, resetProgress);
+  }
+
+  setRouteControl(controlX, controlY, resetProgress = true) {
+    if (!this.route) {
+      return;
+    }
+    this.enforceRouteFeasibility(
+      {
+        x: clampToMapX(controlX, 20),
+        y: clampToMapY(controlY, 20),
+      },
+      resetProgress,
+    );
   }
 
   update(dt) {
@@ -429,37 +681,71 @@ class Ship extends Unit {
       return;
     }
 
-    const desired = Math.atan2(this.command.y - this.y, this.command.x - this.x);
+    let navTargetX = this.command.x;
+    let navTargetY = this.command.y;
+    if (this.route) {
+      this.enforceRouteFeasibility(this.route.p1, false);
+      const speedRatio = clamp(this.speed / Math.max(this.effectiveSpeed(), 1), 0, 1);
+      const lookLead = 0.04 + speedRatio * 0.1;
+      const lookT = clamp(this.route.t + lookLead, 0, 1);
+      const lookAhead = quadraticPoint(this.route.p0, this.route.p1, this.route.p2, lookT);
+      navTargetX = lookAhead.x;
+      navTargetY = lookAhead.y;
+    }
+
+    const desired = Math.atan2(navTargetY - this.y, navTargetX - this.x);
     const delta = shortestAngleDelta(this.angle, desired);
-    const turnRate = this.effectiveTurnRate() * (0.2 + this.throttle * 0.38);
+    const deltaAbs = Math.abs(delta);
+    const turnUrgency = clamp(deltaAbs / Math.PI, 0, 1);
+    const turnBoost = this.route ? 1 + turnUrgency * 1.9 : 1;
+    const turnRate = this.effectiveTurnRate() * (0.2 + this.throttle * 0.38) * turnBoost;
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
 
-    const dist = distance(this.x, this.y, this.command.x, this.command.y);
+    const dist = distance(this.x, this.y, navTargetX, navTargetY);
     const throttlePenalty = this.team.energy <= 0 ? 0.15 : 1;
-    const targetSpeed = dist < 10 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty;
-    this.speed = lerp(this.speed, targetSpeed, clamp(dt * 0.85, 0, 1));
+    const steerBrake = this.route ? clamp(1 - turnUrgency * 0.92, 0.08, 1) : 1;
+    const targetSpeed = dist < 10 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake;
+    this.speed = lerp(this.speed, targetSpeed, clamp(dt * 1.05, 0, 1));
     this.x += Math.cos(this.angle) * this.speed * dt;
     this.y += Math.sin(this.angle) * this.speed * dt;
-    this.x = clamp(this.x, 8, WORLD.width - 8);
-    this.y = clamp(this.y, 8, WORLD.height - 8);
+    this.x = clampToMapX(this.x, 8);
+    this.y = clampToMapY(this.y, 8);
+
+    if (this.route) {
+      const minAdvance = 4;
+      const routeSpeed = Math.max(minAdvance, this.speed);
+      const headingAlign = clamp(Math.cos(deltaAbs), -1, 1);
+      const alignFactor = clamp((headingAlign + 0.18) / 1.18, 0.02, 1);
+      const deltaT = (routeSpeed * dt * alignFactor) / Math.max(120, this.route.length);
+      this.route.t = clamp(this.route.t + deltaT, 0, 1);
+      if (this.route.t >= 1 && distance(this.x, this.y, this.route.p2.x, this.route.p2.y) <= 22) {
+        this.route = null;
+      }
+    }
   }
 
   followLeader(dt) {
     const leader = this.team.ships.main;
-    const rot = rotateOffset(this.formationOffset.x, this.formationOffset.y, leader.angle);
+    const compactMode = this.team.splitLevel === 0;
+    const offsetScale = compactMode ? 0.58 : 1;
+    const rot = rotateOffset(this.formationOffset.x * offsetScale, this.formationOffset.y * offsetScale, leader.angle);
     const tx = leader.x + rot.x;
     const ty = leader.y + rot.y;
     this.command.x = tx;
     this.command.y = ty;
     const desired = Math.atan2(ty - this.y, tx - this.x);
     const delta = shortestAngleDelta(this.angle, desired);
-    const turnRate = this.effectiveTurnRate() * 0.75;
+    const turnRate = this.effectiveTurnRate() * (compactMode ? 1.35 : 0.75);
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
     const dist = distance(this.x, this.y, tx, ty);
-    const targetSpeed = leader.speed + clamp(dist * 0.45, 0, 32);
-    this.speed = lerp(this.speed, targetSpeed, clamp(dt * 1.1, 0, 1));
+    const targetSpeed = leader.speed + clamp(dist * (compactMode ? 0.95 : 0.45), 0, compactMode ? 52 : 32);
+    this.speed = lerp(this.speed, targetSpeed, clamp(dt * (compactMode ? 2.2 : 1.1), 0, 1));
     this.x += Math.cos(this.angle) * this.speed * dt;
     this.y += Math.sin(this.angle) * this.speed * dt;
+    if (compactMode && dist < 10) {
+      this.x = lerp(this.x, tx, clamp(dt * 5.2, 0, 1));
+      this.y = lerp(this.y, ty, clamp(dt * 5.2, 0, 1));
+    }
   }
 
   broadsideMultiplier(target) {
@@ -492,8 +778,8 @@ class Ship extends Unit {
         source: this,
         x: this.x,
         y: this.y,
-        targetX: clamp(aimX, 0, WORLD.width),
-        targetY: clamp(aimY, 0, WORLD.height),
+        targetX: clampToMapX(aimX, 0),
+        targetY: clampToMapY(aimY, 0),
         damage,
         speed: 240,
         hitRadius: 8,
@@ -663,8 +949,8 @@ class Wingman extends Unit {
         source: this,
         x: this.x,
         y: this.y,
-        targetX: clamp(targetX, 0, WORLD.width),
-        targetY: clamp(targetY, 0, WORLD.height),
+        targetX: clampToMapX(targetX, 0),
+        targetY: clampToMapY(targetY, 0),
         damage: this.damage,
         speed: 260,
         hitRadius: 7,
@@ -704,8 +990,8 @@ class Team {
     };
     this.ships = {
       main: new Ship(this, "main", spawnX, spawnY),
-      sub1: new Ship(this, "sub1", spawnX - 26, spawnY + 20),
-      sub2: new Ship(this, "sub2", spawnX - 26, spawnY - 20),
+      sub1: new Ship(this, "sub1", spawnX - 18, spawnY + 14),
+      sub2: new Ship(this, "sub2", spawnX - 18, spawnY - 14),
     };
     this.ships.main.angle = facing;
     this.ships.sub1.angle = facing;
@@ -955,8 +1241,8 @@ class Team {
 
     const angle = Math.atan2(directionY - ship.y, directionX - ship.x);
     const range = 720 * this.attrModifier;
-    const x2 = clamp(ship.x + Math.cos(angle) * range, 0, WORLD.width);
-    const y2 = clamp(ship.y + Math.sin(angle) * range, 0, WORLD.height);
+    const x2 = clampToMapX(ship.x + Math.cos(angle) * range, 0);
+    const y2 = clampToMapY(ship.y + Math.sin(angle) * range, 0);
     game.beams.push(new BeamVisual(ship.x, ship.y, x2, y2, "#8ef8ff"));
     const enemyTeam = game.otherTeam(this);
     const targets = game.getTeamEntities(enemyTeam);
@@ -994,6 +1280,10 @@ class EnemyAI {
     this.scoutTimer = 4;
     this.wingmanTimer = 10;
     this.beamTimer = 13;
+    this.mode = "press";
+    this.modeTimer = 0;
+    this.lastMainPos = { x: team.ships.main.x, y: team.ships.main.y };
+    this.stuckTimer = 0;
   }
 
   update(dt) {
@@ -1004,6 +1294,9 @@ class EnemyAI {
     this.scoutTimer -= dt;
     this.wingmanTimer -= dt;
     this.beamTimer -= dt;
+    this.modeTimer -= dt;
+
+    this.updateStuckState(dt);
 
     if (this.game.elapsed > 24 && this.team.splitLevel < 1) {
       this.team.split(1, this.game);
@@ -1012,9 +1305,10 @@ class EnemyAI {
       this.team.split(2, this.game);
     }
 
-    if (this.moveTimer <= 0) {
+    if (this.moveTimer <= 0 || this.stuckTimer > 2.2) {
       this.issueMovement();
-      this.moveTimer = rand(9, 13);
+      this.moveTimer = rand(5.8, 8.8);
+      this.stuckTimer = 0;
     }
 
     if (this.scoutTimer <= 0) {
@@ -1037,23 +1331,144 @@ class EnemyAI {
     }
   }
 
+  updateStuckState(dt) {
+    const main = this.team.ships.main;
+    if (!main.alive || !main.route) {
+      this.stuckTimer = 0;
+      this.lastMainPos = { x: main.x, y: main.y };
+      return;
+    }
+    const moved = distance(main.x, main.y, this.lastMainPos.x, this.lastMainPos.y);
+    const routeProgressing = main.route.t > 0.08;
+    if (moved < 3 && main.speed < 4 && routeProgressing) {
+      this.stuckTimer += dt;
+    } else {
+      this.stuckTimer = Math.max(0, this.stuckTimer - dt * 0.8);
+    }
+    this.lastMainPos = { x: main.x, y: main.y };
+  }
+
+  chooseMode(main, enemyMain) {
+    if (this.modeTimer > 0) {
+      return this.mode;
+    }
+    const hull = this.team.hullRatio();
+    const energyRatio = this.team.energy / this.team.maxEnergy;
+    const dist = distance(main.x, main.y, enemyMain.x, enemyMain.y);
+    if (hull < 0.3) {
+      this.mode = "withdraw";
+      this.modeTimer = rand(5, 8);
+      return this.mode;
+    }
+    if (energyRatio < 0.22) {
+      this.mode = "guard";
+      this.modeTimer = rand(4, 7);
+      return this.mode;
+    }
+    if (dist > MAP_BOUNDS.zoneSize * 1.25) {
+      this.mode = "press";
+      this.modeTimer = rand(4, 6.5);
+      return this.mode;
+    }
+    const roll = Math.random();
+    if (roll < 0.26) {
+      this.mode = "flank_left";
+    } else if (roll < 0.52) {
+      this.mode = "flank_right";
+    } else if (roll < 0.72) {
+      this.mode = "cutoff";
+    } else {
+      this.mode = "press";
+    }
+    this.modeTimer = rand(3.8, 6.5);
+    return this.mode;
+  }
+
+  computeMainTarget(mode, main, enemyMain, zoneCenter) {
+    const toEnemyX = enemyMain.x - main.x;
+    const toEnemyY = enemyMain.y - main.y;
+    const len = Math.max(1, Math.hypot(toEnemyX, toEnemyY));
+    const toward = { x: toEnemyX / len, y: toEnemyY / len };
+    const side = { x: -toward.y, y: toward.x };
+    const enemyForward = { x: Math.cos(enemyMain.angle), y: Math.sin(enemyMain.angle) };
+
+    if (mode === "withdraw") {
+      return {
+        x: main.x - toward.x * 260 + side.x * rand(-80, 80),
+        y: main.y - toward.y * 260 + side.y * rand(-80, 80),
+      };
+    }
+    if (mode === "guard") {
+      return {
+        x: lerp(zoneCenter.x, main.x, 0.55) + rand(-60, 60),
+        y: lerp(zoneCenter.y, main.y, 0.55) + rand(-60, 60),
+      };
+    }
+    if (mode === "flank_left") {
+      return {
+        x: enemyMain.x + side.x * 290 - toward.x * 90 + rand(-40, 40),
+        y: enemyMain.y + side.y * 290 - toward.y * 90 + rand(-40, 40),
+      };
+    }
+    if (mode === "flank_right") {
+      return {
+        x: enemyMain.x - side.x * 290 - toward.x * 90 + rand(-40, 40),
+        y: enemyMain.y - side.y * 290 - toward.y * 90 + rand(-40, 40),
+      };
+    }
+    if (mode === "cutoff") {
+      return {
+        x: enemyMain.x + enemyForward.x * 250 + side.x * rand(-90, 90),
+        y: enemyMain.y + enemyForward.y * 250 + side.y * rand(-90, 90),
+      };
+    }
+    return {
+      x: lerp(zoneCenter.x, enemyMain.x, 0.72) + rand(-40, 40),
+      y: lerp(zoneCenter.y, enemyMain.y, 0.72) + rand(-40, 40),
+    };
+  }
+
+  issueShipRoute(ship, targetX, targetY, throttle) {
+    if (!ship || !ship.alive) {
+      return;
+    }
+    const tx = clampToMapX(targetX, 16);
+    const ty = clampToMapY(targetY, 16);
+    const th = clamp(throttle, 0.42, 1.2);
+    if (!ship.route) {
+      ship.setBezierRoute(undefined, undefined, tx, ty, th, false);
+      return;
+    }
+    const endpointGap = distance(ship.route.p2.x, ship.route.p2.y, tx, ty);
+    if (endpointGap > 90 || ship.route.t > 0.74) {
+      ship.setBezierRoute(undefined, undefined, tx, ty, th, false);
+    } else {
+      ship.throttle = th;
+      ship.setRouteEndpoint(tx, ty, false);
+    }
+  }
+
   issueMovement() {
     const targetZone = this.game.randomZone();
     const zoneCenter = {
       x: targetZone.x + targetZone.width * 0.5,
       y: targetZone.y + targetZone.height * 0.5,
     };
+    const main = this.team.ships.main;
     const enemyMain = this.enemy.ships.main;
-    const primaryX = lerp(zoneCenter.x, enemyMain.x, 0.45) + rand(-35, 35);
-    const primaryY = lerp(zoneCenter.y, enemyMain.y, 0.45) + rand(-35, 35);
-
-    this.team.ships.main.setCommand(primaryX, primaryY, rand(0.55, 1.1));
+    const mode = this.chooseMode(main, enemyMain);
+    const mainTarget = this.computeMainTarget(mode, main, enemyMain, zoneCenter);
+    this.issueShipRoute(this.team.ships.main, mainTarget.x, mainTarget.y, rand(0.55, 1.12));
 
     if (this.team.splitLevel >= 1 && this.team.ships.sub1.alive) {
-      this.team.ships.sub1.setCommand(enemyMain.x + rand(-220, 220), enemyMain.y + rand(-220, 220), rand(0.5, 1.05));
+      const trackX = enemyMain.x + rand(-260, 260);
+      const trackY = enemyMain.y + rand(-260, 260);
+      this.issueShipRoute(this.team.ships.sub1, trackX, trackY, rand(0.5, 1.05));
     }
     if (this.team.splitLevel >= 2 && this.team.ships.sub2.alive) {
-      this.team.ships.sub2.setCommand(enemyMain.x + rand(-260, 260), enemyMain.y + rand(-260, 260), rand(0.5, 1.08));
+      const beamLaneX = enemyMain.x + Math.cos(enemyMain.angle + Math.PI * 0.5) * rand(150, 280);
+      const beamLaneY = enemyMain.y + Math.sin(enemyMain.angle + Math.PI * 0.5) * rand(150, 280);
+      this.issueShipRoute(this.team.ships.sub2, beamLaneX, beamLaneY, rand(0.48, 0.96));
     }
   }
 }
@@ -1061,6 +1476,10 @@ class EnemyAI {
 class Game {
   constructor() {
     this.zones = ZONES;
+    const zoneSize = MAP_BOUNDS.zoneSize;
+    const centerY = MAP_BOUNDS.y + MAP_BOUNDS.size * 0.5;
+    const playerSpawnX = MAP_BOUNDS.x + zoneSize * 0.6;
+    const enemySpawnX = MAP_BOUNDS.x + zoneSize * 2.4;
     this.stars = Array.from({ length: 220 }, () => ({
       x: rand(0, WORLD.width),
       y: rand(0, WORLD.height),
@@ -1073,8 +1492,8 @@ class Game {
       color: "#65d9ff",
       projectileColor: "#9be8ff",
       isPlayer: true,
-      spawnX: 320,
-      spawnY: 540,
+      spawnX: playerSpawnX,
+      spawnY: centerY,
       facing: 0,
     });
     this.enemy = new Team({
@@ -1082,8 +1501,8 @@ class Game {
       color: "#ff8692",
       projectileColor: "#ffc0bd",
       isPlayer: false,
-      spawnX: 1480,
-      spawnY: 540,
+      spawnX: enemySpawnX,
+      spawnY: centerY,
       facing: Math.PI,
     });
 
@@ -1094,16 +1513,18 @@ class Game {
     this.elapsed = 0;
     this.gameOver = false;
     this.selectedShip = this.player.ships.main;
-    this.dragging = null;
+    this.routeDrag = null;
+    this.suppressMapClick = false;
     this.pendingBeamAim = false;
     this.pointer = { x: 0, y: 0 };
+    this.routeHandleRadius = 11;
 
     this.ai = new EnemyAI(this.enemy, this.player, this);
     this.lastTime = performance.now();
 
     this.populateZones();
     this.bindEvents();
-    this.log("战斗开始。拖拽舰船设置航向与推进。");
+    this.log("战斗开始。单击选战区，双击设目标点，拖拽控制点可调曲线。");
     this.updateUi();
   }
 
@@ -1115,6 +1536,84 @@ class Game {
       ui.zoneSelect.append(option);
     }
     ui.zoneSelect.value = "5";
+    this.syncPowerSliderToSelection();
+  }
+
+  currentThrottleFromSlider() {
+    return clamp(Number(ui.powerSlider.value) / 100, 0.25, 1.4);
+  }
+
+  syncPowerSliderToSelection() {
+    if (!this.selectedShip) {
+      ui.powerSlider.value = "100";
+      ui.powerValue.textContent = "100%";
+      return;
+    }
+    const value = Math.round(clamp(this.selectedShip.throttle, 0.25, 1.4) * 100);
+    ui.powerSlider.value = String(value);
+    ui.powerValue.textContent = `${value}%`;
+  }
+
+  updatePowerLabelAndApply() {
+    const value = clamp(Number(ui.powerSlider.value), 25, 140);
+    ui.powerValue.textContent = `${Math.round(value)}%`;
+    if (this.selectedShip && this.selectedShip.alive) {
+      this.selectedShip.throttle = value / 100;
+    }
+  }
+
+  assignBezierRoute(ship, endX, endY) {
+    const end = {
+      x: clampToMapX(endX, 20),
+      y: clampToMapY(endY, 20),
+    };
+    ship.setBezierRoute(undefined, undefined, end.x, end.y, this.currentThrottleFromSlider(), true);
+    const minRadius = Math.round(ship.routeConstraintProfile().minTurnRadius);
+    this.log(`${ship.name}已设置贝塞尔航线`);
+    this.log(`当前最小可行转弯半径约 ${minRadius}`);
+  }
+
+  setSelectedShipByKey(key) {
+    const target = this.player.ships[key];
+    if (target && target.alive && target.canControl()) {
+      this.selectedShip = target;
+    } else {
+      this.selectedShip = this.player.getControllableShips().find((ship) => ship.alive) || null;
+    }
+    this.syncPowerSliderToSelection();
+    this.updateUi();
+  }
+
+  routeHandleAtPoint(ship, x, y) {
+    if (!ship || !ship.route) {
+      return null;
+    }
+    const controlDist = distance(x, y, ship.route.p1.x, ship.route.p1.y);
+    if (controlDist <= this.routeHandleRadius) {
+      return "control";
+    }
+    const endDist = distance(x, y, ship.route.p2.x, ship.route.p2.y);
+    if (endDist <= this.routeHandleRadius + 1.5) {
+      return "end";
+    }
+    return null;
+  }
+
+  updateDraggedRouteHandle(x, y) {
+    if (!this.routeDrag || !this.routeDrag.ship.route) {
+      return;
+    }
+    const ship = this.routeDrag.ship;
+    if (!ship.alive) {
+      this.routeDrag = null;
+      return;
+    }
+    if (this.routeDrag.handle === "control") {
+      ship.setRouteControl(x, y, true);
+    } else if (this.routeDrag.handle === "end") {
+      ship.setRouteEndpoint(x, y, true);
+    }
+    ship.throttle = this.currentThrottleFromSlider();
   }
 
   bindEvents() {
@@ -1130,12 +1629,78 @@ class Game {
 
     canvas.addEventListener("mousemove", (event) => {
       this.pointer = pointerFromEvent(event);
-      if (this.dragging) {
-        this.dragging.current = { ...this.pointer };
+      if (this.routeDrag) {
+        this.updateDraggedRouteHandle(this.pointer.x, this.pointer.y);
       }
     });
 
     canvas.addEventListener("mousedown", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      if (this.gameOver) {
+        return;
+      }
+      const pos = pointerFromEvent(event);
+      this.pointer = pos;
+      if (this.pendingBeamAim) {
+        return;
+      }
+      if (!this.selectedShip || !this.selectedShip.canControl() || !this.selectedShip.alive) {
+        return;
+      }
+      const handle = this.routeHandleAtPoint(this.selectedShip, pos.x, pos.y);
+      if (handle) {
+        this.routeDrag = {
+          ship: this.selectedShip,
+          handle,
+        };
+        this.suppressMapClick = false;
+        return;
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (!this.routeDrag) {
+        return;
+      }
+      this.routeDrag = null;
+      this.suppressMapClick = true;
+    });
+
+    canvas.addEventListener("click", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
+      if (this.gameOver) {
+        return;
+      }
+      if (this.suppressMapClick) {
+        this.suppressMapClick = false;
+        return;
+      }
+      const pos = pointerFromEvent(event);
+      this.pointer = pos;
+      if (this.pendingBeamAim) {
+        if (this.player.castBeam(pos.x, pos.y, this)) {
+          this.pendingBeamAim = false;
+        }
+        return;
+      }
+      const zone = this.zoneFromPoint(pos.x, pos.y);
+      if (zone) {
+        const prev = Number(ui.zoneSelect.value) || 0;
+        ui.zoneSelect.value = String(zone.id);
+        if (zone.id !== prev) {
+          this.log(`已选中战区${zone.id}`);
+        }
+      }
+    });
+
+    canvas.addEventListener("dblclick", (event) => {
+      if (event.button !== 0) {
+        return;
+      }
       if (this.gameOver) {
         return;
       }
@@ -1147,37 +1712,30 @@ class Game {
         }
         return;
       }
-
-      const clicked = this.findPlayerControllableShip(pos.x, pos.y);
-      if (clicked) {
-        this.selectedShip = clicked;
-        this.dragging = {
-          ship: clicked,
-          start: pos,
-          current: pos,
-        };
-        this.updateUi();
+      if (!this.selectedShip || !this.selectedShip.canControl() || !this.selectedShip.alive) {
+        this.log("当前没有可用舰船可设置目标点");
         return;
       }
-
-      const zone = this.zoneFromPoint(pos.x, pos.y);
-      if (zone) {
-        ui.zoneSelect.value = String(zone.id);
-      }
+      this.assignBezierRoute(this.selectedShip, pos.x, pos.y);
+      this.updateUi();
     });
 
-    window.addEventListener("mouseup", () => {
-      if (!this.dragging) {
+    ui.powerSlider.addEventListener("input", () => {
+      this.updatePowerLabelAndApply();
+      this.updateUi();
+    });
+
+    ui.shipSelect.addEventListener("change", () => {
+      this.setSelectedShipByKey(ui.shipSelect.value);
+    });
+
+    ui.clearRouteBtn.addEventListener("click", () => {
+      if (!this.selectedShip || !this.selectedShip.alive) {
         return;
       }
-      const drag = this.dragging;
-      const dy = drag.start.y - drag.current.y;
-      const throttle = clamp(1 + dy / 220, 0.25, 1.4);
-      drag.ship.setCommand(drag.current.x, drag.current.y, throttle);
-      if (this.player.energy <= 0) {
-        this.log("能量耗尽，舰队机动能力严重下降");
-      }
-      this.dragging = null;
+      this.selectedShip.route = null;
+      this.log(`${this.selectedShip.name}已清除航线`);
+      this.updateUi();
     });
 
     ui.splitOneBtn.addEventListener("click", () => {
@@ -1383,12 +1941,21 @@ class Game {
     ui.energyValue.textContent = `${Math.round((this.player.energy / this.player.maxEnergy) * 100)}%`;
     ui.splitValue.textContent =
       this.player.splitLevel === 0 ? "编队" : this.player.splitLevel === 1 ? "一级分离" : "二级分离";
-    ui.selectedValue.textContent = this.selectedShip
-      ? `${this.selectedShip.name} | 推进 ${this.selectedShip.throttle.toFixed(2)}`
-      : "无";
+    if (this.selectedShip) {
+      const minRadius = Math.round(this.selectedShip.routeConstraintProfile().minTurnRadius);
+      ui.selectedValue.textContent = `${this.selectedShip.name} | 推进 ${this.selectedShip.throttle.toFixed(2)} | ${this.selectedShip.route ? "曲线航行" : "直航"} | 最小半径${minRadius}`;
+    } else {
+      ui.selectedValue.textContent = "无";
+    }
+    for (const option of Array.from(ui.shipSelect.options)) {
+      const ship = this.player.ships[option.value];
+      option.disabled = !(ship && ship.alive && ship.canControl());
+    }
+    ui.shipSelect.value = this.selectedShip ? this.selectedShip.key : "main";
 
     ui.splitOneBtn.disabled = this.player.splitLevel >= 1;
     ui.splitTwoBtn.disabled = this.player.splitLevel < 1 || this.player.splitLevel >= 2;
+    ui.clearRouteBtn.disabled = !this.selectedShip || !this.selectedShip.alive || !this.selectedShip.route;
 
     ui.scoutBtn.disabled = this.player.cooldowns.scout > 0 || this.player.energy < 30;
     ui.scoutBtn.textContent =
@@ -1454,8 +2021,17 @@ class Game {
     }
     this.floatingTexts = this.floatingTexts.filter((label) => label.life > 0);
 
+    let selectionChanged = false;
     if (this.selectedShip && !this.selectedShip.alive) {
       this.selectedShip = this.player.getControllableShips()[0] || null;
+      selectionChanged = true;
+    }
+    if (this.selectedShip && !this.selectedShip.canControl()) {
+      this.selectedShip = this.player.getControllableShips()[0] || null;
+      selectionChanged = true;
+    }
+    if (selectionChanged) {
+      this.syncPowerSliderToSelection();
     }
 
     this.checkVictory();
@@ -1582,24 +2158,55 @@ class Game {
     ctx.restore();
   }
 
-  drawCommands() {
-    if (!this.dragging) {
+  drawRouteEditor() {
+    if (!this.selectedShip || !this.selectedShip.alive || !this.selectedShip.canControl()) {
       return;
     }
-    const { ship, current, start } = this.dragging;
-    const dy = start.y - current.y;
-    const throttle = clamp(1 + dy / 220, 0.25, 1.4);
+    const ship = this.selectedShip;
+    if (!ship.route) {
+      return;
+    }
+    const { p0, p1, p2 } = ship.route;
+
     ctx.save();
-    ctx.strokeStyle = "#8ee8ff";
-    ctx.setLineDash([7, 5]);
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = "#77d8ff66";
+    ctx.setLineDash([6, 5]);
     ctx.beginPath();
-    ctx.moveTo(ship.x, ship.y);
-    ctx.lineTo(current.x, current.y);
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
     ctx.stroke();
+
     ctx.setLineDash([]);
-    ctx.fillStyle = "#e5f6ff";
-    ctx.font = "12px 'Noto Sans SC', 'PingFang SC', sans-serif";
-    ctx.fillText(`推进 ${throttle.toFixed(2)}`, current.x + 8, current.y - 6);
+    ctx.strokeStyle = "#8fe9ff";
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+    ctx.stroke();
+
+    ctx.fillStyle = "#ffdd8a";
+    ctx.beginPath();
+    ctx.arc(p1.x, p1.y, this.routeHandleRadius, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = "#fff2bf";
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle = "#9af7b5";
+    ctx.beginPath();
+    ctx.arc(p2.x, p2.y, this.routeHandleRadius - 1, 0, TAU);
+    ctx.fill();
+    ctx.strokeStyle = "#ddffe8";
+    ctx.stroke();
+
+    const progressPoint = quadraticPoint(p0, p1, p2, clamp(ship.route.t, 0, 1));
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(progressPoint.x, progressPoint.y, 3.2, 0, TAU);
+    ctx.fill();
+
     ctx.restore();
   }
 
@@ -1677,7 +2284,7 @@ class Game {
       label.draw();
     }
 
-    this.drawCommands();
+    this.drawRouteEditor();
     this.drawAimHint();
   }
 
