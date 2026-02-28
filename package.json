@@ -1,0 +1,14 @@
+{
+  "name": "haruhi-game",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start:web": "python3 -m http.server 8080",
+    "start:server": "node server/server.js",
+    "test:core": "node scripts/verify-core.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

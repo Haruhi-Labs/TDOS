@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>射手座之日 网络对战</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="online-page">
+    <div class="app-shell online-shell">
+      <aside class="panel lobby-panel">
+        <h1>射手座之日 · 网络对战</h1>
+        <p class="subtitle">可创建或加入房间，支持公开房与私人六位房号。</p>
+
+        <section class="controls">
+          <h2>模式入口</h2>
+          <div class="btn-col">
+            <a class="btn-link" href="./index.html">进入 AI 对战（本地）</a>
+            <button id="createAiRoomBtn">创建 AI 训练房</button>
+          </div>
+        </section>
+
+        <section class="controls">
+          <h2>连接设置</h2>
+          <p class="hint">自动连接地址：<strong id="serverTargetValue">-</strong></p>
+          <div class="btn-row">
+            <button id="connectBtn">重新连接</button>
+            <button id="disconnectBtn">断开连接</button>
+          </div>
+          <div class="status compact-status">
+            <div><span>连接</span><strong id="connectionValue">未连接</strong></div>
+            <div><span>延迟</span><strong id="pingValue">-</strong></div>
+            <div><span>抖动</span><strong id="jitterValue">-</strong></div>
+            <div><span>插值缓冲</span><strong id="interpValue">-</strong></div>
+          </div>
+        </section>
+
+        <section class="controls">
+          <h2>玩家信息</h2>
+          <div class="zone-pick">
+            <label for="playerNameInput">昵称</label>
+            <input id="playerNameInput" maxlength="16" type="text" placeholder="输入昵称" />
+          </div>
+          <button id="applyNameBtn">应用昵称</button>
+        </section>
+
+        <section class="controls">
+          <h2>大厅操作</h2>
+          <div class="btn-row">
+            <button id="createPublicBtn">创建公开房</button>
+            <button id="createPrivateBtn">创建私人房</button>
+          </div>
+          <div class="join-code-wrap">
+            <input id="joinCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位房间号" />
+            <button id="joinCodeBtn">加入私人房</button>
+          </div>
+          <button id="refreshRoomsBtn">刷新公开房列表</button>
+        </section>
+
+        <section class="controls">
+          <h2>公开房列表</h2>
+          <div id="roomList" class="room-list"></div>
+        </section>
+
+        <section class="controls">
+          <h2>当前房间</h2>
+          <div id="roomSummary" class="room-summary">未进入房间</div>
+          <button id="leaveRoomBtn" disabled>离开房间</button>
+        </section>
+
+        <section id="battleControls" class="controls disabled-panel">
+          <h2>战斗控制</h2>
+          <div class="status compact-status">
+            <div><span>阵营</span><strong id="seatValue">-</strong></div>
+            <div><span>舰体</span><strong id="hullValueOnline">-</strong></div>
+            <div><span>能量</span><strong id="energyValueOnline">-</strong></div>
+            <div><span>分离</span><strong id="splitValueOnline">-</strong></div>
+            <div><span>战区</span><strong id="zoneValueOnline">战区 5</strong></div>
+          </div>
+
+          <div class="zone-pick">
+            <label for="onlineShipSelect">操作舰船</label>
+            <select id="onlineShipSelect">
+              <option value="main">主舰·凉宫春日</option>
+              <option value="sub1">副舰一·长门有希</option>
+              <option value="sub2">副舰二·朝比奈实玖瑠</option>
+            </select>
+          </div>
+
+          <div class="slider-wrap">
+            <label for="onlinePowerSlider">推进功率</label>
+            <input id="onlinePowerSlider" type="range" min="25" max="140" step="1" value="100" />
+            <strong id="onlinePowerValue">100%</strong>
+          </div>
+
+          <div class="btn-row">
+            <button id="onlineSplitOneBtn">一级分离</button>
+            <button id="onlineSplitTwoBtn">二级分离</button>
+          </div>
+
+          <button id="onlineClearRouteBtn">清除当前舰船航线</button>
+          <div class="btn-col">
+            <button id="onlineScoutBtn">派出侦查机</button>
+            <button id="onlineHaruhiBtn">春日技能：战斗僚机</button>
+            <button id="onlineBeamBtn">实玖瑠技能：光束（地图瞄准）</button>
+          </div>
+          <p class="hint">左键单击地图：选择战区（本地标记）。</p>
+          <p class="hint">左键双击地图：为当前舰船设定目标点。</p>
+          <p class="hint">拖拽控制点或终点：在线调整贝塞尔曲线。</p>
+        </section>
+
+        <section class="controls">
+          <h2>战斗日志</h2>
+          <div id="onlineLog" class="log"></div>
+        </section>
+      </aside>
+
+      <main class="game-wrap">
+        <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
+        <div id="onlineOverlay" class="overlay hidden">
+          <h2 id="onlineOverlayTitle"></h2>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./src/online-client.js"></script>
+  </body>
+</html>
