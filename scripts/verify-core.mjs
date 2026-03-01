@@ -84,11 +84,15 @@ function beamSkillCheck() {
 
   const before = teamB.hullRatio();
   const castOk = teamA.castBeam(enemyMain.x, enemyMain.y, teamB);
-  runSteps(sim, 0.2);
+  runSteps(sim, 0.35);
+  const chargingVisible = teamA.beams.some((beam) => beam.phase === "charge");
+  runSteps(sim, 1.25);
   const after = teamB.hullRatio();
 
   assert(castOk, "二级分离后光束技能触发失败");
+  assert(chargingVisible, "光束释放后未进入蓄力状态");
   assert(after < before, "光束技能未造成伤害");
+  assert(before - after >= 0.25, "光束伤害未达到预期（应接近30%舰体）");
 }
 
 function main() {

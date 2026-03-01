@@ -441,21 +441,56 @@ function drawBeam(beam) {
   if (!beam) {
     return;
   }
-  const alpha = clamp((beam.life || 0) / 0.22, 0, 1);
+  const phase = beam.phase || "fire";
+  const maxLife = Math.max(0.001, Number(beam.maxLife) || (phase === "charge" ? 1.15 : 0.28));
+  const alpha = clamp((beam.life || 0) / maxLife, 0, 1);
   if (alpha <= 0) {
     return;
   }
+
+  if (phase === "charge") {
+    const progress = Number.isFinite(beam.progress) ? clamp(beam.progress, 0, 1) : clamp(1 - alpha, 0, 1);
+    const pulse = 0.55 + Math.sin(performance.now() * 0.02 + (beam.id || 0)) * 0.45;
+    const glow = 9 + progress * 22 + pulse * 4;
+
+    ctx.save();
+    ctx.globalAlpha = 0.14 + progress * 0.28;
+    ctx.strokeStyle = beam.color || "#8ef8ff";
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([7, 6]);
+    ctx.beginPath();
+    ctx.moveTo(beam.x1, beam.y1);
+    ctx.lineTo(beam.x2, beam.y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.globalAlpha = 0.35 + progress * 0.4;
+    ctx.beginPath();
+    ctx.arc(beam.x1, beam.y1, glow, 0, TAU);
+    ctx.strokeStyle = "#8ef8ff";
+    ctx.lineWidth = 1.8;
+    ctx.stroke();
+
+    ctx.globalAlpha = 0.22 + progress * 0.45;
+    ctx.beginPath();
+    ctx.arc(beam.x1, beam.y1, 4.5 + pulse * 3.5, 0, TAU);
+    ctx.fillStyle = "#dfffff";
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.strokeStyle = beam.color || "#8ef8ff";
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 7;
   ctx.beginPath();
   ctx.moveTo(beam.x1, beam.y1);
   ctx.lineTo(beam.x2, beam.y2);
   ctx.stroke();
-  ctx.lineWidth = 1.6;
+  ctx.lineWidth = 2.2;
   ctx.strokeStyle = "#ffffff";
-  ctx.globalAlpha = alpha * 0.6;
+  ctx.globalAlpha = alpha * 0.7;
   ctx.stroke();
   ctx.restore();
 }
@@ -806,7 +841,7 @@ function bindUiEvents() {
         targetY: pos.y,
       });
       app.pendingBeamAim = false;
-      log("已发射实玖瑠光束");
+      log("实玖瑠光束开始蓄力");
       return;
     }
 

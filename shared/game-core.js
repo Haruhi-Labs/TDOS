@@ -58,6 +58,12 @@ const TEAM_PROJECTILE_COLORS = {
   B: "#ffc0bd",
 };
 
+const BEAM_CHARGE_DURATION = 1.15;
+const BEAM_VISUAL_DURATION = 0.28;
+const BEAM_BASE_RANGE = 1400;
+const BEAM_HIT_RADIUS = 11;
+const BEAM_DAMAGE_RATIO = 0.3;
+
 let globalEntityId = 1;
 function nextEntityId() {
   globalEntityId += 1;
@@ -1222,12 +1228,26 @@ class Team {
       wingman.update(dt);
     }
     for (const beam of this.beams) {
+      if (beam.phase === "charge") {
+        const ship = this.ships.sub2;
+        if (!ship.alive || ship.isAttached()) {
+          beam.fired = true;
+          beam.phase = "cancel";
+          beam.life = 0;
+          continue;
+        }
+        beam.x1 = ship.x;
+        beam.y1 = ship.y;
+        beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
+        beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
+        beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
+      }
       beam.life -= dt;
     }
 
     this.scouts = this.scouts.filter((scout) => scout.alive);
     this.wingmen = this.wingmen.filter((wingman) => wingman.alive);
-    this.beams = this.beams.filter((beam) => beam.life > 0);
+    this.beams = this.beams.filter((beam) => beam.life > 0 || (beam.phase === "charge" && !beam.fired));
   }
 
   launchScout(zoneId) {
@@ -1266,7 +1286,7 @@ class Team {
     return true;
   }
 
-  castBeam(directionX, directionY, enemyTeam) {
+  castBeam(directionX, directionY, _enemyTeam = null) {
     const ship = this.ships.sub2;
     const cost = 78;
     if (this.splitLevel < 2 || !ship.alive || ship.isAttached()) {
@@ -1275,38 +1295,118 @@ class Team {
     if (this.cooldowns.beam > 0) {
       return false;
     }
+    const aimDx = directionX - ship.x;
+    const aimDy = directionY - ship.y;
+    const aimLen = Math.hypot(aimDx, aimDy);
+    if (aimLen < 1e-4) {
+      return false;
+    }
     if (!this.spendEnergy(cost)) {
       return false;
     }
-
-    const angle = Math.atan2(directionY - ship.y, directionX - ship.x);
-    const range = 720 * this.attrModifier;
-    const x2 = this.match.clampX(ship.x + Math.cos(angle) * range, 0);
-    const y2 = this.match.clampY(ship.y + Math.sin(angle) * range, 0);
+    const dirX = aimDx / aimLen;
+    const dirY = aimDy / aimLen;
+    const range = BEAM_BASE_RANGE * this.attrModifier;
+    const x2 = this.match.clampX(ship.x + dirX * range, 0);
+    const y2 = this.match.clampY(ship.y + dirY * range, 0);
     this.beams.push({
       id: nextEntityId(),
+      phase: "charge",
       x1: ship.x,
       y1: ship.y,
       x2,
       y2,
+      dirX,
+      dirY,
+      range,
       color: "#8ef8ff",
-      life: 0.22,
+      life: BEAM_CHARGE_DURATION,
+      maxLife: BEAM_CHARGE_DURATION,
+      progress: 0,
+      fired: false,
     });
-
-    const targets = enemyTeam.getEntities();
-    for (const target of targets) {
-      if (!target.alive) {
-        continue;
-      }
-      const probe = linePointDistance(ship.x, ship.y, x2, y2, target.x, target.y);
-      if (probe.dist <= target.radius + 8 && probe.t >= 0 && probe.t <= 1) {
-        const falloff = 1 - probe.t * 0.38;
-        const damage = 112 * this.attrModifier * falloff;
-        target.takeDamage(damage, ship, this.match);
-      }
-    }
     this.cooldowns.beam = 12;
     return true;
+  }
+
+  spawnBeamHitParticles(x, y) {
+    this.match.spawnBurst(x, y, "#8ef8ff", 11);
+    for (let i = 0; i < 7; i += 1) {
+      const angle = randomInRange(0, TAU);
+      const offset = randomInRange(4, 28);
+      const px = this.match.clampX(x + Math.cos(angle) * offset, 0);
+      const py = this.match.clampY(y + Math.sin(angle) * offset, 0);
+      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", randomInRange(3.5, 7.5));
+    }
+  }
+
+  resolveChargedBeams(enemyTeam) {
+    for (const beam of this.beams) {
+      if (beam.phase !== "charge" || beam.life > 0 || beam.fired) {
+        continue;
+      }
+      const ship = this.ships.sub2;
+      if (!ship.alive || ship.isAttached()) {
+        beam.fired = true;
+        beam.phase = "cancel";
+        beam.life = 0;
+        continue;
+      }
+
+      beam.fired = true;
+      beam.phase = "fire";
+      beam.life = BEAM_VISUAL_DURATION;
+      beam.maxLife = BEAM_VISUAL_DURATION;
+      beam.progress = 1;
+      beam.x1 = ship.x;
+      beam.y1 = ship.y;
+      beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
+      beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
+
+      let hitAny = false;
+      if (enemyTeam.splitLevel === 0) {
+        let best = null;
+        for (const target of enemyTeam.getShips()) {
+          if (!target.alive) {
+            continue;
+          }
+          const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
+          if (probe.dist > target.radius + BEAM_HIT_RADIUS || probe.t < 0 || probe.t > 1) {
+            continue;
+          }
+          if (!best || probe.t < best.t) {
+            best = { target, t: probe.t };
+          }
+        }
+
+        if (best) {
+          const damage = enemyTeam.combinedHullMax * BEAM_DAMAGE_RATIO;
+          best.target.takeDamage(damage, ship, this.match);
+          this.match.spawnFloatingText(best.target.x + 8, best.target.y - 10, `-${Math.round(damage)}`, "#ffb7a8");
+          this.spawnBeamHitParticles(best.target.x, best.target.y);
+          hitAny = true;
+        }
+      } else {
+        for (const target of enemyTeam.getShips()) {
+          if (!target.alive) {
+            continue;
+          }
+          const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
+          if (probe.dist > target.radius + BEAM_HIT_RADIUS || probe.t < 0 || probe.t > 1) {
+            continue;
+          }
+          const damage = target.maxHp * BEAM_DAMAGE_RATIO;
+          target.takeDamage(damage, ship, this.match);
+          this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(damage)}`, "#ffb7a8");
+          this.spawnBeamHitParticles(target.x, target.y);
+          hitAny = true;
+        }
+      }
+
+      if (!hitAny) {
+        this.match.spawnBurst(beam.x2, beam.y2, "#78dfff", 9);
+      }
+    }
   }
 
   computeVisibility(enemyTeam) {
@@ -1381,12 +1481,15 @@ class Team {
       wingmen: this.wingmen.filter((item) => item.alive).map((item) => item.serialize()),
       beams: this.beams.map((beam) => ({
         id: beam.id,
+        phase: beam.phase || "fire",
         x1: beam.x1,
         y1: beam.y1,
         x2: beam.x2,
         y2: beam.y2,
+        progress: Number.isFinite(beam.progress) ? beam.progress : 1,
         color: beam.color,
         life: beam.life,
+        maxLife: beam.maxLife || beam.life,
       })),
     };
   }
@@ -1866,6 +1969,8 @@ export class MatchSimulation {
     this.resolveScoutClashes();
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
+    this.teamA.resolveChargedBeams(this.teamB);
+    this.teamB.resolveChargedBeams(this.teamA);
 
     this.teamA.stepCombat(this.teamB);
     this.teamB.stepCombat(this.teamA);
