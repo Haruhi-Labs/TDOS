@@ -65,6 +65,12 @@
       <main class="game-wrap">
         <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
 
+        <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">
+          <div id="battleNameA" class="battle-name-side battle-name-a">左翼舰队</div>
+          <div class="battle-name-vs">VS</div>
+          <div id="battleNameB" class="battle-name-side battle-name-b">右翼舰队</div>
+        </section>
+
         <section class="room-hud">
           <div class="room-hud-head">
             <h2>在线大厅</h2>
@@ -79,11 +85,12 @@
             <button id="disconnectBtn">断开连接</button>
           </div>
 
+          <div id="onlineNicknameValue" class="compact-meta">昵称：-</div>
           <div class="zone-pick">
             <label for="playerNameInput">昵称</label>
             <input id="playerNameInput" maxlength="16" type="text" placeholder="输入昵称" />
           </div>
-          <button id="applyNameBtn">应用昵称</button>
+          <button id="applyNameBtn">保存昵称</button>
 
           <div class="btn-row">
             <button id="createPublicBtn">创建公开房</button>
@@ -112,6 +119,7 @@
 
         <div id="onlineOverlay" class="overlay hidden">
           <h2 id="onlineOverlayTitle"></h2>
+          <button id="onlineOverlayActionBtn" type="button">返回大厅</button>
         </div>
       </main>
     </div>

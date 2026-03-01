@@ -36,10 +36,15 @@ const ui = {
   scoutBtn: document.getElementById("onlineScoutBtn"),
   haruhiBtn: document.getElementById("onlineHaruhiBtn"),
   beamBtn: document.getElementById("onlineBeamBtn"),
+  onlineNicknameValue: document.getElementById("onlineNicknameValue"),
   onlineLog: document.getElementById("onlineLog"),
   onlineOverlay: document.getElementById("onlineOverlay"),
   onlineOverlayTitle: document.getElementById("onlineOverlayTitle"),
+  onlineOverlayActionBtn: document.getElementById("onlineOverlayActionBtn"),
   roomHud: document.querySelector(".room-hud"),
+  battleNameplate: document.getElementById("battleNameplate"),
+  battleNameA: document.getElementById("battleNameA"),
+  battleNameB: document.getElementById("battleNameB"),
 };
 
 const TAU = Math.PI * 2;
@@ -56,6 +61,8 @@ const ROUTE_OVERRIDE_MIN_HOLD_MS = 180;
 const ROUTE_OVERRIDE_MAX_HOLD_MS = 1200;
 const ROUTE_MATCH_P2_EPSILON = 30;
 const ROUTE_MATCH_P1_EPSILON = 42;
+const NICKNAME_COOKIE_KEY = "haruhi_online_nickname";
+const NICKNAME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 const app = {
   ws: null,
@@ -98,6 +105,9 @@ const app = {
   lastRenderState: null,
   lastMatchPhase: null,
   pendingBeamAim: false,
+  lastWinnerSeat: null,
+  gameOverLogged: false,
+  connectAttemptId: 0,
   pointer: { x: canvas.width * 0.5, y: canvas.height * 0.5 },
   throttleSendTimer: null,
   stars: Array.from({ length: 260 }, () => ({
@@ -144,6 +154,51 @@ function nowMs() {
   return Date.now();
 }
 
+function sanitizeNickname(name) {
+  return String(name || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 16);
+}
+
+function readCookie(key) {
+  const target = `${key}=`;
+  const list = document.cookie ? document.cookie.split(";") : [];
+  for (const item of list) {
+    const token = item.trim();
+    if (!token.startsWith(target)) {
+      continue;
+    }
+    return decodeURIComponent(token.slice(target.length));
+  }
+  return "";
+}
+
+function writeCookie(key, value, maxAgeSeconds) {
+  const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
+  document.cookie = `${key}=${encodeURIComponent(value)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax${secureFlag}`;
+}
+
+function updateNicknameDisplay(name) {
+  if (!ui.onlineNicknameValue) {
+    return;
+  }
+  ui.onlineNicknameValue.textContent = `昵称：${name || "-"}`;
+}
+
+function setNickname(name, options = {}) {
+  const { persist = true } = options;
+  const safeName = sanitizeNickname(name);
+  if (ui.playerNameInput) {
+    ui.playerNameInput.value = safeName;
+  }
+  updateNicknameDisplay(safeName);
+  if (persist && safeName) {
+    writeCookie(NICKNAME_COOKIE_KEY, safeName, NICKNAME_COOKIE_MAX_AGE);
+  }
+  return safeName;
+}
+
 function log(message) {
   const row = document.createElement("div");
   const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
@@ -178,6 +233,39 @@ function setRoomHudVisible(visible) {
   ui.roomHud.classList.toggle("hidden-in-battle", !visible);
 }
 
+function seatDisplayName(seat) {
+  const fallback = seat === "A" ? "左翼舰队" : "右翼舰队";
+  if (!app.room || !Array.isArray(app.room.players)) {
+    return fallback;
+  }
+  const row = app.room.players.find((item) => item && item.seat === seat);
+  if (!row) {
+    return fallback;
+  }
+  const name = String(row.name || "").trim() || fallback;
+  return row.isBot ? `${name}（AI）` : name;
+}
+
+function updateBattleNameplate() {
+  if (!ui.battleNameplate || !ui.battleNameA || !ui.battleNameB) {
+    return;
+  }
+
+  const active = Boolean(app.room && app.room.status === "running");
+  ui.battleNameplate.classList.toggle("hidden-inactive", !active);
+
+  if (!active) {
+    ui.battleNameA.classList.remove("self");
+    ui.battleNameB.classList.remove("self");
+    return;
+  }
+
+  ui.battleNameA.textContent = seatDisplayName("A");
+  ui.battleNameB.textContent = seatDisplayName("B");
+  ui.battleNameA.classList.toggle("self", app.seat === "A");
+  ui.battleNameB.classList.toggle("self", app.seat === "B");
+}
+
 function socketSend(payload) {
   if (!app.ws || app.ws.readyState !== WebSocket.OPEN) {
     return false;
@@ -187,8 +275,66 @@ function socketSend(payload) {
 }
 
 function defaultServerUrl() {
-  const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  return `${protocol}://${window.location.host}/test-game/ws/`;
+  const urls = buildServerUrlCandidates();
+  return urls[0] || "";
+}
+
+function isLocalHostname(hostname) {
+  if (!hostname) {
+    return false;
+  }
+  const host = String(hostname).toLowerCase();
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0") {
+    return true;
+  }
+  if (host.startsWith("10.") || host.startsWith("192.168.") || host.endsWith(".local")) {
+    return true;
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
+    return true;
+  }
+  return false;
+}
+
+function buildServerUrlCandidates() {
+  const params = new URLSearchParams(window.location.search);
+  const forced = String(params.get("ws") || "").trim();
+  if (forced) {
+    return [forced];
+  }
+
+  const pageProtocol = window.location.protocol === "https:" ? "wss" : "ws";
+  const pageHost = window.location.host || "";
+  const pageHostname = window.location.hostname || "";
+  const localHost = isLocalHostname(pageHostname);
+  const directProtocol = localHost ? "ws" : pageProtocol;
+  const list = [];
+
+  if (pageHost) {
+    list.push(`${pageProtocol}://${pageHost}/test-game/ws/`);
+  }
+  if (pageHostname) {
+    list.push(`${directProtocol}://${pageHostname}:${REMOTE_WS_PORT}/`);
+  } else {
+    list.push(`ws://127.0.0.1:${REMOTE_WS_PORT}/`);
+  }
+  if (localHost) {
+    if (pageHostname !== "127.0.0.1") {
+      list.push(`ws://127.0.0.1:${REMOTE_WS_PORT}/`);
+    }
+    if (pageHostname !== "localhost") {
+      list.push(`ws://localhost:${REMOTE_WS_PORT}/`);
+    }
+  }
+
+  const dedup = [];
+  for (const url of list) {
+    if (!url || dedup.includes(url)) {
+      continue;
+    }
+    dedup.push(url);
+  }
+  return dedup;
 }
 
 function resetConnectionSyncState() {
@@ -259,6 +405,8 @@ function clearMatchRuntime() {
   app.lastMatchPhase = null;
   app.ackSeq = 0;
   app.pendingBeamAim = false;
+  app.lastWinnerSeat = null;
+  app.gameOverLogged = false;
   if (app.throttleSendTimer) {
     clearTimeout(app.throttleSendTimer);
     app.throttleSendTimer = null;
@@ -268,16 +416,43 @@ function clearMatchRuntime() {
 function closeOverlay() {
   ui.onlineOverlay.classList.add("hidden");
   ui.onlineOverlayTitle.textContent = "";
+  app.gameOverLogged = false;
+}
+
+function showMatchResultOverlay(winnerSeat) {
+  app.lastWinnerSeat = winnerSeat || null;
+
+  if (winnerSeat && winnerSeat === app.seat) {
+    ui.onlineOverlayTitle.textContent = "胜利：敌方舰队已被击溃";
+    if (!app.gameOverLogged) {
+      log("战斗结束：我方舰队获胜");
+    }
+  } else if (winnerSeat) {
+    ui.onlineOverlayTitle.textContent = "失败：我方舰队被歼灭";
+    if (!app.gameOverLogged) {
+      log("战斗结束：我方舰队战败");
+    }
+  } else {
+    ui.onlineOverlayTitle.textContent = "战斗结束";
+    if (!app.gameOverLogged) {
+      log("战斗结束：平局");
+    }
+  }
+
+  app.gameOverLogged = true;
+  ui.onlineOverlay.classList.remove("hidden");
 }
 
 function connectServer() {
-  const url = defaultServerUrl();
-  if (!url) {
+  const candidates = buildServerUrlCandidates();
+  if (candidates.length === 0) {
     log("服务器地址不能为空");
     return;
   }
-  ui.serverTargetValue.textContent = url;
+  ui.serverTargetValue.textContent = candidates[0];
 
+  app.connectAttemptId += 1;
+  const currentAttemptId = app.connectAttemptId;
   if (app.ws) {
     try {
       app.ws.close();
@@ -290,48 +465,87 @@ function connectServer() {
   clearMatchRuntime();
   updateConnectionUi();
 
-  const ws = new WebSocket(url);
-  app.ws = ws;
-
-  ws.addEventListener("open", () => {
-    app.connected = true;
-    updateConnectionUi();
-    log(`已连接服务器：${url}`);
-
-    const name = ui.playerNameInput.value.trim();
-    if (name) {
-      socketSend({ type: "set_name", name });
+  const tryConnect = (index) => {
+    if (currentAttemptId !== app.connectAttemptId) {
+      return;
     }
-    socketSend({ type: "list_rooms" });
-    startPingLoop();
-  });
+    if (index >= candidates.length) {
+      log("无法连接服务器：请确认本地 21246 或远程反向代理是否可用");
+      return;
+    }
 
-  ws.addEventListener("close", () => {
-    app.connected = false;
-    app.playerId = null;
-    app.room = null;
-    app.seat = null;
-    updateRoomSummary();
-    setBattleControlsEnabled(false);
-    setRoomHudVisible(true);
-    stopPingLoop();
-    clearMatchRuntime();
-    resetConnectionSyncState();
-    closeOverlay();
-    updateConnectionUi();
-    log("连接已断开");
-  });
+    const url = candidates[index];
+    ui.serverTargetValue.textContent = url;
 
-  ws.addEventListener("error", () => {
-    log("连接异常，请检查服务器状态");
-  });
+    let opened = false;
+    const ws = new WebSocket(url);
+    app.ws = ws;
 
-  ws.addEventListener("message", (event) => {
-    handleServerMessage(String(event.data || ""));
-  });
+    ws.addEventListener("open", () => {
+      if (currentAttemptId !== app.connectAttemptId || app.ws !== ws) {
+        return;
+      }
+      opened = true;
+      app.connected = true;
+      updateConnectionUi();
+      log(`已连接服务器：${url}`);
+
+      const name = setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
+      if (name) {
+        socketSend({ type: "set_name", name });
+      }
+      socketSend({ type: "list_rooms" });
+      startPingLoop();
+    });
+
+    ws.addEventListener("close", () => {
+      if (currentAttemptId !== app.connectAttemptId || app.ws !== ws) {
+        return;
+      }
+      if (!opened && index < candidates.length - 1) {
+        log(`连接失败，尝试备用地址：${candidates[index + 1]}`);
+        tryConnect(index + 1);
+        return;
+      }
+
+      app.connected = false;
+      app.playerId = null;
+      app.room = null;
+      app.seat = null;
+      updateRoomSummary();
+      setBattleControlsEnabled(false);
+      setRoomHudVisible(true);
+      updateBattleNameplate();
+      stopPingLoop();
+      clearMatchRuntime();
+      resetConnectionSyncState();
+      closeOverlay();
+      updateConnectionUi();
+      log("连接已断开");
+    });
+
+    ws.addEventListener("error", () => {
+      if (currentAttemptId !== app.connectAttemptId || app.ws !== ws) {
+        return;
+      }
+      if (opened) {
+        log("连接异常，请检查服务器状态");
+      }
+    });
+
+    ws.addEventListener("message", (event) => {
+      if (currentAttemptId !== app.connectAttemptId || app.ws !== ws) {
+        return;
+      }
+      handleServerMessage(String(event.data || ""));
+    });
+  };
+
+  tryConnect(0);
 }
 
 function disconnectServer() {
+  app.connectAttemptId += 1;
   if (!app.ws) {
     return;
   }
@@ -509,9 +723,12 @@ function applyRoomState(message) {
 
   updateRoomSummary();
 
-  const canBattle = app.room && app.room.status === "running";
+  const roomStatus = app.room ? app.room.status : null;
+  const canBattle = roomStatus === "running";
+  const isFinished = roomStatus === "finished";
   setBattleControlsEnabled(Boolean(canBattle));
   setRoomHudVisible(!canBattle);
+  updateBattleNameplate();
 
   if (app.seat === "A") {
     ui.seatValue.textContent = "A位（左翼舰队）";
@@ -521,7 +738,10 @@ function applyRoomState(message) {
     ui.seatValue.textContent = "-";
   }
 
-  if (!canBattle) {
+  if (isFinished) {
+    const latestWinner = app.latestSnapshot && app.latestSnapshot.state ? app.latestSnapshot.state.winnerSeat : null;
+    showMatchResultOverlay(latestWinner || app.lastWinnerSeat || null);
+  } else if (!canBattle) {
     clearMatchRuntime();
     closeOverlay();
     ui.hullValue.textContent = "-";
@@ -555,6 +775,7 @@ function handleRoomClosed(message) {
   updateRoomSummary();
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
+  updateBattleNameplate();
   clearMatchRuntime();
   closeOverlay();
   ui.zoneValue.textContent = "战区 -";
@@ -810,21 +1031,19 @@ function handleSnapshot(message) {
   }
 
   const phase = snapshot.state ? snapshot.state.phase : null;
+  const winner = snapshot.state ? snapshot.state.winnerSeat : null;
+  if (winner) {
+    app.lastWinnerSeat = winner;
+  }
   if (phase !== app.lastMatchPhase) {
     app.lastMatchPhase = phase;
     if (phase === "finished") {
-      const winner = snapshot.state.winnerSeat;
-      if (winner && winner === app.seat) {
-        ui.onlineOverlayTitle.textContent = "你获得了胜利";
-      } else if (winner) {
-        ui.onlineOverlayTitle.textContent = "战斗失败";
-      } else {
-        ui.onlineOverlayTitle.textContent = "平局";
-      }
-      ui.onlineOverlay.classList.remove("hidden");
+      showMatchResultOverlay(winner || app.lastWinnerSeat || null);
     } else {
       closeOverlay();
     }
+  } else if (phase === "finished" && ui.onlineOverlay.classList.contains("hidden")) {
+    showMatchResultOverlay(winner || app.lastWinnerSeat || null);
   }
 }
 
@@ -1939,7 +2158,9 @@ function renderFrame() {
 
 function bindUiEvents() {
   ui.serverTargetValue.textContent = defaultServerUrl();
-  ui.playerNameInput.value = `玩家${Math.floor(Math.random() * 900 + 100)}`;
+  const savedName = sanitizeNickname(readCookie(NICKNAME_COOKIE_KEY));
+  const fallbackName = `玩家${Math.floor(Math.random() * 900 + 100)}`;
+  setNickname(savedName || fallbackName, { persist: true });
   ui.zoneValue.textContent = `战区 ${app.selectedZoneId}`;
   ui.selectedValue.textContent = "主舰";
 
@@ -1952,12 +2173,17 @@ function bindUiEvents() {
   });
 
   ui.applyNameBtn.addEventListener("click", () => {
-    const name = ui.playerNameInput.value.trim();
+    const name = setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
     if (!name) {
+      log("昵称不能为空");
       return;
     }
-    socketSend({ type: "set_name", name });
-    log(`昵称已设置为 ${name}`);
+    const sent = socketSend({ type: "set_name", name });
+    if (sent) {
+      log(`昵称已设置为 ${name}`);
+    } else {
+      log(`昵称已保存为 ${name}（连接后将自动同步）`);
+    }
   });
 
   ui.refreshRoomsBtn.addEventListener("click", () => {
@@ -1990,6 +2216,15 @@ function bindUiEvents() {
     clearMatchRuntime();
     closeOverlay();
   });
+
+  if (ui.onlineOverlayActionBtn) {
+    ui.onlineOverlayActionBtn.addEventListener("click", () => {
+      if (app.room) {
+        socketSend({ type: "leave_room" });
+      }
+      closeOverlay();
+    });
+  }
 
   if (ui.shipSelect) {
     ui.shipSelect.addEventListener("change", () => {
@@ -2244,6 +2479,7 @@ function bindUiEvents() {
 
 setBattleControlsEnabled(false);
 setRoomHudVisible(true);
+updateBattleNameplate();
 updateConnectionUi();
 bindUiEvents();
 connectServer();

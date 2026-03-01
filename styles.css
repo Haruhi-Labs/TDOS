@@ -248,6 +248,63 @@ input[type="range"] {
   background: #060f1a;
 }
 
+.battle-nameplate {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  width: min(620px, 66%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid #214568;
+  border-radius: 999px;
+  background: #071625ba;
+  backdrop-filter: blur(6px);
+  box-shadow: 0 6px 20px #02080f66;
+  pointer-events: none;
+}
+
+.battle-nameplate.hidden-inactive {
+  display: none;
+}
+
+.battle-name-side {
+  min-width: 0;
+  border: 1px solid #2b547a;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: #d5ecff;
+  background: #0b2031cc;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.battle-name-side.self {
+  border-color: #6fd4ff;
+  box-shadow: inset 0 0 0 1px #6fd4ff44;
+  color: #f1fbff;
+}
+
+.battle-name-a {
+  text-align: right;
+}
+
+.battle-name-b {
+  text-align: left;
+}
+
+.battle-name-vs {
+  color: #8fc4ea;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+}
+
 .overlay {
   position: absolute;
   inset: 0;
@@ -438,5 +495,10 @@ input[type="range"] {
     width: 100%;
     max-height: none;
     margin-top: 10px;
+  }
+
+  .battle-nameplate {
+    width: min(92%, 620px);
+    top: 10px;
   }
 }
