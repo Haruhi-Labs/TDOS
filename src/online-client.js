@@ -180,8 +180,7 @@ function socketSend(payload) {
 
 function defaultServerUrl() {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const host = window.location.hostname || "localhost";
-  return `${protocol}://${host}:${REMOTE_WS_PORT}`;
+  return `${protocol}://${window.location.host}/test-game/ws/`;
 }
 
 function resetConnectionSyncState() {
