@@ -26,12 +26,13 @@ const ui = {
   energyValue: document.getElementById("energyValueOnline"),
   splitValue: document.getElementById("splitValueOnline"),
   zoneValue: document.getElementById("zoneValueOnline"),
+  selectedValue: document.getElementById("onlineSelectedValue"),
   shipSelect: document.getElementById("onlineShipSelect"),
+  shipSwitchButtons: Array.from(document.querySelectorAll("#onlineShipQuickSwitch .ship-switch-btn")),
   powerSlider: document.getElementById("onlinePowerSlider"),
   powerValue: document.getElementById("onlinePowerValue"),
   splitOneBtn: document.getElementById("onlineSplitOneBtn"),
   splitTwoBtn: document.getElementById("onlineSplitTwoBtn"),
-  clearRouteBtn: document.getElementById("onlineClearRouteBtn"),
   scoutBtn: document.getElementById("onlineScoutBtn"),
   haruhiBtn: document.getElementById("onlineHaruhiBtn"),
   beamBtn: document.getElementById("onlineBeamBtn"),
@@ -518,6 +519,7 @@ function applyRoomState(message) {
     ui.energyValue.textContent = "-";
     ui.splitValue.textContent = "-";
     ui.zoneValue.textContent = "战区 -";
+    ui.selectedValue.textContent = "-";
     app.pendingBeamAim = false;
     updateSkillButtons(null);
   }
@@ -570,10 +572,7 @@ function syncShipSelectOptions(team) {
   if (!team || !team.ships) {
     return;
   }
-  for (const option of Array.from(ui.shipSelect.options)) {
-    const ship = team.ships[option.value];
-    option.disabled = !(ship && ship.alive && ship.canControl);
-  }
+
   const selected = team.ships[app.selectedShipKey];
   if (!selected || !selected.alive || !selected.canControl) {
     const fallback = Object.keys(team.ships).find((key) => {
@@ -584,7 +583,22 @@ function syncShipSelectOptions(team) {
       app.selectedShipKey = fallback;
     }
   }
-  ui.shipSelect.value = app.selectedShipKey;
+
+  if (ui.shipSelect) {
+    for (const option of Array.from(ui.shipSelect.options)) {
+      const ship = team.ships[option.value];
+      option.disabled = !(ship && ship.alive && ship.canControl);
+    }
+    ui.shipSelect.value = app.selectedShipKey;
+  }
+
+  for (const button of ui.shipSwitchButtons) {
+    const key = button.dataset.ship;
+    const ship = key ? team.ships[key] : null;
+    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    button.disabled = !enabled;
+    button.classList.toggle("active", key === app.selectedShipKey);
+  }
 }
 
 function syncPowerFromSelectedShip(team) {
@@ -602,6 +616,24 @@ function syncPowerFromSelectedShip(team) {
   ui.powerSlider.value = String(value);
   ui.powerValue.textContent = `${value}%`;
   app.throttle = value / 100;
+}
+
+function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.state : null) {
+  if (!shipKey) {
+    return false;
+  }
+  const own = teamBySeat(state, app.seat);
+  if (!own || !own.ships) {
+    return false;
+  }
+  const ship = own.ships[shipKey];
+  if (!ship || !ship.alive || !ship.canControl) {
+    return false;
+  }
+  app.selectedShipKey = shipKey;
+  syncShipSelectOptions(own);
+  syncPowerFromSelectedShip(own);
+  return true;
 }
 
 function updateSkillButtons(own) {
@@ -626,7 +658,7 @@ function updateSkillButtons(own) {
       ? `春日技能：战斗僚机（冷却${(cooldowns.haruhi || 0).toFixed(1)}秒）`
       : "春日技能：战斗僚机";
 
-  const beamLocked = splitLevel < 2 || !(sub2 && sub2.alive);
+  const beamLocked = splitLevel < 2 || !(sub2 && sub2.alive) || sub2.attached;
   ui.beamBtn.disabled = beamLocked || (cooldowns.beam || 0) > 0 || energy < 78;
   ui.beamBtn.textContent =
     beamLocked || (cooldowns.beam || 0) <= 0
@@ -641,6 +673,7 @@ function updateBattleStatus(state) {
     ui.energyValue.textContent = "-";
     ui.splitValue.textContent = "-";
     ui.zoneValue.textContent = "战区 -";
+    ui.selectedValue.textContent = "-";
     updateSkillButtons(null);
     return;
   }
@@ -652,9 +685,9 @@ function updateBattleStatus(state) {
 
   syncShipSelectOptions(own);
   const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
+  ui.selectedValue.textContent = selectedShip && selectedShip.alive ? selectedShip.name : "无";
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
-  ui.clearRouteBtn.disabled = !(selectedShip && selectedShip.alive && selectedShip.route);
   updateSkillButtons(own);
   if (app.pendingBeamAim && ui.beamBtn.disabled) {
     app.pendingBeamAim = false;
@@ -886,7 +919,7 @@ function createRouteGuessForSet(ship, endX, endY) {
     y: p0.y + Math.sin(ship.angle) * lead,
   };
   return {
-    anchorToMain: true,
+    anchorToMain: ship.key === "main",
     p0,
     p1,
     p2,
@@ -1619,6 +1652,17 @@ function drawScout(scout, isOwnTeam) {
   if (!scout || !scout.alive) {
     return;
   }
+
+  if (Number.isFinite(scout.vision) && scout.vision > 0) {
+    ctx.save();
+    ctx.strokeStyle = isOwnTeam ? "#8adfff40" : "#ffb7c040";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(scout.x, scout.y, scout.vision, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+
   ctx.save();
   ctx.translate(scout.x, scout.y);
   ctx.rotate(scout.angle || 0);
@@ -1738,7 +1782,14 @@ function drawSelectedVisionCircle(ownTeam) {
 }
 
 function drawBeamAimHint(ownTeam) {
-  if (!app.pendingBeamAim || !ownTeam || !ownTeam.ships || !ownTeam.ships.sub2 || !ownTeam.ships.sub2.alive) {
+  if (
+    !app.pendingBeamAim ||
+    !ownTeam ||
+    !ownTeam.ships ||
+    !ownTeam.ships.sub2 ||
+    !ownTeam.ships.sub2.alive ||
+    ownTeam.ships.sub2.attached
+  ) {
     return;
   }
   const s = ownTeam.ships.sub2;
@@ -1784,10 +1835,15 @@ function renderFrame() {
   const visibleEnemyIds = new Set((ownTeam && ownTeam.visibleEnemyIds) || []);
 
   if (ownTeam && ownTeam.ships) {
-    const selectedShip = ownTeam.ships[app.selectedShipKey];
-    if (selectedShip) {
-      const route = getDisplayRouteForShip(ownTeam, selectedShip);
-      drawRoute(route, true);
+    for (const ship of Object.values(ownTeam.ships)) {
+      if (!ship || !ship.alive) {
+        continue;
+      }
+      const route = getDisplayRouteForShip(ownTeam, ship);
+      if (!route) {
+        continue;
+      }
+      drawRoute(route, ship.key === app.selectedShipKey);
     }
   }
 
@@ -1875,6 +1931,7 @@ function bindUiEvents() {
   ui.serverTargetValue.textContent = defaultServerUrl();
   ui.playerNameInput.value = `玩家${Math.floor(Math.random() * 900 + 100)}`;
   ui.zoneValue.textContent = `战区 ${app.selectedZoneId}`;
+  ui.selectedValue.textContent = "主舰";
 
   ui.connectBtn.addEventListener("click", () => {
     connectServer();
@@ -1924,14 +1981,17 @@ function bindUiEvents() {
     closeOverlay();
   });
 
-  ui.shipSelect.addEventListener("change", () => {
-    app.selectedShipKey = ui.shipSelect.value;
-    const state = app.latestSnapshot ? app.latestSnapshot.state : null;
-    const own = teamBySeat(state, app.seat);
-    if (own) {
-      syncPowerFromSelectedShip(own);
-    }
-  });
+  if (ui.shipSelect) {
+    ui.shipSelect.addEventListener("change", () => {
+      selectShip(ui.shipSelect.value);
+    });
+  }
+
+  for (const button of ui.shipSwitchButtons) {
+    button.addEventListener("click", () => {
+      selectShip(button.dataset.ship || "");
+    });
+  }
 
   ui.powerSlider.addEventListener("input", () => {
     setThrottleFromSlider(true);
@@ -1943,16 +2003,6 @@ function bindUiEvents() {
 
   ui.splitTwoBtn.addEventListener("click", () => {
     sendAction({ type: "split", level: 2 });
-  });
-
-  ui.clearRouteBtn.addEventListener("click", () => {
-    const seq = sendAction({
-      type: "clear_route",
-      shipKey: app.selectedShipKey,
-    });
-    if (seq !== null) {
-      clearRouteOverride(app.selectedShipKey);
-    }
   });
 
   ui.scoutBtn.addEventListener("click", () => {
@@ -1978,7 +2028,13 @@ function bindUiEvents() {
   ui.beamBtn.addEventListener("click", () => {
     const state = app.latestSnapshot ? app.latestSnapshot.state : null;
     const own = teamBySeat(state, app.seat);
-    const canBeam = own && own.splitLevel >= 2 && own.ships && own.ships.sub2 && own.ships.sub2.alive;
+    const canBeam =
+      own &&
+      own.splitLevel >= 2 &&
+      own.ships &&
+      own.ships.sub2 &&
+      own.ships.sub2.alive &&
+      !own.ships.sub2.attached;
     if (!canBeam) {
       log("二级分离后才可使用实玖瑠光束");
       return;
@@ -2134,12 +2190,44 @@ function bindUiEvents() {
       endX: pos.x,
       endY: pos.y,
       throttle: app.throttle,
-      anchorToMain: true,
+      anchorToMain: ship.key === "main",
     });
 
     if (seq !== null) {
       applySetRouteOverride(ship.key, seq, pos.x, pos.y);
       log(`${ship.name} 已设定新航线`);
+    }
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented) {
+      return;
+    }
+    const active = document.activeElement;
+    if (
+      active &&
+      (active.tagName === "INPUT" ||
+        active.tagName === "TEXTAREA" ||
+        active.tagName === "SELECT" ||
+        active.isContentEditable)
+    ) {
+      return;
+    }
+
+    const shipByKey = {
+      Digit1: "main",
+      Digit2: "sub1",
+      Digit3: "sub2",
+      Numpad1: "main",
+      Numpad2: "sub1",
+      Numpad3: "sub2",
+    };
+    const nextShip = shipByKey[event.code];
+    if (!nextShip) {
+      return;
+    }
+    if (selectShip(nextShip, app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null))) {
+      event.preventDefault();
     }
   });
 }

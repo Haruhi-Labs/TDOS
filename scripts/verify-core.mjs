@@ -19,14 +19,14 @@ function closeRangeCombatCheck() {
   const aMain = sim.teamA.ships.main;
   const bMain = sim.teamB.ships.main;
 
-  aMain.x = 600;
+  aMain.x = 650;
   aMain.y = 720;
   aMain.command.x = aMain.x;
   aMain.command.y = aMain.y;
   aMain.route = null;
   aMain.throttle = 0.25;
 
-  bMain.x = 820;
+  bMain.x = 770;
   bMain.y = 720;
   bMain.command.x = bMain.x;
   bMain.command.y = bMain.y;

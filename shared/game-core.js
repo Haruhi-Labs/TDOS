@@ -12,7 +12,7 @@ const SHIP_BASES = {
     hp: 820,
     speed: 32,
     turnRate: 0.39,
-    vision: 300,
+    vision: 170,
     range: 500,
     damage: 26,
     fireRate: 0.45,
@@ -23,7 +23,7 @@ const SHIP_BASES = {
     hp: 500,
     speed: 34,
     turnRate: 0.46,
-    vision: 250,
+    vision: 135,
     range: 450,
     damage: 16,
     fireRate: 0.55,
@@ -34,12 +34,18 @@ const SHIP_BASES = {
     hp: 520,
     speed: 33,
     turnRate: 0.44,
-    vision: 260,
+    vision: 140,
     range: 470,
     damage: 18,
     fireRate: 0.5,
     radius: 8,
   },
+};
+
+const SHIP_ENERGY_WEIGHTS = {
+  main: 0.4,
+  sub1: 0.3,
+  sub2: 0.3,
 };
 
 const TEAM_COLORS = {
@@ -371,8 +377,8 @@ class Ship {
 
   effectiveVision() {
     let value = this.base.vision * this.team.attrModifier;
-    if (this.key === "sub1" && this.team.splitLevel >= 1) {
-      value += 95;
+    if (this.key === "sub1" && this.team.splitLevel >= 1 && !this.isAttached()) {
+      value += 70;
     }
     return value;
   }
@@ -776,7 +782,7 @@ class Scout {
     this.radius = 3.8;
     this.hp = 1;
     this.maxHp = 1;
-    this.vision = 145;
+    this.vision = 95;
     this.alive = true;
     this.command = {
       x: zone.x + zone.width * 0.5,
@@ -856,7 +862,7 @@ class Wingman {
     this.radius = 5.2;
     this.maxHp = 130 * team.attrModifier;
     this.hp = this.maxHp;
-    this.vision = 145;
+    this.vision = 95;
     this.attackRange = 280;
     this.damage = 11 * team.attrModifier;
     this.cooldown = randomInRange(0.8, 1.4);
@@ -1033,6 +1039,9 @@ class Team {
     const sources = [];
     for (const ship of this.getShips()) {
       if (ship.alive) {
+        if (ship.key !== "main" && ship.isAttached()) {
+          continue;
+        }
         sources.push({
           id: ship.id,
           x: ship.x,
@@ -1161,16 +1170,39 @@ class Team {
   }
 
   updateEnergy(dt) {
-    const controllable = this.getControllableShips().filter((ship) => ship.alive);
-    if (controllable.length === 0) {
+    const aliveShips = this.getShips().filter((ship) => ship.alive);
+    if (aliveShips.length === 0) {
       return;
     }
-    const throttleTotal = controllable.reduce((sum, ship) => sum + ship.throttle, 0);
-    const throttleAvg = throttleTotal / controllable.length;
+
+    const mainThrottle = this.ships.main.alive ? this.ships.main.throttle : 1;
+    let weightedThrottleTotal = 0;
+    let weightTotal = 0;
+
+    if (this.splitLevel === 0) {
+      weightedThrottleTotal = mainThrottle;
+      weightTotal = 1;
+    } else {
+      for (const ship of aliveShips) {
+        const weight = SHIP_ENERGY_WEIGHTS[ship.key] || 0;
+        if (weight <= 0) {
+          continue;
+        }
+        const effectiveThrottle = ship.isAttached() ? mainThrottle : ship.throttle;
+        weightedThrottleTotal += effectiveThrottle * weight;
+        weightTotal += weight;
+      }
+      if (weightTotal <= 0) {
+        weightedThrottleTotal = mainThrottle;
+        weightTotal = 1;
+      }
+    }
+
+    const throttleRef = weightedThrottleTotal / weightTotal;
     const regenBase = 14;
-    const regenMultiplier = throttleAvg <= 1 ? 1 + (1 - throttleAvg) * 0.88 : 1 - (throttleAvg - 1) * 0.86;
+    const regenMultiplier = throttleRef <= 1 ? 1 + (1 - throttleRef) * 0.88 : 1 - (throttleRef - 1) * 0.86;
     const regen = Math.max(1.5, regenBase * regenMultiplier);
-    const moveCost = 8 * throttleTotal;
+    const moveCost = 8 * weightedThrottleTotal;
     this.energy = clamp(this.energy + (regen - moveCost) * dt, 0, this.maxEnergy);
   }
 
@@ -1237,7 +1269,7 @@ class Team {
   castBeam(directionX, directionY, enemyTeam) {
     const ship = this.ships.sub2;
     const cost = 78;
-    if (this.splitLevel < 2 || !ship.alive) {
+    if (this.splitLevel < 2 || !ship.alive || ship.isAttached()) {
       return false;
     }
     if (this.cooldowns.beam > 0) {
@@ -1413,7 +1445,7 @@ class BotController {
       this.wingmanTimer = randomInRange(18, 24);
     }
 
-    if (this.beamTimer <= 0 && this.team.splitLevel >= 2) {
+    if (this.team.match.aiAutoBeam && this.beamTimer <= 0 && this.team.splitLevel >= 2) {
       const sub2 = this.team.ships.sub2;
       const enemyMain = this.enemy.ships.main;
       if (sub2.alive && enemyMain.alive) {
@@ -1589,6 +1621,7 @@ export class MatchSimulation {
     mode = "pvp",
     worldSize = DEFAULT_WORLD_SIZE,
     mapPadding = DEFAULT_MAP_PADDING,
+    aiAutoBeam = false,
     teamNames = {
       A: "玩家A舰队",
       B: mode === "ai" ? "统合思念体AI舰队" : "玩家B舰队",
@@ -1597,6 +1630,7 @@ export class MatchSimulation {
     this.mode = mode;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
+    this.aiAutoBeam = Boolean(aiAutoBeam);
     this.zones = buildZones(worldSize);
 
     this.tick = 0;

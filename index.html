@@ -8,12 +8,10 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="panel">
+      <aside class="panel compact-panel">
         <h1>射手座之日</h1>
-        <p class="subtitle">凉宫春日主题太空即时对战原型</p>
 
-        <section class="controls">
-          <h2>对战模式</h2>
+        <section class="controls slim-controls">
           <div class="btn-col">
             <a class="btn-link" href="./index.html">AI 对战（本地）</a>
             <a class="btn-link" href="./online.html">进入网络对战大厅</a>
@@ -24,11 +22,17 @@
           <div><span>舰体</span><strong id="hullValue">100%</strong></div>
           <div><span>能量</span><strong id="energyValue">100%</strong></div>
           <div><span>分离</span><strong id="splitValue">编队</strong></div>
+          <div><span>战区</span><strong id="zoneValueLocal">战区5</strong></div>
           <div><span>选中</span><strong id="selectedValue">主舰</strong></div>
         </section>
 
-        <section class="controls">
+        <section class="controls slim-controls">
           <h2>舰队控制</h2>
+          <div id="shipQuickSwitch" class="ship-switch">
+            <button type="button" class="ship-switch-btn" data-ship="main">主舰</button>
+            <button type="button" class="ship-switch-btn" data-ship="sub1">副舰1</button>
+            <button type="button" class="ship-switch-btn" data-ship="sub2">副舰2</button>
+          </div>
           <div class="btn-row">
             <button id="splitOneBtn">一级分离</button>
             <button id="splitTwoBtn">二级分离</button>
@@ -38,26 +42,10 @@
             <input id="powerSlider" type="range" min="25" max="140" step="1" value="100" />
             <strong id="powerValue">100%</strong>
           </div>
-          <div class="zone-pick">
-            <label for="shipSelect">操作舰船</label>
-            <select id="shipSelect">
-              <option value="main">主舰·凉宫春日</option>
-              <option value="sub1">副舰一·长门有希</option>
-              <option value="sub2">副舰二·朝比奈实玖瑠</option>
-            </select>
-          </div>
-          <button id="clearRouteBtn">清除当前舰船航线</button>
-          <p class="hint">左键单击地图：选择战区。</p>
-          <p class="hint">左键双击地图：设定目标点并生成贝塞尔航线。</p>
-          <p class="hint">拖拽曲线控制点或终点，系统会自动约束为可行曲率。</p>
         </section>
 
-        <section class="controls">
-          <h2>战区行动</h2>
-          <div class="zone-pick">
-            <label for="zoneSelect">目标战区</label>
-            <select id="zoneSelect"></select>
-          </div>
+        <section class="controls slim-controls">
+          <h2>技能</h2>
           <div class="btn-col">
             <button id="scoutBtn">派出侦查机</button>
             <button id="haruhiBtn">春日技能：战斗僚机</button>
@@ -65,17 +53,8 @@
           </div>
         </section>
 
-        <section class="controls">
-          <h2>舰长技能</h2>
-          <ul class="captain-list">
-            <li>凉宫春日（主舰）：向指定战区派遣战斗僚机。</li>
-            <li>朝比奈实玖瑠（副舰2）：二级分离后可发射远程光束。</li>
-            <li>长门有希（副舰1）：一级分离后获得更大视野。</li>
-          </ul>
-        </section>
-
-        <section class="controls">
-          <h2>战斗日志</h2>
+        <section class="controls slim-controls">
+          <h2>日志</h2>
           <div id="log" class="log"></div>
         </section>
       </aside>
