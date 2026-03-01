@@ -378,6 +378,10 @@ input[type="range"] {
   gap: 8px;
 }
 
+.room-hud.hidden-in-battle {
+  display: none;
+}
+
 .room-hud-head {
   display: flex;
   align-items: center;

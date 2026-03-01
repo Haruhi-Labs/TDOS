@@ -39,6 +39,7 @@ const ui = {
   onlineLog: document.getElementById("onlineLog"),
   onlineOverlay: document.getElementById("onlineOverlay"),
   onlineOverlayTitle: document.getElementById("onlineOverlayTitle"),
+  roomHud: document.querySelector(".room-hud"),
 };
 
 const TAU = Math.PI * 2;
@@ -168,6 +169,13 @@ function setBattleControlsEnabled(enabled) {
   for (const element of ui.battleControls.querySelectorAll("button, select, input")) {
     element.disabled = !enabled;
   }
+}
+
+function setRoomHudVisible(visible) {
+  if (!ui.roomHud) {
+    return;
+  }
+  ui.roomHud.classList.toggle("hidden-in-battle", !visible);
 }
 
 function socketSend(payload) {
@@ -305,6 +313,7 @@ function connectServer() {
     app.seat = null;
     updateRoomSummary();
     setBattleControlsEnabled(false);
+    setRoomHudVisible(true);
     stopPingLoop();
     clearMatchRuntime();
     resetConnectionSyncState();
@@ -502,6 +511,7 @@ function applyRoomState(message) {
 
   const canBattle = app.room && app.room.status === "running";
   setBattleControlsEnabled(Boolean(canBattle));
+  setRoomHudVisible(!canBattle);
 
   if (app.seat === "A") {
     ui.seatValue.textContent = "A位（左翼舰队）";
@@ -544,6 +554,7 @@ function handleRoomClosed(message) {
   app.seat = null;
   updateRoomSummary();
   setBattleControlsEnabled(false);
+  setRoomHudVisible(true);
   clearMatchRuntime();
   closeOverlay();
   ui.zoneValue.textContent = "战区 -";
@@ -2232,6 +2243,7 @@ function bindUiEvents() {
 }
 
 setBattleControlsEnabled(false);
+setRoomHudVisible(true);
 updateConnectionUi();
 bindUiEvents();
 connectServer();
