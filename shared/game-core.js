@@ -2313,7 +2313,7 @@ class BotController {
     this.enemy = enemy;
 
     this.moveTimer = 0;
-    this.scoutTimer = 4;
+    this.scoutTimer = 2.8;
     this.flagshipTimer = 8;
     this.subTimers = {
       sub1: 14,
@@ -2327,6 +2327,788 @@ class BotController {
       y: team.ships.main.y,
     };
     this.stuckTimer = 0;
+
+    const enemyMain = enemy.ships.main;
+    const spawnZone = this.zoneForPoint(enemyMain.x, enemyMain.y);
+    this.searchOrder = [5, 2, 8, 4, 6, 1, 7, 3, 9];
+    this.searchCursor = 0;
+    this.enemyIntel = {
+      entities: new Map(),
+      main: {
+        id: enemyMain.id,
+        kind: "ship",
+        key: enemyMain.key,
+        slotKey: enemyMain.slotKey,
+        x: enemyMain.x,
+        y: enemyMain.y,
+        angle: enemyMain.angle,
+        speed: 0,
+        seenAt: this.team.match.elapsed,
+        zoneId: spawnZone.id,
+        source: "spawn",
+      },
+      searchZoneId: spawnZone.id,
+    };
+    this.pendingSightings = new Map();
+    this.searchSweepSign = 1;
+    this.lastSearchAdvanceAt = this.team.match.elapsed;
+  }
+
+  zoneForPoint(x, y) {
+    return this.team.match.zones.find((zone) => zoneContains(zone, x, y)) || this.team.match.zones[4];
+  }
+
+  zoneCenter(zoneId) {
+    const zone = this.team.match.zoneById(zoneId);
+    return {
+      zoneId: zone.id,
+      x: zone.x + zone.width * 0.5,
+      y: zone.y + zone.height * 0.5,
+    };
+  }
+
+  safeRoutePadding(extra = 0) {
+    return clamp(this.team.match.worldSize * 0.08, 90, 145) + extra;
+  }
+
+  edgePressure(ship) {
+    if (!ship) {
+      return 0;
+    }
+    const worldSize = this.team.match.worldSize;
+    const margin = clamp(worldSize * 0.12, 120, 190);
+    const edgeDistance = Math.min(ship.x, ship.y, worldSize - ship.x, worldSize - ship.y);
+    if (edgeDistance >= margin) {
+      return 0;
+    }
+    return clamp(1 - edgeDistance / margin, 0, 1);
+  }
+
+  stableNoise(seed, salt = 0) {
+    const value = Math.sin(seed * 12.9898 + salt * 78.233 + 0.9157) * 43758.5453;
+    return value - Math.floor(value);
+  }
+
+  perceptionDelayFor(entity) {
+    const base = entity.kind === "ship" ? 0.14 : entity.kind === "wingman" ? 0.1 : 0.08;
+    const roleBias = entity.slotKey === "main" ? -0.02 : 0;
+    const jitter = this.stableNoise(entity.id, 3) * 0.1;
+    return clamp(base + roleBias + jitter, 0.05, 0.24);
+  }
+
+  queueSighting(entity) {
+    const snapshot = this.snapshotEnemyContact(entity, "visible");
+    const now = this.team.match.elapsed;
+    const pending = this.pendingSightings.get(snapshot.id);
+    if (pending) {
+      pending.snapshot = snapshot;
+      return;
+    }
+
+    const committed = this.enemyIntel.entities.get(snapshot.id) || (snapshot.slotKey === "main" ? this.enemyIntel.main : null);
+    const delay = this.perceptionDelayFor(entity);
+    if (committed && now - committed.seenAt < delay * 0.82) {
+      return;
+    }
+
+    this.pendingSightings.set(snapshot.id, {
+      snapshot,
+      readyAt: now + delay,
+    });
+  }
+
+  flushPendingSightings() {
+    const now = this.team.match.elapsed;
+    for (const [id, pending] of this.pendingSightings) {
+      if (pending.readyAt > now) {
+        continue;
+      }
+      const snapshot = pending.snapshot;
+      this.enemyIntel.entities.set(snapshot.id, snapshot);
+      if (snapshot.slotKey === "main") {
+        this.enemyIntel.main = snapshot;
+      }
+      this.enemyIntel.searchZoneId = snapshot.zoneId;
+      this.pendingSightings.delete(id);
+    }
+  }
+
+  snapshotEnemyContact(entity, source = "visible") {
+    const zone = this.zoneForPoint(entity.x, entity.y);
+    return {
+      id: entity.id,
+      kind: entity.kind || "ship",
+      key: entity.key || entity.slotKey || null,
+      slotKey: entity.slotKey || entity.key || null,
+      characterId: entity.characterId || null,
+      x: entity.x,
+      y: entity.y,
+      angle: Number.isFinite(entity.angle) ? entity.angle : 0,
+      speed: Number.isFinite(entity.speed) ? entity.speed : 0,
+      hp: Number.isFinite(entity.hp) ? entity.hp : null,
+      maxHp: Number.isFinite(entity.maxHp) ? entity.maxHp : null,
+      radius: Number.isFinite(entity.radius) ? entity.radius : null,
+      seenAt: this.team.match.elapsed,
+      zoneId: zone.id,
+      source,
+    };
+  }
+
+  projectContact(contact, maxLead = 2.4) {
+    if (!contact) {
+      return null;
+    }
+    const age = Math.max(0, this.team.match.elapsed - contact.seenAt);
+    const lead = contact.source === "spawn" ? 0 : Math.min(age, maxLead) * 0.78;
+    const padding = this.safeRoutePadding();
+    const worldSize = this.team.match.worldSize;
+    let x = clamp(contact.x + Math.cos(contact.angle || 0) * (contact.speed || 0) * lead, padding, worldSize - padding);
+    let y = clamp(contact.y + Math.sin(contact.angle || 0) * (contact.speed || 0) * lead, padding, worldSize - padding);
+
+    let source = contact.source;
+    let confidence = 1;
+    if (source === "spawn") {
+      confidence = clamp(0.42 - age * 0.028, 0.14, 0.42);
+    } else if (age > TICK_DT * 1.5) {
+      source = "memory";
+      confidence = clamp(0.88 - age * 0.05, 0.18, 0.88);
+    }
+
+    let uncertainty = 0;
+    if (source === "spawn") {
+      uncertainty = clamp(90 + age * 20, 90, 230);
+    } else if (source === "memory") {
+      uncertainty = clamp(14 + age * 28 + (1 - confidence) * 75, 14, 210);
+    }
+
+    if (uncertainty > 0) {
+      const seed = contact.id * 97 + Math.round(contact.seenAt * 10);
+      const angle = (this.stableNoise(seed, 7) + age * 0.08) * TAU;
+      const magnitude = uncertainty * (0.38 + this.stableNoise(seed, 11) * 0.5);
+      x = clamp(x + Math.cos(angle) * magnitude, padding, worldSize - padding);
+      y = clamp(y + Math.sin(angle) * magnitude, padding, worldSize - padding);
+    }
+
+    const projectedZone = this.zoneForPoint(x, y);
+
+    return {
+      ...contact,
+      x,
+      y,
+      zoneId: projectedZone.id,
+      age,
+      source,
+      confidence,
+      uncertainty,
+      visible: source === "visible",
+    };
+  }
+
+  rememberContact(entity, source = "visible") {
+    const snapshot = this.snapshotEnemyContact(entity, source);
+    this.enemyIntel.entities.set(snapshot.id, snapshot);
+    if (snapshot.slotKey === "main") {
+      this.enemyIntel.main = snapshot;
+    }
+    this.enemyIntel.searchZoneId = snapshot.zoneId;
+    return this.projectContact(snapshot, 0);
+  }
+
+  refreshIntel() {
+    for (const entity of this.enemy.getEntities()) {
+      if (this.team.visibleEnemyIds.has(entity.id)) {
+        this.queueSighting(entity);
+      }
+    }
+    this.flushPendingSightings();
+
+    const staleCutoff = this.team.match.elapsed - 18;
+    for (const [id, contact] of this.enemyIntel.entities) {
+      if (contact.seenAt < staleCutoff) {
+        this.enemyIntel.entities.delete(id);
+      }
+    }
+  }
+
+  visibleMainContact() {
+    if (!this.enemyIntel.main || this.enemyIntel.main.source !== "visible") {
+      return null;
+    }
+    const age = this.team.match.elapsed - this.enemyIntel.main.seenAt;
+    if (age > 0.7) {
+      return null;
+    }
+    return this.projectContact(this.enemyIntel.main, 0.3);
+  }
+
+  contactPriority(contact) {
+    if (contact.slotKey === "main") {
+      return 4;
+    }
+    if (contact.kind === "ship") {
+      return 3;
+    }
+    if (contact.kind === "wingman") {
+      return 2;
+    }
+    return 1;
+  }
+
+  freshestKnownContact({ requireShip = false, maxAge = 12 } = {}) {
+    let best = null;
+    for (const contact of this.enemyIntel.entities.values()) {
+      if (requireShip && contact.kind !== "ship") {
+        continue;
+      }
+      const age = this.team.match.elapsed - contact.seenAt;
+      if (age > maxAge) {
+        continue;
+      }
+      if (
+        !best
+        || contact.seenAt > best.seenAt
+        || (contact.seenAt === best.seenAt && this.contactPriority(contact) > this.contactPriority(best))
+      ) {
+        best = contact;
+      }
+    }
+    return best ? this.projectContact(best, 1.8) : null;
+  }
+
+  primaryEnemyEstimate() {
+    const visibleMain = this.visibleMainContact();
+    if (visibleMain) {
+      return visibleMain;
+    }
+
+    const mainIntel = this.projectContact(this.enemyIntel.main, this.enemyIntel.main?.source === "spawn" ? 0 : 2.6);
+    if (mainIntel && (mainIntel.age <= 16 || mainIntel.source === "spawn")) {
+      return mainIntel;
+    }
+
+    const recentShip = this.freshestKnownContact({ requireShip: true, maxAge: 10 });
+    if (recentShip) {
+      return recentShip;
+    }
+
+    return this.freshestKnownContact({ requireShip: false, maxAge: 6 }) || mainIntel;
+  }
+
+  knownEnemyContacts({ maxAge = 10, includeScouts = false } = {}) {
+    const contacts = [];
+    for (const stored of this.enemyIntel.entities.values()) {
+      const projected = this.projectContact(stored, 1.8);
+      if (!projected || projected.age > maxAge) {
+        continue;
+      }
+      if (!includeScouts && projected.kind === "scout") {
+        continue;
+      }
+      contacts.push(projected);
+    }
+
+    const mainEstimate = this.projectContact(this.enemyIntel.main, this.enemyIntel.main?.source === "spawn" ? 0 : 1.8);
+    if (mainEstimate && mainEstimate.age <= maxAge && !contacts.some((item) => item.id === mainEstimate.id)) {
+      if (includeScouts || mainEstimate.kind !== "scout") {
+        contacts.unshift(mainEstimate);
+      }
+    }
+    return contacts;
+  }
+
+  contactHpRatio(contact) {
+    const hp = Number(contact?.hp);
+    const maxHp = Number(contact?.maxHp);
+    if (Number.isFinite(hp) && Number.isFinite(maxHp) && maxHp > 0) {
+      return clamp(hp / maxHp, 0.08, 1);
+    }
+    return contact?.kind === "scout" ? 0.4 : contact?.kind === "wingman" ? 0.8 : 0.82;
+  }
+
+  contactCombatValue(contact) {
+    if (!contact) {
+      return 0;
+    }
+    const confidence = clamp(contact.confidence ?? 1, 0.2, 1);
+    if (contact.kind === "scout") {
+      return 0.08 * confidence * (contact.visible ? 1 : 0.75);
+    }
+    if (contact.kind === "wingman") {
+      return 0.42 * this.contactHpRatio(contact) * confidence * (contact.visible ? 1 : 0.86);
+    }
+
+    const stats = CHARACTER_DEFS[contact.characterId]?.stats || null;
+    const roleFactor = contact.slotKey === "main" ? 1.28 : contact.slotKey === "twin" ? 0.72 : 0.98;
+    const rangeFactor = stats ? clamp(stats.range / 520, 0.84, 1.18) : 1;
+    const dpsFactor = stats ? clamp((stats.damage / Math.max(stats.fireRate, 0.22)) / 58, 0.78, 1.32) : 1;
+    return roleFactor * rangeFactor * dpsFactor * (0.34 + 0.66 * this.contactHpRatio(contact)) * confidence * (contact.visible ? 1 : 0.92);
+  }
+
+  shipCombatValue(ship) {
+    if (!ship || !ship.alive) {
+      return 0;
+    }
+    const hpRatio = clamp(ship.hp / Math.max(ship.maxHp, 1), 0.08, 1);
+    const energyRatio = clamp(ship.energy / Math.max(ship.maxEnergy, 1), 0, 1);
+    const roleFactor = ship.key === "main" ? 1.24 : ship.isAuxiliary ? 0.72 : 1;
+    const rangeFactor = clamp(ship.effectiveRange() / 520, 0.84, 1.2);
+    const dpsFactor = clamp((ship.effectiveDamage() / Math.max(ship.effectiveFireRate(), 0.22)) / 60, 0.78, 1.34);
+    return roleFactor * rangeFactor * dpsFactor * (0.38 + 0.62 * hpRatio) * (0.48 + 0.52 * energyRatio);
+  }
+
+  friendlyPowerAround(x, y, radius = 320) {
+    let total = 0;
+    for (const ship of this.team.getAllShips()) {
+      if (!ship.alive) {
+        continue;
+      }
+      const d = distance(ship.x, ship.y, x, y);
+      if (d > radius * 1.2) {
+        continue;
+      }
+      total += this.shipCombatValue(ship) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.25, 1);
+    }
+    for (const wingman of this.team.wingmen) {
+      if (!wingman.alive) {
+        continue;
+      }
+      const d = distance(wingman.x, wingman.y, x, y);
+      if (d > radius * 1.2) {
+        continue;
+      }
+      total += 0.36 * clamp(wingman.hp / Math.max(wingman.maxHp, 1), 0.2, 1) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
+    }
+    return total;
+  }
+
+  enemyThreatAround(x, y, radius = 320, maxAge = 8) {
+    let total = 0;
+    for (const contact of this.knownEnemyContacts({ maxAge })) {
+      const d = distance(contact.x, contact.y, x, y);
+      if (d > radius * 1.25) {
+        continue;
+      }
+      total += this.contactCombatValue(contact) * clamp(1 - d / Math.max(radius * 1.25, 1), 0.22, 1);
+    }
+    return total;
+  }
+
+  enemyIsolationScore(contact, maxAge = 6) {
+    if (!contact) {
+      return 0;
+    }
+    const nearbyThreat = this.enemyThreatAround(contact.x, contact.y, 240, maxAge) - this.contactCombatValue(contact);
+    return clamp(1.2 - nearbyThreat, -0.4, 1.1);
+  }
+
+  energyProfile(shipOrKey) {
+    const members = this.team.fleetMembersForShip(shipOrKey).filter((ship) => ship.alive);
+    const pool = this.team.fleetEnergyForShip(shipOrKey);
+    const ratio = pool.current / Math.max(pool.max, 1);
+    const regen = members.reduce((sum, ship) => sum + ship.baseEnergyRegen(), 0);
+    const moveLoad = members.reduce((sum, ship) => sum + ship.moveEnergyDrain(), 0);
+    const sustainCruise = regen - moveLoad * 0.92;
+    const sustainRecover = regen * 1.22 - moveLoad * 0.62;
+    return {
+      current: pool.current,
+      max: pool.max,
+      ratio,
+      regen,
+      moveLoad,
+      sustainCruise,
+      sustainRecover,
+      high: ratio >= 0.7,
+      low: ratio <= 0.32,
+      critical: ratio <= 0.16,
+    };
+  }
+
+  energyRatioAfterSpend(shipOrKey, cost) {
+    const profile = this.energyProfile(shipOrKey);
+    if (profile.max <= 0) {
+      return 0;
+    }
+    return (profile.current - cost) / profile.max;
+  }
+
+  allowEnergyCommit(shipOrKey, cost, context, {
+    emergencyFloor = 0.05,
+    normalFloor = 0.14,
+    conserveFloor = 0.24,
+  } = {}) {
+    const profile = this.energyProfile(shipOrKey);
+    if (profile.current < cost) {
+      return false;
+    }
+    const afterRatio = this.energyRatioAfterSpend(shipOrKey, cost);
+    const floor = context?.emergencyCommit
+      ? emergencyFloor
+      : context?.energyRecoveryNeed > 0.62
+        ? conserveFloor
+        : normalFloor - Math.min(0.08, (context?.energySurplus || 0) * 0.1);
+    return afterRatio >= floor || profile.high;
+  }
+
+  pointEdgeClearance(x, y) {
+    const size = this.team.match.worldSize;
+    return Math.min(x, y, size - x, size - y);
+  }
+
+  arcDensityFromState(facingAngle, fromX, fromY, toX, toY, uniformOutput = false) {
+    const bearing = Math.atan2(toY - fromY, toX - fromX);
+    return fireArcDensityMultiplier(Math.abs(shortestAngleDelta(facingAngle, bearing)), uniformOutput);
+  }
+
+  broadsideIntentAngle(fromX, fromY, targetX, targetY, sign = 1) {
+    const bearing = Math.atan2(targetY - fromY, targetX - fromX);
+    return bearing - sign * Math.PI * 0.5;
+  }
+
+  evaluateArcExchange(ship, enemyEstimate, candidate, exposureWeight = 1) {
+    if (!ship || !enemyEstimate || !candidate) {
+      return {
+        ownDensity: 1,
+        enemyDensity: 1,
+        score: 0,
+      };
+    }
+
+    const intentAngle = Number.isFinite(candidate.intentAngle)
+      ? candidate.intentAngle
+      : Math.atan2(candidate.y - ship.y, candidate.x - ship.x);
+    const enemyFacing = Number.isFinite(candidate.enemyFacingAngle) ? candidate.enemyFacingAngle : enemyEstimate.angle;
+    const ownDensity = this.arcDensityFromState(
+      intentAngle,
+      candidate.x,
+      candidate.y,
+      enemyEstimate.x,
+      enemyEstimate.y,
+      this.team.hasKyonFlagship(),
+    );
+    const enemyDensity = this.arcDensityFromState(
+      enemyFacing,
+      enemyEstimate.x,
+      enemyEstimate.y,
+      candidate.x,
+      candidate.y,
+      this.enemy.hasKyonFlagship(),
+    );
+    const edgePenalty = clamp((150 - this.pointEdgeClearance(candidate.x, candidate.y)) / 150, 0, 1) * 0.55;
+    const preferredRange = Number.isFinite(candidate.preferredRange) ? candidate.preferredRange : ship.effectiveRange() * 0.9;
+    const actualRange = distance(candidate.x, candidate.y, enemyEstimate.x, enemyEstimate.y);
+    const rangePenalty = Math.abs(actualRange - preferredRange) / Math.max(preferredRange, 1);
+    return {
+      ownDensity,
+      enemyDensity,
+      score: ownDensity * 1.35 - enemyDensity * exposureWeight - edgePenalty - rangePenalty * 0.3,
+    };
+  }
+
+  preferredFlankSign(main, contact) {
+    if (!contact) {
+      return this.searchSweepSign;
+    }
+    const enemyForward = { x: Math.cos(contact.angle), y: Math.sin(contact.angle) };
+    const enemySide = { x: -enemyForward.y, y: enemyForward.x };
+    const sideOffset = clamp(main.effectiveRange() * 0.82, 180, 320);
+    const rearOffset = clamp(main.effectiveRange() * 0.22, 55, 130);
+    let bestSign = this.searchSweepSign;
+    let bestScore = -Infinity;
+    for (const sign of [1, -1]) {
+      const candidate = {
+        x: this.team.match.clampX(contact.x - enemyForward.x * rearOffset + enemySide.x * sideOffset * sign, this.safeRoutePadding()),
+        y: this.team.match.clampY(contact.y - enemyForward.y * rearOffset + enemySide.y * sideOffset * sign, this.safeRoutePadding()),
+      };
+      candidate.intentAngle = this.broadsideIntentAngle(candidate.x, candidate.y, contact.x, contact.y, sign);
+      candidate.preferredRange = clamp(main.effectiveRange() * 0.86, 180, 340);
+      const exchange = this.evaluateArcExchange(main, contact, candidate, 1.2);
+      const clearanceBias = this.pointEdgeClearance(candidate.x, candidate.y) / 220;
+      const score = exchange.score + clearanceBias;
+      if (score > bestScore) {
+        bestScore = score;
+        bestSign = sign;
+      }
+    }
+    return bestSign;
+  }
+
+  selectEnemyFocus(main) {
+    const contacts = this.knownEnemyContacts({ maxAge: 8 });
+    if (contacts.length === 0) {
+      return this.primaryEnemyEstimate();
+    }
+
+    let best = null;
+    let bestScore = -Infinity;
+    for (const contact of contacts) {
+      if (contact.kind === "scout") {
+        continue;
+      }
+      const dist = distance(main.x, main.y, contact.x, contact.y);
+      const proximity = clamp(1 - dist / Math.max(main.effectiveRange() * 2.4, 1), -0.18, 0.95);
+      const freshness = clamp(1 - contact.age / 8, 0, 1);
+      const vulnerability = 1 - this.contactHpRatio(contact);
+      const isolation = this.enemyIsolationScore(contact, 6);
+      const typeBias = contact.slotKey === "main" ? 1.28 : contact.kind === "ship" ? 0.9 : 0.32;
+      const visibleBias = contact.visible ? 0.72 : 0.22;
+      const uncertaintyPenalty = clamp((contact.uncertainty || 0) / 240, 0, 1.4);
+      const score = typeBias + proximity + freshness * 0.75 + vulnerability * 0.95 + isolation * 0.55 + visibleBias - uncertaintyPenalty;
+      if (score > bestScore) {
+        bestScore = score;
+        best = contact;
+      }
+    }
+    return best || this.primaryEnemyEstimate();
+  }
+
+  buildTacticalContext(main, focus) {
+    const fleetEnergy = this.energyProfile("main");
+    const rangeRef = main.effectiveRange();
+    const dist = distance(main.x, main.y, focus.x, focus.y);
+    const mainHull = main.hp / Math.max(main.maxHp, 1);
+    const fleetHull = this.team.hullRatio();
+    const energyRatio = fleetEnergy.ratio;
+    const friendlyLocal = this.friendlyPowerAround(focus.x, focus.y, 330);
+    const friendlyEscort = this.friendlyPowerAround(main.x, main.y, 240);
+    const enemyLocal = this.enemyThreatAround(focus.x, focus.y, 330, 8);
+    const localAdvantage = (friendlyLocal + friendlyEscort * 0.28 + 0.25) / Math.max(enemyLocal + 0.25, 0.25);
+    const intelSolid = focus.visible || (focus.age <= 5.5 && focus.confidence >= 0.42);
+    const searchRequired = focus.source === "spawn" || focus.age > 7.5 || focus.confidence < 0.34;
+    const killWindow = this.contactHpRatio(focus) < 0.44 && dist < rangeRef * 1.75;
+    const broadsideWindow = dist > rangeRef * 0.58 && dist < rangeRef * 1.2 && intelSolid;
+    const detachedShips = [this.team.ships.sub1, this.team.ships.sub2].filter((ship) => ship.alive && !ship.isAttached());
+    const detachedSpread = detachedShips.reduce((max, ship) => Math.max(max, distance(ship.x, ship.y, main.x, main.y)), 0);
+    const overextended = detachedSpread > 280 && localAdvantage < 0.98;
+    const defensivePressure = localAdvantage < 0.82 && dist < rangeRef * 1.32;
+    const flankSign = this.preferredFlankSign(main, focus);
+    const ownArcDensity = this.arcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, this.team.hasKyonFlagship());
+    const enemyArcDensity = this.arcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, this.enemy.hasKyonFlagship());
+    const arcAdvantage = ownArcDensity - enemyArcDensity;
+    const enemyBroadsideRisk = enemyArcDensity >= 1.45;
+    const safeExchange = enemyArcDensity <= 1 && ownArcDensity >= 1;
+    const focusFreshness = clamp(1 - focus.age / 10, 0, 1);
+    const trackableIntel = !intelSolid && focus.source !== "spawn" && focus.age <= 9.5 && focus.confidence >= 0.24;
+    const intelUrgency = focus.visible ? 0.12 : focus.source === "spawn" ? 1.18 : clamp(0.45 + focus.age / 10 + (1 - focus.confidence) * 0.7, 0.28, 1.45);
+    const combatUrgency = clamp(
+      (focus.visible ? 0.34 : 0.08)
+      + (dist < rangeRef * 1.08 ? 0.28 : 0)
+      + (killWindow ? 0.34 : 0)
+      + (enemyLocal > friendlyLocal * 0.9 && dist < rangeRef * 1.32 ? 0.16 : 0)
+      + (trackableIntel ? 0.12 : 0),
+      0,
+      1.35,
+    );
+    const emergencyCommit = combatUrgency > 0.78 || (focus.visible && dist < rangeRef * 0.92) || killWindow;
+    const energySurplus = clamp((energyRatio - 0.58) / 0.42, 0, 1);
+    const energyRecoveryNeed = clamp((0.5 - energyRatio) / 0.5, 0, 1) * (emergencyCommit ? 0.38 : 1);
+    const conserveEnergy = energyRecoveryNeed > 0.62 && !emergencyCommit;
+    const mobilityBias = clamp(0.82 + energySurplus * 0.28 + (emergencyCommit ? 0.18 : 0) - energyRecoveryNeed * 0.32, 0.52, 1.24);
+    const skillAggression = clamp(
+      0.25
+      + energySurplus * 0.75
+      + combatUrgency * 0.55
+      + (trackableIntel ? 0.16 : 0)
+      - energyRecoveryNeed * 0.42,
+      0,
+      1.5,
+    );
+    const scoutPriority = clamp(
+      intelUrgency * 0.82
+      + (searchRequired ? 0.24 : 0)
+      + (trackableIntel ? 0.22 : 0)
+      - combatUrgency * 0.36
+      - energyRecoveryNeed * 0.44,
+      0,
+      1.5,
+    );
+    const encirclePressure = clamp(0.55 + focusFreshness * 0.35 + (trackableIntel ? 0.28 : 0) + (searchRequired ? 0.22 : 0), 0.4, 1.35);
+    const pressureDrive = clamp(localAdvantage - 0.82, 0, 0.8) * 1.2
+      + energySurplus * 0.68
+      + clamp(focusFreshness - 0.25, 0, 0.75) * 0.65
+      + (killWindow ? 0.75 : 0)
+      + (trackableIntel ? 0.48 : 0)
+      + (emergencyCommit ? 0.24 : 0)
+      - energyRecoveryNeed * 0.48;
+
+    return {
+      focus,
+      rangeRef,
+      dist,
+      mainHull,
+      fleetHull,
+      energyRatio,
+      friendlyLocal,
+      enemyLocal,
+      localAdvantage,
+      intelSolid,
+      searchRequired,
+      killWindow,
+      broadsideWindow,
+      detachedCount: detachedShips.length,
+      detachedSpread,
+      overextended,
+      defensivePressure,
+      edgePressure: this.edgePressure(main),
+      flankSign,
+      ownArcDensity,
+      enemyArcDensity,
+      arcAdvantage,
+      enemyBroadsideRisk,
+      safeExchange,
+      fleetEnergy,
+      focusFreshness,
+      trackableIntel,
+      intelUrgency,
+      combatUrgency,
+      emergencyCommit,
+      energySurplus,
+      energyRecoveryNeed,
+      conserveEnergy,
+      mobilityBias,
+      skillAggression,
+      scoutPriority,
+      encirclePressure,
+      pressureDrive,
+    };
+  }
+
+  shouldSplit(level, context, elapsed) {
+    if (!context) {
+      return false;
+    }
+    if (level === 1) {
+      if (this.team.splitLevel !== 0 || !this.team.ships.sub1.alive) {
+        return false;
+      }
+      if (context.mainHull < 0.34 || context.fleetHull < 0.46 || context.energyRatio < 0.18 || context.defensivePressure) {
+        return elapsed > 30 && context.dist > context.rangeRef * 1.5;
+      }
+      if (context.searchRequired && elapsed < 28) {
+        return false;
+      }
+      return elapsed > 12 && (context.killWindow || context.localAdvantage > 0.88 || context.dist < context.rangeRef * 1.7);
+    }
+    if (level === 2) {
+      if (this.team.splitLevel !== 1 || !this.team.ships.sub2.alive) {
+        return false;
+      }
+      if (context.mainHull < 0.42 || context.fleetHull < 0.54 || context.energyRatio < 0.26 || context.overextended || context.defensivePressure) {
+        return elapsed > 58 && context.localAdvantage > 0.9;
+      }
+      if (!context.intelSolid && elapsed < 48) {
+        return false;
+      }
+      return elapsed > 24 && (context.killWindow || context.localAdvantage > 1.06 || context.dist < context.rangeRef * 1.22);
+    }
+    return false;
+  }
+
+  evaluateSplit(elapsed, context) {
+    if (this.shouldSplit(1, context, elapsed)) {
+      this.team.split(1);
+    }
+    if (this.shouldSplit(2, context, elapsed)) {
+      this.team.split(2);
+    }
+  }
+
+  acquireSearchCenter(main, enemyEstimate = null) {
+    if (enemyEstimate && enemyEstimate.zoneId && (enemyEstimate.visible || enemyEstimate.age <= 10)) {
+      this.enemyIntel.searchZoneId = enemyEstimate.zoneId;
+      return this.zoneCenter(enemyEstimate.zoneId);
+    }
+
+    if (!this.enemyIntel.searchZoneId) {
+      this.enemyIntel.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
+      this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
+    }
+
+    const current = this.zoneCenter(this.enemyIntel.searchZoneId);
+    if (
+      distance(main.x, main.y, current.x, current.y) <= 90
+      || this.team.match.elapsed - this.lastSearchAdvanceAt > 7.5
+    ) {
+      this.enemyIntel.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
+      this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
+      this.searchSweepSign *= -1;
+      this.lastSearchAdvanceAt = this.team.match.elapsed;
+    }
+
+    return this.zoneCenter(this.enemyIntel.searchZoneId);
+  }
+
+  likelyProbeZoneId(focus) {
+    if (!focus) {
+      return null;
+    }
+    const probeDistance = clamp(140 + (focus.uncertainty || 0) * 0.9, 140, this.team.match.worldSize / 3);
+    const angle = Number.isFinite(focus.angle) ? focus.angle : 0;
+    const probeX = this.team.match.clampX(focus.x + Math.cos(angle) * probeDistance, this.safeRoutePadding());
+    const probeY = this.team.match.clampY(focus.y + Math.sin(angle) * probeDistance, this.safeRoutePadding());
+    return this.zoneForPoint(probeX, probeY).id;
+  }
+
+  pickScoutZoneId(main, enemyEstimate = null) {
+    const focus = enemyEstimate || this.primaryEnemyEstimate();
+    if (focus && focus.zoneId) {
+      const probeZoneId = this.likelyProbeZoneId(focus);
+      if (focus.visible) {
+        this.enemyIntel.searchZoneId = focus.zoneId;
+        return this.stableNoise(Math.round(this.team.match.elapsed * 10), focus.zoneId) < 0.42 && probeZoneId
+          ? probeZoneId
+          : focus.zoneId;
+      }
+      if (focus.age <= 9) {
+        this.enemyIntel.searchZoneId = focus.zoneId;
+        if (probeZoneId && this.stableNoise(Math.round(this.team.match.elapsed * 8), probeZoneId) < 0.78) {
+          return probeZoneId;
+        }
+        return focus.zoneId;
+      }
+    }
+    return this.acquireSearchCenter(main, focus).zoneId;
+  }
+
+  shouldLaunchScout(context = this.currentContext) {
+    if (!context) {
+      return true;
+    }
+    const fleetEnergy = context.fleetEnergy || this.energyProfile("main");
+    if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < 0.34) {
+      return false;
+    }
+    if (context.conserveEnergy && !context.searchRequired && !context.trackableIntel) {
+      return false;
+    }
+    if (fleetEnergy.current < 28) {
+      return !context.emergencyCommit && context.intelUrgency > 1.02;
+    }
+    return context.scoutPriority > 0.12;
+  }
+
+  combatCenter(enemyEstimate) {
+    const worldCenter = this.team.match.worldSize * 0.5;
+    return {
+      x: lerp(worldCenter, enemyEstimate.x, 0.24),
+      y: lerp(worldCenter, enemyEstimate.y, 0.24),
+    };
+  }
+
+  computeRecoveryTarget(main, enemyEstimate) {
+    const padding = this.safeRoutePadding(24);
+    const worldSize = this.team.match.worldSize;
+    const inwardX = clamp(main.x, padding, worldSize - padding);
+    const inwardY = clamp(main.y, padding, worldSize - padding);
+    const toEnemyX = enemyEstimate.x - main.x;
+    const toEnemyY = enemyEstimate.y - main.y;
+    const len = Math.max(1, Math.hypot(toEnemyX, toEnemyY));
+    const towardX = toEnemyX / len;
+    const towardY = toEnemyY / len;
+
+    return {
+      x: clamp(lerp(main.x, inwardX, 0.92) + towardX * 150, padding, worldSize - padding),
+      y: clamp(lerp(main.y, inwardY, 0.92) + towardY * 150, padding, worldSize - padding),
+    };
   }
 
   update(dt, elapsed) {
@@ -2337,61 +3119,112 @@ class BotController {
     this.subTimers.sub2 -= dt;
     this.modeTimer -= dt;
 
+    this.refreshIntel();
     this.updateStuckState(dt);
+    const main = this.team.ships.main;
+    const focus = main.alive ? this.selectEnemyFocus(main) : null;
+    this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
+    this.evaluateSplit(elapsed, this.currentContext);
 
-    if (elapsed > 22 && this.team.splitLevel < 1) {
-      this.team.split(1);
-    }
-    if (elapsed > 46 && this.team.splitLevel < 2) {
-      this.team.split(2);
+    if (
+      this.currentContext
+      && this.currentContext.intelUrgency > 0.88
+      && this.team.scouts.filter((item) => item.alive).length === 0
+    ) {
+      this.scoutTimer = Math.min(this.scoutTimer, 1.1);
     }
 
-    if (this.moveTimer <= 0 || this.stuckTimer > 2) {
-      this.issueMovement();
-      this.moveTimer = randomInRange(4.2, 6.4);
+    if (this.moveTimer <= 0 || this.stuckTimer > 1.2) {
+      this.issueMovement(this.currentContext);
+      this.moveTimer = randomInRange(2.7, 4.2);
       this.stuckTimer = 0;
     }
 
     if (this.scoutTimer <= 0 && !this.team.areSkillsDisabled()) {
-      const zone = this.team.match.zones[Math.floor(Math.random() * this.team.match.zones.length)];
-      this.team.launchScout(zone.id);
-      this.scoutTimer = randomInRange(8, 12);
+      if (this.shouldLaunchScout(this.currentContext)) {
+        const zoneId = this.pickScoutZoneId(this.team.ships.main, this.currentContext?.focus || this.primaryEnemyEstimate());
+        const launched = this.team.launchScout(zoneId);
+        if (launched) {
+          if (this.currentContext?.scoutPriority > 1.05 || this.currentContext?.searchRequired) {
+            this.scoutTimer = randomInRange(4.1, 6.1);
+          } else if (this.currentContext?.trackableIntel) {
+            this.scoutTimer = randomInRange(4.8, 7.1);
+          } else if (this.currentContext?.conserveEnergy) {
+            this.scoutTimer = randomInRange(7.1, 9.8);
+          } else {
+            this.scoutTimer = randomInRange(6.1, 8.6);
+          }
+        } else {
+          this.scoutTimer = this.currentContext?.emergencyCommit ? randomInRange(1.4, 2.6) : randomInRange(2.1, 4);
+        }
+      } else {
+        this.scoutTimer = this.currentContext?.conserveEnergy ? randomInRange(2.8, 4.2) : randomInRange(1.8, 3.1);
+      }
     }
 
-    this.tryFlagshipSkill();
-    this.trySubSkill("sub1");
-    this.trySubSkill("sub2");
+    this.tryFlagshipSkill(this.currentContext);
+    this.trySubSkill("sub1", this.currentContext);
+    this.trySubSkill("sub2", this.currentContext);
   }
 
-  tryFlagshipSkill() {
+  tryFlagshipSkill(context = this.currentContext) {
     if (this.flagshipTimer > 0) {
       return;
     }
+    const estimate = context?.focus || this.primaryEnemyEstimate();
+    if (!this.shouldCastFlagshipSkill(estimate, context)) {
+      this.flagshipTimer = context?.conserveEnergy
+        ? randomInRange(2.4, 4.4)
+        : context?.skillAggression > 0.95
+          ? randomInRange(0.8, 1.6)
+          : randomInRange(1.2, 2.4);
+      return;
+    }
     const ok = this.team.castFlagshipSkill();
-    this.flagshipTimer = ok ? randomInRange(16, 22) : randomInRange(6, 10);
+    this.flagshipTimer = ok
+      ? (context?.skillAggression > 0.95 ? randomInRange(14, 19) : randomInRange(16, 22))
+      : context?.conserveEnergy
+        ? randomInRange(6.8, 10.5)
+        : context?.skillAggression > 0.95
+          ? randomInRange(1.8, 3.8)
+          : randomInRange(4.8, 8.4);
   }
 
-  trySubSkill(shipKey) {
+  trySubSkill(shipKey, context = this.currentContext) {
     if (this.subTimers[shipKey] > 0) {
       return;
     }
     const ship = this.team.ships[shipKey];
-    const enemyMain = this.enemy.ships.main;
     if (!ship || !ship.alive || ship.isAttached()) {
       this.subTimers[shipKey] = randomInRange(4, 7);
       return;
     }
 
+    const estimate = context?.focus || this.primaryEnemyEstimate();
+    if (!this.shouldCastSubSkill(ship, estimate, context)) {
+      this.subTimers[shipKey] = context?.conserveEnergy
+        ? randomInRange(2.8, 4.8)
+        : context?.skillAggression > 1
+          ? randomInRange(1, 2)
+          : randomInRange(1.8, 3.2);
+      return;
+    }
     let ok = false;
-    if (ship.characterId === "future1096" && enemyMain && enemyMain.alive) {
-      ok = this.team.castSubSkill(shipKey, { targetX: enemyMain.x, targetY: enemyMain.y });
+    if (ship.characterId === "future1096" && estimate && estimate.source !== "spawn" && (estimate.visible || estimate.age <= 1.6)) {
+      ok = this.team.castSubSkill(shipKey, { targetX: estimate.x, targetY: estimate.y });
     } else if (ship.characterId === "tsuruya") {
-      const zone = this.team.match.zones.find((item) => zoneContains(item, enemyMain.x, enemyMain.y)) || this.team.match.zones[4];
-      ok = this.team.castSubSkill(shipKey, { zoneId: zone.id });
+      const zoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
+      ok = this.team.castSubSkill(shipKey, { zoneId });
     } else {
       ok = this.team.castSubSkill(shipKey);
     }
-    this.subTimers[shipKey] = ok ? randomInRange(18, 26) : randomInRange(6, 10);
+    this.subTimers[shipKey] = ok
+      ? (context?.skillAggression > 1 ? randomInRange(14, 21) : randomInRange(18, 26))
+      : context?.conserveEnergy
+        ? randomInRange(6.4, 10.6)
+        : context?.skillAggression > 1
+          ? randomInRange(2.2, 4.2)
+          : randomInRange(5.4, 9.2);
   }
 
   updateStuckState(dt) {
@@ -2404,104 +3237,443 @@ class BotController {
 
     const moved = distance(main.x, main.y, this.lastMainPos.x, this.lastMainPos.y);
     const progressing = main.route.t > 0.08;
-    if (moved < 2.5 && main.speed < 3.5 && progressing) {
-      this.stuckTimer += dt;
+    const edgePressure = this.edgePressure(main);
+    const pinnedOnEdge = edgePressure > 0.42 && main.speed < 6.5;
+    if ((moved < 2.5 && main.speed < 3.5 && progressing) || pinnedOnEdge) {
+      this.stuckTimer += dt * (1 + edgePressure * 1.8);
     } else {
-      this.stuckTimer = Math.max(0, this.stuckTimer - dt * 0.9);
+      this.stuckTimer = Math.max(0, this.stuckTimer - dt * (0.9 + edgePressure));
     }
 
     this.lastMainPos = { x: main.x, y: main.y };
   }
 
-  chooseMode(main, enemyMain) {
+  scoreMode(mode, context) {
+    const rangeRatio = context.dist / Math.max(context.rangeRef, 1);
+    if (mode === "recover") {
+      return context.edgePressure * 5 + (context.mainHull < 0.22 ? 1.8 : 0);
+    }
+    if (mode === "harvest") {
+      return context.energyRecoveryNeed * 4.4
+        + (context.emergencyCommit ? -2.6 : 0.9)
+        + (context.dist > context.rangeRef * 0.96 ? 0.45 : -0.2)
+        + (context.intelSolid ? -0.3 : 0.15);
+    }
+    if (mode === "search") {
+      return (context.searchRequired ? (context.focus.source === "spawn" ? 4.3 : 2.2) : -1.2)
+        + (context.intelSolid ? -0.8 : 0.55)
+        - (context.trackableIntel ? 0.95 : 0)
+        - (context.pressureDrive > 0.9 ? 0.55 : 0)
+        - context.energyRecoveryNeed * 0.45;
+    }
+    if (mode === "regroup") {
+      return (context.overextended ? 2.6 : 0) + (context.defensivePressure ? 1.8 : 0) + (context.energyRatio < 0.2 ? 1.1 : 0) + (context.enemyBroadsideRisk ? 1.1 : 0) + context.energyRecoveryNeed * 0.7;
+    }
+    if (mode === "kite") {
+      return (context.defensivePressure ? 2.5 : 0) + (rangeRatio < 1.1 ? 1.2 : 0) + (context.localAdvantage < 0.88 ? 1 : 0) + (context.enemyArcDensity > 1 ? 0.85 : 0) + context.energyRecoveryNeed * 0.35;
+    }
+    if (mode === "collapse") {
+      return (context.killWindow ? 3 : 0) + (context.localAdvantage > 1.18 ? 1.8 : 0) + (context.intelSolid ? 0.8 : -0.8) + (context.safeExchange ? 0.6 : 0) + (context.pressureDrive > 0.85 ? 0.45 : 0) + context.energySurplus * 0.4 - context.energyRecoveryNeed * 0.7;
+    }
+    if (mode === "broadside") {
+      return (context.broadsideWindow ? 2.3 : -0.5) + (context.localAdvantage > 0.92 ? 0.7 : 0) + (context.killWindow ? 0.45 : 0) + (context.arcAdvantage < 0.2 ? 0.95 : 0) + (context.enemyBroadsideRisk ? 0.8 : 0) + context.energySurplus * 0.22 - context.energyRecoveryNeed * 0.55;
+    }
+    if (mode === "cutoff") {
+      return (context.intelSolid ? 1.2 : -0.4) + (rangeRatio > 0.9 && rangeRatio < 1.9 ? 0.9 : 0) + (context.localAdvantage > 0.94 ? 0.45 : 0) + (context.enemyArcDensity > 1.2 ? 0.4 : 0) + (context.trackableIntel ? 0.7 : 0) + context.energySurplus * 0.25 - context.energyRecoveryNeed * 0.42;
+    }
+    if (mode === "press") {
+      return 1.1 + (rangeRatio > 1.15 ? 0.8 : 0) + (context.localAdvantage > 0.98 ? 0.6 : 0) - (context.defensivePressure ? 1.4 : 0) - (context.enemyBroadsideRisk ? 0.9 : 0) + (context.arcAdvantage > 0.2 ? 0.3 : 0) + context.pressureDrive * 0.9 + (context.trackableIntel ? 0.6 : 0) + context.energySurplus * 0.28 - context.energyRecoveryNeed * (context.emergencyCommit ? 0.18 : 0.62);
+    }
+    return 0;
+  }
+
+  chooseMode(context) {
+    const forcedMode = context.edgePressure > 0.34
+      ? "recover"
+      : context.energyRecoveryNeed >= 0.8 && !context.emergencyCommit && context.dist > context.rangeRef * 0.88
+        ? "harvest"
+      : context.searchRequired && context.focus.source === "spawn"
+        ? "search"
+        : null;
+    if (forcedMode) {
+      this.mode = forcedMode;
+      this.modeTimer = randomInRange(1.2, forcedMode === "search" ? 2.8 : forcedMode === "harvest" ? 3.2 : 2.2);
+      return this.mode;
+    }
+
+    if (context.mainHull < 0.28 && context.dist < context.rangeRef * 1.45) {
+      this.mode = context.detachedCount > 0 ? "regroup" : "kite";
+      this.modeTimer = randomInRange(1.6, 2.8);
+      return this.mode;
+    }
+    if (context.energyRatio < 0.14 && context.dist < context.rangeRef * 1.2) {
+      this.mode = "regroup";
+      this.modeTimer = randomInRange(1.8, 3);
+      return this.mode;
+    }
+
     if (this.modeTimer > 0) {
       return this.mode;
     }
 
-    const hull = this.team.hullRatio();
-    const energyRatio = this.team.fleetEnergyForShip("main").current / Math.max(1, this.team.fleetEnergyForShip("main").max);
-    const dist = distance(main.x, main.y, enemyMain.x, enemyMain.y);
-
-    if (hull < 0.28) {
-      this.mode = "withdraw";
-      this.modeTimer = randomInRange(5, 8);
-      return this.mode;
+    const modes = ["harvest", "regroup", "kite", "collapse", "broadside", "cutoff", "press"];
+    let bestMode = "press";
+    let bestScore = -Infinity;
+    for (const mode of modes) {
+      const score = this.scoreMode(mode, context);
+      if (score > bestScore) {
+        bestScore = score;
+        bestMode = mode;
+      }
     }
-    if (energyRatio < 0.22) {
-      this.mode = "guard";
-      this.modeTimer = randomInRange(4, 7);
-      return this.mode;
-    }
-    if (dist > this.team.match.worldSize * 0.28) {
-      this.mode = "press";
-      this.modeTimer = randomInRange(3.4, 5.4);
-      return this.mode;
-    }
-
-    const roll = Math.random();
-    if (roll < 0.27) {
-      this.mode = "flank_left";
-    } else if (roll < 0.54) {
-      this.mode = "flank_right";
-    } else if (roll < 0.74) {
-      this.mode = "cutoff";
-    } else {
-      this.mode = "press";
-    }
-    this.modeTimer = randomInRange(4, 6.8);
+    this.mode = bestMode;
+    this.modeTimer = randomInRange(
+      bestMode === "collapse" || bestMode === "kite" ? 1.8 : 2.4,
+      bestMode === "regroup" || bestMode === "harvest" ? 4.2 : 3.8,
+    );
     return this.mode;
   }
 
-  computeMainTarget(mode, main, enemyMain, center) {
-    const toEnemyX = enemyMain.x - main.x;
-    const toEnemyY = enemyMain.y - main.y;
-    const len = Math.max(1, Math.hypot(toEnemyX, toEnemyY));
-    const toward = { x: toEnemyX / len, y: toEnemyY / len };
-    const side = { x: -toward.y, y: toward.x };
-    const enemyForward = { x: Math.cos(enemyMain.angle), y: Math.sin(enemyMain.angle) };
-
-    if (mode === "withdraw") {
-      return {
-        x: main.x - toward.x * 280 + side.x * randomInRange(-100, 100),
-        y: main.y - toward.y * 280 + side.y * randomInRange(-100, 100),
-      };
-    }
-    if (mode === "guard") {
-      return {
-        x: lerp(center.x, main.x, 0.58) + randomInRange(-70, 70),
-        y: lerp(center.y, main.y, 0.58) + randomInRange(-70, 70),
-      };
-    }
-    if (mode === "flank_left") {
-      return {
-        x: enemyMain.x + side.x * 320 - toward.x * 100 + randomInRange(-40, 40),
-        y: enemyMain.y + side.y * 320 - toward.y * 100 + randomInRange(-40, 40),
-      };
-    }
-    if (mode === "flank_right") {
-      return {
-        x: enemyMain.x - side.x * 320 - toward.x * 100 + randomInRange(-40, 40),
-        y: enemyMain.y - side.y * 320 - toward.y * 100 + randomInRange(-40, 40),
-      };
-    }
-    if (mode === "cutoff") {
-      return {
-        x: enemyMain.x + enemyForward.x * 280 + side.x * randomInRange(-90, 90),
-        y: enemyMain.y + enemyForward.y * 280 + side.y * randomInRange(-90, 90),
-      };
-    }
+  computeSearchTarget(main, enemyEstimate, searchCenter) {
+    const focus = enemyEstimate || searchCenter;
+    const spread = enemyEstimate
+      ? clamp(68 + (enemyEstimate.uncertainty || 0) * 0.5 + enemyEstimate.age * 8, 68, 180)
+      : 150;
+    const sweepOffset = this.searchSweepSign * spread * 0.22;
+    const toward = Math.atan2(focus.y - main.y, focus.x - main.x);
+    const forwardAngle = Number.isFinite(focus.angle) ? focus.angle : toward;
+    const forwardPush = enemyEstimate
+      ? clamp(70 + (enemyEstimate.uncertainty || 0) * 0.18 + enemyEstimate.age * 6, 70, 170)
+      : 110;
     return {
-      x: lerp(center.x, enemyMain.x, 0.7) + randomInRange(-44, 44),
-      y: lerp(center.y, enemyMain.y, 0.7) + randomInRange(-44, 44),
+      x: lerp(searchCenter.x, focus.x, 0.72) + Math.cos(forwardAngle) * forwardPush + Math.cos(toward + Math.PI * 0.5) * sweepOffset + randomInRange(-spread * 0.22, spread * 0.22),
+      y: lerp(searchCenter.y, focus.y, 0.72) + Math.sin(forwardAngle) * forwardPush + Math.sin(toward + Math.PI * 0.5) * sweepOffset + randomInRange(-spread * 0.22, spread * 0.22),
     };
   }
 
-  issueShipRoute(ship, targetX, targetY, throttle) {
+  computeSearchAssignments(main, focus, searchCenter) {
+    const basisAngle = Number.isFinite(focus?.angle)
+      ? focus.angle
+      : Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
+    const sideAngle = basisAngle + Math.PI * 0.5;
+    const zoneSpan = this.team.match.worldSize / 3;
+    const wingReach = clamp(zoneSpan * 0.46 + (focus?.uncertainty || 0) * 0.28, 140, 320);
+    const forwardReach = clamp(zoneSpan * 0.28 + (focus?.uncertainty || 0) * 0.18, 90, 220);
+    const feintBias = this.searchSweepSign * clamp(zoneSpan * 0.1, 36, 82);
+
+    return {
+      main: {
+        x: searchCenter.x + Math.cos(sideAngle) * feintBias,
+        y: searchCenter.y + Math.sin(sideAngle) * feintBias,
+      },
+      sub1: {
+        x: searchCenter.x - Math.cos(sideAngle) * wingReach + Math.cos(basisAngle) * forwardReach,
+        y: searchCenter.y - Math.sin(sideAngle) * wingReach + Math.sin(basisAngle) * forwardReach,
+      },
+      sub2: {
+        x: searchCenter.x + Math.cos(sideAngle) * wingReach + Math.cos(basisAngle) * forwardReach,
+        y: searchCenter.y + Math.sin(sideAngle) * wingReach + Math.sin(basisAngle) * forwardReach,
+      },
+    };
+  }
+
+  computeSectorEncirclement(main, focus, searchCenter, pressure = 1) {
+    const target = focus || searchCenter;
+    const basisAngle = Number.isFinite(focus?.angle)
+      ? focus.angle
+      : Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
+    const sideAngle = basisAngle + Math.PI * 0.5;
+    const uncertainty = focus?.uncertainty || 0;
+    const forwardReach = clamp(main.effectiveRange() * (0.56 + pressure * 0.14) + uncertainty * 0.34, 150, 360);
+    const wingReach = clamp(main.effectiveRange() * 0.44 + uncertainty * 0.36 + pressure * 42, 130, 320);
+    const centerReach = clamp(forwardReach * 0.78, 120, 300);
+    const mainBias = this.searchSweepSign * clamp(38 + uncertainty * 0.08, 38, 92);
+
+    return {
+      main: {
+        x: target.x + Math.cos(basisAngle) * centerReach + Math.cos(sideAngle) * mainBias,
+        y: target.y + Math.sin(basisAngle) * centerReach + Math.sin(sideAngle) * mainBias,
+      },
+      sub1: {
+        x: target.x + Math.cos(basisAngle) * forwardReach - Math.cos(sideAngle) * wingReach,
+        y: target.y + Math.sin(basisAngle) * forwardReach - Math.sin(sideAngle) * wingReach,
+      },
+      sub2: {
+        x: target.x + Math.cos(basisAngle) * forwardReach + Math.cos(sideAngle) * wingReach,
+        y: target.y + Math.sin(basisAngle) * forwardReach + Math.sin(sideAngle) * wingReach,
+      },
+    };
+  }
+
+  shouldCastFlagshipSkill(estimate, context = this.currentContext) {
+    const main = this.team.ships.main;
+    const characterId = this.team.mainCharacterId();
+    if (!estimate || !main.alive) {
+      return false;
+    }
+    const meta = skillMetaForCharacter(characterId, "flagship");
+    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.05, normalFloor: 0.14, conserveFloor: 0.26 })) {
+      return false;
+    }
+    const dist = distance(main.x, main.y, estimate.x, estimate.y);
+    if (characterId === "haruhi") {
+      return (estimate.visible || estimate.age <= 3)
+        && dist <= main.effectiveRange() * 1.45
+        && ((context?.skillAggression || 0) > 0.2 || (context?.trackableIntel) || this.energyProfile("main").high);
+    }
+    if (characterId === "koizumi") {
+      return (estimate.visible || estimate.age <= 6 || this.mode === "search" || this.mode === "recover")
+        && ((context?.skillAggression || 0) > 0.1 || (context?.trackableIntel) || this.energyProfile("main").high);
+    }
+    return true;
+  }
+
+  shouldCastSubSkill(ship, estimate, context = this.currentContext) {
+    if (!ship || !ship.alive) {
+      return false;
+    }
+    const meta = skillMetaForCharacter(ship.characterId, "sub");
+    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: 0.03, normalFloor: 0.12, conserveFloor: 0.24 })) {
+      return false;
+    }
+    const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
+    if (ship.characterId === "haruhi") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 2.5)
+        && dist <= ship.effectiveRange() * 1.35
+        && (((context?.skillAggression) || 0) > 0.16 || this.energyProfile(ship).high),
+      );
+    }
+    if (ship.characterId === "koizumi") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 2.8)
+        && dist <= ship.effectiveRange() * 1.45
+        && (((context?.skillAggression) || 0) > 0.14 || this.energyProfile(ship).high),
+      );
+    }
+    if (ship.characterId === "future1096") {
+      return Boolean(
+        estimate
+        && estimate.source !== "spawn"
+        && (estimate.visible || estimate.age <= 1.6)
+        && (((context?.skillAggression) || 0) > 0.18 || context?.emergencyCommit),
+      );
+    }
+    if (ship.characterId === "kyon") {
+      return ship.hp / Math.max(1, ship.maxHp) < 0.84 || Boolean(estimate && dist <= ship.effectiveRange() * 1.18);
+    }
+    if (ship.characterId === "tsuruya") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 7)
+        && (((context?.skillAggression) || 0) > 0.08 || (context?.trackableIntel)),
+      );
+    }
+    if (ship.characterId === "yuki") {
+      return (((context?.scoutPriority) || 0) > 0.28 || this.energyProfile(ship).high)
+        && (!estimate || !estimate.visible || estimate.age > 2.5 || this.team.scouts.length < 3);
+    }
+    return true;
+  }
+
+  computeMainTarget(mode, main, enemyEstimate, center) {
+    const toEnemyX = enemyEstimate.x - main.x;
+    const toEnemyY = enemyEstimate.y - main.y;
+    const len = Math.max(1, Math.hypot(toEnemyX, toEnemyY));
+    const toward = { x: toEnemyX / len, y: toEnemyY / len };
+    const side = { x: -toward.y, y: toward.x };
+    const enemyForward = { x: Math.cos(enemyEstimate.angle), y: Math.sin(enemyEstimate.angle) };
+    const enemySide = { x: -enemyForward.y, y: enemyForward.x };
+    const broadsideSign = this.preferredFlankSign(main, enemyEstimate);
+    const preferredRange = clamp(main.effectiveRange() * 0.88, 180, 340);
+
+    const pickBest = (candidates, exposureWeight = 1) => {
+      let best = null;
+      let bestScore = -Infinity;
+      for (const item of candidates) {
+        const candidate = {
+          ...item,
+          x: this.team.match.clampX(item.x, this.safeRoutePadding()),
+          y: this.team.match.clampY(item.y, this.safeRoutePadding()),
+        };
+        const exchange = this.evaluateArcExchange(main, enemyEstimate, candidate, exposureWeight);
+        if (exchange.score > bestScore) {
+          bestScore = exchange.score;
+          best = candidate;
+        }
+      }
+      return best || candidates[0];
+    };
+
+    if (mode === "recover") {
+      return this.computeRecoveryTarget(main, enemyEstimate);
+    }
+    if (mode === "harvest") {
+      const conserveRange = clamp(main.effectiveRange() * 1.22, 240, 420);
+      return pickBest([
+        {
+          x: enemyEstimate.x - toward.x * conserveRange + side.x * 130,
+          y: enemyEstimate.y - toward.y * conserveRange + side.y * 130,
+          intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y - toward.y * conserveRange + side.y * 130), enemyEstimate.x - (enemyEstimate.x - toward.x * conserveRange + side.x * 130)),
+          preferredRange: conserveRange,
+        },
+        {
+          x: enemyEstimate.x - toward.x * (conserveRange + 45) - side.x * 130,
+          y: enemyEstimate.y - toward.y * (conserveRange + 45) - side.y * 130,
+          intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y - toward.y * (conserveRange + 45) - side.y * 130), enemyEstimate.x - (enemyEstimate.x - toward.x * (conserveRange + 45) - side.x * 130)),
+          preferredRange: conserveRange * 1.05,
+        },
+      ], 1.42);
+    }
+    if (mode === "regroup") {
+      return pickBest([
+        {
+          x: lerp(center.x, main.x, 0.74) - toward.x * 140 + side.x * 110,
+          y: lerp(center.y, main.y, 0.74) - toward.y * 140 + side.y * 110,
+          intentAngle: Math.atan2(enemyEstimate.y - main.y, enemyEstimate.x - main.x),
+          preferredRange: preferredRange * 1.08,
+        },
+        {
+          x: lerp(center.x, main.x, 0.74) - toward.x * 140 - side.x * 110,
+          y: lerp(center.y, main.y, 0.74) - toward.y * 140 - side.y * 110,
+          intentAngle: Math.atan2(enemyEstimate.y - main.y, enemyEstimate.x - main.x),
+          preferredRange: preferredRange * 1.08,
+        },
+      ], 1.35);
+    }
+    if (mode === "kite") {
+      const retreatRange = clamp(main.effectiveRange() * 1.16, 220, 420);
+      return pickBest([
+        {
+          x: enemyEstimate.x - toward.x * retreatRange + side.x * 140,
+          y: enemyEstimate.y - toward.y * retreatRange + side.y * 140,
+          intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y - toward.y * retreatRange + side.y * 140), enemyEstimate.x - (enemyEstimate.x - toward.x * retreatRange + side.x * 140)),
+          preferredRange: retreatRange,
+        },
+        {
+          x: enemyEstimate.x - toward.x * retreatRange - side.x * 140,
+          y: enemyEstimate.y - toward.y * retreatRange - side.y * 140,
+          intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y - toward.y * retreatRange - side.y * 140), enemyEstimate.x - (enemyEstimate.x - toward.x * retreatRange - side.x * 140)),
+          preferredRange: retreatRange,
+        },
+      ], 1.5);
+    }
+    if (mode === "collapse") {
+      return pickBest([
+        {
+          x: enemyEstimate.x - enemyForward.x * 54 + enemySide.x * broadsideSign * 150,
+          y: enemyEstimate.y - enemyForward.y * 54 + enemySide.y * broadsideSign * 150,
+          intentAngle: this.broadsideIntentAngle(
+            enemyEstimate.x - enemyForward.x * 54 + enemySide.x * broadsideSign * 150,
+            enemyEstimate.y - enemyForward.y * 54 + enemySide.y * broadsideSign * 150,
+            enemyEstimate.x,
+            enemyEstimate.y,
+            broadsideSign,
+          ),
+          preferredRange: clamp(preferredRange * 0.72, 100, 230),
+        },
+        {
+          x: enemyEstimate.x - toward.x * 62,
+          y: enemyEstimate.y - toward.y * 62,
+          intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y - toward.y * 62), enemyEstimate.x - (enemyEstimate.x - toward.x * 62)),
+          preferredRange: clamp(preferredRange * 0.62, 80, 180),
+        },
+      ], 1.05);
+    }
+    if (mode === "broadside") {
+      const sideOffset = clamp(main.effectiveRange() * 0.82, 180, 320);
+      const rearOffset = clamp(main.effectiveRange() * 0.24, 50, 130);
+      return pickBest([
+        {
+          x: enemyEstimate.x - enemyForward.x * rearOffset + enemySide.x * broadsideSign * sideOffset,
+          y: enemyEstimate.y - enemyForward.y * rearOffset + enemySide.y * broadsideSign * sideOffset,
+          intentAngle: this.broadsideIntentAngle(
+            enemyEstimate.x - enemyForward.x * rearOffset + enemySide.x * broadsideSign * sideOffset,
+            enemyEstimate.y - enemyForward.y * rearOffset + enemySide.y * broadsideSign * sideOffset,
+            enemyEstimate.x,
+            enemyEstimate.y,
+            broadsideSign,
+          ),
+          preferredRange,
+        },
+        {
+          x: enemyEstimate.x - enemyForward.x * (rearOffset + 54) + enemySide.x * broadsideSign * (sideOffset * 0.9),
+          y: enemyEstimate.y - enemyForward.y * (rearOffset + 54) + enemySide.y * broadsideSign * (sideOffset * 0.9),
+          intentAngle: this.broadsideIntentAngle(
+            enemyEstimate.x - enemyForward.x * (rearOffset + 54) + enemySide.x * broadsideSign * (sideOffset * 0.9),
+            enemyEstimate.y - enemyForward.y * (rearOffset + 54) + enemySide.y * broadsideSign * (sideOffset * 0.9),
+            enemyEstimate.x,
+            enemyEstimate.y,
+            broadsideSign,
+          ),
+          preferredRange: preferredRange * 0.96,
+        },
+      ], 1.25);
+    }
+    if (mode === "cutoff") {
+      return pickBest([
+        {
+          x: enemyEstimate.x + enemyForward.x * 250 + enemySide.x * broadsideSign * 110,
+          y: enemyEstimate.y + enemyForward.y * 250 + enemySide.y * broadsideSign * 110,
+          intentAngle: this.broadsideIntentAngle(
+            enemyEstimate.x + enemyForward.x * 250 + enemySide.x * broadsideSign * 110,
+            enemyEstimate.y + enemyForward.y * 250 + enemySide.y * broadsideSign * 110,
+            enemyEstimate.x,
+            enemyEstimate.y,
+            broadsideSign,
+          ),
+          preferredRange: preferredRange * 1.02,
+        },
+        {
+          x: enemyEstimate.x + enemyForward.x * 220 - enemySide.x * broadsideSign * 90,
+          y: enemyEstimate.y + enemyForward.y * 220 - enemySide.y * broadsideSign * 90,
+          intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y + enemyForward.y * 220 - enemySide.y * broadsideSign * 90), enemyEstimate.x - (enemyEstimate.x + enemyForward.x * 220 - enemySide.x * broadsideSign * 90)),
+          preferredRange: preferredRange * 1.1,
+        },
+      ], 1.18);
+    }
+    return pickBest([
+      {
+        x: enemyEstimate.x - enemyForward.x * 96 + enemySide.x * broadsideSign * 90,
+        y: enemyEstimate.y - enemyForward.y * 96 + enemySide.y * broadsideSign * 90,
+        intentAngle: this.broadsideIntentAngle(
+          enemyEstimate.x - enemyForward.x * 96 + enemySide.x * broadsideSign * 90,
+          enemyEstimate.y - enemyForward.y * 96 + enemySide.y * broadsideSign * 90,
+          enemyEstimate.x,
+          enemyEstimate.y,
+          broadsideSign,
+        ),
+        preferredRange: preferredRange * 0.94,
+      },
+      {
+        x: enemyEstimate.x - toward.x * 122,
+        y: enemyEstimate.y - toward.y * 122,
+        intentAngle: Math.atan2(enemyEstimate.y - (enemyEstimate.y - toward.y * 122), enemyEstimate.x - (enemyEstimate.x - toward.x * 122)),
+        preferredRange: preferredRange * 0.88,
+      },
+      {
+        x: enemyEstimate.x - enemyForward.x * 70 - enemySide.x * broadsideSign * 110,
+        y: enemyEstimate.y - enemyForward.y * 70 - enemySide.y * broadsideSign * 110,
+        intentAngle: this.broadsideIntentAngle(
+          enemyEstimate.x - enemyForward.x * 70 - enemySide.x * broadsideSign * 110,
+          enemyEstimate.y - enemyForward.y * 70 - enemySide.y * broadsideSign * 110,
+          enemyEstimate.x,
+          enemyEstimate.y,
+          -broadsideSign,
+        ),
+        preferredRange,
+      },
+    ], 1.22);
+  }
+
+  issueShipRoute(ship, targetX, targetY, throttle, padding = this.team.match.mapPadding) {
     if (!ship || !ship.alive) {
       return;
     }
-    const tx = this.team.match.clampX(targetX, this.team.match.mapPadding);
-    const ty = this.team.match.clampY(targetY, this.team.match.mapPadding);
+    const tx = this.team.match.clampX(targetX, padding);
+    const ty = this.team.match.clampY(targetY, padding);
     const th = clamp(throttle, 0.45, 1.2);
 
     if (!ship.route) {
@@ -2518,38 +3690,156 @@ class BotController {
     }
   }
 
-  issueMovement() {
-    const centerZone = this.team.match.zones[Math.floor(Math.random() * this.team.match.zones.length)];
-    const center = {
-      x: centerZone.x + centerZone.width * 0.5,
-      y: centerZone.y + centerZone.height * 0.5,
-    };
-
+  issueMovement(context = this.currentContext) {
     const main = this.team.ships.main;
-    const enemyMain = this.enemy.ships.main;
-    if (!main.alive || !enemyMain.alive) {
+    if (!main.alive) {
       return;
     }
 
-    const mode = this.chooseMode(main, enemyMain);
-    const mainTarget = this.computeMainTarget(mode, main, enemyMain, center);
-    this.issueShipRoute(this.team.ships.main, mainTarget.x, mainTarget.y, randomInRange(0.58, 1.12));
+    const enemyEstimate = context?.focus || this.selectEnemyFocus(main) || this.primaryEnemyEstimate();
+    if (!enemyEstimate) {
+      return;
+    }
 
+    const tactical = context || this.buildTacticalContext(main, enemyEstimate);
+    const searchCenter = this.acquireSearchCenter(main, enemyEstimate);
+    const mode = this.chooseMode(tactical);
+    const center = mode === "search" ? searchCenter : this.combatCenter(enemyEstimate);
+    const sectorPlan = (!tactical.intelSolid && (mode === "search" || tactical.trackableIntel))
+      ? this.computeSectorEncirclement(main, enemyEstimate, searchCenter, tactical.encirclePressure)
+      : null;
+    const searchAssignments = mode === "search"
+      ? (sectorPlan || this.computeSearchAssignments(main, enemyEstimate, searchCenter))
+      : null;
+    const mainTarget = mode === "search"
+      ? (sectorPlan ? sectorPlan.main : this.computeSearchTarget(main, enemyEstimate, searchAssignments.main))
+      : sectorPlan && (mode === "cutoff" || mode === "press")
+        ? sectorPlan.main
+        : this.computeMainTarget(mode, main, enemyEstimate, center);
+    const toEnemyX = enemyEstimate.x - main.x;
+    const toEnemyY = enemyEstimate.y - main.y;
+    const len = Math.max(1, Math.hypot(toEnemyX, toEnemyY));
+    const toward = { x: toEnemyX / len, y: toEnemyY / len };
+    const side = { x: -toward.y, y: toward.x };
+    const sign = tactical.flankSign || this.preferredFlankSign(main, enemyEstimate);
+    const throttleShift = tactical.emergencyCommit
+      ? 0.06 + tactical.energySurplus * 0.05
+      : tactical.energySurplus * 0.05 - tactical.energyRecoveryNeed * 0.18;
+    const throttleBand = (min, max) => {
+      const adjustedMin = clamp(min + throttleShift, 0.52, 1.18);
+      const adjustedMax = clamp(max + throttleShift, adjustedMin + 0.04, 1.2);
+      return randomInRange(adjustedMin, adjustedMax);
+    };
+    const mainThrottle = mode === "recover"
+      ? throttleBand(1.02, 1.18)
+      : mode === "harvest"
+        ? throttleBand(0.58, 0.78)
+        : mode === "search"
+          ? throttleBand(tactical.conserveEnergy ? 0.82 : 0.96, tactical.conserveEnergy ? 1.02 : 1.18)
+        : mode === "collapse"
+          ? throttleBand(0.98, 1.14)
+          : mode === "regroup"
+            ? throttleBand(0.82, 1.02)
+            : mode === "kite"
+              ? throttleBand(0.78, 0.96)
+              : tactical.pressureDrive > 0.95 || tactical.emergencyCommit
+                ? throttleBand(0.98, 1.16)
+                : throttleBand(0.84, 1.1);
+    this.issueShipRoute(
+      this.team.ships.main,
+      mainTarget.x,
+      mainTarget.y,
+      mainThrottle,
+      this.safeRoutePadding(mode === "recover" ? 24 : 0),
+    );
+
+    const focus = mode === "search" ? searchCenter : enemyEstimate;
     if (this.team.splitLevel >= 1 && this.team.ships.sub1.alive) {
+      const sub1Target = mode === "search"
+        ? searchAssignments.sub1
+        : sectorPlan && (mode === "cutoff" || mode === "press")
+          ? sectorPlan.sub1
+        : {
+            x: mode === "harvest"
+              ? main.x - toward.x * 70 + side.x * 145
+              : mode === "regroup"
+                ? main.x - toward.x * 70 + side.x * 120
+                : mode === "kite"
+                  ? main.x - toward.x * 40 + side.x * 170
+                  : mode === "collapse"
+                    ? focus.x - side.x * 180 - toward.x * 28
+                    : mode === "broadside"
+                      ? focus.x + side.x * sign * 220 - toward.x * 90
+                      : focus.x + randomInRange(-250, 250),
+            y: mode === "harvest"
+              ? main.y - toward.y * 70 + side.y * 145
+              : mode === "regroup"
+                ? main.y - toward.y * 70 + side.y * 120
+                : mode === "kite"
+                  ? main.y - toward.y * 40 + side.y * 170
+                  : mode === "collapse"
+                    ? focus.y - side.y * 180 - toward.y * 28
+                    : mode === "broadside"
+                      ? focus.y + side.y * sign * 220 - toward.y * 90
+                      : focus.y + randomInRange(-250, 250),
+          };
       this.issueShipRoute(
         this.team.ships.sub1,
-        enemyMain.x + randomInRange(-250, 250),
-        enemyMain.y + randomInRange(-250, 250),
-        randomInRange(0.55, 1.08),
+        sub1Target.x,
+        sub1Target.y,
+        mode === "harvest"
+          ? throttleBand(0.6, 0.8)
+          : mode === "collapse"
+            ? throttleBand(0.92, 1.1)
+            : mode === "regroup"
+              ? throttleBand(0.82, 1.02)
+              : throttleBand(0.72, 1.08),
+        this.safeRoutePadding(10),
       );
     }
 
     if (this.team.splitLevel >= 2 && this.team.ships.sub2.alive) {
+      const orbitAngle = Number.isFinite(focus.angle) ? focus.angle : Math.atan2(focus.y - main.y, focus.x - main.x);
+      const sub2Target = mode === "search"
+        ? searchAssignments.sub2
+        : sectorPlan && (mode === "cutoff" || mode === "press")
+          ? sectorPlan.sub2
+        : {
+            x: mode === "harvest"
+              ? main.x - toward.x * 70 - side.x * 145
+              : mode === "regroup"
+                ? main.x - toward.x * 70 - side.x * 120
+                : mode === "kite"
+                  ? main.x - toward.x * 40 - side.x * 170
+                  : mode === "collapse"
+                    ? focus.x + side.x * 180 - toward.x * 28
+                    : mode === "broadside"
+                      ? focus.x + side.x * sign * 120 + toward.x * 70
+                      : focus.x + Math.cos(orbitAngle + Math.PI * 0.5) * randomInRange(160, 300),
+            y: mode === "harvest"
+              ? main.y - toward.y * 70 - side.y * 145
+              : mode === "regroup"
+                ? main.y - toward.y * 70 - side.y * 120
+                : mode === "kite"
+                  ? main.y - toward.y * 40 - side.y * 170
+                  : mode === "collapse"
+                    ? focus.y + side.y * 180 - toward.y * 28
+                    : mode === "broadside"
+                      ? focus.y + side.y * sign * 120 + toward.y * 70
+                      : focus.y + Math.sin(orbitAngle + Math.PI * 0.5) * randomInRange(160, 300),
+          };
       this.issueShipRoute(
         this.team.ships.sub2,
-        enemyMain.x + Math.cos(enemyMain.angle + Math.PI * 0.5) * randomInRange(160, 300),
-        enemyMain.y + Math.sin(enemyMain.angle + Math.PI * 0.5) * randomInRange(160, 300),
-        randomInRange(0.5, 1.02),
+        sub2Target.x,
+        sub2Target.y,
+        mode === "harvest"
+          ? throttleBand(0.58, 0.78)
+          : mode === "collapse"
+            ? throttleBand(0.9, 1.08)
+            : mode === "regroup"
+              ? throttleBand(0.82, 1.02)
+              : throttleBand(0.68, 1.04),
+        this.safeRoutePadding(6),
       );
     }
   }
