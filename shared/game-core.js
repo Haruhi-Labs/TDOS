@@ -1311,6 +1311,7 @@ class Ship {
     this.alive = false;
     this.speed = 0;
     this.route = null;
+    this.team.resolvePostCasualtyState(match);
     if (match) {
       match.spawnBurst(this.x, this.y, "#ff9d7d", 10);
     }
@@ -1987,6 +1988,78 @@ class Team {
     }
   }
 
+  normalizeSplitLevel() {
+    let level = this.splitLevel;
+    while (level < 1 && !this.ships.sub1.alive) {
+      level = 1;
+    }
+    while (level < 2 && level >= 1 && !this.ships.sub2.alive) {
+      level = 2;
+    }
+    this.splitLevel = level;
+  }
+
+  promoteTwinToMain(match = null) {
+    if (this.ships.main.alive) {
+      return false;
+    }
+    const twin = this.extraShips.find((ship) => ship.slotKey === "twin" && ship.alive);
+    if (!twin) {
+      return false;
+    }
+    this.extraShips = this.extraShips.filter((ship) => ship !== twin);
+    twin.key = "main";
+    twin.slotKey = "main";
+    twin.isAuxiliary = false;
+    twin.attachToMain = false;
+    twin.roleLabel = "主舰";
+    twin.name = `${twin.roleLabel}·${twin.character.name}`;
+    twin.formationOffset = { x: 0, y: 0 };
+    this.ships.main = twin;
+    if (match) {
+      match.spawnFloatingText(twin.x + 8, twin.y - 12, "主舰接管", "#8ef8ff");
+    }
+    return true;
+  }
+
+  releaseShipAfterFlagshipLoss(ship, lateralSign = 1) {
+    if (!ship || !ship.alive) {
+      return;
+    }
+    const padding = Math.max(this.match.mapPadding, ship.radius + 6);
+    const forwardX = Math.cos(ship.angle || 0);
+    const forwardY = Math.sin(ship.angle || 0);
+    const sideX = -forwardY;
+    const sideY = forwardX;
+    ship.setBezierRoute(
+      undefined,
+      undefined,
+      this.match.clampX(ship.x + forwardX * 90 + sideX * 88 * lateralSign, padding),
+      this.match.clampY(ship.y + forwardY * 90 + sideY * 88 * lateralSign, padding),
+      1,
+      false,
+    );
+  }
+
+  resolvePostCasualtyState(match = null) {
+    this.promoteTwinToMain(match);
+    this.normalizeSplitLevel();
+
+    if (!this.ships.main.alive) {
+      if (this.splitLevel < 1) {
+        this.splitLevel = 1;
+        this.releaseShipAfterFlagshipLoss(this.ships.sub1, 1);
+      }
+      this.normalizeSplitLevel();
+      if (this.splitLevel < 2) {
+        this.splitLevel = 2;
+        this.releaseShipAfterFlagshipLoss(this.ships.sub2, -1);
+      }
+    }
+
+    this.normalizeSplitLevel();
+  }
+
   applySosBuff(ship) {
     const buff = SOS_BUFFS[Math.floor(Math.random() * SOS_BUFFS.length)];
     ship.effects.sosBuff = {
@@ -1997,12 +2070,13 @@ class Team {
   }
 
   split(level) {
-    if (level === 1 && this.splitLevel === 0) {
+    this.resolvePostCasualtyState();
+    if (level === 1 && this.splitLevel === 0 && this.ships.sub1.alive) {
       this.splitLevel = 1;
       this.ships.sub1.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y + 100, 1, false);
       return true;
     }
-    if (level === 2 && this.splitLevel === 1) {
+    if (level === 2 && this.splitLevel === 1 && this.ships.sub2.alive) {
       this.splitLevel = 2;
       this.ships.sub2.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y - 100, 1, false);
       return true;
@@ -2024,6 +2098,7 @@ class Team {
   }
 
   update(dt) {
+    this.resolvePostCasualtyState();
     const cooldownStep = this.cooldownStep(dt);
     this.cooldowns.scout = Math.max(0, this.cooldowns.scout - cooldownStep);
     this.cooldowns.flagship = Math.max(0, this.cooldowns.flagship - cooldownStep);

@@ -111,6 +111,61 @@ function splitFormationCheck() {
   assert(sub1Distance > sub2Distance + 35, "一级分离后应只有被释放的副舰一明显脱离编队");
 }
 
+function future1096LeaderHandoverCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "future1096",
+        sub1: "haruhi",
+        sub2: "koizumi",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "yuki",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const originalMain = teamA.ships.main;
+  const twin = teamA.extraShips.find((ship) => ship.slotKey === "twin");
+
+  originalMain.takeDamage(originalMain.maxHp * 2, null, sim);
+
+  assert(teamA.ships.main.id === twin.id, "1096 主舰被击毁后未由剩余舰体接管主舰位");
+  assert(teamA.ships.main.alive, "1096 主舰接管后剩余舰体不应死亡");
+  assert(teamA.ships.main.canControl(), "1096 主舰接管后剩余舰体应可继续操作");
+}
+
+function flagshipLossAutoSplitCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+
+  main.takeDamage(main.maxHp * 2, null, sim);
+
+  assert(teamA.splitLevel === 2, "主舰被击毁后剩余舰队未自动完成分离");
+  assert(!teamA.ships.sub1.isAttached(), "主舰被击毁后副舰一仍处于附着状态");
+  assert(!teamA.ships.sub2.isAttached(), "主舰被击毁后副舰二仍处于附着状态");
+  assert(teamA.ships.sub1.route && teamA.ships.sub2.route, "主舰被击毁后自动分离未为剩余副舰生成脱离航线");
+}
+
+function skippedSplitLevelCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const sub2 = teamA.ships.sub2;
+
+  sub1.takeDamage(sub1.maxHp * 2, null, sim);
+
+  assert(teamA.splitLevel === 1, "副舰一未分离时被击毁后，分离层级未自动跳到一级已完成");
+  assert(!teamA.split(1), "副舰一已阵亡时不应仍允许一级分离");
+  assert(teamA.split(2), "副舰一已阵亡时应直接允许二级分离");
+  assert(!sub2.isAttached(), "副舰一已阵亡后，二级分离未正确释放副舰二");
+}
+
 function yukiPassiveCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -797,13 +852,23 @@ function aiEnergyRecoveryModeCheck() {
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
-  const stored = bot.enemyIntel.entities.get(enemyMain.id);
-  stored.seenAt = sim.elapsed - 6.2;
-  if (bot.enemyIntel.main && bot.enemyIntel.main.id === enemyMain.id) {
-    bot.enemyIntel.main.seenAt = sim.elapsed - 6.2;
-  }
-
-  bot.issueMovement();
+  const context = bot.buildTacticalContext(aiMain, {
+    id: 999001,
+    kind: "ship",
+    slotKey: "main",
+    characterId: enemyMain.characterId,
+    x: enemyMain.x,
+    y: enemyMain.y,
+    angle: enemyMain.angle,
+    speed: 0,
+    age: 6.2,
+    source: "memory",
+    confidence: 0.57,
+    uncertainty: 0,
+    visible: false,
+    zoneId: bot.zoneForPoint(enemyMain.x, enemyMain.y).id,
+  });
+  bot.issueMovement(context);
 
   assert(bot.mode === "harvest", "AI低能且无紧急接敌时未进入回能模式");
   assert(aiMain.route && aiMain.throttle <= 0.82, "AI低能回能时主舰油门仍过高");
@@ -965,6 +1030,9 @@ function main() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
   splitFormationCheck();
+  future1096LeaderHandoverCheck();
+  flagshipLossAutoSplitCheck();
+  skippedSplitLevelCheck();
   yukiPassiveCheck();
   koizumiFlagshipInvulnCheck();
   koizumiBlinkStrikeCheck();
