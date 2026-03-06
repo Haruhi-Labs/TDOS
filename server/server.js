@@ -1,11 +1,15 @@
 import { WebSocketServer } from "ws";
 import { randomUUID } from "node:crypto";
 import {
+  cloneLoadout,
+  DEFAULT_AI_LOADOUT,
+  DEFAULT_TEAM_LOADOUT,
   MatchSimulation,
   DEFAULT_WORLD_SIZE,
   TICK_RATE,
   SNAPSHOT_RATE,
   TICK_DT,
+  normalizeLoadout,
 } from "../shared/game-core.js";
 
 const PORT = Number(process.env.PORT || 21246);
@@ -83,6 +87,7 @@ function seatPlayerRows(room) {
     seat: "A",
     name: pA ? pA.name : "空位",
     playerId: pA ? pA.id : null,
+    loadout: pA ? pA.loadout : null,
     isBot: false,
   });
 
@@ -91,6 +96,7 @@ function seatPlayerRows(room) {
       seat: "B",
       name: "统合思念体AI",
       playerId: null,
+      loadout: cloneLoadout(DEFAULT_AI_LOADOUT),
       isBot: true,
     });
   } else {
@@ -98,6 +104,7 @@ function seatPlayerRows(room) {
       seat: "B",
       name: pB ? pB.name : "空位",
       playerId: pB ? pB.id : null,
+      loadout: pB ? pB.loadout : null,
       isBot: false,
     });
   }
@@ -123,6 +130,7 @@ function buildRoomStatePayload(room, viewerId = null) {
       ? {
           playerId: viewer.id,
           seat: viewer.seat,
+          loadout: viewer.loadout,
         }
       : null,
   };
@@ -199,6 +207,10 @@ function startMatch(room) {
     mode: room.mode,
     worldSize: DEFAULT_WORLD_SIZE,
     teamNames,
+    teamLoadouts: {
+      A: playerA ? playerA.loadout : DEFAULT_TEAM_LOADOUT,
+      B: room.mode === "ai" ? DEFAULT_AI_LOADOUT : playerB ? playerB.loadout : DEFAULT_TEAM_LOADOUT,
+    },
   });
   room.snapshotAccumulator = 0;
   room.snapshotSeq = 0;
@@ -468,6 +480,7 @@ wss.on("connection", (ws) => {
   const player = {
     id: playerId,
     name: `玩家${playerId.slice(0, 4)}`,
+    loadout: cloneLoadout(DEFAULT_TEAM_LOADOUT),
     ws,
     roomId: null,
     seat: null,
@@ -512,6 +525,18 @@ wss.on("connection", (ws) => {
       if (player.roomId) {
         const room = rooms.get(player.roomId);
         if (room) {
+          sendRoomStateToMembers(room);
+        }
+      }
+      broadcastLobby();
+      return;
+    }
+
+    if (type === "set_loadout") {
+      player.loadout = normalizeLoadout(data.loadout || {}, DEFAULT_TEAM_LOADOUT);
+      if (player.roomId) {
+        const room = rooms.get(player.roomId);
+        if (room && room.status === "waiting") {
           sendRoomStateToMembers(room);
         }
       }

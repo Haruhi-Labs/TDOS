@@ -27,6 +27,26 @@
         </section>
 
         <section class="controls slim-controls">
+          <h2>开战编队</h2>
+          <div class="loadout-grid">
+            <label class="loadout-field" for="playerMainRole">
+              <span>主舰</span>
+              <select id="playerMainRole"></select>
+            </label>
+            <label class="loadout-field" for="playerSub1Role">
+              <span>副舰一</span>
+              <select id="playerSub1Role"></select>
+            </label>
+            <label class="loadout-field" for="playerSub2Role">
+              <span>副舰二</span>
+              <select id="playerSub2Role"></select>
+            </label>
+          </div>
+          <div id="loadoutPreview" class="loadout-preview"></div>
+          <button id="applyLoadoutBtn">应用阵容并重新开始</button>
+        </section>
+
+        <section class="controls slim-controls">
           <h2>舰队控制</h2>
           <div id="shipQuickSwitch" class="ship-switch">
             <button type="button" class="ship-switch-btn" data-ship="main">主舰</button>
@@ -48,8 +68,8 @@
           <h2>技能</h2>
           <div class="btn-col">
             <button id="scoutBtn">派出侦查机</button>
-            <button id="haruhiBtn">春日技能：战斗僚机</button>
-            <button id="mikuruBtn">实玖瑠技能：光束（地图瞄准）</button>
+            <button id="flagshipBtn">旗舰技能</button>
+            <button id="subSkillBtn">分舰技能</button>
           </div>
         </section>
 

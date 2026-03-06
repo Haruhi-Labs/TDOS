@@ -50,8 +50,8 @@
             <h2>技能</h2>
             <div class="btn-col">
               <button id="onlineScoutBtn">派出侦查机</button>
-              <button id="onlineHaruhiBtn">春日技能：战斗僚机</button>
-              <button id="onlineBeamBtn">实玖瑠技能：光束（地图瞄准）</button>
+              <button id="onlineFlagshipBtn">旗舰技能</button>
+              <button id="onlineSubSkillBtn">分舰技能</button>
             </div>
           </section>
         </div>
@@ -91,6 +91,26 @@
             <input id="playerNameInput" maxlength="16" type="text" placeholder="输入昵称" />
           </div>
           <button id="applyNameBtn">保存昵称</button>
+
+          <section class="controls slim-controls room-inline-controls">
+            <h2>我的编队</h2>
+            <div class="loadout-grid">
+              <label class="loadout-field" for="onlineMainRole">
+                <span>主舰</span>
+                <select id="onlineMainRole"></select>
+              </label>
+              <label class="loadout-field" for="onlineSub1Role">
+                <span>副舰一</span>
+                <select id="onlineSub1Role"></select>
+              </label>
+              <label class="loadout-field" for="onlineSub2Role">
+                <span>副舰二</span>
+                <select id="onlineSub2Role"></select>
+              </label>
+            </div>
+            <div id="onlineLoadoutPreview" class="loadout-preview"></div>
+            <button id="applyLoadoutOnlineBtn">同步当前编队</button>
+          </section>
 
           <div class="btn-row">
             <button id="createPublicBtn">创建公开房</button>
