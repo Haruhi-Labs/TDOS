@@ -139,6 +139,94 @@ function yukiPassiveCheck() {
   assert(main.reviveCharges === 0, "复活后命数未正确扣除");
 }
 
+function koizumiFlagshipInvulnCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "koizumi",
+        sub1: "haruhi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+  const beforeHp = main.hp;
+
+  const castOk = teamA.castFlagshipSkill();
+  assert(castOk, "古泉旗舰技能释放失败");
+  main.takeDamage(220, null, sim);
+  assert(main.hp === beforeHp, "古泉旗舰技能前3秒无敌未生效");
+
+  runSteps(sim, 3.2);
+  main.takeDamage(220, null, sim);
+  assert(main.hp < beforeHp, "古泉旗舰技能无敌结束后仍未恢复正常受伤");
+}
+
+function koizumiBlinkStrikeCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "koizumi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const enemyMain = sim.teamB.ships.main;
+
+  teamA.split(1);
+  sub1.energy = sub1.maxEnergy;
+  sub1.x = 720;
+  sub1.y = 720;
+  sub1.angle = 0;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  enemyMain.x = 980;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  const startX = sub1.x;
+  const castOk = teamA.castSubSkill("sub1", { targetX: 1120, targetY: 720 });
+  assert(castOk, "古泉分舰技能闪现释放失败");
+  assert(sub1.x > startX + 200, "古泉分舰技能未闪现到有效距离");
+  assert(sub1.effects.nextShotDamageMultiplier === 4, "古泉分舰技能未为下一次攻击附加4倍伤害");
+
+  sim.teamA.computeVisibility(sim.teamB);
+  sub1.cooldown = 0;
+  sim.projectiles = [];
+  sub1.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 1, "古泉分舰技能后未能正常攻击");
+  assert(Math.round(sim.projectiles[0].damage) === Math.round(sub1.effectiveDamage() * 4), "古泉分舰技能未正确提升下一次攻击伤害");
+  assert(sub1.effects.nextShotDamageMultiplier === 1, "古泉分舰技能的单次强化未在攻击后清除");
+
+  teamA.cooldowns.sub1 = 0;
+  sub1.energy = sub1.maxEnergy;
+  const beforeY = sub1.y;
+  const castInPlaceOk = teamA.castSubSkill("sub1", {});
+  assert(castInPlaceOk, "古泉分舰技能未支持原地闪现释放");
+  assert(Math.abs(sub1.y - beforeY) < 1e-6, "古泉分舰技能原地闪现时不应强制位移");
+}
+
 function beamSkillCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -183,6 +271,38 @@ function beamSkillCheck() {
   assert(before - after >= 0.18, "1096光线伤害明显偏低");
 }
 
+function tsuruyaFlagshipActiveCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "tsuruya",
+        sub1: "haruhi",
+        sub2: "koizumi",
+      },
+      B: {
+        main: "kyon",
+        sub1: "yuki",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+
+  main.hp = main.maxHp * 0.6;
+  teamA.cooldowns.sub1 = 10;
+  const beforeHp = main.hp;
+  const castOk = teamA.castFlagshipSkill();
+  assert(castOk, "鹤屋旗舰技能释放失败");
+
+  runSteps(sim, 1);
+
+  assert(main.hp > beforeHp + main.maxHp * 0.009, "鹤屋旗舰技能未按每秒1%最大生命恢复");
+  assert(teamA.cooldowns.sub1 < 8.1, "鹤屋旗舰技能未使技能冷却流逝速度翻倍");
+}
+
 function fireArcDensityCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const ship = sim.teamA.ships.main;
@@ -220,6 +340,155 @@ function fireArcDensityCheck() {
 
   assert(Math.abs(frontDamage - broadsideDamage) < 1e-6, "射界不应通过修改单发伤害实现");
   assert(broadsideCooldown < frontCooldown * 0.8, "1.5 倍射界未体现为更高火力密度");
+}
+
+function haruhiBlindfireCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "kyon",
+        sub1: "haruhi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "future1096",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const main = teamA.ships.main;
+  const enemyMain = sim.teamB.ships.main;
+
+  teamA.split(1);
+  sub1.x = 720;
+  sub1.y = 720;
+  sub1.angle = 0;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  main.x = 260;
+  main.y = 240;
+  main.command.x = main.x;
+  main.command.y = main.y;
+  main.route = null;
+
+  enemyMain.x = 1090;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "春日盲射测试布置错误，敌方本应处于视野外");
+
+  sub1.cooldown = 0;
+  sim.projectiles = [];
+  sub1.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 0, "春日未开技能时不应攻击视野外目标");
+
+  const castOk = teamA.castSubSkill("sub1");
+  assert(castOk, "春日分舰技能释放失败");
+  sub1.cooldown = 0;
+  sim.projectiles = [];
+  sub1.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 1, "春日分舰技能未允许对视野外最近敌人进行盲射");
+}
+
+function asakuraFlagshipCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "asakura",
+        sub1: "haruhi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "koizumi",
+        sub1: "haruhi",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const teamB = sim.teamB;
+  const enemyMain = teamB.ships.main;
+  const enemySub1 = teamB.ships.sub1;
+
+  const enemyFlagOk = teamB.castFlagshipSkill();
+  teamB.split(1);
+  const enemySubOk = teamB.castSubSkill("sub1");
+  assert(enemyFlagOk && enemySubOk, "朝仓旗舰测试前置敌方增益释放失败");
+
+  enemyMain.x = 1180;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰测试布置错误，敌方应处于视野外");
+
+  const castOk = teamA.castFlagshipSkill();
+  assert(castOk, "朝仓旗舰技能释放失败");
+  sim.teamA.computeVisibility(sim.teamB);
+
+  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方团队主动增益");
+  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方无敌效果");
+  assert(!enemySub1.hasEffect("critUntil"), "朝仓旗舰技能未清除敌方舰船主动增益");
+  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未揭示敌方位置");
+}
+
+function asakuraBladeQueenCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "asakura",
+        sub2: "yuki",
+      },
+      B: {
+        main: "kyon",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const enemyMain = sim.teamB.ships.main;
+  const baseSpeed = sub1.baseSpeed();
+
+  teamA.split(1);
+  sub1.energy = sub1.maxEnergy;
+  sub1.x = 720;
+  sub1.y = 720;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  sub1.cooldown = 999;
+  enemyMain.x = sub1.x + sub1.radius + enemyMain.radius;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+  enemyMain.cooldown = 999;
+
+  const beforeHp = enemyMain.hp;
+  const castOk = teamA.castSubSkill("sub1");
+  assert(castOk, "朝仓分舰技能释放失败");
+  assert(sub1.baseSpeed() > baseSpeed * 1.3, "朝仓分舰技能未显著提升速度");
+
+  runSteps(sim, 1);
+
+  assert(enemyMain.hp < beforeHp - enemyMain.maxHp * 0.015, "朝仓分舰技能未对接触敌舰造成持续伤害");
 }
 
 function aiEngageCheck() {
@@ -697,8 +966,14 @@ function main() {
   speedAndEnergyRuleCheck();
   splitFormationCheck();
   yukiPassiveCheck();
+  koizumiFlagshipInvulnCheck();
+  koizumiBlinkStrikeCheck();
   beamSkillCheck();
+  tsuruyaFlagshipActiveCheck();
   fireArcDensityCheck();
+  haruhiBlindfireCheck();
+  asakuraFlagshipCheck();
+  asakuraBladeQueenCheck();
   aiFogOfWarCheck();
   aiReactionDelayCheck();
   aiSearchSweepCheck();

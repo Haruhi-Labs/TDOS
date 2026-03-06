@@ -45,7 +45,7 @@ export function fireArcDensityMultiplier(relativeAngle, uniformOutput = false) {
   return 0;
 }
 
-export const CHARACTER_ORDER = ["haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya"];
+export const CHARACTER_ORDER = ["haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura"];
 
 export const CHARACTER_DEFS = {
   haruhi: {
@@ -83,10 +83,10 @@ export const CHARACTER_DEFS = {
       name: "神说会赢的",
       type: "active",
       cooldown: 20,
-      cost: 46,
-      duration: 10,
+      cost: 60,
+      duration: 8,
       target: "none",
-      description: "10秒内自身攻击50%概率暴击，造成3倍伤害。",
+      description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。",
     },
   },
   koizumi: {
@@ -117,7 +117,8 @@ export const CHARACTER_DEFS = {
       cost: 58,
       duration: 12,
       target: "none",
-      description: "全舰队获得显著加速度提升。",
+      invulnerableDuration: 3,
+      description: "全舰队加速度显著提升12秒，并在前3秒获得无敌。",
     },
     subSkill: {
       id: "esper",
@@ -125,9 +126,9 @@ export const CHARACTER_DEFS = {
       type: "active",
       cooldown: 22,
       cost: 50,
-      duration: 15,
-      target: "none",
-      description: "15秒内自身全属性提升。",
+      blinkRange: 240,
+      target: "optional_point",
+      description: "闪现到目标位置，并使下一次攻击伤害提升至4倍。",
     },
   },
   yuki: {
@@ -262,8 +263,12 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "secret_sponsor",
       name: "神秘赞助人",
-      type: "passive",
-      description: "全体技能冷却流逝速度提升。",
+      type: "active",
+      cooldown: 20,
+      cost: 60,
+      duration: 8,
+      target: "none",
+      description: "8秒内全队技能冷却流逝速度翻倍，并持续恢复生命。",
     },
     subSkill: {
       id: "money_power",
@@ -273,6 +278,47 @@ export const CHARACTER_DEFS = {
       cost: 66,
       target: "zone",
       description: "令一个战区内的敌军僚机与侦察机叛变。",
+    },
+  },
+  asakura: {
+    id: "asakura",
+    name: "朝仓凉子",
+    shortName: "朝仓",
+    title: "高速猎杀渗透舰",
+    flavor: "擅长净化增益、显形追猎和贴身绞杀。",
+    stats: {
+      hp: 760,
+      energy: 132,
+      speed: 38,
+      turnRate: 0.52,
+      accel: 1.24,
+      energyRegen: 12.2,
+      moveDrain: 8,
+      vision: 168,
+      range: 505,
+      damage: 25,
+      fireRate: 0.58,
+      radius: 8,
+    },
+    flagshipSkill: {
+      id: "no_escape",
+      name: "我不会绕过你哦",
+      type: "active",
+      cooldown: 24,
+      cost: 64,
+      duration: 2,
+      target: "none",
+      description: "涤除敌方全部主动技能增益，并揭示敌方全体位置2秒。",
+    },
+    subSkill: {
+      id: "blade_queen",
+      name: "刀锋女王",
+      type: "active",
+      cooldown: 20,
+      cost: 52,
+      duration: 10,
+      target: "none",
+      description: "10秒内大幅提速，接触本舰的敌舰每秒受到最大生命值2%的伤害。",
     },
   },
 };
@@ -681,6 +727,7 @@ class Projectile {
 class Ship {
   constructor(team, key, x, y, facing, options = {}) {
     this.id = nextEntityId();
+    this.kind = "ship";
     this.team = team;
     this.key = key;
     this.slotKey = options.slotKey || key;
@@ -713,9 +760,10 @@ class Ship {
 
     this.effects = {
       critUntil: 0,
-      superpowerUntil: 0,
       reliableUntil: 0,
+      bladeQueenUntil: 0,
       sosBuff: null,
+      nextShotDamageMultiplier: 1,
     };
   }
 
@@ -775,12 +823,6 @@ class Ship {
       value = sos.apply(this, statKey, value);
     }
 
-    if (this.hasEffect("superpowerUntil")) {
-      if (["speed", "turnRate", "damage", "vision", "range", "fireRate", "regen", "accel"].includes(statKey)) {
-        value *= 1.18;
-      }
-    }
-
     if (this.hasEffect("reliableUntil")) {
       if (statKey === "turnRate") {
         value *= 1.28;
@@ -792,6 +834,18 @@ class Ship {
         value *= 1.08;
       }
       if (statKey === "accel") {
+        value *= 1.12;
+      }
+    }
+
+    if (this.hasEffect("bladeQueenUntil")) {
+      if (statKey === "speed") {
+        value *= 1.45;
+      }
+      if (statKey === "accel") {
+        value *= 1.26;
+      }
+      if (statKey === "turnRate") {
         value *= 1.12;
       }
     }
@@ -865,13 +919,18 @@ class Ship {
     if (sos && sos.damageTakenMultiplier) {
       value *= sos.damageTakenMultiplier;
     }
-    if (this.hasEffect("superpowerUntil")) {
-      value *= 0.9;
-    }
     if (this.hasEffect("reliableUntil")) {
       value *= 0.84;
     }
     return value;
+  }
+
+  clearActiveSkillBuffs() {
+    this.effects.critUntil = 0;
+    this.effects.reliableUntil = 0;
+    this.effects.bladeQueenUntil = 0;
+    this.effects.sosBuff = null;
+    this.effects.nextShotDamageMultiplier = 1;
   }
 
   routeAnchorShip() {
@@ -1193,6 +1252,11 @@ class Ship {
       return;
     }
     let damage = this.effectiveDamage();
+    if (this.effects.nextShotDamageMultiplier > 1) {
+      damage *= this.effects.nextShotDamageMultiplier;
+      match.spawnFloatingText(this.x + 12, this.y - 12, "超能力", "#9be0ff");
+      this.effects.nextShotDamageMultiplier = 1;
+    }
 
     if (this.hasEffect("critUntil") && Math.random() < 0.5) {
       damage *= 3;
@@ -1231,6 +1295,9 @@ class Ship {
 
   takeDamage(amount, _source = null, match = null) {
     if (!this.alive) {
+      return;
+    }
+    if (this.team.effects.taxiInvulnUntil > this.team.match.elapsed) {
       return;
     }
     const finalAmount = amount * this.damageTakenMultiplier();
@@ -1562,6 +1629,9 @@ class Team {
 
     this.effects = {
       taxiUntil: 0,
+      taxiInvulnUntil: 0,
+      sponsorUntil: 0,
+      revealEnemiesUntil: 0,
     };
 
     this.ships = {
@@ -1626,6 +1696,10 @@ class Team {
 
   hasTsuruyaFlagship() {
     return this.mainCharacterId() === "tsuruya";
+  }
+
+  hasActiveSponsor() {
+    return this.effects.sponsorUntil > this.match.elapsed;
   }
 
   getPlayerShips() {
@@ -1832,11 +1906,23 @@ class Team {
     if (ship.hasEffect("critUntil")) {
       list.push("神说会赢的");
     }
-    if (ship.hasEffect("superpowerUntil")) {
+    if (ship.effects.nextShotDamageMultiplier > 1) {
       list.push("超能力");
     }
     if (ship.hasEffect("reliableUntil")) {
       list.push("靠谱的普通人");
+    }
+    if (ship.hasEffect("bladeQueenUntil")) {
+      list.push("刀锋女王");
+    }
+    if (this.effects.taxiUntil > this.match.elapsed) {
+      list.push("机关的力量");
+    }
+    if (this.effects.taxiInvulnUntil > this.match.elapsed) {
+      list.push("无敌");
+    }
+    if (this.hasActiveSponsor()) {
+      list.push("神秘赞助人");
     }
     return list;
   }
@@ -1846,11 +1932,59 @@ class Team {
   }
 
   cooldownStep(dt) {
-    return dt * (this.hasTsuruyaFlagship() ? 1.28 : 1);
+    return dt * (this.hasActiveSponsor() ? 2 : 1);
   }
 
   setShipEffect(ship, key, duration) {
     ship.effects[key] = this.match.elapsed + duration;
+  }
+
+  clearActiveSkillBuffs() {
+    this.effects.taxiUntil = 0;
+    this.effects.taxiInvulnUntil = 0;
+    this.effects.sponsorUntil = 0;
+    this.effects.revealEnemiesUntil = 0;
+    for (const ship of this.getAllShips()) {
+      ship.clearActiveSkillBuffs();
+    }
+  }
+
+  blinkShip(ship, targetX, targetY, maxRange = 240) {
+    if (!ship || !ship.alive) {
+      return false;
+    }
+    const fromX = ship.x;
+    const fromY = ship.y;
+    const aimX = Number.isFinite(targetX) ? targetX : ship.x;
+    const aimY = Number.isFinite(targetY) ? targetY : ship.y;
+    const dx = aimX - ship.x;
+    const dy = aimY - ship.y;
+    const len = Math.hypot(dx, dy);
+    const step = len > 1e-4 ? Math.min(len, maxRange) : 0;
+    const dirX = len > 1e-4 ? dx / len : Math.cos(ship.angle);
+    const dirY = len > 1e-4 ? dy / len : Math.sin(ship.angle);
+    const padding = Math.max(this.match.mapPadding, ship.radius + 4);
+    ship.x = this.match.clampX(ship.x + dirX * step, padding);
+    ship.y = this.match.clampY(ship.y + dirY * step, padding);
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    ship.route = null;
+    this.match.spawnBurst(fromX, fromY, "#d8f7ff", 8);
+    this.match.spawnBurst(ship.x, ship.y, "#9be0ff", 9);
+    this.match.spawnFloatingText(ship.x + 10, ship.y - 12, "闪现", "#9be0ff");
+    return true;
+  }
+
+  sponsorRegeneration(dt) {
+    if (!this.hasActiveSponsor()) {
+      return;
+    }
+    for (const ship of this.getAllShips()) {
+      if (!ship.alive) {
+        continue;
+      }
+      ship.hp = Math.min(ship.maxHp, ship.hp + ship.maxHp * 0.01 * dt);
+    }
   }
 
   applySosBuff(ship) {
@@ -1896,6 +2030,7 @@ class Team {
     this.cooldowns.sub1 = Math.max(0, this.cooldowns.sub1 - cooldownStep);
     this.cooldowns.sub2 = Math.max(0, this.cooldowns.sub2 - cooldownStep);
 
+    this.sponsorRegeneration(dt);
     this.updateEnergy(dt);
     for (const ship of this.getAllShips()) {
       ship.update(dt);
@@ -2026,8 +2161,35 @@ class Team {
         return false;
       }
       this.effects.taxiUntil = this.match.elapsed + (meta.duration || 12);
+      this.effects.taxiInvulnUntil = this.match.elapsed + (meta.invulnerableDuration || 3);
       for (const ship of this.fleetMembersByKey("main")) {
         this.match.spawnFloatingText(ship.x + 10, ship.y - 10, "加速", "#9be0ff");
+      }
+      ok = true;
+    } else if (characterId === "tsuruya") {
+      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
+        return false;
+      }
+      this.effects.sponsorUntil = this.match.elapsed + (meta.duration || 8);
+      for (const ship of this.getAllShips()) {
+        if (!ship.alive) {
+          continue;
+        }
+        this.match.spawnFloatingText(ship.x + 10, ship.y - 10, "赞助", "#ffd27e");
+      }
+      ok = true;
+    } else if (characterId === "asakura") {
+      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
+        return false;
+      }
+      const enemyTeam = this.match.enemyTeamBySeat(this.seat);
+      enemyTeam.clearActiveSkillBuffs();
+      this.effects.revealEnemiesUntil = this.match.elapsed + (meta.duration || 2);
+      for (const ship of enemyTeam.getAllShips()) {
+        if (!ship.alive) {
+          continue;
+        }
+        this.match.spawnFloatingText(ship.x + 10, ship.y - 10, "净化", "#ff9db5");
       }
       ok = true;
     }
@@ -2060,11 +2222,13 @@ class Team {
 
     let ok = false;
     if (ship.characterId === "haruhi") {
-      this.setShipEffect(ship, "critUntil", meta.duration || 10);
+      this.setShipEffect(ship, "critUntil", meta.duration || 8);
       ok = true;
     } else if (ship.characterId === "koizumi") {
-      this.setShipEffect(ship, "superpowerUntil", meta.duration || 15);
-      ok = true;
+      ok = this.blinkShip(ship, options.targetX, options.targetY, meta.blinkRange || 240);
+      if (ok) {
+        ship.effects.nextShotDamageMultiplier = 4;
+      }
     } else if (ship.characterId === "yuki") {
       this.launchBurstScouts(ship);
       ok = true;
@@ -2082,6 +2246,9 @@ class Team {
       if (!ok) {
         ship.energy = clamp(ship.energy + (meta.cost || 0), 0, ship.maxEnergy);
       }
+    } else if (ship.characterId === "asakura") {
+      this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
+      ok = true;
     }
 
     if (!ok) {
@@ -2221,6 +2388,11 @@ class Team {
     this.visibleEnemyIds.clear();
     const sensors = this.getVisionSources();
     if (sensors.length === 0) {
+      if (this.effects.revealEnemiesUntil > this.match.elapsed) {
+        for (const enemy of enemyTeam.getEntities()) {
+          this.visibleEnemyIds.add(enemy.id);
+        }
+      }
       return;
     }
     const enemyEntities = enemyTeam.getEntities();
@@ -2230,6 +2402,11 @@ class Team {
           this.visibleEnemyIds.add(enemy.id);
           break;
         }
+      }
+    }
+    if (this.effects.revealEnemiesUntil > this.match.elapsed) {
+      for (const enemy of enemyEntities) {
+        this.visibleEnemyIds.add(enemy.id);
       }
     }
   }
@@ -2243,7 +2420,13 @@ class Team {
       if (!target.alive) {
         continue;
       }
-      if (!this.visibleEnemyIds.has(target.id)) {
+      const inVision = this.visibleEnemyIds.has(target.id);
+      const blindfire = typeof attacker.broadsideMultiplier === "function"
+        && attacker.characterId === "haruhi"
+        && attacker.hasEffect("critUntil")
+        && distance(attacker.x, attacker.y, target.x, target.y) <= range
+        && attacker.broadsideMultiplier(target) > 0;
+      if (!inVision && !blindfire) {
         continue;
       }
       const d = distance(attacker.x, attacker.y, target.x, target.y);
@@ -3212,6 +3395,8 @@ class BotController {
     let ok = false;
     if (ship.characterId === "future1096" && estimate && estimate.source !== "spawn" && (estimate.visible || estimate.age <= 1.6)) {
       ok = this.team.castSubSkill(shipKey, { targetX: estimate.x, targetY: estimate.y });
+    } else if (ship.characterId === "koizumi") {
+      ok = this.team.castSubSkill(shipKey, estimate ? { targetX: estimate.x, targetY: estimate.y } : {});
     } else if (ship.characterId === "tsuruya") {
       const zoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
       ok = this.team.castSubSkill(shipKey, { zoneId });
@@ -3425,6 +3610,12 @@ class BotController {
       return (estimate.visible || estimate.age <= 6 || this.mode === "search" || this.mode === "recover")
         && ((context?.skillAggression || 0) > 0.1 || (context?.trackableIntel) || this.energyProfile("main").high);
     }
+    if (characterId === "tsuruya") {
+      return this.team.hullRatio() < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;
+    }
+    if (characterId === "asakura") {
+      return Boolean(estimate && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel));
+    }
     return true;
   }
 
@@ -3448,8 +3639,7 @@ class BotController {
     if (ship.characterId === "koizumi") {
       return Boolean(
         estimate
-        && (estimate.visible || estimate.age <= 2.8)
-        && dist <= ship.effectiveRange() * 1.45
+        && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel)
         && (((context?.skillAggression) || 0) > 0.14 || this.energyProfile(ship).high),
       );
     }
@@ -3474,6 +3664,14 @@ class BotController {
     if (ship.characterId === "yuki") {
       return (((context?.scoutPriority) || 0) > 0.28 || this.energyProfile(ship).high)
         && (!estimate || !estimate.visible || estimate.age > 2.5 || this.team.scouts.length < 3);
+    }
+    if (ship.characterId === "asakura") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 2.4)
+        && dist <= ship.effectiveRange() * 0.95
+        && (((context?.skillAggression) || 0) > 0.14 || context?.killWindow || context?.combatUrgency > 0.5),
+      );
     }
     return true;
   }
@@ -4043,6 +4241,29 @@ export class MatchSimulation {
     }
   }
 
+  resolveBladeQueenContacts(dt) {
+    const pairs = [
+      [this.teamA, this.teamB],
+      [this.teamB, this.teamA],
+    ];
+    for (const [team, enemyTeam] of pairs) {
+      for (const ship of team.getAllShips()) {
+        if (!ship.alive || !ship.hasEffect("bladeQueenUntil")) {
+          continue;
+        }
+        for (const target of enemyTeam.getAllShips()) {
+          if (!target.alive) {
+            continue;
+          }
+          if (distance(ship.x, ship.y, target.x, target.y) > ship.radius + target.radius + 4) {
+            continue;
+          }
+          target.takeDamage(target.maxHp * 0.02 * dt, ship, this);
+        }
+      }
+    }
+  }
+
   checkVictory() {
     if (this.phase !== "running") {
       return;
@@ -4099,6 +4320,7 @@ export class MatchSimulation {
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
 
+    this.resolveBladeQueenContacts(safeDt);
     this.resolveScoutClashes();
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);

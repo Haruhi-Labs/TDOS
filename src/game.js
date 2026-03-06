@@ -439,7 +439,7 @@ function updateSkillButtons(own) {
   } else if (cooldown > 0) {
     suffix = `（冷却${cooldown.toFixed(1)}秒）`;
   } else if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey === selected.key) {
-    suffix = "（地图点击瞄准）";
+    suffix = subMeta.target === "optional_point" ? "（地图点击闪现，再点按钮原地释放）" : "（地图点击瞄准）";
   }
   ui.subSkillBtn.disabled = disabled;
   ui.subSkillBtn.textContent = `分舰技能：${subMeta.name}${suffix}`;
@@ -1040,9 +1040,26 @@ function useSubSkill() {
   if (!selected || !meta || !own) {
     return;
   }
-  if (meta.target === "point") {
+  if (meta.target === "point" || meta.target === "optional_point") {
+    if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey === selected.key && meta.target === "optional_point") {
+      const ok = applyAction({
+        type: "cast_sub_skill",
+        shipKey: selected.key,
+        zoneId: app.selectedZoneId,
+      });
+      app.pendingSubSkillAim = null;
+      if (ok) {
+        log(`${selected.characterName} 使用 ${meta.name}`);
+      }
+      updateUi();
+      return;
+    }
     app.pendingSubSkillAim = { shipKey: selected.key };
-    log(`${meta.name} 瞄准模式：在地图上左键点击方向开火`);
+    log(
+      meta.target === "optional_point"
+        ? `${meta.name} 瞄准模式：点击地图选择闪现位置，再次点击技能按钮可原地释放`
+        : `${meta.name} 瞄准模式：在地图上左键点击方向开火`,
+    );
     updateUi();
     return;
   }
@@ -1186,7 +1203,7 @@ function bindUiEvents() {
 
     if (app.pendingSubSkillAim) {
       const shipKey = app.pendingSubSkillAim.shipKey;
-      applyAction({
+      const ok = applyAction({
         type: "cast_sub_skill",
         shipKey,
         targetX: pos.x,
@@ -1195,7 +1212,9 @@ function bindUiEvents() {
       const ship = ownTeamState()?.ships?.[shipKey];
       const meta = ship ? currentSubMeta(ship) : null;
       app.pendingSubSkillAim = null;
-      log(`${meta ? meta.name : "分舰技能"} 开始蓄力`);
+      if (ok) {
+        log(`${meta ? meta.name : "分舰技能"} 已发动`);
+      }
       return;
     }
 
