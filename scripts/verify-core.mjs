@@ -613,6 +613,11 @@ function aiSearchSweepCheck() {
 
   aiTeam.split(1);
   aiTeam.split(2);
+  for (const ship of [aiTeam.ships.sub1, aiTeam.ships.sub2]) {
+    ship.route = null;
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+  }
 
   enemyMain.x = 180;
   enemyMain.y = 240;
@@ -782,6 +787,154 @@ function aiProbePressureCheck() {
   runSteps(sim, 5);
   const currentDist = Math.hypot(aiMain.x - enemyMain.x, aiMain.y - enemyMain.y);
   assert(currentDist < startDist - 55, "AI对可追击记忆目标的压制推进仍偏消极");
+}
+
+function aiSplitInitiativeCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+      B: {
+        main: "kyon",
+        sub1: "yuki",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const bot = sim.bot;
+  const aiMain = sim.teamB.ships.main;
+  const enemyMain = sim.teamA.ships.main;
+
+  enemyMain.x = 760;
+  enemyMain.y = 720;
+  enemyMain.angle = 0;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  bot.rememberContact(enemyMain, "visible");
+  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+
+  assert(bot.shouldSplit(1, context, 10.5), "AI在高质量侦察副舰存在时仍未倾向提前一级分离");
+}
+
+function aiYukiVisionLeadCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+      B: {
+        main: "kyon",
+        sub1: "yuki",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const aiMain = aiTeam.ships.main;
+  const yuki = aiTeam.ships.sub1;
+  const enemyMain = sim.teamA.ships.main;
+
+  aiTeam.split(1);
+
+  aiMain.x = 1100;
+  aiMain.y = 760;
+  aiMain.command.x = aiMain.x;
+  aiMain.command.y = aiMain.y;
+  aiMain.route = null;
+
+  yuki.x = 1030;
+  yuki.y = 700;
+  yuki.command.x = yuki.x;
+  yuki.command.y = yuki.y;
+  yuki.route = null;
+
+  enemyMain.x = 790;
+  enemyMain.y = 720;
+  enemyMain.angle = 0;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  bot.rememberContact(enemyMain, "visible");
+  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+  bot.issueMovement(context);
+
+  assert(aiMain.route && yuki.route, "AI未为主舰与长门生成协同路线");
+
+  const enemyVision = bot.estimateVisionRange(context.focus);
+  const yukiTargetDist = Math.hypot(yuki.route.p2.x - enemyMain.x, yuki.route.p2.y - enemyMain.y);
+  const mainTargetDist = Math.hypot(aiMain.route.p2.x - enemyMain.x, aiMain.route.p2.y - enemyMain.y);
+
+  assert(yukiTargetDist > enemyVision + 6, "长门前探仍会直接闯入敌方视野");
+  assert(yukiTargetDist < yuki.effectiveVision() - 4, "长门前探距离过远，未利用自身视野锁定敌舰");
+  assert(mainTargetDist > yukiTargetDist + 24, "长门前探时主舰未保持更安全的火力支援位置");
+}
+
+function aiWoundedDetachedRetreatCheck() {
+  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const aiMain = aiTeam.ships.main;
+  const sub1 = aiTeam.ships.sub1;
+  const sub2 = aiTeam.ships.sub2;
+  const enemyMain = sim.teamA.ships.main;
+
+  aiTeam.split(1);
+  aiTeam.split(2);
+
+  aiMain.x = 1080;
+  aiMain.y = 720;
+  aiMain.command.x = aiMain.x;
+  aiMain.command.y = aiMain.y;
+  aiMain.route = null;
+
+  sub1.x = 1020;
+  sub1.y = 780;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  sub1.hp = sub1.maxHp * 0.22;
+  sub1.energy = sub1.maxEnergy * 0.14;
+
+  sub2.x = 1020;
+  sub2.y = 660;
+  sub2.command.x = sub2.x;
+  sub2.command.y = sub2.y;
+  sub2.route = null;
+
+  enemyMain.x = 790;
+  enemyMain.y = 720;
+  enemyMain.angle = 0;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  bot.rememberContact(enemyMain, "visible");
+  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+  const detachedPlan = bot.planDetachedRoles(aiMain, context.focus, context);
+  bot.issueMovement(context);
+
+  assert(detachedPlan.roles.sub1 === "rear", "低状态副舰未被识别为后撤保命单位");
+  assert(sub1.route && sub2.route, "AI未为分离副舰生成完整路线");
+
+  const mainTargetDist = Math.hypot(aiMain.route.p2.x - enemyMain.x, aiMain.route.p2.y - enemyMain.y);
+  const sub1TargetDist = Math.hypot(sub1.route.p2.x - enemyMain.x, sub1.route.p2.y - enemyMain.y);
+  const sub2TargetDist = Math.hypot(sub2.route.p2.x - enemyMain.x, sub2.route.p2.y - enemyMain.y);
+
+  assert(sub1TargetDist > mainTargetDist + 48, "残血副舰未明显后撤到主舰后方");
+  assert(sub1TargetDist > sub2TargetDist + 36, "残血副舰未比健康副舰保持更安全距离");
 }
 
 function aiSectorEncirclementCheck() {
@@ -1051,6 +1204,9 @@ function main() {
   aiSplitDisciplineCheck();
   aiFireArcAwarenessCheck();
   aiProbePressureCheck();
+  aiSplitInitiativeCheck();
+  aiYukiVisionLeadCheck();
+  aiWoundedDetachedRetreatCheck();
   aiSectorEncirclementCheck();
   aiEnergyRecoveryModeCheck();
   aiHighEnergySkillAggressionCheck();
