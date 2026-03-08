@@ -25,6 +25,14 @@ body {
   font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", "Segoe UI", sans-serif;
 }
 
+body,
+button,
+select,
+input,
+canvas {
+  -webkit-tap-highlight-color: transparent;
+}
+
 .app-shell {
   display: grid;
   grid-template-columns: minmax(240px, 320px) 1fr;
@@ -264,6 +272,7 @@ input[type="range"] {
   border-radius: 14px;
   border: 1px solid #173453;
   background: #060f1a;
+  touch-action: none;
 }
 
 #onlineCanvas {
@@ -274,6 +283,100 @@ input[type="range"] {
   border-radius: 14px;
   border: 1px solid #173453;
   background: #060f1a;
+  touch-action: none;
+}
+
+.mobile-battle-hud {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  z-index: 4;
+  display: none;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid #235077;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #081a2ee6, #06121fdc);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 28px #02080f85;
+}
+
+.mobile-battle-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-battle-summary {
+  min-width: 0;
+  border: 1px solid #244e74;
+  border-radius: 999px;
+  padding: 6px 10px;
+  background: #0a2237cc;
+  color: #dff5ff;
+  font-size: 0.84rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-chip-btn {
+  min-width: 64px;
+  padding: 8px 10px;
+  border-radius: 999px;
+}
+
+.mobile-ship-switch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mobile-ship-btn {
+  min-height: 42px;
+  padding: 8px 4px;
+}
+
+.mobile-ship-btn.active {
+  background: #1a4366;
+  border-color: #67c8f5;
+  color: #d9f4ff;
+}
+
+.mobile-action-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.mobile-action-grid > button,
+.mobile-throttle-row {
+  min-height: 42px;
+}
+
+.mobile-throttle-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.mobile-throttle-btn {
+  min-height: 42px;
+  padding: 8px 0;
+}
+
+.mobile-throttle-btn.active {
+  border-color: #ffd37f;
+  background: #3a2d14;
+  color: #ffe8b3;
+}
+
+.mobile-battle-hint {
+  color: #a9c7e6;
+  font-size: 0.75rem;
+  line-height: 1.35;
 }
 
 .battle-nameplate {
@@ -518,6 +621,14 @@ input[type="range"] {
     max-height: none;
   }
 
+  .panel {
+    order: 2;
+  }
+
+  .game-wrap {
+    order: 1;
+  }
+
   .join-code-wrap {
     grid-template-columns: 1fr;
   }
@@ -532,5 +643,17 @@ input[type="range"] {
   .battle-nameplate {
     width: min(92%, 620px);
     top: 10px;
+  }
+
+  .mobile-battle-hud {
+    display: grid;
+  }
+
+  .game-wrap {
+    padding-bottom: 198px;
+  }
+
+  .room-hud {
+    margin-top: 0;
   }
 }

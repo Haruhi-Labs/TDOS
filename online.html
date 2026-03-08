@@ -64,6 +64,30 @@
 
       <main class="game-wrap">
         <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
+        <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
+          <div class="mobile-battle-head">
+            <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 | 战区5</div>
+            <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
+          </div>
+          <div id="onlineMobileShipSwitch" class="mobile-ship-switch">
+            <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
+          </div>
+          <div class="mobile-action-grid">
+            <button id="onlineMobileSplitOneBtn" type="button">分离1</button>
+            <button id="onlineMobileSplitTwoBtn" type="button">分离2</button>
+            <button id="onlineMobileScoutBtn" type="button">侦察</button>
+            <button id="onlineMobileFlagshipBtn" type="button">旗舰技</button>
+            <button id="onlineMobileSubSkillBtn" type="button">分舰技</button>
+            <div class="mobile-throttle-row">
+              <button type="button" class="mobile-throttle-btn" data-throttle="70">70%</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="100">100%</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="125">125%</button>
+            </div>
+          </div>
+          <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换，点战场直接下航线，点右上小地图选战区。</div>
+        </section>
 
         <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">
           <div id="battleNameA" class="battle-name-side battle-name-a">左翼舰队</div>

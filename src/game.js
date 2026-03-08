@@ -39,11 +39,23 @@ const ui = {
   overlay: document.getElementById("overlay"),
   overlayTitle: document.getElementById("overlayTitle"),
   restartBtn: document.getElementById("restartBtn"),
+  mobileBattleHud: document.getElementById("mobileBattleHud"),
+  mobileBattleSummary: document.getElementById("mobileBattleSummary"),
+  mobileBattleHint: document.getElementById("mobileBattleHint"),
+  mobileCenterBtn: document.getElementById("mobileCenterBtn"),
+  mobileShipButtons: Array.from(document.querySelectorAll("#mobileShipSwitch .mobile-ship-btn")),
+  mobileSplitOneBtn: document.getElementById("mobileSplitOneBtn"),
+  mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
+  mobileScoutBtn: document.getElementById("mobileScoutBtn"),
+  mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
+  mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
+  mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
 };
 
 const TAU = Math.PI * 2;
 const ROUTE_HANDLE_RADIUS = 11;
 const PLAYER_LOADOUT_STORAGE_KEY = "haruhi-player-loadout-v2";
+const MOBILE_ZOOM = 1.78;
 
 const app = {
   sim: null,
@@ -58,6 +70,10 @@ const app = {
   pendingSubSkillAim: null,
   lastTime: performance.now(),
   gameOverLogged: false,
+  mobileMode: false,
+  cameraCenterX: canvas.width * 0.5,
+  cameraCenterY: canvas.height * 0.5,
+  cameraManualUntil: 0,
   stars: Array.from({ length: 220 }, () => ({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
@@ -111,7 +127,11 @@ function selectedShipSim() {
   return own ? own.ships[app.selectedShipKey] || null : null;
 }
 
-function pointerFromEvent(event) {
+function prefersMobileBattleMode() {
+  return window.matchMedia("(max-width: 980px)").matches || window.matchMedia("(pointer: coarse)").matches;
+}
+
+function screenPointFromEvent(event) {
   const rect = canvas.getBoundingClientRect();
   const x = (event.clientX - rect.left) * (canvas.width / rect.width);
   const y = (event.clientY - rect.top) * (canvas.height / rect.height);
@@ -119,6 +139,110 @@ function pointerFromEvent(event) {
     x: clamp(x, 0, canvas.width),
     y: clamp(y, 0, canvas.height),
   };
+}
+
+function currentViewState() {
+  if (!app.mobileMode) {
+    return {
+      zoom: 1,
+      left: 0,
+      top: 0,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  }
+  const zoom = MOBILE_ZOOM;
+  const width = canvas.width / zoom;
+  const height = canvas.height / zoom;
+  const halfW = width * 0.5;
+  const halfH = height * 0.5;
+  const centerX = clamp(app.cameraCenterX, halfW, canvas.width - halfW);
+  const centerY = clamp(app.cameraCenterY, halfH, canvas.height - halfH);
+  return {
+    zoom,
+    left: centerX - halfW,
+    top: centerY - halfH,
+    width,
+    height,
+  };
+}
+
+function worldPointFromScreenPoint(x, y) {
+  const view = currentViewState();
+  return {
+    x: clamp(view.left + x / view.zoom, 0, canvas.width),
+    y: clamp(view.top + y / view.zoom, 0, canvas.height),
+  };
+}
+
+function pointerFromEvent(event) {
+  const screen = screenPointFromEvent(event);
+  return worldPointFromScreenPoint(screen.x, screen.y);
+}
+
+function minimapRect() {
+  if (!app.mobileMode) {
+    return null;
+  }
+  const size = clamp(canvas.width * 0.145, 180, 230);
+  return {
+    x: canvas.width - size - 18,
+    y: 18,
+    width: size,
+    height: size,
+  };
+}
+
+function minimapWorldPointFromScreenPoint(screenX, screenY) {
+  const rect = minimapRect();
+  if (!rect) {
+    return null;
+  }
+  if (screenX < rect.x || screenX > rect.x + rect.width || screenY < rect.y || screenY > rect.y + rect.height) {
+    return null;
+  }
+  return {
+    x: clamp(((screenX - rect.x) / rect.width) * canvas.width, 0, canvas.width),
+    y: clamp(((screenY - rect.y) / rect.height) * canvas.height, 0, canvas.height),
+  };
+}
+
+function centerCameraOn(x, y, manual = true) {
+  app.cameraCenterX = clamp(x, 0, canvas.width);
+  app.cameraCenterY = clamp(y, 0, canvas.height);
+  if (manual) {
+    app.cameraManualUntil = performance.now() + 2600;
+  }
+}
+
+function updateCamera() {
+  if (!app.mobileMode) {
+    app.cameraCenterX = canvas.width * 0.5;
+    app.cameraCenterY = canvas.height * 0.5;
+    return;
+  }
+  const ship = selectedShipState();
+  if (!ship || !ship.alive) {
+    return;
+  }
+  if (performance.now() < app.cameraManualUntil) {
+    return;
+  }
+  const lead = clamp((ship.speed || 0) * 3.2, 34, 92);
+  const targetX = ship.x + Math.cos(ship.angle || 0) * lead;
+  const targetY = ship.y + Math.sin(ship.angle || 0) * lead;
+  app.cameraCenterX = clamp(app.cameraCenterX + (targetX - app.cameraCenterX) * 0.14, 0, canvas.width);
+  app.cameraCenterY = clamp(app.cameraCenterY + (targetY - app.cameraCenterY) * 0.14, 0, canvas.height);
+}
+
+function syncResponsiveMode() {
+  app.mobileMode = prefersMobileBattleMode();
+  if (!app.mobileMode) {
+    app.cameraManualUntil = 0;
+  }
+  if (ui.mobileBattleHud) {
+    ui.mobileBattleHud.hidden = !app.mobileMode;
+  }
 }
 
 function zoneFromPoint(x, y) {
@@ -295,10 +419,14 @@ function resetMatch(logMessage = true) {
   app.pendingSubSkillAim = null;
   app.gameOverLogged = false;
   app.lastTime = performance.now();
+  app.cameraManualUntil = 0;
+  const mainShip = app.sim.teamA.ships.main;
+  app.cameraCenterX = mainShip.x;
+  app.cameraCenterY = mainShip.y;
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
     clearLog();
-    log("战斗开始。单击选战区，双击设目标点，拖拽控制点可调曲线。");
+    log(app.mobileMode ? "战斗开始。点战场直接移动，点右上小地图选战区。" : "战斗开始。单击选战区，双击设目标点，拖拽控制点可调曲线。");
   }
   updateUi();
 }
@@ -315,6 +443,10 @@ function setSelectedShip(shipKey) {
   app.selectedShipKey = shipKey;
   if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey !== shipKey) {
     app.pendingSubSkillAim = null;
+  }
+  const shipSim = selectedShipSim();
+  if (app.mobileMode && shipSim) {
+    centerCameraOn(shipSim.x, shipSim.y, false);
   }
   syncPowerSliderFromSelected();
   updateUi();
@@ -347,6 +479,27 @@ function syncShipSelection() {
   }
 }
 
+function ownShipAtPoint(x, y) {
+  const own = ownTeamState();
+  if (!own || !own.ships) {
+    return null;
+  }
+  let best = null;
+  let bestDist = Infinity;
+  const hitPadding = app.mobileMode ? 28 : 14;
+  for (const ship of Object.values(own.ships)) {
+    if (!ship || !ship.alive || !ship.canControl) {
+      continue;
+    }
+    const d = distance(x, y, ship.x, ship.y);
+    if (d <= ship.radius + hitPadding && d < bestDist) {
+      best = ship;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
 function syncPowerSliderFromSelected() {
   if (document.activeElement === ui.powerSlider) {
     return;
@@ -376,6 +529,58 @@ function currentSubMeta(selected) {
     return null;
   }
   return skillMetaForCharacter(selected.characterId, "sub");
+}
+
+function setThrottleValue(percent) {
+  const value = clamp(Number(percent), 25, 140);
+  ui.powerSlider.value = String(value);
+  ui.powerValue.textContent = `${Math.round(value)}%`;
+  applyAction({
+    type: "set_throttle",
+    shipKey: app.selectedShipKey,
+    throttle: value / 100,
+  });
+  updateUi();
+}
+
+function handleMinimapTap(screenPos, { allowZoneLog = true } = {}) {
+  if (!app.mobileMode) {
+    return false;
+  }
+  const world = minimapWorldPointFromScreenPoint(screenPos.x, screenPos.y);
+  if (!world) {
+    return false;
+  }
+  centerCameraOn(world.x, world.y, true);
+  const zone = zoneFromPoint(world.x, world.y);
+  if (zone && zone.id !== app.selectedZoneId) {
+    app.selectedZoneId = zone.id;
+    if (allowZoneLog) {
+      log(`已选中战区${zone.id}`);
+    }
+  }
+  updateUi();
+  return true;
+}
+
+function setRouteForSelectedShip(x, y, logRoute = false) {
+  const ship = selectedShipState();
+  if (!ship || !ship.alive || !ship.canControl) {
+    return false;
+  }
+  const throttle = clamp(Number(ui.powerSlider.value) / 100, 0.25, 1.4);
+  const ok = applyAction({
+    type: "set_route",
+    shipKey: ship.key,
+    endX: x,
+    endY: y,
+    throttle,
+    anchorToMain: ship.key === "main",
+  });
+  if (ok && logRoute) {
+    log(`${ship.name} 已设置新航线`);
+  }
+  return ok;
 }
 
 function updateSkillButtons(own) {
@@ -445,6 +650,50 @@ function updateSkillButtons(own) {
   ui.subSkillBtn.textContent = `分舰技能：${subMeta.name}${suffix}`;
 }
 
+function syncMobileHud(own) {
+  if (!ui.mobileBattleHud) {
+    return;
+  }
+  ui.mobileBattleHud.hidden = !app.mobileMode;
+  if (!app.mobileMode || !own) {
+    return;
+  }
+
+  const selected = selectedShipState();
+  const shipName = selected ? selected.characterName : "无";
+  const throttleValue = Math.round(clamp((selected?.throttle || 1) * 100, 25, 140));
+  ui.mobileBattleSummary.textContent = `${shipName} | 战区${app.selectedZoneId} | 推进${throttleValue}%`;
+  ui.mobileBattleHint.textContent = app.pendingSubSkillAim
+    ? "技能瞄准中：点主视图确认，点右上小地图先挪镜头。"
+    : "点舰船切换，点主视图直接下航线，点右上小地图选战区。";
+
+  const buttonStates = {
+    main: own.ships.main,
+    sub1: own.ships.sub1,
+    sub2: own.ships.sub2,
+  };
+  for (const button of ui.mobileShipButtons) {
+    const ship = buttonStates[button.dataset.ship];
+    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    button.disabled = !enabled;
+    button.classList.toggle("active", button.dataset.ship === app.selectedShipKey);
+  }
+
+  ui.mobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
+  ui.mobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
+  ui.mobileScoutBtn.disabled = ui.scoutBtn.disabled;
+  ui.mobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
+  ui.mobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
+
+  ui.mobileFlagshipBtn.textContent = "旗舰技";
+  ui.mobileSubSkillBtn.textContent = selected && currentSubMeta(selected) ? currentSubMeta(selected).name : "分舰技";
+
+  for (const button of ui.mobileThrottleButtons) {
+    const preset = Number(button.dataset.throttle);
+    button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
+  }
+}
+
 function updateUi() {
   const own = ownTeamState();
   if (!own) {
@@ -473,6 +722,7 @@ function updateUi() {
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
   updateSkillButtons(own);
+  syncMobileHud(own);
 
   if (app.state.phase === "finished") {
     ui.overlay.classList.remove("hidden");
@@ -559,7 +809,7 @@ function drawRoute(route, selected) {
   ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
   ctx.stroke();
 
-  if (selected) {
+  if (selected && !app.mobileMode) {
     ctx.fillStyle = "#ffdd8a";
     ctx.beginPath();
     ctx.arc(p1.x, p1.y, ROUTE_HANDLE_RADIUS, 0, TAU);
@@ -901,6 +1151,79 @@ function drawSubSkillAimHint() {
   ctx.restore();
 }
 
+function drawMinimap() {
+  if (!app.mobileMode || !app.state) {
+    return;
+  }
+  const rect = minimapRect();
+  if (!rect) {
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = "#06121fda";
+  ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+  ctx.strokeStyle = "#285279";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+  if (Array.isArray(app.state.zones)) {
+    for (const zone of app.state.zones) {
+      const zx = rect.x + (zone.x / canvas.width) * rect.width;
+      const zy = rect.y + (zone.y / canvas.height) * rect.height;
+      const zw = (zone.width / canvas.width) * rect.width;
+      const zh = (zone.height / canvas.height) * rect.height;
+      ctx.strokeStyle = zone.id === app.selectedZoneId ? "#6fd9ff" : "#2d5d884f";
+      ctx.lineWidth = zone.id === app.selectedZoneId ? 1.6 : 1;
+      ctx.strokeRect(zx, zy, zw, zh);
+    }
+  }
+
+  const plotShip = (ship, color) => {
+    if (!ship || !ship.alive) {
+      return;
+    }
+    const x = rect.x + (ship.x / canvas.width) * rect.width;
+    const y = rect.y + (ship.y / canvas.height) * rect.height;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.2, 0, TAU);
+    ctx.fill();
+  };
+
+  const own = ownTeamState();
+  const enemy = enemyTeamState();
+  const visibleEnemyIds = new Set((own && own.visibleEnemyIds) || []);
+  if (own && own.ships) {
+    for (const ship of [...Object.values(own.ships), ...(own.extraShips || [])]) {
+      plotShip(ship, ship.key === app.selectedShipKey ? "#ffe184" : "#79dcff");
+    }
+  }
+  if (enemy && enemy.ships) {
+    for (const ship of [...Object.values(enemy.ships), ...(enemy.extraShips || [])]) {
+      if (app.state.phase !== "finished" && !visibleEnemyIds.has(ship.id)) {
+        continue;
+      }
+      plotShip(ship, "#ff95a0");
+    }
+  }
+
+  const view = currentViewState();
+  ctx.strokeStyle = "#ffe08a";
+  ctx.lineWidth = 1.6;
+  ctx.strokeRect(
+    rect.x + (view.left / canvas.width) * rect.width,
+    rect.y + (view.top / canvas.height) * rect.height,
+    (view.width / canvas.width) * rect.width,
+    (view.height / canvas.height) * rect.height,
+  );
+
+  ctx.fillStyle = "#d2ecff";
+  ctx.font = "bold 11px 'Noto Sans SC', 'PingFang SC', sans-serif";
+  ctx.fillText("战区/镜头", rect.x + 8, rect.y + 14);
+  ctx.restore();
+}
+
 function drawShipGroup(shipGroup, color, visibleEnemyIds = null) {
   for (const ship of shipGroup) {
     if (!ship || !ship.alive) {
@@ -918,6 +1241,10 @@ function render() {
     return;
   }
 
+  updateCamera();
+  const view = currentViewState();
+  ctx.save();
+  ctx.setTransform(view.zoom, 0, 0, view.zoom, -view.left * view.zoom, -view.top * view.zoom);
   drawBackground(app.state.elapsed || 0);
   drawZones();
 
@@ -1004,6 +1331,8 @@ function render() {
   drawSelectedFireArc();
   drawSelectedVisionCircle();
   drawSubSkillAimHint();
+  ctx.restore();
+  drawMinimap();
 }
 
 function tick(timestamp) {
@@ -1094,22 +1423,40 @@ function bindUiEvents() {
       setSelectedShip(button.dataset.ship || "");
     });
   }
+  for (const button of ui.mobileShipButtons) {
+    button.addEventListener("click", () => {
+      setSelectedShip(button.dataset.ship || "");
+    });
+  }
 
   ui.powerSlider.addEventListener("input", () => {
-    const value = clamp(Number(ui.powerSlider.value), 25, 140);
-    ui.powerValue.textContent = `${Math.round(value)}%`;
-    applyAction({
-      type: "set_throttle",
-      shipKey: app.selectedShipKey,
-      throttle: value / 100,
-    });
+    setThrottleValue(ui.powerSlider.value);
   });
+  for (const button of ui.mobileThrottleButtons) {
+    button.addEventListener("click", () => {
+      setThrottleValue(button.dataset.throttle || 100);
+    });
+  }
+  if (ui.mobileCenterBtn) {
+    ui.mobileCenterBtn.addEventListener("click", () => {
+      const ship = selectedShipState();
+      if (ship) {
+        centerCameraOn(ship.x, ship.y, false);
+      }
+    });
+  }
 
   bindPressButton(ui.splitOneBtn, () => {
     applyAction({ type: "split", level: 1 });
   });
+  bindPressButton(ui.mobileSplitOneBtn, () => {
+    applyAction({ type: "split", level: 1 });
+  });
 
   bindPressButton(ui.splitTwoBtn, () => {
+    applyAction({ type: "split", level: 2 });
+  });
+  bindPressButton(ui.mobileSplitTwoBtn, () => {
     applyAction({ type: "split", level: 2 });
   });
 
@@ -1119,15 +1466,26 @@ function bindUiEvents() {
       log(`侦查机已派往战区${app.selectedZoneId}`);
     }
   });
+  bindPressButton(ui.mobileScoutBtn, () => {
+    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId });
+    if (ok) {
+      log(`侦查机已派往战区${app.selectedZoneId}`);
+    }
+  });
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkill);
+  bindPressButton(ui.mobileFlagshipBtn, useFlagshipSkill);
   bindPressButton(ui.subSkillBtn, useSubSkill);
+  bindPressButton(ui.mobileSubSkillBtn, useSubSkill);
 
   ui.restartBtn.addEventListener("click", () => {
     resetMatch(true);
   });
 
   canvas.addEventListener("mousedown", (event) => {
+    if (app.mobileMode) {
+      return;
+    }
     if (event.button !== 0 || !app.state || app.state.phase === "finished") {
       return;
     }
@@ -1156,6 +1514,10 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("mousemove", (event) => {
+    if (app.mobileMode) {
+      app.pointer = pointerFromEvent(event);
+      return;
+    }
     const pos = pointerFromEvent(event);
     app.pointer = pos;
 
@@ -1181,6 +1543,9 @@ function bindUiEvents() {
   });
 
   window.addEventListener("mouseup", () => {
+    if (app.mobileMode) {
+      return;
+    }
     if (!app.drag) {
       return;
     }
@@ -1193,6 +1558,7 @@ function bindUiEvents() {
       return;
     }
 
+    const screenPos = screenPointFromEvent(event);
     if (app.suppressMapClick) {
       app.suppressMapClick = false;
       return;
@@ -1200,6 +1566,40 @@ function bindUiEvents() {
 
     const pos = pointerFromEvent(event);
     app.pointer = pos;
+
+    if (app.mobileMode && app.pendingSubSkillAim) {
+      if (handleMinimapTap(screenPos, { allowZoneLog: false })) {
+        return;
+      }
+      const shipKey = app.pendingSubSkillAim.shipKey;
+      const ok = applyAction({
+        type: "cast_sub_skill",
+        shipKey,
+        targetX: pos.x,
+        targetY: pos.y,
+      });
+      const ship = ownTeamState()?.ships?.[shipKey];
+      const meta = ship ? currentSubMeta(ship) : null;
+      app.pendingSubSkillAim = null;
+      if (ok) {
+        log(`${meta ? meta.name : "分舰技能"} 已发动`);
+      }
+      updateUi();
+      return;
+    }
+
+    if (app.mobileMode) {
+      if (handleMinimapTap(screenPos)) {
+        return;
+      }
+      const tappedShip = ownShipAtPoint(pos.x, pos.y);
+      if (tappedShip) {
+        setSelectedShip(tappedShip.key);
+        return;
+      }
+      setRouteForSelectedShip(pos.x, pos.y);
+      return;
+    }
 
     if (app.pendingSubSkillAim) {
       const shipKey = app.pendingSubSkillAim.shipKey;
@@ -1230,6 +1630,9 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("dblclick", (event) => {
+    if (app.mobileMode) {
+      return;
+    }
     if (event.button !== 0 || !app.state || app.state.phase === "finished") {
       return;
     }
@@ -1290,9 +1693,14 @@ function bindUiEvents() {
       event.preventDefault();
     }
   });
+  window.addEventListener("resize", () => {
+    syncResponsiveMode();
+    updateUi();
+  });
 }
 
 function start() {
+  syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
   resetMatch(true);

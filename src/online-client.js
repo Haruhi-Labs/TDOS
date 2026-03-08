@@ -60,6 +60,17 @@ const ui = {
   battleNameplate: document.getElementById("battleNameplate"),
   battleNameA: document.getElementById("battleNameA"),
   battleNameB: document.getElementById("battleNameB"),
+  onlineMobileBattleHud: document.getElementById("onlineMobileBattleHud"),
+  onlineMobileBattleSummary: document.getElementById("onlineMobileBattleSummary"),
+  onlineMobileBattleHint: document.getElementById("onlineMobileBattleHint"),
+  onlineMobileCenterBtn: document.getElementById("onlineMobileCenterBtn"),
+  onlineMobileShipButtons: Array.from(document.querySelectorAll("#onlineMobileShipSwitch .mobile-ship-btn")),
+  onlineMobileSplitOneBtn: document.getElementById("onlineMobileSplitOneBtn"),
+  onlineMobileSplitTwoBtn: document.getElementById("onlineMobileSplitTwoBtn"),
+  onlineMobileScoutBtn: document.getElementById("onlineMobileScoutBtn"),
+  onlineMobileFlagshipBtn: document.getElementById("onlineMobileFlagshipBtn"),
+  onlineMobileSubSkillBtn: document.getElementById("onlineMobileSubSkillBtn"),
+  onlineMobileThrottleButtons: Array.from(document.querySelectorAll("#onlineMobileBattleHud .mobile-throttle-btn")),
 };
 
 const TAU = Math.PI * 2;
@@ -79,6 +90,7 @@ const ROUTE_MATCH_P1_EPSILON = 42;
 const NICKNAME_COOKIE_KEY = "haruhi_online_nickname";
 const NICKNAME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const ONLINE_LOADOUT_STORAGE_KEY = "haruhi-online-loadout-v2";
+const MOBILE_ZOOM = 1.78;
 
 const app = {
   ws: null,
@@ -127,6 +139,10 @@ const app = {
   playerLoadout: readStoredLoadout(),
   pointer: { x: canvas.width * 0.5, y: canvas.height * 0.5 },
   throttleSendTimer: null,
+  mobileMode: false,
+  cameraCenterX: canvas.width * 0.5,
+  cameraCenterY: canvas.height * 0.5,
+  cameraManualUntil: 0,
   stars: Array.from({ length: 260 }, () => ({
     x: Math.random() * canvas.width,
     y: Math.random() * canvas.height,
@@ -341,6 +357,9 @@ function setBattleControlsEnabled(enabled) {
   ui.battleControls.classList.toggle("disabled-panel", !enabled);
   for (const element of ui.battleControls.querySelectorAll("button, select, input")) {
     element.disabled = !enabled;
+  }
+  if (ui.onlineMobileBattleHud) {
+    ui.onlineMobileBattleHud.hidden = !app.mobileMode || !enabled;
   }
 }
 
@@ -886,6 +905,7 @@ function applyRoomState(message) {
   const isFinished = roomStatus === "finished";
   setBattleControlsEnabled(Boolean(canBattle));
   setRoomHudVisible(!canBattle);
+  syncResponsiveMode();
   updateBattleNameplate();
   updateShipSwitchLabels(app.playerLoadout);
   const loadoutLocked = Boolean(app.room && app.room.status === "running");
@@ -1029,6 +1049,9 @@ function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.sta
   app.selectedShipKey = shipKey;
   syncShipSelectOptions(own);
   syncPowerFromSelectedShip(own);
+  if (app.mobileMode) {
+    centerCameraOn(ship.x, ship.y, false);
+  }
   return true;
 }
 
@@ -1115,6 +1138,43 @@ function updateSkillButtons(own) {
   ui.subSkillBtn.textContent = `分舰技能：${subMeta.name}${suffix}`;
 }
 
+function syncMobileHud(own) {
+  if (!ui.onlineMobileBattleHud) {
+    return;
+  }
+  ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running");
+  if (!app.mobileMode || !own) {
+    return;
+  }
+
+  const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
+  const throttleValue = Math.round(clamp((selectedShip?.throttle || app.throttle || 1) * 100, 25, 140));
+  ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} | 战区${app.selectedZoneId} | 推进${throttleValue}%`;
+  ui.onlineMobileBattleHint.textContent = app.pendingSubSkillAim
+    ? "技能瞄准中：点主视图确认，点右上小地图先挪镜头。"
+    : "点舰船切换，点主视图直接下航线，点右上小地图选战区。";
+
+  for (const button of ui.onlineMobileShipButtons) {
+    const ship = own.ships ? own.ships[button.dataset.ship] : null;
+    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    button.disabled = !enabled;
+    button.classList.toggle("active", button.dataset.ship === app.selectedShipKey);
+  }
+
+  ui.onlineMobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
+  ui.onlineMobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
+  ui.onlineMobileScoutBtn.disabled = ui.scoutBtn.disabled;
+  ui.onlineMobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
+  ui.onlineMobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
+  ui.onlineMobileFlagshipBtn.textContent = "旗舰技";
+  ui.onlineMobileSubSkillBtn.textContent = selectedShip && currentSubMeta(selectedShip) ? currentSubMeta(selectedShip).name : "分舰技";
+
+  for (const button of ui.onlineMobileThrottleButtons) {
+    const preset = Number(button.dataset.throttle);
+    button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
+  }
+}
+
 function updateBattleStatus(state) {
   const own = teamBySeat(state, app.seat);
   if (!own) {
@@ -1143,6 +1203,7 @@ function updateBattleStatus(state) {
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
   updateSkillButtons(own);
+  syncMobileHud(own);
   if (app.pendingSubSkillAim && ui.subSkillBtn.disabled) {
     app.pendingSubSkillAim = null;
   }
@@ -1528,7 +1589,15 @@ function setThrottleFromSlider(shouldSend) {
   }, 80);
 }
 
-function pointerFromEvent(event) {
+function prefersMobileBattleMode() {
+  return window.matchMedia("(max-width: 980px)").matches || window.matchMedia("(pointer: coarse)").matches;
+}
+
+function currentBattleState() {
+  return app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null);
+}
+
+function screenPointFromEvent(event) {
   const rect = canvas.getBoundingClientRect();
   const x = (event.clientX - rect.left) * (canvas.width / rect.width);
   const y = (event.clientY - rect.top) * (canvas.height / rect.height);
@@ -1536,6 +1605,111 @@ function pointerFromEvent(event) {
     x: clamp(x, 0, canvas.width),
     y: clamp(y, 0, canvas.height),
   };
+}
+
+function currentViewState() {
+  if (!app.mobileMode) {
+    return {
+      zoom: 1,
+      left: 0,
+      top: 0,
+      width: canvas.width,
+      height: canvas.height,
+    };
+  }
+  const zoom = MOBILE_ZOOM;
+  const width = canvas.width / zoom;
+  const height = canvas.height / zoom;
+  const halfW = width * 0.5;
+  const halfH = height * 0.5;
+  const centerX = clamp(app.cameraCenterX, halfW, canvas.width - halfW);
+  const centerY = clamp(app.cameraCenterY, halfH, canvas.height - halfH);
+  return {
+    zoom,
+    left: centerX - halfW,
+    top: centerY - halfH,
+    width,
+    height,
+  };
+}
+
+function worldPointFromScreenPoint(x, y) {
+  const view = currentViewState();
+  return {
+    x: clamp(view.left + x / view.zoom, 0, canvas.width),
+    y: clamp(view.top + y / view.zoom, 0, canvas.height),
+  };
+}
+
+function pointerFromEvent(event) {
+  const screen = screenPointFromEvent(event);
+  return worldPointFromScreenPoint(screen.x, screen.y);
+}
+
+function minimapRect() {
+  if (!app.mobileMode) {
+    return null;
+  }
+  const size = clamp(canvas.width * 0.145, 180, 230);
+  return {
+    x: canvas.width - size - 18,
+    y: 18,
+    width: size,
+    height: size,
+  };
+}
+
+function minimapWorldPointFromScreenPoint(screenX, screenY) {
+  const rect = minimapRect();
+  if (!rect) {
+    return null;
+  }
+  if (screenX < rect.x || screenX > rect.x + rect.width || screenY < rect.y || screenY > rect.y + rect.height) {
+    return null;
+  }
+  return {
+    x: clamp(((screenX - rect.x) / rect.width) * canvas.width, 0, canvas.width),
+    y: clamp(((screenY - rect.y) / rect.height) * canvas.height, 0, canvas.height),
+  };
+}
+
+function centerCameraOn(x, y, manual = true) {
+  app.cameraCenterX = clamp(x, 0, canvas.width);
+  app.cameraCenterY = clamp(y, 0, canvas.height);
+  if (manual) {
+    app.cameraManualUntil = performance.now() + 2600;
+  }
+}
+
+function updateCamera() {
+  if (!app.mobileMode) {
+    app.cameraCenterX = canvas.width * 0.5;
+    app.cameraCenterY = canvas.height * 0.5;
+    return;
+  }
+  const state = currentBattleState();
+  const ship = getSelectedShipFromState(state);
+  if (!ship || !ship.alive) {
+    return;
+  }
+  if (performance.now() < app.cameraManualUntil) {
+    return;
+  }
+  const lead = clamp((ship.speed || 0) * 3.2, 34, 92);
+  const targetX = ship.x + Math.cos(ship.angle || 0) * lead;
+  const targetY = ship.y + Math.sin(ship.angle || 0) * lead;
+  app.cameraCenterX = clamp(app.cameraCenterX + (targetX - app.cameraCenterX) * 0.14, 0, canvas.width);
+  app.cameraCenterY = clamp(app.cameraCenterY + (targetY - app.cameraCenterY) * 0.14, 0, canvas.height);
+}
+
+function syncResponsiveMode() {
+  app.mobileMode = prefersMobileBattleMode();
+  if (!app.mobileMode) {
+    app.cameraManualUntil = 0;
+  }
+  if (ui.onlineMobileBattleHud) {
+    ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running");
+  }
 }
 
 function zoneFromPoint(x, y, state) {
@@ -1565,6 +1739,52 @@ function getSelectedShipFromState(state) {
     return null;
   }
   return own.ships[app.selectedShipKey] || null;
+}
+
+function ownShipAtPoint(state, x, y) {
+  const own = teamBySeat(state, app.seat);
+  if (!own || !own.ships) {
+    return null;
+  }
+  let best = null;
+  let bestDist = Infinity;
+  const hitPadding = app.mobileMode ? 28 : 14;
+  for (const ship of Object.values(own.ships)) {
+    if (!ship || !ship.alive || !ship.canControl) {
+      continue;
+    }
+    const d = distance(x, y, ship.x, ship.y);
+    if (d <= ship.radius + hitPadding && d < bestDist) {
+      best = ship;
+      bestDist = d;
+    }
+  }
+  return best;
+}
+
+function setThrottleValue(percent, shouldSend = true) {
+  ui.powerSlider.value = String(clamp(Number(percent), 25, 140));
+  setThrottleFromSlider(shouldSend);
+}
+
+function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
+  if (!app.mobileMode || !state) {
+    return false;
+  }
+  const world = minimapWorldPointFromScreenPoint(screenPos.x, screenPos.y);
+  if (!world) {
+    return false;
+  }
+  centerCameraOn(world.x, world.y, true);
+  const zone = zoneFromPoint(world.x, world.y, state);
+  if (zone && zone.id !== app.selectedZoneId) {
+    app.selectedZoneId = zone.id;
+    ui.zoneValue.textContent = `战区 ${zone.id}`;
+    if (allowZoneLog) {
+      log(`已选择战区 ${zone.id}`);
+    }
+  }
+  return true;
 }
 
 function getRouteForShip(ship) {
@@ -2045,7 +2265,7 @@ function drawRoute(route, selected) {
   ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
   ctx.stroke();
 
-  if (selected) {
+  if (selected && !app.mobileMode) {
     ctx.fillStyle = "#ffdd8a";
     ctx.beginPath();
     ctx.arc(p1.x, p1.y, ROUTE_HANDLE_RADIUS, 0, TAU);
@@ -2378,6 +2598,76 @@ function drawSubSkillAimHint(ownTeam) {
   ctx.restore();
 }
 
+function drawMinimap(state, ownTeam, enemyTeam, visibleEnemyIds) {
+  if (!app.mobileMode || !state) {
+    return;
+  }
+  const rect = minimapRect();
+  if (!rect) {
+    return;
+  }
+
+  ctx.save();
+  ctx.fillStyle = "#06121fda";
+  ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+  ctx.strokeStyle = "#285279";
+  ctx.lineWidth = 2;
+  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
+
+  if (Array.isArray(state.zones)) {
+    for (const zone of state.zones) {
+      const zx = rect.x + (zone.x / canvas.width) * rect.width;
+      const zy = rect.y + (zone.y / canvas.height) * rect.height;
+      const zw = (zone.width / canvas.width) * rect.width;
+      const zh = (zone.height / canvas.height) * rect.height;
+      ctx.strokeStyle = zone.id === app.selectedZoneId ? "#6fd9ff" : "#2d5d884f";
+      ctx.lineWidth = zone.id === app.selectedZoneId ? 1.6 : 1;
+      ctx.strokeRect(zx, zy, zw, zh);
+    }
+  }
+
+  const plotShip = (ship, color) => {
+    if (!ship || !ship.alive) {
+      return;
+    }
+    const x = rect.x + (ship.x / canvas.width) * rect.width;
+    const y = rect.y + (ship.y / canvas.height) * rect.height;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(x, y, 3.2, 0, TAU);
+    ctx.fill();
+  };
+
+  if (ownTeam && ownTeam.ships) {
+    for (const ship of [...Object.values(ownTeam.ships), ...(ownTeam.extraShips || [])]) {
+      plotShip(ship, ship.key === app.selectedShipKey ? "#ffe184" : "#79dcff");
+    }
+  }
+  if (enemyTeam && enemyTeam.ships) {
+    for (const ship of [...Object.values(enemyTeam.ships), ...(enemyTeam.extraShips || [])]) {
+      if (state.phase !== "finished" && !visibleEnemyIds.has(ship.id)) {
+        continue;
+      }
+      plotShip(ship, "#ff95a0");
+    }
+  }
+
+  const view = currentViewState();
+  ctx.strokeStyle = "#ffe08a";
+  ctx.lineWidth = 1.6;
+  ctx.strokeRect(
+    rect.x + (view.left / canvas.width) * rect.width,
+    rect.y + (view.top / canvas.height) * rect.height,
+    (view.width / canvas.width) * rect.width,
+    (view.height / canvas.height) * rect.height,
+  );
+
+  ctx.fillStyle = "#d2ecff";
+  ctx.font = "bold 11px 'Noto Sans SC', 'PingFang SC', sans-serif";
+  ctx.fillText("战区/镜头", rect.x + 8, rect.y + 14);
+  ctx.restore();
+}
+
 function drawNoDataHint() {
   ctx.save();
   ctx.fillStyle = "#c4dbf6";
@@ -2392,9 +2682,14 @@ function renderFrame() {
   app.lastRenderState = state;
 
   const elapsed = state ? state.elapsed : nowSecond();
+  updateCamera();
+  const view = currentViewState();
+  ctx.save();
+  ctx.setTransform(view.zoom, 0, 0, view.zoom, -view.left * view.zoom, -view.top * view.zoom);
   drawBackground(elapsed || 0);
 
   if (!state) {
+    ctx.restore();
     drawNoDataHint();
     requestAnimationFrame(renderFrame);
     return;
@@ -2497,6 +2792,8 @@ function renderFrame() {
   drawSelectedFireArc(ownTeam);
   drawSelectedVisionCircle(ownTeam);
   drawSubSkillAimHint(ownTeam);
+  ctx.restore();
+  drawMinimap(state, ownTeam, enemyTeam, visibleEnemyIds);
 
   requestAnimationFrame(renderFrame);
 }
@@ -2666,16 +2963,40 @@ function bindUiEvents() {
       selectShip(button.dataset.ship || "");
     });
   }
+  for (const button of ui.onlineMobileShipButtons) {
+    button.addEventListener("click", () => {
+      selectShip(button.dataset.ship || "", currentBattleState());
+    });
+  }
 
   ui.powerSlider.addEventListener("input", () => {
     setThrottleFromSlider(true);
   });
+  for (const button of ui.onlineMobileThrottleButtons) {
+    button.addEventListener("click", () => {
+      setThrottleValue(button.dataset.throttle || 100, true);
+    });
+  }
+  if (ui.onlineMobileCenterBtn) {
+    ui.onlineMobileCenterBtn.addEventListener("click", () => {
+      const ship = getLatestOwnShip(app.selectedShipKey);
+      if (ship) {
+        centerCameraOn(ship.x, ship.y, false);
+      }
+    });
+  }
 
   bindPressButton(ui.splitOneBtn, () => {
     sendAction({ type: "split", level: 1 });
   });
+  bindPressButton(ui.onlineMobileSplitOneBtn, () => {
+    sendAction({ type: "split", level: 1 });
+  });
 
   bindPressButton(ui.splitTwoBtn, () => {
+    sendAction({ type: "split", level: 2 });
+  });
+  bindPressButton(ui.onlineMobileSplitTwoBtn, () => {
     sendAction({ type: "split", level: 2 });
   });
 
@@ -2688,11 +3009,25 @@ function bindUiEvents() {
       log(`侦查机已派往战区 ${app.selectedZoneId}`);
     }
   });
+  bindPressButton(ui.onlineMobileScoutBtn, () => {
+    const seq = sendAction({
+      type: "launch_scout",
+      zoneId: app.selectedZoneId,
+    });
+    if (seq !== null) {
+      log(`侦查机已派往战区 ${app.selectedZoneId}`);
+    }
+  });
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkillOnline);
+  bindPressButton(ui.onlineMobileFlagshipBtn, useFlagshipSkillOnline);
   bindPressButton(ui.subSkillBtn, useSubSkillOnline);
+  bindPressButton(ui.onlineMobileSubSkillBtn, useSubSkillOnline);
 
   canvas.addEventListener("mousedown", (event) => {
+    if (app.mobileMode) {
+      return;
+    }
     if (event.button !== 0) {
       return;
     }
@@ -2730,6 +3065,10 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("mousemove", (event) => {
+    if (app.mobileMode) {
+      app.pointer = pointerFromEvent(event);
+      return;
+    }
     app.pointer = pointerFromEvent(event);
     if (!app.drag || !app.room || app.room.status !== "running") {
       return;
@@ -2769,6 +3108,9 @@ function bindUiEvents() {
   });
 
   window.addEventListener("mouseup", () => {
+    if (app.mobileMode) {
+      return;
+    }
     if (app.drag) {
       app.drag = null;
       app.suppressClick = true;
@@ -2789,7 +3131,54 @@ function bindUiEvents() {
       return;
     }
 
+    const screenPos = screenPointFromEvent(event);
     const pos = pointerFromEvent(event);
+    if (app.mobileMode && app.pendingSubSkillAim && app.room && app.room.status === "running") {
+      if (handleMinimapTap(screenPos, state, { allowZoneLog: false })) {
+        return;
+      }
+      const ship = getLatestOwnShip(app.pendingSubSkillAim.shipKey);
+      const meta = currentSubMeta(ship);
+      const seq = sendAction({
+        type: "cast_sub_skill",
+        shipKey: app.pendingSubSkillAim.shipKey,
+        targetX: pos.x,
+        targetY: pos.y,
+      });
+      app.pendingSubSkillAim = null;
+      if (seq !== null) {
+        log(`${meta ? meta.name : "分舰技能"} 已发动`);
+      }
+      return;
+    }
+
+    if (app.mobileMode && app.room && app.room.status === "running") {
+      if (handleMinimapTap(screenPos, state)) {
+        return;
+      }
+      const tappedShip = ownShipAtPoint(state, pos.x, pos.y);
+      if (tappedShip) {
+        selectShip(tappedShip.key, state);
+        return;
+      }
+      const ship = getLatestOwnShip(app.selectedShipKey);
+      if (!ship || !ship.alive || !ship.canControl) {
+        return;
+      }
+      const seq = sendAction({
+        type: "set_route",
+        shipKey: ship.key,
+        endX: pos.x,
+        endY: pos.y,
+        throttle: app.throttle,
+        anchorToMain: ship.key === "main",
+      });
+      if (seq !== null) {
+        applySetRouteOverride(ship.key, seq, pos.x, pos.y);
+      }
+      return;
+    }
+
     if (app.pendingSubSkillAim && app.room && app.room.status === "running") {
       const ship = getLatestOwnShip(app.pendingSubSkillAim.shipKey);
       const meta = currentSubMeta(ship);
@@ -2819,6 +3208,9 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("dblclick", (event) => {
+    if (app.mobileMode) {
+      return;
+    }
     if (event.button !== 0) {
       return;
     }
@@ -2882,12 +3274,17 @@ function bindUiEvents() {
       event.preventDefault();
     }
   });
+  window.addEventListener("resize", () => {
+    syncResponsiveMode();
+    updateBattleStatus(currentBattleState());
+  });
 }
 
 setBattleControlsEnabled(false);
 setRoomHudVisible(true);
 updateBattleNameplate();
 updateConnectionUi();
+syncResponsiveMode();
 bindUiEvents();
 connectServer();
 requestAnimationFrame(renderFrame);
