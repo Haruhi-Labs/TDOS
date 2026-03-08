@@ -203,6 +203,11 @@ function modeLabel(mode) {
     flank: "绕后",
     intel: "侦察",
     escape: "脱困",
+    probe: "探位",
+    standoff: "拉距",
+    arc: "抢侧舷",
+    pressure: "压近",
+    evade: "避火",
   };
   return labels[mode] || mode || "待机";
 }
@@ -659,7 +664,8 @@ function renderAiCard(seat) {
     if (!order) {
       return `<div><strong>${slotLabel(shipKey)}</strong> 暂无新命令</div>`;
     }
-    return `<div><strong>${slotLabel(shipKey)}</strong> ${modeLabel(order.role)} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%</div>`;
+    const micro = order.microRole ? ` / ${modeLabel(order.microRole)}` : "";
+    return `<div><strong>${slotLabel(shipKey)}</strong> ${modeLabel(order.role)}${micro} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%</div>`;
   }).join("");
 
   const threatLines = ["main", "sub1", "sub2"].map((shipKey) => {
@@ -734,7 +740,7 @@ function updateSelectedCard() {
     `舰体 ${Math.round(ship.hp)}/${Math.round(ship.maxHp)}（${hullPercent(ship)}%） | 能量 ${Math.round(Number(ship.fleetEnergy) || 0)}/${Math.round(Number(ship.fleetMaxEnergy) || 1)}（${energyPercent(ship)}%）`,
     `推进 ${Math.round((ship.throttle || 1) * 100)}% | 航速 ${(ship.speed || 0).toFixed(1)} | 最小转弯半径 ${minRadius}`,
     `视野 ${Math.round(ship.vision || 0)} | 射程 ${Math.round(ship.range || 0)} | ${zoneText} | ${ship.attached ? "附着中" : "独立编队"}`,
-    order ? `AI命令 ${modeLabel(order.role)} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%` : "AI命令 暂无",
+    order ? `AI命令 ${modeLabel(order.role)}${order.microRole ? ` / ${modeLabel(order.microRole)}` : ""} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%` : "AI命令 暂无",
     shipThreat ? `承压 ${shortNumber(shipThreat.danger)} | 火源 ${shipThreat.sources}${shipThreat.overwhelmed ? " | 被围攻" : ""}` : "承压 -",
   ].join("<br />");
 }
@@ -1344,7 +1350,7 @@ function drawBotOverlay(seat) {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
-    drawPlanMarker(order.target, palette, `${slotLabel(shipKey)} ${modeLabel(order.role)}`);
+    drawPlanMarker(order.target, palette, `${slotLabel(shipKey)} ${modeLabel(order.microRole || order.role)}`);
   }
 
   if (main && main.alive) {
