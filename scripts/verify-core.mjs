@@ -1150,6 +1150,26 @@ function aiPressureCheck() {
   assert(currentDist < startDist - 40, "AI开局压进不足，主舰未明显主动接近敌方");
 }
 
+function dualAiSeatCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["A", "B"],
+  });
+  const aMain = sim.teamA.ships.main;
+  const bMain = sim.teamB.ships.main;
+  const startDist = Math.hypot(aMain.x - bMain.x, aMain.y - bMain.y);
+
+  assert(sim.botBySeat("A"), "A席启用AI后未创建BotController");
+  assert(sim.botBySeat("B"), "B席启用AI后未创建BotController");
+  assert(sim.bot === sim.botBySeat("B"), "兼容接口 sim.bot 未继续指向 B 席 AI");
+
+  runSteps(sim, 8);
+
+  const currentDist = Math.hypot(aMain.x - bMain.x, aMain.y - bMain.y);
+  assert(currentDist < startDist - 70, "双边 AI 对战时双方未明显主动接近");
+}
+
 function aiEdgeRecoveryCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const bot = sim.bot;
@@ -1203,6 +1223,7 @@ function main() {
   aiFocusSelectionCheck();
   aiSplitDisciplineCheck();
   aiFireArcAwarenessCheck();
+  dualAiSeatCheck();
   aiProbePressureCheck();
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();

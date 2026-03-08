@@ -460,6 +460,35 @@ export function cloneLoadout(loadout = DEFAULT_TEAM_LOADOUT) {
   };
 }
 
+function normalizeAiSeats(mode = "pvp", aiSeats) {
+  let source = aiSeats;
+  if (source === undefined) {
+    source = mode === "ai" ? ["B"] : [];
+  }
+
+  if (source === "all") {
+    source = ["A", "B"];
+  } else if (!Array.isArray(source)) {
+    if (source && typeof source === "object") {
+      source = Object.entries(source)
+        .filter(([, enabled]) => Boolean(enabled))
+        .map(([seat]) => seat);
+    } else if (source == null) {
+      source = [];
+    } else {
+      source = [source];
+    }
+  }
+
+  return Array.from(
+    new Set(
+      source
+        .map((seat) => String(seat || "").trim().toUpperCase())
+        .filter((seat) => seat === "A" || seat === "B"),
+    ),
+  );
+}
+
 export function skillMetaForCharacter(characterId, mode = "flagship") {
   const character = getCharacterDef(characterId);
   return mode === "sub" ? character.subSkill : character.flagshipSkill;
@@ -4566,24 +4595,26 @@ class BotController {
 }
 
 export class MatchSimulation {
-  constructor({
-    mode = "pvp",
-    worldSize = DEFAULT_WORLD_SIZE,
-    mapPadding = DEFAULT_MAP_PADDING,
-    aiAutoBeam = false,
-    teamNames = {
-      A: "玩家A舰队",
-      B: mode === "ai" ? "统合思念体AI舰队" : "玩家B舰队",
-    },
-    teamLoadouts = {
-      A: DEFAULT_TEAM_LOADOUT,
-      B: mode === "ai" ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT,
-    },
-  } = {}) {
+  constructor(options = {}) {
+    const mode = options.mode || "pvp";
+    const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
+    const mapPadding = Number.isFinite(options.mapPadding) ? options.mapPadding : DEFAULT_MAP_PADDING;
+    const aiAutoBeam = Boolean(options.aiAutoBeam);
+    const aiSeats = normalizeAiSeats(mode, options.aiSeats);
+    const teamNames = {
+      A: options.teamNames?.A || (aiSeats.includes("A") ? "观察方AI舰队A" : "玩家A舰队"),
+      B: options.teamNames?.B || (aiSeats.includes("B") ? "统合思念体AI舰队" : "玩家B舰队"),
+    };
+    const teamLoadouts = {
+      A: options.teamLoadouts?.A || DEFAULT_TEAM_LOADOUT,
+      B: options.teamLoadouts?.B || (aiSeats.includes("B") ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
+    };
+
     this.mode = mode;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
-    this.aiAutoBeam = Boolean(aiAutoBeam);
+    this.aiAutoBeam = aiAutoBeam;
+    this.aiSeats = aiSeats;
     this.zones = buildZones(worldSize);
 
     this.tick = 0;
@@ -4605,7 +4636,12 @@ export class MatchSimulation {
     this.projectiles = [];
     this.bursts = [];
     this.floatingTexts = [];
-    this.bot = mode === "ai" ? new BotController(this.teamB, this.teamA) : null;
+    this.bots = {};
+    for (const seat of this.aiSeats) {
+      this.bots[seat] = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
+    }
+    this.botA = this.bots.A || null;
+    this.bot = this.bots.B || null;
   }
 
   clampX(x, padding = 0) {
@@ -4627,6 +4663,10 @@ export class MatchSimulation {
 
   enemyTeamBySeat(seat) {
     return seat === "A" ? this.teamB : this.teamA;
+  }
+
+  botBySeat(seat) {
+    return this.bots[seat] || null;
   }
 
   applyActionForSeat(seat, action) {
@@ -4835,8 +4875,8 @@ export class MatchSimulation {
     this.tick += 1;
     this.elapsed += safeDt;
 
-    if (this.bot) {
-      this.bot.update(safeDt, this.elapsed);
+    for (const bot of Object.values(this.bots)) {
+      bot.update(safeDt, this.elapsed);
     }
 
     this.teamA.update(safeDt);
@@ -4862,6 +4902,8 @@ export class MatchSimulation {
       world: {
         size: this.worldSize,
       },
+      mode: this.mode,
+      aiSeats: [...this.aiSeats],
       zones: this.zones,
       phase: this.phase,
       winnerSeat: this.winnerSeat,
