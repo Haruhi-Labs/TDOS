@@ -3987,42 +3987,27 @@ class BotController {
     if (this.flagshipTimer > 0) {
       return;
     }
-    const plan = this.buildFlagshipSkillPlan(context);
-    const estimate = plan.target || context?.focus || this.primaryEnemyEstimate();
-    if (!plan.cast) {
-      const gap = Number.isFinite(plan.threshold) && Number.isFinite(plan.score)
-        ? Math.max(0, plan.threshold - plan.score)
-        : 1;
-      const urgency = clamp(1 - gap / 1.35, 0, 1);
+    const estimate = context?.focus || this.primaryEnemyEstimate();
+    if (!this.shouldCastFlagshipSkill(estimate, context)) {
       this.lastFlagshipDecision = {
         action: "hold",
         cast: false,
         at: this.team.match.elapsed,
         target: this.debugContact(estimate),
-        targetPoint: this.debugPoint(plan.targetPoint),
-        zoneId: Number.isFinite(plan.zoneId) ? plan.zoneId : null,
-        score: Number.isFinite(plan.score) ? plan.score : null,
-        threshold: Number.isFinite(plan.threshold) ? plan.threshold : null,
-        reason: plan.reason || null,
       };
       this.flagshipTimer = context?.conserveEnergy
         ? randomInRange(1.8, 3.2)
-        : context?.skillAggression > 0.95 || urgency > 0.72
+        : context?.skillAggression > 0.95
           ? randomInRange(0.45, 0.9)
           : randomInRange(1.2, 2.4);
       return;
     }
-    const ok = this.team.castFlagshipSkill(plan.zoneId);
+    const ok = this.team.castFlagshipSkill();
     this.lastFlagshipDecision = {
       action: ok ? "cast" : "retry",
       cast: ok,
       at: this.team.match.elapsed,
       target: this.debugContact(estimate),
-      targetPoint: this.debugPoint(plan.targetPoint),
-      zoneId: Number.isFinite(plan.zoneId) ? plan.zoneId : null,
-      score: Number.isFinite(plan.score) ? plan.score : null,
-      threshold: Number.isFinite(plan.threshold) ? plan.threshold : null,
-      reason: plan.reason || null,
     };
     this.flagshipTimer = ok
       ? (context?.skillAggression > 0.95 ? randomInRange(12, 17) : randomInRange(14, 20))
@@ -4049,50 +4034,37 @@ class BotController {
       return;
     }
 
-    const plan = this.buildSubSkillPlan(ship, context);
-    const estimate = plan.target || context?.focus || this.primaryEnemyEstimate();
-    if (!plan.cast) {
-      const gap = Number.isFinite(plan.threshold) && Number.isFinite(plan.score)
-        ? Math.max(0, plan.threshold - plan.score)
-        : 1;
-      const urgency = clamp(1 - gap / 1.2, 0, 1);
+    const estimate = context?.focus || this.primaryEnemyEstimate();
+    if (!this.shouldCastSubSkill(ship, estimate, context)) {
       this.lastSubSkillDecision[shipKey] = {
         action: "hold",
         cast: false,
         at: this.team.match.elapsed,
         target: this.debugContact(estimate),
-        targetPoint: this.debugPoint(plan.targetPoint),
-        zoneId: Number.isFinite(plan.zoneId) ? plan.zoneId : null,
-        score: Number.isFinite(plan.score) ? plan.score : null,
-        threshold: Number.isFinite(plan.threshold) ? plan.threshold : null,
-        reason: plan.reason || null,
       };
       this.subTimers[shipKey] = context?.conserveEnergy
         ? randomInRange(2, 3.6)
-        : context?.skillAggression > 1 || urgency > 0.74
+        : context?.skillAggression > 1
           ? randomInRange(0.45, 1.1)
           : randomInRange(0.9, 1.8);
       return;
     }
-    const options = {};
-    if (Number.isFinite(plan.zoneId)) {
-      options.zoneId = plan.zoneId;
+    let ok = false;
+    if (ship.characterId === "future1096" && estimate && estimate.source !== "spawn" && (estimate.visible || estimate.age <= 1.6)) {
+      ok = this.team.castSubSkill(shipKey, { targetX: estimate.x, targetY: estimate.y });
+    } else if (ship.characterId === "koizumi") {
+      ok = this.team.castSubSkill(shipKey, estimate ? { targetX: estimate.x, targetY: estimate.y } : {});
+    } else if (ship.characterId === "tsuruya") {
+      const zoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
+      ok = this.team.castSubSkill(shipKey, { zoneId });
+    } else {
+      ok = this.team.castSubSkill(shipKey);
     }
-    if (Number.isFinite(plan.targetX) && Number.isFinite(plan.targetY)) {
-      options.targetX = plan.targetX;
-      options.targetY = plan.targetY;
-    }
-    const ok = this.team.castSubSkill(shipKey, options);
     this.lastSubSkillDecision[shipKey] = {
       action: ok ? "cast" : "retry",
       cast: ok,
       at: this.team.match.elapsed,
       target: this.debugContact(estimate),
-      targetPoint: this.debugPoint(plan.targetPoint),
-      zoneId: Number.isFinite(plan.zoneId) ? plan.zoneId : null,
-      score: Number.isFinite(plan.score) ? plan.score : null,
-      threshold: Number.isFinite(plan.threshold) ? plan.threshold : null,
-      reason: plan.reason || null,
     };
     this.subTimers[shipKey] = ok
       ? (context?.skillAggression > 1 ? randomInRange(12, 18) : randomInRange(15, 22))
@@ -4681,834 +4653,90 @@ class BotController {
     };
   }
 
-  laneSignForPoint(point, enemyEstimate, fallbackSign = 1) {
-    if (!point || !enemyEstimate) {
-      return fallbackSign;
-    }
-    const enemyForwardX = Math.cos(enemyEstimate.angle || 0);
-    const enemyForwardY = Math.sin(enemyEstimate.angle || 0);
-    const dx = point.x - enemyEstimate.x;
-    const dy = point.y - enemyEstimate.y;
-    const cross = enemyForwardX * dy - enemyForwardY * dx;
-    if (Math.abs(cross) < 0.0001) {
-      return fallbackSign;
-    }
-    return cross >= 0 ? 1 : -1;
-  }
-
-  microAnchorRadius(ship, context, macroRole = "press") {
-    let radius = clamp(ship.effectiveRange() * 0.18, 40, ship.key === "main" ? 118 : 96);
-    if (!context?.intelSolid || context?.searchRequired) {
-      radius *= 0.68;
-    }
-    if (macroRole === "search" || macroRole === "probe" || macroRole === "intel") {
-      radius *= 0.74;
-    }
-    if (macroRole === "rear" || macroRole === "standoff" || macroRole === "evade" || macroRole === "harvest") {
-      radius *= 0.82;
-    }
-    if (context?.emergencyCommit && context?.intelSolid) {
-      radius *= 1.08;
-    }
-    return clamp(radius, 24, ship.key === "main" ? 132 : 112);
-  }
-
-  refineAnchoredTarget(ship, enemyEstimate, context, anchor, {
-    macroRole = "press",
-    microRole = null,
-    laneSign = 1,
-    anchorWeight = 1,
-    exposureWeight = 1.18,
-  } = {}) {
-    if (!ship || !ship.alive || !enemyEstimate || !anchor) {
-      return {
-        target: anchor,
-        microRole: microRole || "anchor",
-      };
-    }
-
-    const threat = this.shipThreatSnapshot(ship, 7);
-    const activeMicro = microRole || (
-      threat.overwhelmed || threat.danger > 1.08
-        ? "evade"
-        : macroRole === "intel" || macroRole === "search"
-          ? "probe"
-          : macroRole === "rear" || macroRole === "harvest" || macroRole === "kite" || macroRole === "recover" || macroRole === "regroup"
-            ? "standoff"
-            : "arc"
-    );
-    const strictMacro = !context?.intelSolid && !enemyEstimate.visible;
-    const anchorRadius = this.microAnchorRadius(ship, context, macroRole);
-    const anchorToEnemyX = enemyEstimate.x - anchor.x;
-    const anchorToEnemyY = enemyEstimate.y - anchor.y;
-    const anchorLen = Math.max(1, Math.hypot(anchorToEnemyX, anchorToEnemyY));
-    const toward = { x: anchorToEnemyX / anchorLen, y: anchorToEnemyY / anchorLen };
-    const enemyForward = { x: Math.cos(enemyEstimate.angle), y: Math.sin(enemyEstimate.angle) };
-    const enemySide = { x: -enemyForward.y, y: enemyForward.x };
-    const chosenSign = this.laneSignForPoint(anchor, enemyEstimate, laneSign);
-    const lateral = clamp(anchorRadius * (activeMicro === "arc" || macroRole === "flank" ? 0.94 : 0.7), 18, anchorRadius);
-    const forward = clamp(anchorRadius * 0.52, 12, anchorRadius * 0.78);
-    const retreat = clamp(anchorRadius * (activeMicro === "evade" || activeMicro === "standoff" ? 0.94 : 0.68) + threat.danger * 10, 16, anchorRadius * 1.12);
-    const ownVision = ship.effectiveVision();
-    const enemyVision = this.estimateVisionRange(enemyEstimate);
-    const blindLower = enemyVision + 12;
-    const blindUpper = ownVision - 6;
-
-    const candidates = [
-      {
-        ...anchor,
-        intentAngle: Number.isFinite(anchor.intentAngle) ? anchor.intentAngle : Math.atan2(enemyEstimate.y - anchor.y, enemyEstimate.x - anchor.x),
-        preferredRange: Number.isFinite(anchor.preferredRange) ? anchor.preferredRange : anchorLen,
-        microRole: "anchor",
-      },
-      {
-        x: anchor.x + enemySide.x * lateral * 0.42 * chosenSign,
-        y: anchor.y + enemySide.y * lateral * 0.42 * chosenSign,
-        intentAngle: this.broadsideIntentAngle(
-          anchor.x + enemySide.x * lateral * 0.42 * chosenSign,
-          anchor.y + enemySide.y * lateral * 0.42 * chosenSign,
-          enemyEstimate.x,
-          enemyEstimate.y,
-          chosenSign,
-        ),
-        preferredRange: anchorLen,
-        microRole: "arc",
-      },
-      {
-        x: anchor.x + enemySide.x * lateral * chosenSign,
-        y: anchor.y + enemySide.y * lateral * chosenSign,
-        intentAngle: this.broadsideIntentAngle(
-          anchor.x + enemySide.x * lateral * chosenSign,
-          anchor.y + enemySide.y * lateral * chosenSign,
-          enemyEstimate.x,
-          enemyEstimate.y,
-          chosenSign,
-        ),
-        preferredRange: anchorLen,
-        microRole: "arc",
-      },
-      {
-        x: anchor.x - enemySide.x * lateral * 0.72 * chosenSign,
-        y: anchor.y - enemySide.y * lateral * 0.72 * chosenSign,
-        intentAngle: this.broadsideIntentAngle(
-          anchor.x - enemySide.x * lateral * 0.72 * chosenSign,
-          anchor.y - enemySide.y * lateral * 0.72 * chosenSign,
-          enemyEstimate.x,
-          enemyEstimate.y,
-          -chosenSign,
-        ),
-        preferredRange: anchorLen * 1.04,
-        microRole: "arc",
-      },
-      {
-        x: anchor.x - toward.x * retreat + enemySide.x * chosenSign * lateral * 0.28,
-        y: anchor.y - toward.y * retreat + enemySide.y * chosenSign * lateral * 0.28,
-        intentAngle: Math.atan2(
-          enemyEstimate.y - (anchor.y - toward.y * retreat + enemySide.y * chosenSign * lateral * 0.28),
-          enemyEstimate.x - (anchor.x - toward.x * retreat + enemySide.x * chosenSign * lateral * 0.28),
-        ),
-        preferredRange: anchorLen + retreat * 0.6,
-        microRole: activeMicro === "probe" ? "probe" : "evade",
-      },
-      {
-        x: anchor.x + toward.x * forward + enemySide.x * chosenSign * lateral * 0.18,
-        y: anchor.y + toward.y * forward + enemySide.y * chosenSign * lateral * 0.18,
-        intentAngle: Math.atan2(
-          enemyEstimate.y - (anchor.y + toward.y * forward + enemySide.y * chosenSign * lateral * 0.18),
-          enemyEstimate.x - (anchor.x + toward.x * forward + enemySide.x * chosenSign * lateral * 0.18),
-        ),
-        preferredRange: Math.max(ship.effectiveRange() * 0.56, anchorLen - forward * 0.55),
-        microRole: "pressure",
-      },
-    ];
-
-    if (activeMicro === "probe" || macroRole === "intel") {
-      const probeRange = blindUpper > blindLower
-        ? clamp(lerp(blindLower, blindUpper, 0.5), blindLower, blindUpper)
-        : clamp(Math.max(enemyVision + 18, anchorLen), enemyVision + 12, ownVision);
-      candidates.push({
-        x: enemyEstimate.x - enemyForward.x * probeRange + enemySide.x * chosenSign * Math.min(lateral, anchorRadius * 0.82),
-        y: enemyEstimate.y - enemyForward.y * probeRange + enemySide.y * chosenSign * Math.min(lateral, anchorRadius * 0.82),
-        intentAngle: Math.atan2(
-          enemyEstimate.y - (enemyEstimate.y - enemyForward.y * probeRange + enemySide.y * chosenSign * Math.min(lateral, anchorRadius * 0.82)),
-          enemyEstimate.x - (enemyEstimate.x - enemyForward.x * probeRange + enemySide.x * chosenSign * Math.min(lateral, anchorRadius * 0.82)),
-        ),
-        preferredRange: probeRange,
-        microRole: "probe",
-      });
-    }
-
-    let best = candidates[0];
-    let bestScore = -Infinity;
-    for (const item of candidates) {
-      const candidate = {
-        ...item,
-        x: this.team.match.clampX(item.x, this.safeRoutePadding(8)),
-        y: this.team.match.clampY(item.y, this.safeRoutePadding(8)),
-      };
-      const exchange = this.evaluateArcExchange(
-        ship,
-        enemyEstimate,
-        candidate,
-        exposureWeight + (activeMicro === "evade" || activeMicro === "standoff" ? 0.14 : 0),
-      );
-      const anchorGap = distance(candidate.x, candidate.y, anchor.x, anchor.y);
-      const candidateDist = distance(candidate.x, candidate.y, enemyEstimate.x, enemyEstimate.y);
-      const effectiveAnchorWeight = anchorWeight * (candidate.microRole === "arc" && !strictMacro ? 0.68 : 1);
-      let score = exchange.score - (anchorGap / Math.max(anchorRadius, 1)) * effectiveAnchorWeight * (strictMacro ? 1.55 : 1);
-
-      if (candidate.microRole === "arc") {
-        score += !strictMacro && exchange.ownDensity >= exchange.enemyDensity ? 0.32 : 0.08;
-        if (macroRole === "press" || macroRole === "cutoff" || macroRole === "collapse" || macroRole === "flank" || macroRole === "support") {
-          score += 0.18 + clamp(anchorGap / Math.max(anchorRadius, 1), 0, 0.38) * 0.18;
-        }
-      }
-      if (candidate.microRole === "pressure") {
-        score += (context?.localAdvantage || 0) > 0.96 ? 0.18 : -0.18;
-      }
-      if (candidate.microRole === "evade" || activeMicro === "standoff" || macroRole === "rear" || macroRole === "harvest") {
-        score += candidateDist > anchorLen ? 0.34 : -0.16;
-        score += exchange.enemyDensity <= 1 ? 0.24 : -0.18;
-      }
-      if (candidate.microRole === "probe") {
-        if (blindUpper > blindLower && candidateDist >= blindLower && candidateDist <= blindUpper) {
-          score += 0.72;
-        }
-        if (candidateDist < enemyVision + 4) {
-          score -= 0.92;
-        }
-      }
-      if (macroRole === "flank" || macroRole === "cutoff") {
-        const rearBias = -Math.cos(shortestAngleDelta(Math.atan2(candidate.y - enemyEstimate.y, candidate.x - enemyEstimate.x), enemyEstimate.angle));
-        score += clamp(rearBias * 0.34, -0.1, 0.42);
-      }
-      if (strictMacro && candidate.microRole === "pressure") {
-        score -= 0.42;
-      }
-
-      if (score > bestScore) {
-        bestScore = score;
-        best = candidate;
-      }
-    }
-
-    return {
-      target: best,
-      microRole: best.microRole || activeMicro,
-    };
-  }
-
-  orderForShip(shipOrKey) {
-    const key = typeof shipOrKey === "string" ? shipOrKey : shipOrKey?.key;
-    if (!key) {
-      return null;
-    }
-    return this.lastTacticalPlan?.orders?.[key] || null;
-  }
-
-  skillCastThreshold(meta, context, shipOrKey, bias = 0) {
-    const profile = this.energyProfile(shipOrKey);
-    const costRatio = meta?.cost ? meta.cost / Math.max(profile.max, 1) : 0;
-    let threshold = 0.78 + costRatio * 0.92;
-    threshold += (context?.energyRecoveryNeed || 0) * 0.72;
-    threshold += context?.conserveEnergy ? 0.36 : 0;
-    threshold -= Math.min(0.5, (context?.skillAggression || 0) * 0.22);
-    threshold -= Math.min(0.18, (context?.combatUrgency || 0) * 0.18);
-    threshold -= Math.min(0.14, (context?.energySurplus || 0) * 0.14);
-    threshold -= context?.emergencyCommit ? 0.12 : 0;
-    threshold += bias;
-    return clamp(threshold, 0.3, 1.95);
-  }
-
-  visibleEnemyBuffPressure() {
-    let pressure = 0;
-    const teamBuffs = new Set();
-    const teamBuffNames = new Set(["机关的力量", "无敌", "神秘赞助人"]);
-    for (const ship of this.enemy.getAllShips()) {
-      if (!ship.alive || !this.team.visibleEnemyIds.has(ship.id)) {
-        continue;
-      }
-      const buffs = this.enemy.listShipBuffs(ship);
-      if (!buffs.length) {
-        continue;
-      }
-      let localBuffs = 0;
-      for (const buff of buffs) {
-        if (teamBuffNames.has(buff)) {
-          teamBuffs.add(buff);
-        } else {
-          localBuffs += 1;
-        }
-      }
-      pressure += localBuffs * (ship.key === "main" ? 0.9 : 0.72);
-    }
-    if (teamBuffs.has("机关的力量")) {
-      pressure += 0.96;
-    }
-    if (teamBuffs.has("无敌")) {
-      pressure += 1.28;
-    }
-    if (teamBuffs.has("神秘赞助人")) {
-      pressure += 0.84;
-    }
-    return pressure;
-  }
-
-  teamCooldownPressure() {
-    const entries = [
-      {
-        shipKey: "main",
-        cooldown: this.team.cooldowns.flagship,
-        meta: skillMetaForCharacter(this.team.mainCharacterId(), "flagship"),
-        weight: 1.1,
-      },
-      {
-        shipKey: "sub1",
-        cooldown: this.team.cooldowns.sub1,
-        meta: skillMetaForCharacter(this.team.ships.sub1.characterId, "sub"),
-        weight: 0.86,
-      },
-      {
-        shipKey: "sub2",
-        cooldown: this.team.cooldowns.sub2,
-        meta: skillMetaForCharacter(this.team.ships.sub2.characterId, "sub"),
-        weight: 0.86,
-      },
-    ];
-    let pressure = 0;
-    for (const entry of entries) {
-      const ship = this.team.ships[entry.shipKey];
-      if (!ship?.alive || !entry.meta || entry.meta.type !== "active") {
-        continue;
-      }
-      if (entry.shipKey !== "main" && ship.isAttached()) {
-        continue;
-      }
-      const ratio = clamp((entry.cooldown || 0) / Math.max(entry.meta.cooldown || 1, 1), 0, 1);
-      pressure += ratio * entry.weight;
-      if (ratio > 0.15 && this.energyProfile(entry.shipKey).ratio > 0.42) {
-        pressure += 0.06 * entry.weight;
-      }
-    }
-    return pressure;
-  }
-
-  nearbyKnownEnemyContacts(ship, { maxAge = 8, includeScouts = false, rangeScale = 1.45 } = {}) {
-    if (!ship || !ship.alive) {
-      return [];
-    }
-    const limit = ship.effectiveRange() * rangeScale + 120;
-    return this.knownEnemyContacts({ maxAge, includeScouts })
-      .filter((contact) => distance(ship.x, ship.y, contact.x, contact.y) <= limit)
-      .sort((a, b) => {
-        const scoreA = this.contactCombatValue(a) + (a.visible ? 0.4 : 0) - distance(ship.x, ship.y, a.x, a.y) / 600;
-        const scoreB = this.contactCombatValue(b) + (b.visible ? 0.4 : 0) - distance(ship.x, ship.y, b.x, b.y) / 600;
-        return scoreB - scoreA;
-      });
-  }
-
-  bestBribeZonePlan(ship, estimate, context = this.currentContext) {
-    const meta = skillMetaForCharacter(ship?.characterId, "sub");
-    const threshold = this.skillCastThreshold(meta, context, ship, 0.02);
-    const contacts = this.knownEnemyContacts({ maxAge: 9, includeScouts: true });
-    const zoneScores = new Map();
-    for (const zone of this.team.match.zones) {
-      zoneScores.set(zone.id, 0);
-    }
-    for (const contact of contacts) {
-      if (contact.kind !== "scout" && contact.kind !== "wingman") {
-        continue;
-      }
-      const base = contact.kind === "wingman" ? 1.38 : 0.94;
-      const freshness = clamp(1 - contact.age / 9, 0.2, 1);
-      const certainty = clamp(contact.confidence ?? 1, 0.24, 1);
-      const visibleBias = contact.visible ? 0.18 : 0;
-      zoneScores.set(contact.zoneId, (zoneScores.get(contact.zoneId) || 0) + base * freshness * certainty + visibleBias);
-    }
-    if (estimate?.zoneId && zoneScores.has(estimate.zoneId)) {
-      zoneScores.set(
-        estimate.zoneId,
-        (zoneScores.get(estimate.zoneId) || 0) + (context?.trackableIntel ? 0.12 : 0.04),
-      );
-    }
-
-    let bestZoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
-    let bestScore = -Infinity;
-    for (const [zoneId, score] of zoneScores.entries()) {
-      if (score > bestScore) {
-        bestScore = score;
-        bestZoneId = zoneId;
-      }
-    }
-    const zoneCenter = this.zoneCenter(bestZoneId);
-    const score = Math.max(0, bestScore) + (context?.skillAggression || 0) * 0.12;
-    return {
-      cast: score >= threshold,
-      score,
-      threshold,
-      reason: score >= threshold ? "asset-cluster" : "low-conversion-value",
-      target: estimate,
-      targetPoint: zoneCenter,
-      zoneId: bestZoneId,
-      targetX: null,
-      targetY: null,
-    };
-  }
-
-  bestBeamPlan(ship, estimate, context = this.currentContext) {
-    const meta = skillMetaForCharacter(ship?.characterId, "sub");
-    const threshold = this.skillCastThreshold(meta, context, ship, 0.08);
-    const contacts = this.knownEnemyContacts({ maxAge: 4 })
-      .filter((contact) => contact.kind === "ship" && contact.source !== "spawn" && (contact.visible || contact.age <= 2.8));
-    const candidates = [];
-    const seen = new Set();
-    for (const contact of [estimate, ...contacts]) {
-      if (!contact || contact.kind !== "ship" || contact.source === "spawn") {
-        continue;
-      }
-      if (seen.has(contact.id)) {
-        continue;
-      }
-      seen.add(contact.id);
-      candidates.push(contact);
-    }
-    if (candidates.length === 0) {
-      return {
-        cast: false,
-        score: 0,
-        threshold,
-        reason: "no-firing-solution",
-        target: estimate,
-        targetPoint: null,
-        zoneId: null,
-        targetX: null,
-        targetY: null,
-      };
-    }
-
-    let best = null;
-    let bestScore = -Infinity;
-    for (const candidate of candidates) {
-      const aimDx = candidate.x - ship.x;
-      const aimDy = candidate.y - ship.y;
-      const aimLen = Math.hypot(aimDx, aimDy);
-      if (aimLen < 1e-4) {
-        continue;
-      }
-      const dirX = aimDx / aimLen;
-      const dirY = aimDy / aimLen;
-      const x2 = ship.x + dirX * BEAM_BASE_RANGE;
-      const y2 = ship.y + dirY * BEAM_BASE_RANGE;
-      let score = 0;
-      let hits = 0;
-      for (const contact of contacts) {
-        const probe = linePointDistance(ship.x, ship.y, x2, y2, contact.x, contact.y);
-        const tolerance = (contact.radius || 10) + BEAM_HIT_RADIUS + 6;
-        if (probe.dist > tolerance || probe.t < 0 || probe.t > 1) {
-          continue;
-        }
-        hits += 1;
-        const hpRatio = this.contactHpRatio(contact);
-        score += (contact.slotKey === "main" ? 1.14 : 0.88)
-          + (contact.visible ? 0.24 : 0.08)
-          + clamp(1 - contact.age / 3.6, 0, 0.42)
-          + clamp((BEAM_DAMAGE_RATIO + 0.08 - hpRatio) * 2.8, 0, 1.2);
-      }
-      score += Math.max(0, hits - 1) * 0.84;
-      score += context?.killWindow && candidate.slotKey === "main" ? 0.24 : 0;
-      if (score > bestScore) {
-        bestScore = score;
-        best = candidate;
-      }
-    }
-
-    return {
-      cast: bestScore >= threshold && Boolean(best),
-      score: Math.max(0, bestScore),
-      threshold,
-      reason: bestScore >= threshold ? "beam-line" : "low-beam-value",
-      target: best || estimate,
-      targetPoint: best ? { x: best.x, y: best.y } : null,
-      zoneId: null,
-      targetX: best?.x ?? null,
-      targetY: best?.y ?? null,
-    };
-  }
-
-  bestBlinkPlan(ship, estimate, context = this.currentContext) {
-    const meta = skillMetaForCharacter(ship?.characterId, "sub");
-    const attackThreshold = this.skillCastThreshold(meta, context, ship, 0.04);
-    const escapeThreshold = this.skillCastThreshold(meta, context, ship, -0.14);
-    const order = this.orderForShip(ship);
-    const threat = this.shipThreatSnapshot(ship, 7);
-    const vitality = this.shipVitality(ship);
-    const blinkRange = meta?.blinkRange || 240;
-    const buildEndpoint = (point) => {
-      if (!point) {
-        return null;
-      }
-      const dx = point.x - ship.x;
-      const dy = point.y - ship.y;
-      const len = Math.hypot(dx, dy);
-      const step = len > 1e-4 ? Math.min(len, blinkRange) : 0;
-      const dirX = len > 1e-4 ? dx / len : Math.cos(ship.angle);
-      const dirY = len > 1e-4 ? dy / len : Math.sin(ship.angle);
-      return {
-        x: this.team.match.clampX(ship.x + dirX * step, this.safeRoutePadding(6)),
-        y: this.team.match.clampY(ship.y + dirY * step, this.safeRoutePadding(6)),
-        intentAngle: Number.isFinite(point.intentAngle) ? point.intentAngle : (estimate ? Math.atan2(estimate.y - ship.y, estimate.x - ship.x) : ship.angle),
-        preferredRange: Number.isFinite(point.preferredRange) ? point.preferredRange : ship.effectiveRange() * 0.82,
-      };
-    };
-
-    let escapePlan = null;
-    if (estimate && (threat.overwhelmed || (threat.danger > 1.06 && (vitality.hpRatio < 0.6 || context?.defensivePressure)))) {
-      const anchor = order?.anchor || { x: this.team.ships.main.x, y: this.team.ships.main.y };
-      const escape = this.escapeTargetForShip(ship, anchor.x, anchor.y, 7);
-      const endpoint = buildEndpoint(escape);
-      if (escape && endpoint) {
-        const supportBias = this.friendlyPowerAround(endpoint.x, endpoint.y, 240) - this.enemyThreatAround(endpoint.x, endpoint.y, 240, 5);
-        const score = 0.94
-          + clamp(threat.danger - 0.8, 0, 1.2)
-          + clamp((0.62 - vitality.hpRatio) * 1.6, 0, 0.8)
-          + clamp(supportBias, -0.2, 1.1) * 0.34;
-        escapePlan = {
-          cast: score >= escapeThreshold,
-          score,
-          threshold: escapeThreshold,
-          reason: "escape-blink",
-          target: estimate,
-          targetPoint: endpoint,
-          zoneId: null,
-          targetX: endpoint.x,
-          targetY: endpoint.y,
-        };
-      }
-    }
-
-    if (!estimate || (!estimate.visible && !context?.trackableIntel && estimate.source === "spawn")) {
-      return escapePlan || {
-        cast: false,
-        score: 0,
-        threshold: attackThreshold,
-        reason: "no-engage-window",
-        target: estimate,
-        targetPoint: null,
-        zoneId: null,
-        targetX: null,
-        targetY: null,
-      };
-    }
-
-    const candidates = [];
-    for (const point of [
-      order?.target,
-      order?.anchor,
-      estimate ? {
-        x: estimate.x,
-        y: estimate.y,
-        intentAngle: Math.atan2(estimate.y - ship.y, estimate.x - ship.x),
-        preferredRange: ship.effectiveRange() * 0.84,
-      } : null,
-    ]) {
-      const endpoint = buildEndpoint(point);
-      if (endpoint) {
-        candidates.push(endpoint);
-      }
-    }
-    if (candidates.length === 0) {
-      const inPlace = buildEndpoint({ x: ship.x, y: ship.y, intentAngle: ship.angle, preferredRange: ship.effectiveRange() * 0.82 });
-      if (inPlace) {
-        candidates.push(inPlace);
-      }
-    }
-
-    let bestAttack = null;
-    let bestAttackScore = -Infinity;
-    for (const candidate of candidates) {
-      const exchange = this.evaluateArcExchange(ship, estimate, candidate, 1.1);
-      const candidateDist = distance(candidate.x, candidate.y, estimate.x, estimate.y);
-      const localEnemy = this.enemyThreatAround(candidate.x, candidate.y, 240, 5);
-      const localSupport = this.friendlyPowerAround(candidate.x, candidate.y, 240);
-      let score = exchange.score
-        + (candidateDist <= ship.effectiveRange() * 0.9 ? 0.72 : candidateDist <= ship.effectiveRange() * 1.04 ? 0.42 : -0.3)
-        + (context?.killWindow ? 0.24 : 0)
-        + (context?.isolatedTargetScore || 0) * 0.32
-        + ((order?.role === "flank" || order?.role === "cutoff") ? 0.18 : 0)
-        + (order?.microRole === "arc" ? 0.12 : 0)
-        - clamp(localEnemy - localSupport * 0.7, 0, 1.4) * 0.54;
-      if (candidateDist < ship.effectiveRange() * 0.46) {
-        score -= 0.22;
-      }
-      if (score > bestAttackScore) {
-        bestAttackScore = score;
-        bestAttack = candidate;
-      }
-    }
-
-    const attackPlan = {
-      cast: bestAttackScore >= attackThreshold && Boolean(bestAttack),
-      score: Math.max(0, bestAttackScore),
-      threshold: attackThreshold,
-      reason: bestAttack && distance(bestAttack.x, bestAttack.y, ship.x, ship.y) <= 12 ? "charge-shot" : "attack-blink",
-      target: estimate,
-      targetPoint: bestAttack,
-      zoneId: null,
-      targetX: bestAttack?.x ?? null,
-      targetY: bestAttack?.y ?? null,
-    };
-    if (!escapePlan) {
-      return attackPlan;
-    }
-    return escapePlan.score >= attackPlan.score + 0.18 ? escapePlan : attackPlan;
-  }
-
-  buildFlagshipSkillPlan(context = this.currentContext) {
+  shouldCastFlagshipSkill(estimate, context = this.currentContext) {
     const main = this.team.ships.main;
-    const estimate = context?.focus || this.primaryEnemyEstimate();
     const characterId = this.team.mainCharacterId();
+    if (!estimate || !main.alive) {
+      return false;
+    }
     const meta = skillMetaForCharacter(characterId, "flagship");
-    const unavailable = {
-      cast: false,
-      score: 0,
-      threshold: Infinity,
-      reason: "unavailable",
-      target: estimate,
-      targetPoint: null,
-      zoneId: null,
-      targetX: null,
-      targetY: null,
-    };
-    if (!main?.alive || !meta || meta.type !== "active" || this.team.areSkillsDisabled() || this.team.cooldowns.flagship > 0) {
-      return unavailable;
+    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.05, normalFloor: 0.14, conserveFloor: 0.26 })) {
+      return false;
     }
-
-    const canSpend = !meta.cost || this.allowEnergyCommit("main", meta.cost, context, {
-      emergencyFloor: 0.05,
-      normalFloor: 0.14,
-      conserveFloor: 0.26,
-    });
-    let score = 0;
-    let reason = "hold";
-    const threshold = this.skillCastThreshold(meta, context, "main");
-
+    const dist = distance(main.x, main.y, estimate.x, estimate.y);
     if (characterId === "haruhi") {
-      const subs = [this.team.ships.sub1, this.team.ships.sub2].filter((ship) => ship.alive);
-      const unbuffed = subs.filter((ship) => !ship.activeSosBuff()).length;
-      const readySubs = subs.filter((ship) => !ship.isAttached() || (context?.combatUrgency || 0) > 0.42).length;
-      score = unbuffed * 0.76
-        + readySubs * 0.26
-        + (estimate && (estimate.visible || estimate.age <= 3.4) ? 0.28 : 0)
-        + (context?.skillAggression || 0) * 0.26
-        + (context?.combatUrgency || 0) * 0.18;
-      if (unbuffed === 0) {
-        score -= 0.9;
-      }
-      reason = unbuffed > 0 ? "buff-detached-subs" : "subs-already-buffed";
-    } else if (characterId === "koizumi") {
-      let threatened = 0;
-      if (context?.shipThreats instanceof Map) {
-        for (const threat of context.shipThreats.values()) {
-          if ((threat?.danger || 0) > 0.9) {
-            threatened += 1;
-          }
-        }
-      }
-      score = (context?.emergencyCommit ? 0.92 : 0)
-        + (context?.combatUrgency || 0) * 0.38
-        + (context?.pressureDrive || 0) * 0.28
-        + threatened * 0.32
-        + ((this.mode === "collapse" || this.mode === "press" || this.mode === "cutoff") ? 0.34 : 0)
-        + ((context?.edgePressure || 0) > 0.26 ? 0.22 : 0)
-        + (estimate && (estimate.visible || estimate.age <= 5.5) ? 0.14 : 0);
-      reason = threatened > 0 || context?.emergencyCommit ? "engage-or-rescue" : "mobility-window";
-    } else if (characterId === "tsuruya") {
-      const missingHull = 1 - this.team.hullRatio();
-      const cooldownPressure = this.teamCooldownPressure();
-      score = missingHull * 2.8
-        + cooldownPressure * 0.92
-        + (context?.combatUrgency || 0) * 0.24
-        + (context?.skillAggression || 0) * 0.18;
-      if (missingHull < 0.035 && cooldownPressure < 0.38 && !(context?.emergencyCommit)) {
-        score -= 0.72;
-      }
-      reason = missingHull > 0.08 ? "recover-and-accelerate-cooldowns" : "cooldown-acceleration";
-    } else if (characterId === "asakura") {
-      const buffPressure = this.visibleEnemyBuffPressure();
-      score = buffPressure * 0.88
-        + (!estimate?.visible && (context?.trackableIntel || context?.searchRequired) ? 0.56 : 0)
-        + (estimate?.visible ? 0.12 : 0)
-        + (context?.combatUrgency || 0) * 0.18;
-      reason = buffPressure > 0.2 ? "purge-visible-buffs" : "reveal-search-window";
+      return (estimate.visible || estimate.age <= 3)
+        && dist <= main.effectiveRange() * 1.45
+        && ((context?.skillAggression || 0) > 0.2 || (context?.trackableIntel) || this.energyProfile("main").high);
     }
-
-    if (!canSpend) {
-      return {
-        ...unavailable,
-        score,
-        threshold,
-        reason: "hold-energy",
-        target: estimate,
-      };
+    if (characterId === "koizumi") {
+      return (estimate.visible || estimate.age <= 6 || this.mode === "search" || this.mode === "recover")
+        && ((context?.skillAggression || 0) > 0.1 || (context?.trackableIntel) || this.energyProfile("main").high);
     }
-    return {
-      cast: score >= threshold,
-      score,
-      threshold,
-      reason,
-      target: estimate,
-      targetPoint: null,
-      zoneId: null,
-      targetX: null,
-      targetY: null,
-    };
+    if (characterId === "tsuruya") {
+      return this.team.hullRatio() < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;
+    }
+    if (characterId === "asakura") {
+      return Boolean(estimate && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel));
+    }
+    return true;
   }
 
-  buildSubSkillPlan(ship, context = this.currentContext) {
-    const estimate = context?.focus || this.primaryEnemyEstimate();
-    const meta = skillMetaForCharacter(ship?.characterId, "sub");
-    const unavailable = {
-      cast: false,
-      score: 0,
-      threshold: Infinity,
-      reason: "unavailable",
-      target: estimate,
-      targetPoint: null,
-      zoneId: null,
-      targetX: null,
-      targetY: null,
-    };
-    if (!ship?.alive || !meta || meta.type !== "active" || this.team.areSkillsDisabled() || (this.team.cooldowns[ship.key] || 0) > 0) {
-      return unavailable;
+  shouldCastSubSkill(ship, estimate, context = this.currentContext) {
+    if (!ship || !ship.alive) {
+      return false;
     }
-    const canSpend = !meta.cost || this.allowEnergyCommit(ship, meta.cost, context, {
-      emergencyFloor: 0.03,
-      normalFloor: 0.12,
-      conserveFloor: 0.24,
-    });
-    const localContacts = this.nearbyKnownEnemyContacts(ship, {
-      maxAge: ship.characterId === "future1096" ? 4 : 7,
-      includeScouts: ship.characterId === "tsuruya",
-      rangeScale: ship.characterId === "future1096" ? 2.4 : 1.55,
-    });
-    const localTarget = localContacts.find((contact) => contact.kind !== "scout") || estimate;
-    const dist = localTarget ? distance(ship.x, ship.y, localTarget.x, localTarget.y) : Infinity;
-    let plan = {
-      cast: false,
-      score: 0,
-      threshold: this.skillCastThreshold(meta, context, ship),
-      reason: "hold",
-      target: localTarget,
-      targetPoint: null,
-      zoneId: null,
-      targetX: null,
-      targetY: null,
-    };
-
+    const meta = skillMetaForCharacter(ship.characterId, "sub");
+    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: 0.03, normalFloor: 0.12, conserveFloor: 0.24 })) {
+      return false;
+    }
+    const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
     if (ship.characterId === "haruhi") {
-      const order = this.orderForShip(ship);
-      const attackable = localContacts.filter((contact) => this.arcDensityFromState(ship.angle, ship.x, ship.y, contact.x, contact.y, false) > 0);
-      const primary = attackable[0] || localTarget;
-      const threshold = this.skillCastThreshold(meta, context, ship, 0.04);
-      const score = (primary ? 0.72 : 0)
-        + Math.min(attackable.length, 3) * 0.22
-        + (context?.killWindow && primary?.slotKey === "main" ? 0.26 : 0)
-        + (context?.isolatedTargetScore || 0) * 0.24
-        + ((context?.skillAggression) || 0) * 0.2
-        + (primary && primary.kind === "ship" && this.contactHpRatio(primary) < 0.55 ? 0.18 : 0)
-        - ((order?.role === "rear" || order?.role === "intel") && !primary?.visible ? 0.22 : 0);
-      plan = {
-        cast: score >= threshold,
-        score,
-        threshold,
-        reason: primary ? "burst-window" : "no-target-in-arc",
-        target: primary || localTarget,
-        targetPoint: null,
-        zoneId: null,
-        targetX: null,
-        targetY: null,
-      };
-    } else if (ship.characterId === "koizumi") {
-      plan = this.bestBlinkPlan(ship, localTarget, context);
-    } else if (ship.characterId === "yuki") {
-      const activeScouts = this.team.scouts.filter((item) => item.alive).length;
-      const role = this.orderForShip(ship)?.role;
-      const threshold = this.skillCastThreshold(meta, context, ship, -0.08);
-      const score = (context?.scoutPriority || 0) * 1.16
-        + (context?.trackableIntel ? 0.34 : 0)
-        + (context?.searchRequired ? 0.38 : 0)
-        + (!estimate || !estimate.visible ? 0.22 : 0)
-        + (activeScouts === 0 ? 0.58 : activeScouts < 3 ? 0.26 : -0.18)
-        + (role === "intel" ? 0.2 : 0)
-        - Math.max(0, activeScouts - 4) * 0.12;
-      plan = {
-        cast: score >= threshold,
-        score,
-        threshold,
-        reason: score >= threshold ? "intel-burst" : "scout-coverage-sufficient",
-        target: estimate,
-        targetPoint: null,
-        zoneId: null,
-        targetX: null,
-        targetY: null,
-      };
-    } else if (ship.characterId === "future1096") {
-      plan = this.bestBeamPlan(ship, localTarget, context);
-    } else if (ship.characterId === "kyon") {
-      const threat = this.shipThreatSnapshot(ship, 7);
-      const vitality = this.shipVitality(ship);
-      const role = this.orderForShip(ship)?.role;
-      const threshold = this.skillCastThreshold(meta, context, ship, -0.12);
-      const score = (1 - vitality.hpRatio) * 1.62
-        + clamp(threat.danger - 0.42, 0, 1.2) * 0.72
-        + ((role === "front" || role === "flank") ? 0.22 : 0)
-        + (context?.emergencyCommit ? 0.14 : 0)
-        + (dist <= ship.effectiveRange() * 1.08 ? 0.18 : 0);
-      plan = {
-        cast: score >= threshold,
-        score,
-        threshold,
-        reason: vitality.hpRatio < 0.82 ? "self-sustain" : "frontline-buff",
-        target: localTarget,
-        targetPoint: null,
-        zoneId: null,
-        targetX: null,
-        targetY: null,
-      };
-    } else if (ship.characterId === "tsuruya") {
-      plan = this.bestBribeZonePlan(ship, localTarget, context);
-    } else if (ship.characterId === "asakura") {
-      const role = this.orderForShip(ship)?.role;
-      const vitality = this.shipVitality(ship);
-      const threshold = this.skillCastThreshold(meta, context, ship, 0.02);
-      const score = (localTarget && (localTarget.visible || localTarget.age <= 2.4) ? 0.42 : 0)
-        + clamp(1 - dist / Math.max(ship.effectiveRange() * 0.96, 1), -0.2, 0.82)
-        + ((role === "front" || role === "flank") ? 0.28 : role === "rear" ? -0.24 : 0)
-        + (context?.killWindow ? 0.22 : 0)
-        + (context?.isolatedTargetScore || 0) * 0.28
-        + ((context?.skillAggression) || 0) * 0.16
-        - (vitality.fragile && role !== "escape" ? 0.22 : 0);
-      plan = {
-        cast: score >= threshold,
-        score,
-        threshold,
-        reason: score >= threshold ? "contact-burst" : "no-safe-contact-window",
-        target: localTarget,
-        targetPoint: null,
-        zoneId: null,
-        targetX: null,
-        targetY: null,
-      };
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 2.5)
+        && dist <= ship.effectiveRange() * 1.35
+        && (((context?.skillAggression) || 0) > 0.16 || this.energyProfile(ship).high),
+      );
     }
-
-    if (!canSpend) {
-      return {
-        ...plan,
-        cast: false,
-        reason: "hold-energy",
-      };
+    if (ship.characterId === "koizumi") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel)
+        && (((context?.skillAggression) || 0) > 0.14 || this.energyProfile(ship).high),
+      );
     }
-    return plan;
+    if (ship.characterId === "future1096") {
+      return Boolean(
+        estimate
+        && estimate.source !== "spawn"
+        && (estimate.visible || estimate.age <= 1.6)
+        && (((context?.skillAggression) || 0) > 0.18 || context?.emergencyCommit),
+      );
+    }
+    if (ship.characterId === "kyon") {
+      return ship.hp / Math.max(1, ship.maxHp) < 0.84 || Boolean(estimate && dist <= ship.effectiveRange() * 1.18);
+    }
+    if (ship.characterId === "tsuruya") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 7)
+        && (((context?.skillAggression) || 0) > 0.08 || (context?.trackableIntel)),
+      );
+    }
+    if (ship.characterId === "yuki") {
+      return (((context?.scoutPriority) || 0) > 0.28 || this.energyProfile(ship).high)
+        && (!estimate || !estimate.visible || estimate.age > 2.5 || this.team.scouts.length < 3);
+    }
+    if (ship.characterId === "asakura") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 2.4)
+        && dist <= ship.effectiveRange() * 0.95
+        && (((context?.skillAggression) || 0) > 0.14 || context?.killWindow || context?.combatUrgency > 0.5),
+      );
+    }
+    return true;
   }
 
   computeMainTarget(mode, main, enemyEstimate, center) {
@@ -5811,21 +5039,6 @@ class BotController {
         mainTarget = supportCandidate;
       }
     }
-    const mainAnchor = {
-      ...mainTarget,
-    };
-    const refinedMain = this.refineAnchoredTarget(main, enemyEstimate, tactical, mainAnchor, {
-      macroRole: mode,
-      microRole: mode === "search"
-        ? "probe"
-        : mode === "harvest" || mode === "kite" || mode === "recover" || mode === "regroup"
-          ? "standoff"
-          : "arc",
-      laneSign: sign,
-      anchorWeight: mode === "search" ? 1.64 : sectorPlan ? 1.22 : 0.98,
-      exposureWeight: mode === "collapse" ? 1.02 : 1.18,
-    });
-    mainTarget = refinedMain.target;
     const throttleShift = tactical.emergencyCommit
       ? 0.06 + tactical.energySurplus * 0.05
       : tactical.energySurplus * 0.05 - tactical.energyRecoveryNeed * 0.18;
@@ -5860,9 +5073,7 @@ class BotController {
       debugPlan.orders.main = {
         shipKey: "main",
         role: mode,
-        microRole: refinedMain.microRole,
         detached: false,
-        anchor: this.debugPoint(mainAnchor),
         target: this.debugPoint(mainTarget),
         throttle: mainIssued.throttle,
         padding: mainIssued.padding,
@@ -5885,51 +5096,32 @@ class BotController {
       if (!directive) {
         return;
       }
-      const activeRole = directive.role || role;
-      const macroAnchor = {
-        ...directive.target,
-      };
-      const refined = this.refineAnchoredTarget(ship, enemyEstimate, tactical, macroAnchor, {
-        macroRole: activeRole,
-        microRole: activeRole === "intel"
-          ? "probe"
-          : activeRole === "escape"
-            ? "evade"
-            : activeRole === "rear"
-            ? "standoff"
-            : "arc",
-        laneSign,
-        anchorWeight: activeRole === "intel" || activeRole === "rear" || activeRole === "escape" ? 1.34 : activeRole === "flank" ? 0.9 : 1.06,
-        exposureWeight: activeRole === "rear" || activeRole === "escape" ? 1.28 : 1.12,
-      });
       let throttleRange = directive.throttle;
-      if (activeRole === "escape") {
+      if (role === "escape") {
         throttleRange = { min: 1.04, max: 1.2 };
-      } else if (mode === "harvest" && activeRole !== "intel") {
+      } else if (mode === "harvest" && role !== "intel") {
         throttleRange = { min: 0.58, max: Math.min(0.88, throttleRange.max) };
-      } else if (mode === "regroup" && activeRole !== "intel" && activeRole !== "front") {
+      } else if (mode === "regroup" && role !== "intel" && role !== "front") {
         throttleRange = {
           min: Math.max(0.68, throttleRange.min - 0.08),
           max: Math.max(Math.max(0.78, throttleRange.min), throttleRange.max - 0.06),
         };
-      } else if (mode === "kite" && activeRole === "rear") {
+      } else if (mode === "kite" && role === "rear") {
         throttleRange = { min: 0.54, max: 0.76 };
       }
       const issued = this.issueShipRoute(
         ship,
-        refined.target.x,
-        refined.target.y,
+        directive.target.x,
+        directive.target.y,
         throttleBand(throttleRange.min, throttleRange.max),
-        this.safeRoutePadding(activeRole === "rear" || activeRole === "escape" ? 14 : 8),
+        this.safeRoutePadding(role === "rear" || role === "escape" ? 14 : 8),
       );
       if (issued) {
         debugPlan.orders[ship.key] = {
           shipKey: ship.key,
-          role: activeRole,
-          microRole: refined.microRole,
+          role: directive.role,
           detached: true,
-          anchor: this.debugPoint(macroAnchor),
-          target: this.debugPoint(refined.target),
+          target: this.debugPoint(directive.target),
           throttle: issued.throttle,
           padding: issued.padding,
           update: issued.update,
@@ -5966,23 +5158,13 @@ class BotController {
                   : mode === "collapse"
                     ? focus.y - side.y * 180 - toward.y * 28
                     : mode === "broadside"
-                    ? focus.y + side.y * sign * 220 - toward.y * 90
+                      ? focus.y + side.y * sign * 220 - toward.y * 90
                       : focus.y + randomInRange(-250, 250),
           };
-      const sub1Anchor = {
-        ...sub1Target,
-      };
-      const refinedSub1 = this.refineAnchoredTarget(this.team.ships.sub1, enemyEstimate, tactical, sub1Anchor, {
-        macroRole: mode === "search" ? "search" : "support",
-        microRole: mode === "search" ? "probe" : mode === "harvest" || mode === "kite" || mode === "regroup" ? "standoff" : "arc",
-        laneSign: this.laneSignForPoint(sub1Anchor, enemyEstimate, sign),
-        anchorWeight: mode === "search" ? 1.52 : 1.1,
-        exposureWeight: mode === "harvest" || mode === "kite" ? 1.24 : 1.1,
-      });
       const issued = this.issueShipRoute(
         this.team.ships.sub1,
-        refinedSub1.target.x,
-        refinedSub1.target.y,
+        sub1Target.x,
+        sub1Target.y,
         mode === "harvest"
           ? throttleBand(0.7, 0.88)
           : mode === "collapse"
@@ -5996,10 +5178,8 @@ class BotController {
         debugPlan.orders.sub1 = {
           shipKey: "sub1",
           role: mode === "search" ? "search" : "support",
-          microRole: refinedSub1.microRole,
           detached: false,
-          anchor: this.debugPoint(sub1Anchor),
-          target: this.debugPoint(refinedSub1.target),
+          target: this.debugPoint(sub1Target),
           throttle: issued.throttle,
           padding: issued.padding,
           update: issued.update,
@@ -6038,23 +5218,13 @@ class BotController {
                   : mode === "collapse"
                     ? focus.y + side.y * 180 - toward.y * 28
                     : mode === "broadside"
-                    ? focus.y + side.y * sign * 120 + toward.y * 70
+                      ? focus.y + side.y * sign * 120 + toward.y * 70
                       : focus.y + Math.sin(orbitAngle + Math.PI * 0.5) * randomInRange(160, 300),
           };
-      const sub2Anchor = {
-        ...sub2Target,
-      };
-      const refinedSub2 = this.refineAnchoredTarget(this.team.ships.sub2, enemyEstimate, tactical, sub2Anchor, {
-        macroRole: mode === "search" ? "search" : "support",
-        microRole: mode === "search" ? "probe" : mode === "harvest" || mode === "kite" || mode === "regroup" ? "standoff" : "arc",
-        laneSign: this.laneSignForPoint(sub2Anchor, enemyEstimate, -sign),
-        anchorWeight: mode === "search" ? 1.52 : 1.1,
-        exposureWeight: mode === "harvest" || mode === "kite" ? 1.24 : 1.1,
-      });
       const issued = this.issueShipRoute(
         this.team.ships.sub2,
-        refinedSub2.target.x,
-        refinedSub2.target.y,
+        sub2Target.x,
+        sub2Target.y,
         mode === "harvest"
           ? throttleBand(0.68, 0.86)
           : mode === "collapse"
@@ -6068,10 +5238,8 @@ class BotController {
         debugPlan.orders.sub2 = {
           shipKey: "sub2",
           role: mode === "search" ? "search" : "support",
-          microRole: refinedSub2.microRole,
           detached: false,
-          anchor: this.debugPoint(sub2Anchor),
-          target: this.debugPoint(refinedSub2.target),
+          target: this.debugPoint(sub2Target),
           throttle: issued.throttle,
           padding: issued.padding,
           update: issued.update,

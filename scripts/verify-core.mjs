@@ -646,7 +646,7 @@ function aiRetreatJudgementCheck() {
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  aiMain.x = 930;
+  aiMain.x = 980;
   aiMain.y = 720;
   aiMain.hp = aiMain.maxHp * 0.22;
   aiMain.energy = aiMain.maxEnergy * 0.14;
@@ -1271,177 +1271,6 @@ function aiEmergencyEnergyCommitCheck() {
   assert(aiMain.route && aiMain.throttle >= 0.92, "AI接敌紧急时主舰推进仍过于保守");
 }
 
-function aiTsuruyaBribeZoneChoiceCheck() {
-  const sim = new MatchSimulation({
-    mode: "ai",
-    worldSize: 1440,
-    teamLoadouts: {
-      A: {
-        main: "kyon",
-        sub1: "haruhi",
-        sub2: "koizumi",
-      },
-      B: {
-        main: "kyon",
-        sub1: "tsuruya",
-        sub2: "haruhi",
-      },
-    },
-  });
-  const bot = sim.bot;
-  const aiTeam = sim.teamB;
-  const enemyTeam = sim.teamA;
-  const aiMain = aiTeam.ships.main;
-  const tsuruya = aiTeam.ships.sub1;
-  const enemyMain = enemyTeam.ships.main;
-
-  aiTeam.split(1);
-  tsuruya.energy = tsuruya.maxEnergy;
-  bot.subTimers.sub1 = 0;
-
-  aiMain.x = 1040;
-  aiMain.y = 760;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
-  aiMain.route = null;
-
-  tsuruya.x = 980;
-  tsuruya.y = 812;
-  tsuruya.command.x = tsuruya.x;
-  tsuruya.command.y = tsuruya.y;
-  tsuruya.route = null;
-
-  enemyMain.x = 780;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
-  enemyMain.route = null;
-
-  const zone2 = sim.zoneById(2);
-  const zone9 = sim.zoneById(9);
-  const fakeScouts = [
-    { id: 990201, zone: zone2 },
-    { id: 990202, zone: zone2 },
-    { id: 990209, zone: zone9 },
-  ].map(({ id, zone }) => ({
-    id,
-    kind: "scout",
-    alive: true,
-    team: enemyTeam,
-    x: zone.x + zone.width * 0.5,
-    y: zone.y + zone.height * 0.5,
-    angle: 0,
-    speed: 0,
-    hp: 1,
-    maxHp: 1,
-    radius: 3,
-    command: {
-      x: zone.x + zone.width * 0.5,
-      y: zone.y + zone.height * 0.5,
-    },
-  }));
-  enemyTeam.scouts.push(...fakeScouts);
-  for (const scout of fakeScouts) {
-    bot.rememberContact(scout, "visible");
-  }
-  bot.rememberContact(enemyMain, "visible");
-
-  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
-  bot.trySubSkill("sub1", context);
-
-  assert(bot.lastSubSkillDecision.sub1.zoneId === 2, "AI 鹤屋未优先策反高价值战区");
-  assert(enemyTeam.scouts.length === 1, "AI 鹤屋策反后敌方侦察机数量异常");
-  assert(aiTeam.scouts.length >= 2, "AI 鹤屋策反后己方未获得目标战区侦察机");
-}
-
-function aiAsakuraFlagshipPurgeDecisionCheck() {
-  const sim = new MatchSimulation({
-    mode: "ai",
-    worldSize: 1440,
-    teamLoadouts: {
-      A: {
-        main: "koizumi",
-        sub1: "haruhi",
-        sub2: "kyon",
-      },
-      B: {
-        main: "asakura",
-        sub1: "haruhi",
-        sub2: "kyon",
-      },
-    },
-  });
-  const bot = sim.bot;
-  const aiTeam = sim.teamB;
-  const enemyTeam = sim.teamA;
-  const aiMain = aiTeam.ships.main;
-  const enemyMain = enemyTeam.ships.main;
-
-  aiMain.x = 980;
-  aiMain.y = 720;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
-  aiMain.route = null;
-
-  enemyMain.x = 820;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
-  enemyMain.route = null;
-
-  const castOk = enemyTeam.castFlagshipSkill();
-  assert(castOk, "净化测试场景里敌方增益未成功施加");
-
-  enemyTeam.computeVisibility(aiTeam);
-  aiTeam.computeVisibility(enemyTeam);
-  bot.rememberContact(enemyMain, "visible");
-  bot.flagshipTimer = 0;
-
-  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
-  bot.tryFlagshipSkill(context);
-
-  assert(aiTeam.effects.revealEnemiesUntil > sim.elapsed, "AI 朝仓未在可见敌方增益时释放旗舰技能");
-  assert(enemyTeam.effects.taxiUntil <= sim.elapsed, "AI 朝仓释放净化后敌方增益未被清除");
-}
-
-function aiTsuruyaSponsorHoldCheck() {
-  const sim = new MatchSimulation({
-    mode: "ai",
-    worldSize: 1440,
-    teamLoadouts: {
-      A: {
-        main: "kyon",
-        sub1: "haruhi",
-        sub2: "koizumi",
-      },
-      B: {
-        main: "tsuruya",
-        sub1: "haruhi",
-        sub2: "kyon",
-      },
-    },
-  });
-  const bot = sim.bot;
-  const aiTeam = sim.teamB;
-  const aiMain = aiTeam.ships.main;
-
-  for (const ship of aiTeam.getAllShips()) {
-    ship.hp = ship.maxHp;
-    ship.energy = ship.maxEnergy;
-  }
-  aiTeam.cooldowns.sub1 = 0;
-  aiTeam.cooldowns.sub2 = 0;
-  bot.flagshipTimer = 0;
-
-  const context = bot.buildTacticalContext(aiMain, bot.primaryEnemyEstimate());
-  bot.tryFlagshipSkill(context);
-
-  assert(aiTeam.effects.sponsorUntil <= sim.elapsed, "AI 在无收益窗口时仍空放鹤屋旗舰技能");
-  assert(bot.lastFlagshipDecision.action === "hold", "AI 在低价值窗口未保留鹤屋旗舰技能");
-}
-
 function aiPressureCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const startDist = Math.hypot(
@@ -1496,60 +1325,6 @@ function aiDebugSnapshotCheck() {
   assert(state.bots.B.orders?.main && Number.isFinite(state.bots.B.orders.main.target?.y), "B 队 AI 调试快照缺少主舰命令");
   assert(Number.isFinite(state.bots.A.scoutDecision?.nextIn), "A 队 AI 调试快照缺少侦察计时");
   assert(Number.isFinite(state.bots.B.flagshipDecision?.nextIn), "B 队 AI 调试快照缺少旗舰技计时");
-}
-
-function aiMacroMicroLayeringCheck() {
-  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
-  const aiTeam = sim.teamB;
-  const aiMain = aiTeam.ships.main;
-  const enemyTeam = sim.teamA;
-  const enemyMain = enemyTeam.ships.main;
-
-  enemyTeam.ships.sub1.takeDamage(enemyTeam.ships.sub1.maxHp * 2, null, sim);
-  enemyTeam.ships.sub2.takeDamage(enemyTeam.ships.sub2.maxHp * 2, null, sim);
-
-  aiMain.x = 1010;
-  aiMain.y = 760;
-  aiMain.angle = Math.PI;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
-  aiMain.route = null;
-
-  enemyMain.x = 780;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI * 0.5;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
-  enemyMain.route = null;
-
-  enemyTeam.computeVisibility(aiTeam);
-  aiTeam.computeVisibility(enemyTeam);
-  bot.rememberContact(enemyMain, "visible");
-  bot.mode = "cutoff";
-  bot.modeTimer = 3.5;
-
-  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
-  assert(context.isolatedTargetScore > 0.28, "宏微分层测试场景未形成足够明显的包抄目标");
-
-  bot.issueMovement(context);
-
-  const order = bot.lastTacticalPlan?.orders?.main;
-  assert(order && order.anchor && order.target, "AI 主舰命令未同时保留宏观锚点和微操目标");
-  assert(typeof order.microRole === "string", "AI 主舰命令未记录微操角色");
-
-  const anchorGap = Math.hypot(order.target.x - order.anchor.x, order.target.y - order.anchor.y);
-  assert(anchorGap > 10, "AI 微操未在宏观锚点附近产生局部修正");
-  assert(anchorGap < 145, "AI 微操偏离宏观锚点过远，重新出现策略覆盖");
-
-  const anchorExchange = bot.evaluateArcExchange(aiMain, context.focus, order.anchor, 1.18);
-  const targetExchange = bot.evaluateArcExchange(aiMain, context.focus, order.target, 1.18);
-  assert(
-    targetExchange.score > anchorExchange.score + 0.04
-      || targetExchange.enemyDensity < anchorExchange.enemyDensity - 0.08
-      || targetExchange.ownDensity > anchorExchange.ownDensity + 0.08,
-    "AI 微操未在维持宏观部署的同时改善局部交火效率",
-  );
 }
 
 function aiEdgeRecoveryCheck() {
@@ -1607,7 +1382,6 @@ function main() {
   aiFireArcAwarenessCheck();
   dualAiSeatCheck();
   aiDebugSnapshotCheck();
-  aiMacroMicroLayeringCheck();
   aiProbePressureCheck();
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();
@@ -1616,9 +1390,6 @@ function main() {
   aiBacklineFlankCheck();
   aiOverwhelmedEscapeCheck();
   aiEnergyRecoveryModeCheck();
-  aiTsuruyaBribeZoneChoiceCheck();
-  aiAsakuraFlagshipPurgeDecisionCheck();
-  aiTsuruyaSponsorHoldCheck();
   aiHighEnergySkillAggressionCheck();
   aiEmergencyEnergyCommitCheck();
   aiPressureCheck();
