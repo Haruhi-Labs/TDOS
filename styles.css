@@ -707,6 +707,88 @@ input[type="range"] {
   color: #f0fbff;
 }
 
+.debug-ai-card {
+  min-height: 184px;
+}
+
+.debug-ai-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.debug-ai-headline strong {
+  color: #f1fbff;
+  font-size: 0.84rem;
+}
+
+.debug-ai-headline span {
+  color: #8fc4eb;
+  font-size: 0.72rem;
+}
+
+.debug-ai-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.debug-ai-tag {
+  border: 1px solid #295b84;
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #0d2439;
+  color: #d9efff;
+  font-size: 0.7rem;
+}
+
+.debug-ai-tag.alert {
+  border-color: #8a4054;
+  background: #321520;
+  color: #ffd0da;
+}
+
+.debug-ai-tag.good {
+  border-color: #2d7f74;
+  background: #102824;
+  color: #c8fff2;
+}
+
+.debug-ai-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 8px;
+}
+
+.debug-ai-grid div {
+  border: 1px solid #153754;
+  border-radius: 8px;
+  padding: 4px 6px;
+  background: #081c2dd4;
+}
+
+.debug-ai-grid strong {
+  display: block;
+  color: #81cfff;
+  font-size: 0.68rem;
+  margin-bottom: 2px;
+}
+
+.debug-ai-orders {
+  display: grid;
+  gap: 4px;
+}
+
+.debug-ai-orders div {
+  border-left: 2px solid #295c84;
+  padding-left: 7px;
+}
+
+.debug-ai-card .debug-ai-mute {
+  color: #90abc7;
+}
+
 @media (max-width: 980px) {
   .app-shell {
     grid-template-columns: 1fr;

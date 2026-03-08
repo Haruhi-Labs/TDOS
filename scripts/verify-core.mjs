@@ -969,21 +969,158 @@ function aiSectorEncirclementCheck() {
   bot.issueMovement();
 
   const focus = bot.primaryEnemyEstimate();
+  const mainRoute = aiTeam.ships.main.route;
   const sub1Route = aiTeam.ships.sub1.route;
   const sub2Route = aiTeam.ships.sub2.route;
-  assert(sub1Route && sub2Route, "AI未为扇区围堵生成双副舰路线");
+  assert(mainRoute && sub1Route && sub2Route, "AI未为扇区围堵生成完整三路围堵路线");
 
   const forward = { x: Math.cos(focus.angle), y: Math.sin(focus.angle) };
   const side = { x: -forward.y, y: forward.x };
+  const relMain = { x: mainRoute.p2.x - focus.x, y: mainRoute.p2.y - focus.y };
   const rel1 = { x: sub1Route.p2.x - focus.x, y: sub1Route.p2.y - focus.y };
   const rel2 = { x: sub2Route.p2.x - focus.x, y: sub2Route.p2.y - focus.y };
+  const frontMain = relMain.x * forward.x + relMain.y * forward.y;
   const front1 = rel1.x * forward.x + rel1.y * forward.y;
   const front2 = rel2.x * forward.x + rel2.y * forward.y;
   const side1 = rel1.x * side.x + rel1.y * side.y;
   const side2 = rel2.x * side.x + rel2.y * side.y;
 
+  assert(frontMain > 70, "AI围堵时主舰未同步前顶到目标前方扇区");
   assert(front1 > 100 && front2 > 100, "AI围堵时未把副舰布到目标前方扇区");
   assert(side1 * side2 < 0, "AI围堵时双副舰未分占目标两侧扇区");
+}
+
+function aiBacklineFlankCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+      B: {
+        main: "kyon",
+        sub1: "future1096",
+        sub2: "asakura",
+      },
+    },
+  });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const aiMain = aiTeam.ships.main;
+  const sub1 = aiTeam.ships.sub1;
+  const sub2 = aiTeam.ships.sub2;
+  const enemyMain = sim.teamA.ships.main;
+
+  aiTeam.split(1);
+  aiTeam.split(2);
+
+  aiMain.x = 1080;
+  aiMain.y = 720;
+  aiMain.command.x = aiMain.x;
+  aiMain.command.y = aiMain.y;
+  aiMain.route = null;
+
+  sub1.x = 1020;
+  sub1.y = 770;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+
+  sub2.x = 1020;
+  sub2.y = 670;
+  sub2.command.x = sub2.x;
+  sub2.command.y = sub2.y;
+  sub2.route = null;
+
+  enemyMain.x = 780;
+  enemyMain.y = 720;
+  enemyMain.angle = 0;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  bot.rememberContact(enemyMain, "visible");
+  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+  bot.issueMovement(context);
+
+  assert(sub1.route && sub2.route, "AI未为绕后副舰生成路线");
+
+  const rearAxis = { x: Math.cos(enemyMain.angle), y: Math.sin(enemyMain.angle) };
+  const rear1 = (sub1.route.p2.x - enemyMain.x) * rearAxis.x + (sub1.route.p2.y - enemyMain.y) * rearAxis.y;
+  const rear2 = (sub2.route.p2.x - enemyMain.x) * rearAxis.x + (sub2.route.p2.y - enemyMain.y) * rearAxis.y;
+
+  assert(rear1 < -110 || rear2 < -110, "AI未主动把至少一支绕后副舰送到敌舰后方");
+  assert(sub1.throttle >= 0.98 || sub2.throttle >= 0.98, "AI绕后副舰推进仍不够积极");
+}
+
+function aiOverwhelmedEscapeCheck() {
+  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const aiMain = aiTeam.ships.main;
+  const sub1 = aiTeam.ships.sub1;
+  const sub2 = aiTeam.ships.sub2;
+  const enemyMain = sim.teamA.ships.main;
+  const enemySub1 = sim.teamA.ships.sub1;
+
+  aiTeam.split(1);
+  aiTeam.split(2);
+
+  aiMain.x = 1100;
+  aiMain.y = 720;
+  aiMain.command.x = aiMain.x;
+  aiMain.command.y = aiMain.y;
+  aiMain.route = null;
+
+  sub1.x = 890;
+  sub1.y = 740;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  sub1.hp = sub1.maxHp * 0.42;
+  sub1.energy = sub1.maxEnergy * 0.24;
+
+  sub2.x = 1060;
+  sub2.y = 650;
+  sub2.command.x = sub2.x;
+  sub2.command.y = sub2.y;
+  sub2.route = null;
+
+  enemyMain.x = 760;
+  enemyMain.y = 700;
+  enemyMain.angle = 0;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  enemySub1.x = 790;
+  enemySub1.y = 785;
+  enemySub1.angle = 0;
+  enemySub1.command.x = enemySub1.x;
+  enemySub1.command.y = enemySub1.y;
+  enemySub1.route = null;
+
+  bot.rememberContact(enemyMain, "visible");
+  bot.rememberContact(enemySub1, "visible");
+  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+  bot.issueMovement(context);
+
+  assert(sub1.route, "AI未为被围攻副舰生成脱困路线");
+
+  const enemyCenterX = (enemyMain.x + enemySub1.x) * 0.5;
+  const enemyCenterY = (enemyMain.y + enemySub1.y) * 0.5;
+  const startDist = Math.hypot(sub1.x - enemyCenterX, sub1.y - enemyCenterY);
+  const targetDist = Math.hypot(sub1.route.p2.x - enemyCenterX, sub1.route.p2.y - enemyCenterY);
+
+  assert(targetDist > startDist + 90, "AI被围攻副舰未明显朝远离双火力源的方向脱困");
+  assert(sub1.throttle >= 1.02, "AI被围攻副舰脱困时未提升推进输出");
+
+  bot.scoutTimer = 10;
+  bot.update(TICK_DT, sim.elapsed + TICK_DT);
+  assert(bot.scoutTimer <= 0.45, "AI单舰受压时未立刻把侦察节奏提前到高压模式");
 }
 
 function aiEnergyRecoveryModeCheck() {
@@ -1170,6 +1307,26 @@ function dualAiSeatCheck() {
   assert(currentDist < startDist - 70, "双边 AI 对战时双方未明显主动接近");
 }
 
+function aiDebugSnapshotCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["A", "B"],
+  });
+
+  runSteps(sim, 1.2);
+  const state = sim.serializeState();
+
+  assert(state.bots && state.bots.A && state.bots.B, "调试快照未包含双方 AI 状态");
+  assert(typeof state.bots.A.mode === "string" && typeof state.bots.B.mode === "string", "AI 调试快照缺少当前模式");
+  assert(state.bots.A.focus && Number.isFinite(state.bots.A.focus.x), "A 队 AI 调试快照缺少焦点目标");
+  assert(state.bots.B.focus && Number.isFinite(state.bots.B.focus.y), "B 队 AI 调试快照缺少焦点目标");
+  assert(state.bots.A.orders?.main && Number.isFinite(state.bots.A.orders.main.target?.x), "A 队 AI 调试快照缺少主舰命令");
+  assert(state.bots.B.orders?.main && Number.isFinite(state.bots.B.orders.main.target?.y), "B 队 AI 调试快照缺少主舰命令");
+  assert(Number.isFinite(state.bots.A.scoutDecision?.nextIn), "A 队 AI 调试快照缺少侦察计时");
+  assert(Number.isFinite(state.bots.B.flagshipDecision?.nextIn), "B 队 AI 调试快照缺少旗舰技计时");
+}
+
 function aiEdgeRecoveryCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const bot = sim.bot;
@@ -1224,11 +1381,14 @@ function main() {
   aiSplitDisciplineCheck();
   aiFireArcAwarenessCheck();
   dualAiSeatCheck();
+  aiDebugSnapshotCheck();
   aiProbePressureCheck();
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();
   aiWoundedDetachedRetreatCheck();
   aiSectorEncirclementCheck();
+  aiBacklineFlankCheck();
+  aiOverwhelmedEscapeCheck();
   aiEnergyRecoveryModeCheck();
   aiHighEnergySkillAggressionCheck();
   aiEmergencyEnergyCommitCheck();

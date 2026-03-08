@@ -32,6 +32,8 @@ const ui = {
   speedButtons: Array.from(document.querySelectorAll("#debugSpeedRow .debug-speed-btn")),
   focusButtons: Array.from(document.querySelectorAll("#debugFocusGrid .debug-focus-btn")),
   selectedCard: document.getElementById("debugSelectedShipCard"),
+  teamAAiCard: document.getElementById("debugTeamAAiCard"),
+  teamBAiCard: document.getElementById("debugTeamBAiCard"),
   log: document.getElementById("debugLog"),
   overlay: document.getElementById("debugOverlay"),
   overlayTitle: document.getElementById("debugOverlayTitle"),
@@ -114,6 +116,10 @@ function teamSim(seat) {
   return app.sim ? app.sim.teamBySeat(seat) : null;
 }
 
+function botState(seat) {
+  return app.state?.bots?.[seat] || null;
+}
+
 function splitLabel(level) {
   if (level <= 0) {
     return "编队";
@@ -177,6 +183,80 @@ function slotLabel(slotKey) {
 
 function seatLabel(seat) {
   return seat === "A" ? "A队" : "B队";
+}
+
+function modeLabel(mode) {
+  const labels = {
+    press: "压进",
+    search: "搜索",
+    recover: "脱边",
+    harvest: "回能",
+    regroup: "收拢",
+    kite: "拉扯",
+    collapse: "合围",
+    broadside: "抢侧舷",
+    cutoff: "截击",
+    support: "支援",
+    fire: "火力位",
+    rear: "后撤点",
+    front: "前探",
+    flank: "绕后",
+    intel: "侦察",
+    escape: "脱困",
+  };
+  return labels[mode] || mode || "待机";
+}
+
+function decisionLabel(action) {
+  const labels = {
+    idle: "待命",
+    hold: "暂缓",
+    launch: "已发侦察",
+    retry: "再次尝试",
+    cast: "已释放",
+    unavailable: "不可用",
+  };
+  return labels[action] || action || "待命";
+}
+
+function intelSourceLabel(source) {
+  const labels = {
+    visible: "可见",
+    memory: "记忆",
+    spawn: "出生点",
+  };
+  return labels[source] || source || "未知";
+}
+
+function shortPercent(value) {
+  return `${Math.round((Number(value) || 0) * 100)}%`;
+}
+
+function shortNumber(value, digits = 2) {
+  return Number.isFinite(value) ? Number(value).toFixed(digits) : "-";
+}
+
+function pointText(point) {
+  if (!point) {
+    return "-";
+  }
+  const zone = Number.isFinite(point.zoneId) ? ` Z${point.zoneId}` : "";
+  return `${Math.round(point.x)},${Math.round(point.y)}${zone}`;
+}
+
+function botContactLabel(contact) {
+  if (!contact) {
+    return "无";
+  }
+  const def = contact.characterId ? CHARACTER_DEFS[contact.characterId] : null;
+  const role = contact.kind === "ship"
+    ? slotLabel(contact.slotKey)
+    : contact.kind === "wingman"
+      ? "僚机"
+      : contact.kind === "scout"
+        ? "侦察机"
+        : contact.kind;
+  return `${role}${def ? ` ${def.shortName}` : ""}`.trim();
 }
 
 function roleSummaryLine(slotKey, characterId) {
@@ -543,6 +623,99 @@ function setSpeedScale(value, silent = false) {
   updateUi();
 }
 
+function renderAiCard(seat) {
+  const target = seat === "A" ? ui.teamAAiCard : ui.teamBAiCard;
+  const bot = botState(seat);
+  if (!target) {
+    return;
+  }
+  if (!bot) {
+    target.textContent = "该席当前未启用 AI。";
+    return;
+  }
+
+  const context = bot.context || {};
+  const focus = bot.focus;
+  const scout = bot.scoutDecision || {};
+  const flagship = bot.flagshipDecision || {};
+  const subSkills = bot.subSkillDecision || {};
+  const split = bot.splitDecision || {};
+  const detachedPlan = bot.detachedPlan || {};
+  const tags = [
+    context.searchRequired ? "需搜索" : null,
+    context.trackableIntel ? "可追踪" : null,
+    context.emergencyCommit ? "紧急投入" : null,
+    context.conserveEnergy ? "保能" : null,
+    context.killWindow ? "斩杀窗" : null,
+    context.enemyBroadsideRisk ? "避侧舷" : null,
+    context.safeExchange ? "交换有利" : null,
+  ].filter(Boolean);
+  const tagHtml = tags.length
+    ? tags.map((label) => `<span class="debug-ai-tag${label === "紧急投入" ? " alert" : label === "交换有利" ? " good" : ""}">${label}</span>`).join("")
+    : '<span class="debug-ai-tag">常规态势</span>';
+
+  const orderLines = ["main", "sub1", "sub2"].map((shipKey) => {
+    const order = bot.orders?.[shipKey];
+    if (!order) {
+      return `<div><strong>${slotLabel(shipKey)}</strong> 暂无新命令</div>`;
+    }
+    return `<div><strong>${slotLabel(shipKey)}</strong> ${modeLabel(order.role)} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%</div>`;
+  }).join("");
+
+  const threatLines = ["main", "sub1", "sub2"].map((shipKey) => {
+    const threat = context.shipThreats?.[shipKey];
+    if (!threat) {
+      return `<div><strong>${slotLabel(shipKey)}</strong> 威胁 -</div>`;
+    }
+    return `<div><strong>${slotLabel(shipKey)}</strong> 威胁 ${shortNumber(threat.danger)} | 火源 ${threat.sources}${threat.overwhelmed ? " | 被围" : ""}</div>`;
+  }).join("");
+
+  const splitText = split.acted && split.acted.length
+    ? `已执行 ${split.acted.join("、")} 级分离`
+    : split.attempt1 || split.attempt2
+      ? `评估分离 ${[split.attempt1 ? "1" : null, split.attempt2 ? "2" : null].filter(Boolean).join("/")}`
+      : `分离层级 ${split.level || 0}`;
+  const detachedText = ["sub1", "sub2"].map((shipKey) => {
+    const role = detachedPlan.roles?.[shipKey];
+    if (!role) {
+      return `${slotLabel(shipKey)} 未独立`;
+    }
+    const suffix = detachedPlan.intelLeadKey === shipKey ? "侦察主力" : detachedPlan.retreatKey === shipKey ? "后撤保命" : "执行中";
+    return `${slotLabel(shipKey)} ${modeLabel(role)}·${suffix}`;
+  }).join(" | ");
+
+  target.innerHTML = [
+    `<div class="debug-ai-headline"><strong>${modeLabel(bot.mode)}</strong><span>模式锁定 ${shortNumber(bot.modeTimer, 1)}秒</span></div>`,
+    `<div class="debug-ai-tags">${tagHtml}</div>`,
+    `<div class="debug-ai-grid">`,
+    `<div><strong>焦点</strong>${botContactLabel(focus)} | ${focus ? `${intelSourceLabel(focus.source)} ${shortNumber(focus.age, 1)}秒` : "无"}</div>`,
+    `<div><strong>焦点坐标</strong>${pointText(focus)}</div>`,
+    `<div><strong>局部优势</strong>${shortNumber(context.localAdvantage)}</div>`,
+    `<div><strong>最大威胁</strong>${shortNumber(context.maxShipThreat)}</div>`,
+    `<div><strong>舰队能量</strong>${shortPercent(context.energyRatio)}</div>`,
+    `<div><strong>回能需求</strong>${shortPercent(context.energyRecoveryNeed)}</div>`,
+    `<div><strong>压制意愿</strong>${shortNumber(context.pressureDrive)}</div>`,
+    `<div><strong>围堵压力</strong>${shortNumber(context.encirclePressure)}</div>`,
+    `<div><strong>射界交换</strong>${shortNumber(context.arcAdvantage)}</div>`,
+    `<div><strong>搜索中心</strong>${pointText(bot.searchCenter)}</div>`,
+    `</div>`,
+    `<div class="debug-ai-orders">${orderLines}</div>`,
+    `<div class="debug-ai-orders">${threatLines}</div>`,
+    `<div class="debug-ai-orders">`,
+    `<div><strong>副舰分工</strong> ${detachedText}</div>`,
+    `<div><strong>侦察</strong> ${decisionLabel(scout.action)}${Number.isFinite(scout.zoneId) ? ` -> 战区${scout.zoneId}` : ""} | CD ${shortNumber(scout.nextIn, 1)}秒</div>`,
+    `<div><strong>旗舰技</strong> ${decisionLabel(flagship.action)} | CD ${shortNumber(bot.flagshipTimer, 1)}秒</div>`,
+    `<div><strong>副舰技</strong> 一 ${decisionLabel(subSkills.sub1?.action)} ${shortNumber(subSkills.sub1?.nextIn, 1)}秒 / 二 ${decisionLabel(subSkills.sub2?.action)} ${shortNumber(subSkills.sub2?.nextIn, 1)}秒</div>`,
+    `<div><strong>分离判断</strong> ${splitText}</div>`,
+    `</div>`,
+  ].join("");
+}
+
+function updateAiCards() {
+  renderAiCard("A");
+  renderAiCard("B");
+}
+
 function updateSelectedCard() {
   const ship = selectedShipState();
   const shipSim = selectedShipSim();
@@ -553,11 +726,16 @@ function updateSelectedCard() {
   const minRadius = shipSim ? Math.round(shipSim.routeConstraintProfile().minTurnRadius) : 0;
   const zone = zoneFromPoint(ship.x, ship.y);
   const zoneText = zone ? `战区${zone.id}` : "无战区";
+  const bot = botState(app.selected.seat);
+  const order = bot?.orders?.[ship.key];
+  const shipThreat = bot?.context?.shipThreats?.[ship.key];
   ui.selectedCard.innerHTML = [
     `<strong>${seatLabel(app.selected.seat)} ${slotLabel(ship.key)} · ${ship.characterName}</strong>`,
     `舰体 ${Math.round(ship.hp)}/${Math.round(ship.maxHp)}（${hullPercent(ship)}%） | 能量 ${Math.round(Number(ship.fleetEnergy) || 0)}/${Math.round(Number(ship.fleetMaxEnergy) || 1)}（${energyPercent(ship)}%）`,
     `推进 ${Math.round((ship.throttle || 1) * 100)}% | 航速 ${(ship.speed || 0).toFixed(1)} | 最小转弯半径 ${minRadius}`,
     `视野 ${Math.round(ship.vision || 0)} | 射程 ${Math.round(ship.range || 0)} | ${zoneText} | ${ship.attached ? "附着中" : "独立编队"}`,
+    order ? `AI命令 ${modeLabel(order.role)} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%` : "AI命令 暂无",
+    shipThreat ? `承压 ${shortNumber(shipThreat.danger)} | 火源 ${shipThreat.sources}${shipThreat.overwhelmed ? " | 被围攻" : ""}` : "承压 -",
   ].join("<br />");
 }
 
@@ -569,6 +747,7 @@ function updateUi() {
   syncSelectedShip();
   updateFocusButtons();
   updateSelectedCard();
+  updateAiCards();
 
   const teamA = teamState("A");
   const teamB = teamState("B");
@@ -1050,6 +1229,135 @@ function drawMinimap() {
   ctx.restore();
 }
 
+function botOverlayPalette(seat) {
+  if (seat === "A") {
+    return {
+      line: "#67d9ff",
+      fill: "#67d9ff22",
+      text: "#dff7ff",
+      soft: "#67d9ff88",
+    };
+  }
+  return {
+    line: "#ff93a7",
+    fill: "#ff93a722",
+    text: "#ffe5ea",
+    soft: "#ff93a788",
+  };
+}
+
+function drawPlanMarker(point, palette, label, shape = "circle") {
+  if (!point) {
+    return;
+  }
+  ctx.save();
+  ctx.strokeStyle = palette.line;
+  ctx.fillStyle = palette.fill;
+  ctx.lineWidth = 1.6;
+  if (shape === "square") {
+    ctx.fillRect(point.x - 8, point.y - 8, 16, 16);
+    ctx.strokeRect(point.x - 8, point.y - 8, 16, 16);
+  } else if (shape === "cross") {
+    ctx.beginPath();
+    ctx.moveTo(point.x - 9, point.y);
+    ctx.lineTo(point.x + 9, point.y);
+    ctx.moveTo(point.x, point.y - 9);
+    ctx.lineTo(point.x, point.y + 9);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 7, 0, TAU);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.arc(point.x, point.y, 7, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+  }
+  if (label) {
+    ctx.font = "bold 10px 'Noto Sans SC', 'PingFang SC', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillStyle = palette.text;
+    ctx.fillText(label, point.x, point.y - 10);
+  }
+  ctx.restore();
+}
+
+function drawPlanPolygon(points, palette) {
+  const valid = points.filter(Boolean);
+  if (valid.length < 2) {
+    return;
+  }
+  ctx.save();
+  ctx.strokeStyle = palette.soft;
+  ctx.fillStyle = palette.fill;
+  ctx.lineWidth = 1.2;
+  ctx.setLineDash([7, 6]);
+  ctx.beginPath();
+  ctx.moveTo(valid[0].x, valid[0].y);
+  for (let i = 1; i < valid.length; i += 1) {
+    ctx.lineTo(valid[i].x, valid[i].y);
+  }
+  if (valid.length >= 3) {
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawBotOverlay(seat) {
+  const bot = botState(seat);
+  const team = teamState(seat);
+  if (!bot || !team) {
+    return;
+  }
+  const palette = botOverlayPalette(seat);
+  const main = findShipByKey(team, "main");
+  const sub1 = findShipByKey(team, "sub1");
+  const sub2 = findShipByKey(team, "sub2");
+
+  if (bot.searchAssignments && bot.mode === "search" && !bot.useSearchSectorPlan) {
+    drawPlanPolygon([bot.searchAssignments.main, bot.searchAssignments.sub1, bot.searchAssignments.sub2], palette);
+  }
+  if (bot.sectorPlan) {
+    drawPlanPolygon([bot.sectorPlan.main, bot.sectorPlan.sub1, bot.sectorPlan.sub2], palette);
+  }
+
+  drawPlanMarker(bot.focus, palette, `${seat}焦点`, "cross");
+  drawPlanMarker(bot.searchCenter, palette, `${seat}搜`, "square");
+
+  for (const shipKey of ["main", "sub1", "sub2"]) {
+    const order = bot.orders?.[shipKey];
+    const ship = shipKey === "main" ? main : shipKey === "sub1" ? sub1 : sub2;
+    if (!order || !ship || !ship.alive || !order.target) {
+      continue;
+    }
+    ctx.save();
+    ctx.strokeStyle = palette.line;
+    ctx.lineWidth = shipKey === "main" ? 1.8 : 1.2;
+    ctx.setLineDash(order.detached ? [10, 6] : [6, 5]);
+    ctx.beginPath();
+    ctx.moveTo(ship.x, ship.y);
+    ctx.lineTo(order.target.x, order.target.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+    drawPlanMarker(order.target, palette, `${slotLabel(shipKey)} ${modeLabel(order.role)}`);
+  }
+
+  if (main && main.alive) {
+    ctx.save();
+    ctx.fillStyle = palette.text;
+    ctx.font = "bold 12px 'Noto Sans SC', 'PingFang SC', sans-serif";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(`${seat} ${modeLabel(bot.mode)}`, main.x + 12, main.y - main.radius - 18);
+    ctx.restore();
+  }
+}
+
 function drawShipGroup(seat, color) {
   for (const ship of shipCollection(teamState(seat))) {
     drawShip(ship, color, ship.id === app.selected.shipId && seat === app.selected.seat, ship.attached);
@@ -1080,6 +1388,9 @@ function render() {
       drawRoute(ship.route, ship.id === app.selected.shipId && seat === app.selected.seat);
     }
   }
+
+  drawBotOverlay("A");
+  drawBotOverlay("B");
 
   for (const seat of ["A", "B"]) {
     const team = teamState(seat);
