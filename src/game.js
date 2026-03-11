@@ -78,6 +78,7 @@ const app = {
   lastTime: performance.now(),
   gameOverLogged: false,
   tickRunning: false,
+  paused: false,
   mobileMode: false,
   cameraCenterX: canvas.width * 0.5,
   cameraCenterY: canvas.height * 0.5,
@@ -426,6 +427,7 @@ function resetMatch(logMessage = true) {
   app.suppressMapClick = false;
   app.pendingSubSkillAim = null;
   app.gameOverLogged = false;
+  app.paused = false;
   app.lastTime = performance.now();
   app.cameraManualUntil = 0;
   const mainShip = app.sim.teamA.ships.main;
@@ -1348,13 +1350,29 @@ function render() {
   }
 
   drawMinimap();
+
+  // Pause overlay
+  if (app.paused) {
+    ctx.save();
+    ctx.fillStyle = "rgba(2,8,15,0.45)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#e4f0ff";
+    ctx.font = 'bold 42px "Noto Sans SC", "PingFang SC", sans-serif';
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("PAUSED", canvas.width * 0.5, canvas.height * 0.5 - 20);
+    ctx.fillStyle = "#8ab8d8";
+    ctx.font = '16px "Noto Sans SC", "PingFang SC", sans-serif';
+    ctx.fillText("按空格键继续", canvas.width * 0.5, canvas.height * 0.5 + 24);
+    ctx.restore();
+  }
 }
 
 function tick(timestamp) {
   const dt = clamp((timestamp - app.lastTime) / 1000, 0, 0.05);
   app.lastTime = timestamp;
 
-  if (app.sim && (!app.state || app.state.phase !== "finished")) {
+  if (!app.paused && app.sim && (!app.state || app.state.phase !== "finished")) {
     app.sim.update(dt);
   }
   app.state = app.sim ? app.sim.serializeState() : null;
@@ -1688,6 +1706,7 @@ function bindUiEvents() {
       return;
     }
 
+    // 1/2/3 or Numpad — switch ship
     const shipByKey = {
       Digit1: "main",
       Digit2: "sub1",
@@ -1697,11 +1716,98 @@ function bindUiEvents() {
       Numpad3: "sub2",
     };
     const nextShip = shipByKey[event.code];
-    if (!nextShip) {
+    if (nextShip) {
+      if (setSelectedShip(nextShip)) {
+        event.preventDefault();
+      }
       return;
     }
-    if (setSelectedShip(nextShip)) {
+
+    // Tab — cycle ship
+    if (event.code === "Tab") {
       event.preventDefault();
+      const own = ownTeamState();
+      if (!own || !own.ships) return;
+      const keys = ["main", "sub1", "sub2"];
+      const currentIdx = keys.indexOf(app.selectedShipKey);
+      const dir = event.shiftKey ? -1 : 1;
+      for (let i = 1; i <= 3; i++) {
+        const candidate = keys[(currentIdx + i * dir + 3) % 3];
+        if (setSelectedShip(candidate)) break;
+      }
+      return;
+    }
+
+    // WASD — navigate zones (3x3 grid, ids 1-9)
+    // Layout:  1 2 3
+    //          4 5 6
+    //          7 8 9
+    const zoneId = app.selectedZoneId;
+    const row = Math.floor((zoneId - 1) / 3);
+    const col = (zoneId - 1) % 3;
+    let newRow = row;
+    let newCol = col;
+    if (event.code === "KeyW") newRow = Math.max(0, row - 1);
+    else if (event.code === "KeyS") newRow = Math.min(2, row + 1);
+    else if (event.code === "KeyA") newCol = Math.max(0, col - 1);
+    else if (event.code === "KeyD") newCol = Math.min(2, col + 1);
+
+    if (newRow !== row || newCol !== col) {
+      event.preventDefault();
+      const newZoneId = newRow * 3 + newCol + 1;
+      app.selectedZoneId = newZoneId;
+      log(`已选中战区${newZoneId}`);
+      updateUi();
+      return;
+    }
+
+    // Enter — move selected ship toward selected zone center
+    if (event.code === "Enter") {
+      event.preventDefault();
+      if (!app.state || app.state.phase === "finished") return;
+      const zone = app.state.zones ? app.state.zones.find((z) => z.id === app.selectedZoneId) : null;
+      if (!zone) return;
+      const cx = zone.x + zone.width * 0.5;
+      const cy = zone.y + zone.height * 0.5;
+      setRouteForSelectedShip(cx, cy);
+      const ship = selectedShipState();
+      if (ship) {
+        log(`${ship.characterName} 向战区${app.selectedZoneId}中心进发`);
+      }
+      return;
+    }
+
+    // X — launch scout
+    if (event.code === "KeyX") {
+      event.preventDefault();
+      const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId });
+      if (ok) {
+        log(`侦查机已派往战区${app.selectedZoneId}`);
+      }
+      return;
+    }
+
+    // C — flagship skill
+    if (event.code === "KeyC") {
+      event.preventDefault();
+      useFlagshipSkill();
+      return;
+    }
+
+    // V — sub ship skill
+    if (event.code === "KeyV") {
+      event.preventDefault();
+      useSubSkill();
+      return;
+    }
+
+    // Space — toggle pause
+    if (event.code === "Space") {
+      event.preventDefault();
+      if (!app.state || app.state.phase === "finished") return;
+      app.paused = !app.paused;
+      log(app.paused ? "战斗已暂停" : "战斗继续");
+      return;
     }
   });
   window.addEventListener("resize", () => {
