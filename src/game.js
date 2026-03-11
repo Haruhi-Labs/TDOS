@@ -13,6 +13,13 @@ import {
   skillMetaForCharacter,
 } from "../shared/game-core.js";
 
+import {
+  createCharacterSelect,
+  drawInGamePortrait,
+  CHARACTER_THEMES,
+  getPortrait,
+} from "./character-select.js";
+
 const canvas = document.getElementById("gameCanvas");
 const ctx = canvas.getContext("2d");
 
@@ -70,6 +77,7 @@ const app = {
   pendingSubSkillAim: null,
   lastTime: performance.now(),
   gameOverLogged: false,
+  tickRunning: false,
   mobileMode: false,
   cameraCenterX: canvas.width * 0.5,
   cameraCenterY: canvas.height * 0.5,
@@ -1332,6 +1340,13 @@ function render() {
   drawSelectedVisionCircle();
   drawSubSkillAimHint();
   ctx.restore();
+
+  // In-game character portrait (drawn in screen space, after camera restore)
+  const activeShip = selectedShipState();
+  if (activeShip && activeShip.alive) {
+    drawInGamePortrait(ctx, activeShip.characterId, canvas.width, canvas.height, 0.14);
+  }
+
   drawMinimap();
 }
 
@@ -1411,11 +1426,7 @@ function bindUiEvents() {
   }
 
   ui.applyLoadoutBtn.addEventListener("click", () => {
-    app.playerLoadout = readLoadoutFromControls();
-    syncLoadoutControls(app.playerLoadout);
-    storeLoadout(app.playerLoadout);
-    resetMatch(true);
-    log("已应用新的出击阵容");
+    showCharacterSelectScreen();
   });
 
   for (const button of ui.shipSwitchButtons) {
@@ -1479,7 +1490,7 @@ function bindUiEvents() {
   bindPressButton(ui.mobileSubSkillBtn, useSubSkill);
 
   ui.restartBtn.addEventListener("click", () => {
-    resetMatch(true);
+    showCharacterSelectScreen();
   });
 
   canvas.addEventListener("mousedown", (event) => {
@@ -1699,12 +1710,31 @@ function bindUiEvents() {
   });
 }
 
+function launchWithLoadout(loadout) {
+  app.playerLoadout = loadout;
+  storeLoadout(loadout);
+  syncLoadoutControls(loadout);
+  resetMatch(true);
+  if (!app.tickRunning) {
+    app.tickRunning = true;
+    requestAnimationFrame(tick);
+  }
+}
+
+function showCharacterSelectScreen() {
+  const charSelect = createCharacterSelect((loadout) => {
+    launchWithLoadout(loadout);
+  });
+  charSelect.show();
+}
+
 function start() {
   syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
-  resetMatch(true);
-  requestAnimationFrame(tick);
+  app.tickRunning = false;
+  // Show character select screen first
+  showCharacterSelectScreen();
 }
 
 start();
