@@ -230,6 +230,20 @@ button:disabled {
   font-size: 0.88rem;
 }
 
+.zoom-control-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+
+.zoom-control-row strong {
+  min-width: 48px;
+  text-align: center;
+  color: var(--accent);
+}
+
 input[type="range"] {
   width: 100%;
   accent-color: #6ed6ff;
@@ -320,6 +334,11 @@ input[type="range"] {
   align-items: center;
 }
 
+.mobile-head-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .mobile-battle-summary {
   min-width: 0;
   border: 1px solid #244e74;
@@ -337,6 +356,11 @@ input[type="range"] {
   min-width: 64px;
   padding: 8px 10px;
   border-radius: 999px;
+}
+
+.mobile-zoom-btn {
+  min-width: 42px;
+  padding: 8px 0;
 }
 
 .mobile-ship-switch {
@@ -382,6 +406,12 @@ input[type="range"] {
   border-color: #ffd37f;
   background: #3a2d14;
   color: #ffe8b3;
+}
+
+button.toggle-active {
+  border-color: #72f0b7;
+  background: #153828;
+  color: #e8fff3;
 }
 
 .mobile-battle-hint {

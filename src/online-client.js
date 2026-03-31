@@ -2,7 +2,9 @@ import {
   CHARACTER_ORDER,
   CHARACTER_DEFS,
   DEFAULT_TEAM_LOADOUT,
+  EMERGENCY_BRAKE_COST,
   FIRE_ARC_BANDS,
+  SCOUT_LAUNCH_COST,
   cloneLoadout,
   normalizeLoadout,
   skillMetaForCharacter,
@@ -41,9 +43,14 @@ const ui = {
   shipSwitchButtons: Array.from(document.querySelectorAll("#onlineShipQuickSwitch .ship-switch-btn")),
   powerSlider: document.getElementById("onlinePowerSlider"),
   powerValue: document.getElementById("onlinePowerValue"),
+  onlineZoomOutBtn: document.getElementById("onlineZoomOutBtn"),
+  onlineZoomInBtn: document.getElementById("onlineZoomInBtn"),
+  onlineZoomValue: document.getElementById("onlineZoomValue"),
   splitOneBtn: document.getElementById("onlineSplitOneBtn"),
   splitTwoBtn: document.getElementById("onlineSplitTwoBtn"),
   scoutBtn: document.getElementById("onlineScoutBtn"),
+  autoScoutBtn: document.getElementById("onlineAutoScoutBtn"),
+  brakeBtn: document.getElementById("onlineBrakeBtn"),
   flagshipBtn: document.getElementById("onlineFlagshipBtn"),
   subSkillBtn: document.getElementById("onlineSubSkillBtn"),
   onlineMainRole: document.getElementById("onlineMainRole"),
@@ -64,10 +71,14 @@ const ui = {
   onlineMobileBattleSummary: document.getElementById("onlineMobileBattleSummary"),
   onlineMobileBattleHint: document.getElementById("onlineMobileBattleHint"),
   onlineMobileCenterBtn: document.getElementById("onlineMobileCenterBtn"),
+  onlineMobileZoomOutBtn: document.getElementById("onlineMobileZoomOutBtn"),
+  onlineMobileZoomInBtn: document.getElementById("onlineMobileZoomInBtn"),
   onlineMobileShipButtons: Array.from(document.querySelectorAll("#onlineMobileShipSwitch .mobile-ship-btn")),
   onlineMobileSplitOneBtn: document.getElementById("onlineMobileSplitOneBtn"),
   onlineMobileSplitTwoBtn: document.getElementById("onlineMobileSplitTwoBtn"),
   onlineMobileScoutBtn: document.getElementById("onlineMobileScoutBtn"),
+  onlineMobileAutoScoutBtn: document.getElementById("onlineMobileAutoScoutBtn"),
+  onlineMobileBrakeBtn: document.getElementById("onlineMobileBrakeBtn"),
   onlineMobileFlagshipBtn: document.getElementById("onlineMobileFlagshipBtn"),
   onlineMobileSubSkillBtn: document.getElementById("onlineMobileSubSkillBtn"),
   onlineMobileThrottleButtons: Array.from(document.querySelectorAll("#onlineMobileBattleHud .mobile-throttle-btn")),
@@ -91,6 +102,9 @@ const NICKNAME_COOKIE_KEY = "haruhi_online_nickname";
 const NICKNAME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 const ONLINE_LOADOUT_STORAGE_KEY = "haruhi-online-loadout-v2";
 const MOBILE_ZOOM = 1.78;
+const CAMERA_ZOOM_MIN = 1;
+const CAMERA_ZOOM_MAX = 2.6;
+const CAMERA_ZOOM_STEP = 0.2;
 
 const app = {
   ws: null,
@@ -142,6 +156,7 @@ const app = {
   mobileMode: false,
   cameraCenterX: canvas.width * 0.5,
   cameraCenterY: canvas.height * 0.5,
+  cameraZoom: 1,
   cameraManualUntil: 0,
   stars: Array.from({ length: 260 }, () => ({
     x: Math.random() * canvas.width,
@@ -571,6 +586,10 @@ function clearMatchRuntime() {
   app.drag = null;
   app.lastRenderState = null;
   app.lastMatchPhase = null;
+  app.cameraZoom = 1;
+  app.cameraCenterX = canvas.width * 0.5;
+  app.cameraCenterY = canvas.height * 0.5;
+  app.cameraManualUntil = 0;
   app.ackSeq = 0;
   app.pendingSubSkillAim = null;
   app.lastWinnerSeat = null;
@@ -1049,7 +1068,7 @@ function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.sta
   app.selectedShipKey = shipKey;
   syncShipSelectOptions(own);
   syncPowerFromSelectedShip(own);
-  if (app.mobileMode) {
+  if (app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3) {
     centerCameraOn(ship.x, ship.y, false);
   }
   return true;
@@ -1076,6 +1095,9 @@ function currentSubMeta(ship) {
 function updateSkillButtons(own) {
   if (!own) {
     ui.scoutBtn.disabled = true;
+    ui.autoScoutBtn.disabled = true;
+    ui.autoScoutBtn.classList.remove("toggle-active");
+    ui.brakeBtn.disabled = true;
     ui.flagshipBtn.disabled = true;
     ui.subSkillBtn.disabled = true;
     return;
@@ -1085,12 +1107,29 @@ function updateSkillButtons(own) {
   const mainShip = own.ships ? own.ships.main : null;
   const mainEnergy = Number(mainShip?.fleetEnergy) || 0;
 
-  ui.scoutBtn.disabled = own.skillsDisabled || (cooldowns.scout || 0) > 0 || mainEnergy < 28;
+  ui.scoutBtn.disabled = own.skillsDisabled || (cooldowns.scout || 0) > 0 || mainEnergy < SCOUT_LAUNCH_COST;
   ui.scoutBtn.textContent = own.skillsDisabled
     ? "派出侦查机（已被封印）"
     : (cooldowns.scout || 0) > 0
       ? `派出侦查机（冷却${(cooldowns.scout || 0).toFixed(1)}秒）`
       : "派出侦查机";
+
+  const autoScoutEnabled = Boolean(own.autoScout?.enabled);
+  const autoScoutZoneId = Number(own.autoScout?.zoneId) || app.selectedZoneId;
+  const autoScoutDisabled = own.skillsDisabled && !autoScoutEnabled;
+  let autoScoutSuffix = autoScoutEnabled ? `开·战区${autoScoutZoneId}` : "关";
+  if (autoScoutEnabled) {
+    if ((cooldowns.scout || 0) > 0) {
+      autoScoutSuffix += `·冷却${(cooldowns.scout || 0).toFixed(1)}秒`;
+    } else if (mainEnergy < SCOUT_LAUNCH_COST) {
+      autoScoutSuffix += "·等待能量";
+    }
+  } else if (own.skillsDisabled) {
+    autoScoutSuffix = "关·已封印";
+  }
+  ui.autoScoutBtn.disabled = autoScoutDisabled;
+  ui.autoScoutBtn.textContent = `自动侦查：${autoScoutSuffix}`;
+  ui.autoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
 
   const flagMeta = currentFlagshipMeta(own);
   if (!flagMeta) {
@@ -1111,6 +1150,24 @@ function updateSkillButtons(own) {
         ? `旗舰技能：${flagMeta.name}（冷却${(cooldowns.flagship || 0).toFixed(1)}秒）`
         : `旗舰技能：${flagMeta.name}`;
   }
+
+  const brakeCooldown = Number(selected?.brakeCooldown) || 0;
+  const brakeEnergy = Number(selected?.fleetEnergy) || 0;
+  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
+  let brakeSuffix = "";
+  if (!selected || !selected.alive || !selected.canControl) {
+    brakeSuffix = "（切换到可控舰）";
+  } else if (selected.attached) {
+    brakeSuffix = "（分离后可用）";
+  } else if (brakeCooldown > 0) {
+    brakeSuffix = `（冷却${brakeCooldown.toFixed(1)}秒）`;
+  } else if (brakeEnergy < EMERGENCY_BRAKE_COST) {
+    brakeSuffix = `（需${EMERGENCY_BRAKE_COST}能量）`;
+  } else if (selected.braking) {
+    brakeSuffix = "（制动中）";
+  }
+  ui.brakeBtn.disabled = brakeDisabled;
+  ui.brakeBtn.textContent = `急刹${brakeSuffix}`;
 
   const subMeta = currentSubMeta(selected);
   if (!selected || !subMeta) {
@@ -1152,7 +1209,7 @@ function syncMobileHud(own) {
   ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} | 战区${app.selectedZoneId} | 推进${throttleValue}%`;
   ui.onlineMobileBattleHint.textContent = app.pendingSubSkillAim
     ? "技能瞄准中：点主视图确认，点右上小地图先挪镜头。"
-    : "点舰船切换，点主视图直接下航线，点右上小地图选战区。";
+    : "点舰船切换，点主视图直接下航线，点右上小地图选战区，+/-可缩放。";
 
   for (const button of ui.onlineMobileShipButtons) {
     const ship = own.ships ? own.ships[button.dataset.ship] : null;
@@ -1164,8 +1221,13 @@ function syncMobileHud(own) {
   ui.onlineMobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
   ui.onlineMobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
   ui.onlineMobileScoutBtn.disabled = ui.scoutBtn.disabled;
+  ui.onlineMobileAutoScoutBtn.disabled = ui.autoScoutBtn.disabled;
+  ui.onlineMobileBrakeBtn.disabled = ui.brakeBtn.disabled;
   ui.onlineMobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
   ui.onlineMobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
+  ui.onlineMobileAutoScoutBtn.textContent = own.autoScout?.enabled ? "自侦开" : "自侦关";
+  ui.onlineMobileAutoScoutBtn.classList.toggle("toggle-active", Boolean(own.autoScout?.enabled));
+  ui.onlineMobileBrakeBtn.textContent = "急刹";
   ui.onlineMobileFlagshipBtn.textContent = "旗舰技";
   ui.onlineMobileSubSkillBtn.textContent = selectedShip && currentSubMeta(selectedShip) ? currentSubMeta(selectedShip).name : "分舰技";
 
@@ -1183,6 +1245,9 @@ function updateBattleStatus(state) {
     ui.splitValue.textContent = "-";
     ui.zoneValue.textContent = "战区 -";
     ui.selectedValue.textContent = "-";
+    ui.onlineZoomValue.textContent = `${Math.round(app.cameraZoom * 100)}%`;
+    ui.onlineZoomOutBtn.disabled = app.cameraZoom <= CAMERA_ZOOM_MIN + 1e-3;
+    ui.onlineZoomInBtn.disabled = app.cameraZoom >= CAMERA_ZOOM_MAX - 1e-3;
     updateSkillButtons(null);
     return;
   }
@@ -1190,6 +1255,9 @@ function updateBattleStatus(state) {
   ui.hullValue.textContent = `${Math.round((own.hullRatio || 0) * 100)}%`;
   ui.splitValue.textContent = own.splitLevel === 0 ? "编队" : own.splitLevel === 1 ? "一级分离" : "二级分离";
   ui.zoneValue.textContent = `战区 ${app.selectedZoneId}`;
+  ui.onlineZoomValue.textContent = `${Math.round(app.cameraZoom * 100)}%`;
+  ui.onlineZoomOutBtn.disabled = app.cameraZoom <= CAMERA_ZOOM_MIN + 1e-3;
+  ui.onlineZoomInBtn.disabled = app.cameraZoom >= CAMERA_ZOOM_MAX - 1e-3;
 
   syncShipSelectOptions(own);
   const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
@@ -1198,7 +1266,7 @@ function updateBattleStatus(state) {
     selectedShip && selectedShip.alive
       ? `${selectedShip.characterName} | 能量 ${Math.round(Number(selectedShip.fleetEnergy) || 0)}/${Math.round(
           Number(selectedShip.fleetMaxEnergy) || 1,
-        )}`
+        )}${selectedShip.braking ? " | 急刹中" : ""}`
       : "无";
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
@@ -1607,29 +1675,34 @@ function screenPointFromEvent(event) {
   };
 }
 
-function currentViewState() {
-  if (!app.mobileMode) {
-    return {
-      zoom: 1,
-      left: 0,
-      top: 0,
-      width: canvas.width,
-      height: canvas.height,
-    };
-  }
-  const zoom = MOBILE_ZOOM;
+function effectiveViewZoom(zoomRatio = app.cameraZoom) {
+  const baseZoom = app.mobileMode ? MOBILE_ZOOM : 1;
+  return baseZoom * clamp(zoomRatio, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+}
+
+function clampCameraCenter(centerX, centerY, zoom = effectiveViewZoom()) {
   const width = canvas.width / zoom;
   const height = canvas.height / zoom;
   const halfW = width * 0.5;
   const halfH = height * 0.5;
-  const centerX = clamp(app.cameraCenterX, halfW, canvas.width - halfW);
-  const centerY = clamp(app.cameraCenterY, halfH, canvas.height - halfH);
   return {
-    zoom,
-    left: centerX - halfW,
-    top: centerY - halfH,
+    x: clamp(centerX, halfW, canvas.width - halfW),
+    y: clamp(centerY, halfH, canvas.height - halfH),
     width,
     height,
+    zoom,
+  };
+}
+
+function currentViewState() {
+  const zoom = effectiveViewZoom();
+  const centered = clampCameraCenter(app.cameraCenterX, app.cameraCenterY, zoom);
+  return {
+    zoom: centered.zoom,
+    left: centered.x - centered.width * 0.5,
+    top: centered.y - centered.height * 0.5,
+    width: centered.width,
+    height: centered.height,
   };
 }
 
@@ -1674,15 +1747,54 @@ function minimapWorldPointFromScreenPoint(screenX, screenY) {
 }
 
 function centerCameraOn(x, y, manual = true) {
-  app.cameraCenterX = clamp(x, 0, canvas.width);
-  app.cameraCenterY = clamp(y, 0, canvas.height);
+  const centered = clampCameraCenter(x, y);
+  app.cameraCenterX = centered.x;
+  app.cameraCenterY = centered.y;
   if (manual) {
     app.cameraManualUntil = performance.now() + 2600;
   }
 }
 
+function setCameraZoom(nextZoom, focusScreen = null) {
+  const zoomRatio = clamp(nextZoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+  if (Math.abs(zoomRatio - app.cameraZoom) < 1e-3) {
+    return false;
+  }
+
+  const prevView = currentViewState();
+  let centerX = prevView.left + prevView.width * 0.5;
+  let centerY = prevView.top + prevView.height * 0.5;
+
+  if (focusScreen) {
+    const worldX = clamp(prevView.left + focusScreen.x / prevView.zoom, 0, canvas.width);
+    const worldY = clamp(prevView.top + focusScreen.y / prevView.zoom, 0, canvas.height);
+    const zoom = effectiveViewZoom(zoomRatio);
+    const width = canvas.width / zoom;
+    const height = canvas.height / zoom;
+    centerX = worldX - focusScreen.x / zoom + width * 0.5;
+    centerY = worldY - focusScreen.y / zoom + height * 0.5;
+  }
+
+  app.cameraZoom = zoomRatio;
+  if (!app.mobileMode && zoomRatio <= CAMERA_ZOOM_MIN + 1e-3) {
+    app.cameraCenterX = canvas.width * 0.5;
+    app.cameraCenterY = canvas.height * 0.5;
+    app.cameraManualUntil = 0;
+  } else {
+    centerCameraOn(centerX, centerY, Boolean(focusScreen));
+  }
+  updateBattleStatus(currentBattleState());
+  return true;
+}
+
+function adjustCameraZoom(direction, focusScreen = null) {
+  const step = direction > 0 ? CAMERA_ZOOM_STEP : -CAMERA_ZOOM_STEP;
+  return setCameraZoom(app.cameraZoom + step, focusScreen);
+}
+
 function updateCamera() {
-  if (!app.mobileMode) {
+  const shouldTrack = app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3;
+  if (!shouldTrack) {
     app.cameraCenterX = canvas.width * 0.5;
     app.cameraCenterY = canvas.height * 0.5;
     return;
@@ -1767,6 +1879,65 @@ function setThrottleValue(percent, shouldSend = true) {
   setThrottleFromSlider(shouldSend);
 }
 
+function syncAutoScoutZoneOnline() {
+  const state = currentBattleState();
+  const own = teamBySeat(state, app.seat);
+  if (!own?.autoScout?.enabled) {
+    return null;
+  }
+  return sendAction({
+    type: "configure_auto_scout",
+    enabled: true,
+    zoneId: app.selectedZoneId,
+  });
+}
+
+function setSelectedZoneId(zoneId, { allowLog = true } = {}) {
+  const nextZoneId = clamp(Number(zoneId) || app.selectedZoneId, 1, 9);
+  const changed = nextZoneId !== app.selectedZoneId;
+  app.selectedZoneId = nextZoneId;
+  ui.zoneValue.textContent = `战区 ${nextZoneId}`;
+  if (changed && allowLog) {
+    log(`已选择战区 ${nextZoneId}`);
+  }
+  syncAutoScoutZoneOnline();
+  updateBattleStatus(currentBattleState());
+  return changed;
+}
+
+function toggleAutoScoutOnline() {
+  const state = currentBattleState();
+  const own = teamBySeat(state, app.seat);
+  if (!own) {
+    return null;
+  }
+  const enabled = !own.autoScout?.enabled;
+  const seq = sendAction({
+    type: "configure_auto_scout",
+    enabled,
+    zoneId: app.selectedZoneId,
+  });
+  if (seq !== null) {
+    log(enabled ? `自动侦查已开启，目标战区 ${app.selectedZoneId}` : "自动侦查已关闭");
+  }
+  return seq;
+}
+
+function useEmergencyBrakeOnline() {
+  const ship = getLatestOwnShip(app.selectedShipKey);
+  if (!ship || !ship.alive || !ship.canControl) {
+    return null;
+  }
+  const seq = sendAction({
+    type: "emergency_brake",
+    shipKey: ship.key,
+  });
+  if (seq !== null) {
+    log(`${ship.name} 执行急刹`);
+  }
+  return seq;
+}
+
 function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
   if (!app.mobileMode || !state) {
     return false;
@@ -1777,12 +1948,8 @@ function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
   }
   centerCameraOn(world.x, world.y, true);
   const zone = zoneFromPoint(world.x, world.y, state);
-  if (zone && zone.id !== app.selectedZoneId) {
-    app.selectedZoneId = zone.id;
-    ui.zoneValue.textContent = `战区 ${zone.id}`;
-    if (allowZoneLog) {
-      log(`已选择战区 ${zone.id}`);
-    }
+  if (zone) {
+    setSelectedZoneId(zone.id, { allowLog: allowZoneLog });
   }
   return true;
 }
@@ -1994,10 +2161,15 @@ function interpolateTeam(a, b, t) {
     ...b,
     energy: lerp(a.energy, b.energy, t),
     hullRatio: lerp(a.hullRatio, b.hullRatio, t),
+    autoScout: {
+      enabled: Boolean(b.autoScout?.enabled),
+      zoneId: Number(b.autoScout?.zoneId) || 5,
+    },
     cooldowns: {
       scout: lerp(a.cooldowns?.scout || 0, b.cooldowns?.scout || 0, t),
-      haruhi: lerp(a.cooldowns?.haruhi || 0, b.cooldowns?.haruhi || 0, t),
-      beam: lerp(a.cooldowns?.beam || 0, b.cooldowns?.beam || 0, t),
+      flagship: lerp(a.cooldowns?.flagship || 0, b.cooldowns?.flagship || 0, t),
+      sub1: lerp(a.cooldowns?.sub1 || 0, b.cooldowns?.sub1 || 0, t),
+      sub2: lerp(a.cooldowns?.sub2 || 0, b.cooldowns?.sub2 || 0, t),
     },
     ships: {
       main: interpolateShip(a.ships.main, b.ships.main, t),
@@ -2285,6 +2457,12 @@ function drawRoute(route, selected) {
   ctx.restore();
 }
 
+function shipHullDrawScale(ship) {
+  const baseScale = ship.key === "main" ? 0.72 : ship.key === "twin" ? 0.56 : 0.62;
+  const baseRadius = ship.key === "main" ? 10 : ship.key === "twin" ? 8 : 9;
+  return baseScale * ((ship.radius || baseRadius) / baseRadius);
+}
+
 function drawShip(ship, color, selected, attached) {
   if (!ship || !ship.alive) {
     return;
@@ -2294,7 +2472,7 @@ function drawShip(ship, color, selected, attached) {
   ctx.translate(ship.x, ship.y);
   ctx.rotate(ship.angle);
 
-  const hullScale = ship.key === "main" ? 0.72 : ship.key === "twin" ? 0.56 : 0.62;
+  const hullScale = shipHullDrawScale(ship);
   ctx.globalAlpha = attached ? 0.84 : 1;
   ctx.fillStyle = color;
   ctx.beginPath();
@@ -2321,14 +2499,16 @@ function drawShip(ship, color, selected, attached) {
 
   const hpRatio = clamp((ship.hp || 0) / Math.max(1, ship.maxHp || 1), 0, 1);
   const energyRatio = clamp((ship.energy || 0) / Math.max(1, ship.maxEnergy || 1), 0, 1);
+  const barWidth = Math.max(26, ship.radius * 2.5);
+  const barLeft = ship.x - barWidth * 0.5;
   ctx.fillStyle = "#0f1f31";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 9, 26, 4);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 9, barWidth, 4);
   ctx.fillStyle = hpRatio > 0.35 ? "#72f5a8" : "#ff8a8a";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 9, 26 * hpRatio, 4);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 9, barWidth * hpRatio, 4);
   ctx.fillStyle = "#10263d";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 4, 26, 3);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth, 3);
   ctx.fillStyle = "#6ad8ff";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 4, 26 * energyRatio, 3);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
 }
 
 function drawScout(scout, isOwnTeam) {
@@ -2972,6 +3152,12 @@ function bindUiEvents() {
   ui.powerSlider.addEventListener("input", () => {
     setThrottleFromSlider(true);
   });
+  ui.onlineZoomOutBtn.addEventListener("click", () => {
+    adjustCameraZoom(-1);
+  });
+  ui.onlineZoomInBtn.addEventListener("click", () => {
+    adjustCameraZoom(1);
+  });
   for (const button of ui.onlineMobileThrottleButtons) {
     button.addEventListener("click", () => {
       setThrottleValue(button.dataset.throttle || 100, true);
@@ -2983,6 +3169,16 @@ function bindUiEvents() {
       if (ship) {
         centerCameraOn(ship.x, ship.y, false);
       }
+    });
+  }
+  if (ui.onlineMobileZoomOutBtn) {
+    ui.onlineMobileZoomOutBtn.addEventListener("click", () => {
+      adjustCameraZoom(-1);
+    });
+  }
+  if (ui.onlineMobileZoomInBtn) {
+    ui.onlineMobileZoomInBtn.addEventListener("click", () => {
+      adjustCameraZoom(1);
     });
   }
 
@@ -3018,6 +3214,10 @@ function bindUiEvents() {
       log(`侦查机已派往战区 ${app.selectedZoneId}`);
     }
   });
+  bindPressButton(ui.autoScoutBtn, toggleAutoScoutOnline);
+  bindPressButton(ui.onlineMobileAutoScoutBtn, toggleAutoScoutOnline);
+  bindPressButton(ui.brakeBtn, useEmergencyBrakeOnline);
+  bindPressButton(ui.onlineMobileBrakeBtn, useEmergencyBrakeOnline);
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkillOnline);
   bindPressButton(ui.onlineMobileFlagshipBtn, useFlagshipSkillOnline);
@@ -3117,6 +3317,15 @@ function bindUiEvents() {
     }
   });
 
+  canvas.addEventListener("wheel", (event) => {
+    if (app.mobileMode || !app.room || app.room.status !== "running") {
+      return;
+    }
+    event.preventDefault();
+    const focus = screenPointFromEvent(event);
+    adjustCameraZoom(event.deltaY < 0 ? 1 : -1, focus);
+  }, { passive: false });
+
   canvas.addEventListener("click", (event) => {
     if (event.button !== 0) {
       return;
@@ -3200,11 +3409,7 @@ function bindUiEvents() {
       return;
     }
 
-    if (zone.id !== app.selectedZoneId) {
-      app.selectedZoneId = zone.id;
-      ui.zoneValue.textContent = `战区 ${zone.id}`;
-      log(`已选择战区 ${zone.id}`);
-    }
+    setSelectedZoneId(zone.id);
   });
 
   canvas.addEventListener("dblclick", (event) => {
@@ -3267,11 +3472,125 @@ function bindUiEvents() {
       Numpad3: "sub2",
     };
     const nextShip = shipByKey[event.code];
-    if (!nextShip) {
+    if (nextShip) {
+      if (selectShip(nextShip, app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null))) {
+        event.preventDefault();
+      }
       return;
     }
-    if (selectShip(nextShip, app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null))) {
+
+    const state = app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null);
+
+    if (event.code === "Tab") {
       event.preventDefault();
+      const own = teamBySeat(state, app.seat);
+      if (!own?.ships) {
+        return;
+      }
+      const keys = ["main", "sub1", "sub2"];
+      const currentIdx = keys.indexOf(app.selectedShipKey);
+      const dir = event.shiftKey ? -1 : 1;
+      for (let i = 1; i <= 3; i += 1) {
+        const candidate = keys[(currentIdx + i * dir + 3) % 3];
+        if (selectShip(candidate, state)) {
+          break;
+        }
+      }
+      return;
+    }
+
+    const zoneId = app.selectedZoneId;
+    const row = Math.floor((zoneId - 1) / 3);
+    const col = (zoneId - 1) % 3;
+    let newRow = row;
+    let newCol = col;
+    if (event.code === "KeyW") newRow = Math.max(0, row - 1);
+    else if (event.code === "KeyS") newRow = Math.min(2, row + 1);
+    else if (event.code === "KeyA") newCol = Math.max(0, col - 1);
+    else if (event.code === "KeyD") newCol = Math.min(2, col + 1);
+
+    if (newRow !== row || newCol !== col) {
+      event.preventDefault();
+      setSelectedZoneId(newRow * 3 + newCol + 1);
+      return;
+    }
+
+    if (event.code === "Enter") {
+      event.preventDefault();
+      if (!state?.zones || !app.room || app.room.status !== "running") {
+        return;
+      }
+      const zone = state.zones.find((item) => item.id === app.selectedZoneId);
+      const ship = getLatestOwnShip(app.selectedShipKey);
+      if (!zone || !ship || !ship.alive || !ship.canControl) {
+        return;
+      }
+      const cx = zone.x + zone.width * 0.5;
+      const cy = zone.y + zone.height * 0.5;
+      const seq = sendAction({
+        type: "set_route",
+        shipKey: ship.key,
+        endX: cx,
+        endY: cy,
+        throttle: app.throttle,
+        anchorToMain: ship.key === "main",
+      });
+      if (seq !== null) {
+        applySetRouteOverride(ship.key, seq, cx, cy);
+        log(`${ship.characterName} 向战区 ${app.selectedZoneId} 中心进发`);
+      }
+      return;
+    }
+
+    if (event.code === "KeyX") {
+      event.preventDefault();
+      const seq = sendAction({
+        type: "launch_scout",
+        zoneId: app.selectedZoneId,
+      });
+      if (seq !== null) {
+        log(`侦查机已派往战区 ${app.selectedZoneId}`);
+      }
+      return;
+    }
+
+    if (event.code === "KeyZ") {
+      event.preventDefault();
+      toggleAutoScoutOnline();
+      return;
+    }
+
+    if (event.code === "KeyB") {
+      event.preventDefault();
+      useEmergencyBrakeOnline();
+      return;
+    }
+
+    if (event.code === "KeyC") {
+      event.preventDefault();
+      useFlagshipSkillOnline();
+      return;
+    }
+
+    if (event.code === "KeyV") {
+      event.preventDefault();
+      useSubSkillOnline();
+      return;
+    }
+
+    if (event.code === "Equal" || event.code === "NumpadAdd") {
+      event.preventDefault();
+      adjustCameraZoom(1);
+      return;
+    }
+    if (event.code === "Minus" || event.code === "NumpadSubtract") {
+      event.preventDefault();
+      adjustCameraZoom(-1);
+      return;
+    }
+    if (event.code === "Digit0" || event.code === "Numpad0") {
+      event.preventDefault();
+      setCameraZoom(CAMERA_ZOOM_MIN);
     }
   });
   window.addEventListener("resize", () => {

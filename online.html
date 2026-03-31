@@ -45,12 +45,19 @@
               <input id="onlinePowerSlider" type="range" min="25" max="140" step="1" value="100" />
               <strong id="onlinePowerValue">100%</strong>
             </div>
+            <div class="zoom-control-row">
+              <button id="onlineZoomOutBtn" type="button">缩小</button>
+              <strong id="onlineZoomValue">100%</strong>
+              <button id="onlineZoomInBtn" type="button">放大</button>
+            </div>
           </section>
 
           <section class="controls slim-controls">
             <h2>技能</h2>
             <div class="btn-col">
               <button id="onlineScoutBtn">派出侦查机</button>
+              <button id="onlineAutoScoutBtn" type="button">自动侦查：关</button>
+              <button id="onlineBrakeBtn" type="button">急刹</button>
               <button id="onlineFlagshipBtn">旗舰技能</button>
               <button id="onlineSubSkillBtn">分舰技能</button>
             </div>
@@ -68,7 +75,11 @@
         <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
           <div class="mobile-battle-head">
             <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 | 战区5</div>
-            <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
+            <div class="mobile-head-actions">
+              <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
+              <button id="onlineMobileZoomOutBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">-</button>
+              <button id="onlineMobileZoomInBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">+</button>
+            </div>
           </div>
           <div id="onlineMobileShipSwitch" class="mobile-ship-switch">
             <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
@@ -79,6 +90,8 @@
             <button id="onlineMobileSplitOneBtn" type="button">分离1</button>
             <button id="onlineMobileSplitTwoBtn" type="button">分离2</button>
             <button id="onlineMobileScoutBtn" type="button">侦察</button>
+            <button id="onlineMobileAutoScoutBtn" type="button">自动侦察</button>
+            <button id="onlineMobileBrakeBtn" type="button">急刹</button>
             <button id="onlineMobileFlagshipBtn" type="button">旗舰技</button>
             <button id="onlineMobileSubSkillBtn" type="button">分舰技</button>
             <div class="mobile-throttle-row">

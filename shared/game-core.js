@@ -11,6 +11,13 @@ const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
 const BEAM_DAMAGE_RATIO = 0.28;
 const DEG_TO_RAD = Math.PI / 180;
+const SHIP_HULL_SIZE_SCALE = 1.28;
+export const SCOUT_LAUNCH_COST = 28;
+export const MANUAL_SCOUT_COOLDOWN = 2.6;
+export const AUTO_SCOUT_COOLDOWN_MULTIPLIER = 2;
+export const EMERGENCY_BRAKE_COST = 18;
+const EMERGENCY_BRAKE_DURATION = 0.82;
+const EMERGENCY_BRAKE_COOLDOWN = 1.25;
 const FLAGSHIP_TURN_PENALTIES = {
   1: 1.14,
   2: 0.88,
@@ -66,7 +73,7 @@ export const CHARACTER_DEFS = {
       range: 520,
       damage: 29,
       fireRate: 0.47,
-      radius: 10,
+      radius: 10 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "sos_leader",
@@ -107,7 +114,7 @@ export const CHARACTER_DEFS = {
       range: 500,
       damage: 23,
       fireRate: 0.5,
-      radius: 9,
+      radius: 9 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "agency_power",
@@ -149,7 +156,7 @@ export const CHARACTER_DEFS = {
       range: 540,
       damage: 24,
       fireRate: 0.44,
-      radius: 9,
+      radius: 9 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "vanishing_world",
@@ -185,7 +192,7 @@ export const CHARACTER_DEFS = {
       range: 550,
       damage: 20,
       fireRate: 0.54,
-      radius: 8,
+      radius: 8 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "past_future_me",
@@ -221,7 +228,7 @@ export const CHARACTER_DEFS = {
       range: 490,
       damage: 24,
       fireRate: 0.52,
-      radius: 10,
+      radius: 10 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "reality_seeker",
@@ -258,7 +265,7 @@ export const CHARACTER_DEFS = {
       range: 480,
       damage: 22,
       fireRate: 0.56,
-      radius: 9,
+      radius: 9 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "secret_sponsor",
@@ -298,7 +305,7 @@ export const CHARACTER_DEFS = {
       range: 505,
       damage: 25,
       fireRate: 0.58,
-      radius: 8,
+      radius: 8 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
       id: "no_escape",
@@ -792,6 +799,8 @@ class Ship {
       reliableUntil: 0,
       bladeQueenUntil: 0,
       sosBuff: null,
+      brakeUntil: 0,
+      brakeCooldownUntil: 0,
       nextShotDamageMultiplier: 1,
     };
   }
@@ -843,6 +852,10 @@ class Ship {
 
   hasEffect(effectKey) {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
+  }
+
+  isEmergencyBraking() {
+    return this.hasEffect("brakeUntil");
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -1197,10 +1210,15 @@ class Ship {
     const dist = distance(this.x, this.y, navTargetX, navTargetY);
     const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
-    const targetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake;
+    const braking = this.isEmergencyBraking();
+    const cruiseTargetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake;
+    const targetSpeed = braking ? Math.min(cruiseTargetSpeed * 0.08, 4.2) : cruiseTargetSpeed;
 
-    const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this), 0.65, 2.4);
+    const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this) * (braking ? 4.4 : 1), 0.65, 9.6);
     this.speed = lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
+    if (braking && this.speed < 1.2) {
+      this.speed = 0;
+    }
 
     this.x += Math.cos(this.angle) * this.speed * dt;
     this.y += Math.sin(this.angle) * this.speed * dt;
@@ -1374,6 +1392,8 @@ class Ship {
       attached: this.isAttached(),
       canControl: this.canControl(),
       reviveCharges: this.reviveCharges,
+      braking: this.isEmergencyBraking(),
+      brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       buffs: this.team.listShipBuffs(this),
       route: this.route
         ? {
@@ -1656,6 +1676,10 @@ class Team {
       sub1: 0,
       sub2: 0,
     };
+    this.autoScout = {
+      enabled: false,
+      zoneId: 5,
+    };
 
     this.effects = {
       taxiUntil: 0,
@@ -1679,8 +1703,8 @@ class Team {
       }),
     };
 
-    this.ships.sub1.formationOffset = { x: -28, y: 18 };
-    this.ships.sub2.formationOffset = { x: -28, y: -18 };
+    this.ships.sub1.formationOffset = { x: -36, y: 22 };
+    this.ships.sub2.formationOffset = { x: -36, y: -22 };
 
     this.extraShips = [];
     this.applyFlagshipPassives(spawnX, spawnY, facing);
@@ -1707,7 +1731,7 @@ class Team {
         attachToMain: true,
       });
       twin.setHalfHullMode();
-      twin.formationOffset = { x: -42, y: 0 };
+      twin.formationOffset = { x: -52, y: 0 };
       this.extraShips.push(twin);
     }
   }
@@ -1945,6 +1969,9 @@ class Team {
     if (ship.hasEffect("bladeQueenUntil")) {
       list.push("刀锋女王");
     }
+    if (ship.isEmergencyBraking()) {
+      list.push("急刹");
+    }
     if (this.effects.taxiUntil > this.match.elapsed) {
       list.push("机关的力量");
     }
@@ -1977,6 +2004,14 @@ class Team {
     for (const ship of this.getAllShips()) {
       ship.clearActiveSkillBuffs();
     }
+  }
+
+  configureAutoScout(enabled, zoneId = 5) {
+    this.autoScout.enabled = Boolean(enabled);
+    if (Number.isFinite(Number(zoneId))) {
+      this.autoScout.zoneId = clamp(Number(zoneId), 1, 9);
+    }
+    return true;
   }
 
   blinkShip(ship, targetX, targetY, maxRange = 240) {
@@ -2139,6 +2174,7 @@ class Team {
     for (const ship of this.getAllShips()) {
       ship.update(dt);
     }
+    this.maybeAutoLaunchScout();
     for (const scout of this.scouts) {
       scout.update(dt);
     }
@@ -2168,8 +2204,18 @@ class Team {
     this.beams = this.beams.filter((beam) => beam.life > 0 || (beam.phase === "charge" && !beam.fired));
   }
 
-  launchScout(zoneId) {
-    const cost = 28;
+  maybeAutoLaunchScout() {
+    if (!this.autoScout.enabled) {
+      return false;
+    }
+    return this.launchScout(this.autoScout.zoneId, {
+      cooldownMultiplier: AUTO_SCOUT_COOLDOWN_MULTIPLIER,
+    });
+  }
+
+  launchScout(zoneId, options = {}) {
+    const cost = SCOUT_LAUNCH_COST;
+    const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
     if (this.areSkillsDisabled()) {
       return false;
     }
@@ -2185,7 +2231,26 @@ class Team {
       return false;
     }
     this.scouts.push(new Scout(this, source.x, source.y, { zone }));
-    this.cooldowns.scout = 2.6;
+    this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
+    return true;
+  }
+
+  emergencyBrake(shipOrKey) {
+    const ship = typeof shipOrKey === "string" ? this.shipByKey(shipOrKey) : shipOrKey;
+    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached()) {
+      return false;
+    }
+    if ((ship.effects.brakeCooldownUntil || 0) > this.match.elapsed) {
+      return false;
+    }
+    if (!this.spendEnergyForShip(ship, EMERGENCY_BRAKE_COST)) {
+      return false;
+    }
+    ship.speed *= 0.34;
+    ship.effects.brakeUntil = this.match.elapsed + EMERGENCY_BRAKE_DURATION;
+    ship.effects.brakeCooldownUntil = this.match.elapsed + EMERGENCY_BRAKE_COOLDOWN;
+    this.match.spawnBurst(ship.x, ship.y, "#98e9ff", 7);
+    this.match.spawnFloatingText(ship.x + 10, ship.y - 12, "急刹", "#9eefff");
     return true;
   }
 
@@ -2562,6 +2627,10 @@ class Team {
       maxEnergy: this.fleetEnergyForShip("main").max,
       hullRatio: this.hullRatio(),
       skillsDisabled: this.areSkillsDisabled(),
+      autoScout: {
+        enabled: this.autoScout.enabled,
+        zoneId: this.autoScout.zoneId,
+      },
       cooldowns: {
         scout: this.cooldowns.scout,
         flagship: this.cooldowns.flagship,
@@ -5424,6 +5493,15 @@ export class MatchSimulation {
     if (type === "launch_scout") {
       const zoneId = Number(action.zoneId) || 5;
       return team.launchScout(zoneId);
+    }
+
+    if (type === "configure_auto_scout") {
+      return team.configureAutoScout(action.enabled, action.zoneId);
+    }
+
+    if (type === "emergency_brake") {
+      const shipKey = String(action.shipKey || "main");
+      return team.emergencyBrake(shipKey);
     }
 
     if (type === "cast_flagship_skill") {

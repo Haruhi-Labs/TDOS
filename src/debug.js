@@ -878,6 +878,12 @@ function drawRoute(route, selected) {
   ctx.restore();
 }
 
+function shipHullDrawScale(ship) {
+  const baseScale = ship.key === "main" ? 0.72 : ship.key === "twin" ? 0.56 : 0.62;
+  const baseRadius = ship.key === "main" ? 10 : ship.key === "twin" ? 8 : 9;
+  return baseScale * ((ship.radius || baseRadius) / baseRadius);
+}
+
 function drawShip(ship, color, selected, attached) {
   if (!ship || !ship.alive) {
     return;
@@ -887,7 +893,7 @@ function drawShip(ship, color, selected, attached) {
   ctx.translate(ship.x, ship.y);
   ctx.rotate(ship.angle);
 
-  const hullScale = ship.key === "main" ? 0.72 : ship.key === "twin" ? 0.56 : 0.62;
+  const hullScale = shipHullDrawScale(ship);
   ctx.globalAlpha = attached ? 0.84 : 1;
   ctx.fillStyle = color;
   ctx.beginPath();
@@ -914,14 +920,16 @@ function drawShip(ship, color, selected, attached) {
 
   const hpRatio = clamp((ship.hp || 0) / Math.max(1, ship.maxHp || 1), 0, 1);
   const energyRatio = clamp((ship.energy || 0) / Math.max(1, ship.maxEnergy || 1), 0, 1);
+  const barWidth = Math.max(26, ship.radius * 2.5);
+  const barLeft = ship.x - barWidth * 0.5;
   ctx.fillStyle = "#0f1f31";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 10, 26, 4);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 10, barWidth, 4);
   ctx.fillStyle = hpRatio > 0.35 ? "#72f5a8" : "#ff8a8a";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 10, 26 * hpRatio, 4);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 10, barWidth * hpRatio, 4);
   ctx.fillStyle = "#10263d";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 4, 26, 3);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth, 3);
   ctx.fillStyle = "#6ad8ff";
-  ctx.fillRect(ship.x - 13, ship.y - ship.radius - 4, 26 * energyRatio, 3);
+  ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
 }
 
 function drawScout(scout, isTeamA) {

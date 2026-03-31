@@ -1,4 +1,10 @@
-import { MatchSimulation, TICK_DT } from "../shared/game-core.js";
+import {
+  AUTO_SCOUT_COOLDOWN_MULTIPLIER,
+  EMERGENCY_BRAKE_COST,
+  MANUAL_SCOUT_COOLDOWN,
+  MatchSimulation,
+  TICK_DT,
+} from "../shared/game-core.js";
 
 function runSteps(sim, seconds) {
   const steps = Math.floor(seconds / TICK_DT);
@@ -87,6 +93,47 @@ function speedAndEnergyRuleCheck() {
 
   teamA.split(2);
   assert(Math.round(teamA.ships.sub2.effectiveSpeed()) === 37, "二级分离后1096独立航速异常");
+}
+
+function emergencyBrakeCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+
+  main.angle = 0;
+  main.speed = main.effectiveSpeed();
+  main.command.x = main.x + 420;
+  main.command.y = main.y;
+  main.route = null;
+
+  const beforeEnergy = teamA.availableEnergyForShip(main);
+  const ok = sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" });
+  assert(ok, "急刹动作触发失败");
+  assert(teamA.availableEnergyForShip(main) <= beforeEnergy - EMERGENCY_BRAKE_COST + 0.01, "急刹未正确扣除能量");
+  assert(main.speed < main.effectiveSpeed() * 0.4, "急刹未立即显著压低速度");
+
+  runSteps(sim, 0.4);
+  assert(main.speed < 6, "急刹持续期内减速仍不明显");
+  assert(main.effects.brakeCooldownUntil > sim.elapsed, "急刹未进入冷却");
+}
+
+function autoScoutCheck() {
+  const manualSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const manualOk = manualSim.applyActionForSeat("A", { type: "launch_scout", zoneId: 3 });
+  assert(manualOk, "手动侦察机释放失败");
+  assert(Math.abs(manualSim.teamA.cooldowns.scout - MANUAL_SCOUT_COOLDOWN) < 1e-6, "手动侦察机冷却异常");
+
+  const autoSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const autoConfigOk = autoSim.applyActionForSeat("A", { type: "configure_auto_scout", enabled: true, zoneId: 7 });
+  assert(autoConfigOk, "自动侦察开关配置失败");
+
+  runSteps(autoSim, TICK_DT * 1.5);
+
+  assert(autoSim.teamA.scouts.length >= 1, "自动侦察未在可释放时自动派出");
+  assert(autoSim.teamA.scouts[0].zone?.id === 7, "自动侦察未飞向指定战区");
+  assert(Math.abs(autoSim.teamA.cooldowns.scout - MANUAL_SCOUT_COOLDOWN * AUTO_SCOUT_COOLDOWN_MULTIPLIER) < 0.08, "自动侦察未使用双倍冷却");
+  const serialized = autoSim.serializeState().teams.A.autoScout;
+  assert(serialized?.enabled && serialized.zoneId === 7, "自动侦察状态未序列化到战斗快照");
 }
 
 function splitFormationCheck() {
@@ -1359,6 +1406,8 @@ function aiEdgeRecoveryCheck() {
 function main() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
+  emergencyBrakeCheck();
+  autoScoutCheck();
   splitFormationCheck();
   future1096LeaderHandoverCheck();
   flagshipLossAutoSplitCheck();
