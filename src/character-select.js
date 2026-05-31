@@ -779,16 +779,16 @@ export function createCharacterSelect(onLaunch) {
     flipTo(charId, direction);
   }
 
-  // ── 箭头翻页：与标签同一套「书页」逻辑——翻页方向由目标角色的相对位置决定，
-  //    去右边(后面)的角色从右往左翻(next)，去左边(前面)的从左往右翻(prev)。
-  //    箭头只决定移动方向(±1)，首/末页循环回绕。
+  // ── 箭头翻页：书页逻辑，但方向按「移动方向」而非目标位置，使连续翻动方向一致。
+  //    前进(›,delta>0)恒从右往左翻(next)；后退(‹,delta<0)恒从左往右翻(prev)。
+  //    首/末页循环回绕时，会刻意保持同向（与目标相对位置相反一次），避免动画方向突变。
   function stepArrow(delta) {
     if (state.flipping) return;
     const fromIdx = getCharIndex(state.currentChar);
     const toIdx = (fromIdx + delta + CHARACTER_ORDER.length) % CHARACTER_ORDER.length;
     if (toIdx === fromIdx) return;
     const nextChar = CHARACTER_ORDER[toIdx];
-    const direction = toIdx > fromIdx ? "next" : "prev";
+    const direction = delta > 0 ? "next" : "prev";
     flipTo(nextChar, direction);
   }
 
