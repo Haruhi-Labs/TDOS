@@ -2564,3 +2564,32 @@ button.toggle-active {
   .lobby-head { grid-template-columns: 1fr; justify-items: center; gap: 8px; }
   .lobby-conn { justify-self: center; }
 }
+
+/* ── 共享星光背景画布（各页面统一氛围） ── */
+.page-stars {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════
+   页面切换过渡：进入时整页淡入 + 内容轻微上浮
+   ═══════════════════════════════════════════════════ */
+#app > * { animation: routeFade 0.3s ease both; }
+@keyframes routeFade { from { opacity: 0; } to { opacity: 1; } }
+
+.ts-content,
+.page-frame,
+.lobby-frame {
+  animation: routeRise 0.44s cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+@keyframes routeRise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #app > *, .ts-content, .page-frame, .lobby-frame { animation: none; }
+}

@@ -5,10 +5,12 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getProfile, setNickname, setFaction, getFaction } from "./profile.js";
+import { startStarfield } from "./starfield.js";
 
 function template(profile) {
   return `
     <section class="page-stage">
+      <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="page-bg" aria-hidden="true"></div>
       <div class="page-frame">
         <a class="page-back" href="/">‹ 返回主菜单</a>
@@ -44,6 +46,7 @@ export function mount(root) {
   root.innerHTML = template(getProfile());
   const ac = new AbortController();
   const { signal } = ac;
+  startStarfield(root.querySelector(".page-stars"), signal);
 
   const input = root.querySelector("#pvNickname");
   const factionBtns = Array.from(root.querySelectorAll(".pv-faction-btn"));

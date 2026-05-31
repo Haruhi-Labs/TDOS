@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getFaction } from "./profile.js";
+import { startStarfield } from "./starfield.js";
 
 const ITEMS = [
   { href: "/play", no: "I", label: "单人实战", sub: "挑选舰队，迎击 AI 舰群" },
@@ -60,55 +61,6 @@ function template(faction) {
   `;
 }
 
-// 星尘背景动画
-function startBackground(canvas, signal) {
-  const ctx = canvas.getContext("2d");
-  let raf = 0;
-  let w = 0;
-  let h = 0;
-  let stars = [];
-
-  function resize() {
-    w = canvas.width = canvas.clientWidth * (window.devicePixelRatio || 1);
-    h = canvas.height = canvas.clientHeight * (window.devicePixelRatio || 1);
-    const count = Math.round((w * h) / 26000);
-    stars = Array.from({ length: count }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      r: Math.random() * 1.5 + 0.3,
-      drift: Math.random() * 0.18 + 0.02,
-      tw: Math.random() * Math.PI * 2,
-      gold: Math.random() < 0.32,
-    }));
-  }
-  resize();
-  window.addEventListener("resize", resize, { signal });
-
-  let t = 0;
-  function frame() {
-    t += 0.016;
-    ctx.clearRect(0, 0, w, h);
-    for (const s of stars) {
-      s.y += s.drift;
-      if (s.y > h + 2) {
-        s.y = -2;
-        s.x = Math.random() * w;
-      }
-      const a = 0.35 + Math.sin(t * 1.6 + s.tw) * 0.3;
-      ctx.globalAlpha = Math.max(0.05, a);
-      ctx.fillStyle = s.gold ? "#f0d488" : "#d8e4ff";
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r * (window.devicePixelRatio || 1), 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.globalAlpha = 1;
-    raf = requestAnimationFrame(frame);
-  }
-  raf = requestAnimationFrame(frame);
-
-  signal.addEventListener("abort", () => cancelAnimationFrame(raf));
-}
-
 export function mount(root, ctx) {
   const faction = getFaction();
   root.innerHTML = template(faction);
@@ -118,7 +70,7 @@ export function mount(root, ctx) {
 
   const stage = root.querySelector(".ts-stage");
   const bg = root.querySelector(".ts-bg");
-  startBackground(bg, signal);
+  startStarfield(bg, signal);
 
   // 立绘加载失败则隐藏（鹤屋/朝仓暂无立绘）
   const heroImg = root.querySelector(".ts-hero-img");

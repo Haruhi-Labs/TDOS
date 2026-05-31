@@ -19,6 +19,7 @@ import {
 
 // 联机选角与单机共用同一套「翻书选角」覆盖层
 import { createCharacterSelect } from "./character-select.js";
+import { startStarfield } from "./starfield.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
@@ -3638,6 +3639,7 @@ export function mount(root) {
   initApp();
   ac = new AbortController();
   running = true;
+  startStarfield(root.querySelector(".page-stars"), ac.signal);
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
   updateBattleNameplate();
@@ -3673,6 +3675,7 @@ function onlineTemplate() {
     <div class="online-root">
       <!-- ── 独立大厅页 ── -->
       <section id="lobbyView" class="lobby-view">
+        <canvas class="page-stars" aria-hidden="true"></canvas>
         <div class="page-bg" aria-hidden="true"></div>
         <div class="lobby-frame">
           <header class="lobby-head">

@@ -2,6 +2,8 @@
 // 玩法说明（路由 /guide）
 // ═══════════════════════════════════════════════════════════════
 
+import { startStarfield } from "./starfield.js";
+
 const SECTIONS = [
   {
     title: "选舰",
@@ -49,6 +51,7 @@ function template() {
 
   return `
     <section class="page-stage">
+      <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="page-bg" aria-hidden="true"></div>
       <div class="page-frame page-frame-wide">
         <a class="page-back" href="/">‹ 返回主菜单</a>
@@ -65,5 +68,7 @@ function template() {
 
 export function mount(root) {
   root.innerHTML = template();
-  return () => {};
+  const ac = new AbortController();
+  startStarfield(root.querySelector(".page-stars"), ac.signal);
+  return () => ac.abort();
 }
