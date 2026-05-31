@@ -2477,3 +2477,90 @@ button.toggle-active {
   border-color: var(--gilt-deep);
 }
 #openFleetSelectBtn:hover { color: var(--gilt-pale); border-color: var(--gilt); }
+
+/* ═══════════════════════════════════════════════════
+   在线大厅 — 独立页面（非覆盖层），与战斗页二选一
+   ═══════════════════════════════════════════════════ */
+#lobbyView[hidden], #battleView[hidden] { display: none !important; }
+.online-root { min-height: 100vh; }
+
+.lobby-view {
+  position: relative;
+  min-height: 100vh;
+  overflow: auto;
+  background: radial-gradient(120% 90% at 50% 0%, #122050 0%, #0a1430 44%, #05091a 100%);
+}
+.lobby-frame {
+  position: relative;
+  z-index: 1;
+  width: min(920px, 92%);
+  margin: 0 auto;
+  padding: 40px 0 48px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.lobby-head {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 16px;
+}
+.lobby-title {
+  margin: 0;
+  text-align: center;
+  font-family: var(--font-title);
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  background: var(--gilt-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #160c05) drop-shadow(0 4px 10px #02060e);
+}
+.lobby-conn { display: inline-flex; gap: 8px; justify-self: end; }
+.lobby-conn strong {
+  font-family: var(--font-cn);
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--gilt-bright);
+  background: #0c1430;
+  border: 1px solid var(--brass);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+.lobby-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+.lobby-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px 22px;
+  border-radius: 8px;
+  border: 1px solid var(--brass);
+  background: var(--tex-leather), var(--leather-surface);
+  background-size: 220px 220px, cover;
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 0 0 1px #160c05, inset 0 0 36px #160c0588, 0 8px 28px #02060ec0, 0 0 0 2px #160c05;
+}
+.lobby-card-title {
+  margin: 6px 0 2px;
+  font-family: var(--font-engrave);
+  font-size: 1.02rem;
+  letter-spacing: 0.12em;
+  color: var(--gilt-bright);
+  border-bottom: 1px solid #6c4a2855;
+  padding-bottom: 6px;
+}
+.lobby-card-title:first-child { margin-top: 0; }
+
+@media (max-width: 720px) {
+  .lobby-grid { grid-template-columns: 1fr; }
+  .lobby-head { grid-template-columns: 1fr; justify-items: center; gap: 8px; }
+  .lobby-conn { justify-self: center; }
+}
