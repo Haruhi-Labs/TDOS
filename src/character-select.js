@@ -98,52 +98,61 @@ const imageCache = new Map();
 // 同步加载状态：成功时缓存 Image，失败时缓存 null
 const imageSyncMap = new Map();
 
-export function loadPortraitImage(charId) {
-  if (imageCache.has(charId)) {
-    return imageCache.get(charId);
+// 立绘按阵营分蓝/红两套：./assets/portraits/{color}/{charId}.png
+export const TEAM_COLORS = ["blue", "red"];
+function pkey(charId, color) {
+  return `${color}/${charId}`;
+}
+
+export function loadPortraitImage(charId, color = "blue") {
+  const key = pkey(charId, color);
+  if (imageCache.has(key)) {
+    return imageCache.get(key);
   }
   const promise = new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
-      imageSyncMap.set(charId, img);
-      invalidatePortrait(charId);
+      imageSyncMap.set(key, img);
+      invalidatePortrait(charId, color);
       resolve(img);
     };
     img.onerror = () => {
-      imageSyncMap.set(charId, null);
+      imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `./assets/portraits/${charId}.png`;
+    img.src = `./assets/portraits/${color}/${charId}.png`;
   });
-  imageCache.set(charId, promise);
+  imageCache.set(key, promise);
   return promise;
 }
 
 // 同步获取已加载的立绘 Image，未加载或失败时返回 null
-export function getLoadedPortraitImage(charId) {
-  return imageSyncMap.has(charId) ? imageSyncMap.get(charId) : null;
+export function getLoadedPortraitImage(charId, color = "blue") {
+  const key = pkey(charId, color);
+  return imageSyncMap.has(key) ? imageSyncMap.get(key) : null;
 }
 
-export function getPortrait(charId, width = 400, height = 700) {
-  const key = `${charId}-${width}x${height}`;
+export function getPortrait(charId, width = 400, height = 700, color = "blue") {
+  const key = `${color}/${charId}-${width}x${height}`;
   if (portraitCache.has(key)) {
     return portraitCache.get(key);
   }
-  const canvas = generatePortrait(charId, width, height);
+  const canvas = generatePortrait(charId, width, height, color);
   portraitCache.set(key, canvas);
   return canvas;
 }
 
 // 强制刷新缓存（在真实图片加载完成后调用）
-export function invalidatePortrait(charId) {
+export function invalidatePortrait(charId, color = "blue") {
+  const prefix = `${color}/${charId}-`;
   for (const key of [...portraitCache.keys()]) {
-    if (key.startsWith(charId + "-")) {
+    if (key.startsWith(prefix)) {
       portraitCache.delete(key);
     }
   }
 }
 
-function generatePortrait(charId, width, height) {
+function generatePortrait(charId, width, height, color = "blue") {
   const c = document.createElement("canvas");
   c.width = width;
   c.height = height;
@@ -174,7 +183,7 @@ function generatePortrait(charId, width, height) {
   ctx.fillRect(0, 0, width, height);
 
   // 真实立绘（如果已加载）
-  const realImg = getLoadedPortraitImage(charId);
+  const realImg = getLoadedPortraitImage(charId, color);
   if (realImg) {
     drawPortraitImage(ctx, realImg, width, height);
   } else {
@@ -373,7 +382,9 @@ function pad2(n) {
 const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 // 立绘是否真实存在（CHARACTER_THEMES 里 tsuruya/asakura 暂无图）
-const HAS_PORTRAIT = new Set(["haruhi", "koizumi", "yuki", "future1096", "kyon"]);
+const HAS_PORTRAIT = new Set([
+  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura",
+]);
 
 // 把单页内容渲染为 HTML 字符串（base 与 flipper 共享同一份模板）
 function renderLeftPageHTML(charId, loadout) {
@@ -437,21 +448,29 @@ function renderRightPageHTML(charId, loadout) {
     )
     .join("");
 
-  const assignBtnsHTML = SLOT_INFO.map((slot) => {
-    const occupant = loadout[slot.key];
-    const isCurrent = occupant === charId;
-    const occupied = isCurrent
-      ? "✓ 已编入"
-      : occupant
-        ? `${CHARACTER_DEFS[occupant].shortName} · 替换`
-        : "空缺";
-    return `
-      <button type="button" class="cs-assign-btn${isCurrent ? " current" : ""}" data-slot="${slot.key}">
-        <span class="cs-assign-btn-slot">${slot.label}</span>
-        <span class="cs-assign-btn-occupied">${occupied}</span>
-      </button>
-    `;
-  }).join("");
+  // 顺序编入向导：第一个空位即当前步；本舰可能已被编入某舰位
+  const step = SLOT_INFO.findIndex((s) => !loadout[s.key]); // -1 表示已满
+  const done = step === -1;
+  const mySlot = SLOT_INFO.find((s) => loadout[s.key] === charId) || null;
+  const target = done ? null : SLOT_INFO[step];
+  const filledCount = done ? SLOT_INFO.length : step;
+
+  let promptHTML, ctaLabel, ctaState;
+  if (mySlot) {
+    promptHTML = `本舰已编入 <strong>${mySlot.label}</strong>`;
+    ctaLabel = `已选为 ${mySlot.label}`;
+    ctaState = "chosen";
+  } else if (target) {
+    promptHTML = `请选择第 <strong>${step + 1}</strong> 位 · <strong>${target.label}</strong>`;
+    ctaLabel = `选为 ${target.label}`;
+    ctaState = "select";
+  } else {
+    promptHTML = `舰队已就绪 · 可出击或退回修改`;
+    ctaLabel = `舰队已就绪`;
+    ctaState = "ready";
+  }
+  const canBack = filledCount > 0;
+  const backLabel = canBack ? `‹ 退回 · 重选 ${SLOT_INFO[filledCount - 1].label}` : `‹ 退回`;
 
   return `
     <div class="cs-page-chapter">
@@ -484,9 +503,12 @@ function renderRightPageHTML(charId, loadout) {
         <p class="cs-page-skill-desc">${def.subSkill.description}</p>
       </div>
     </div>
-    <div class="cs-page-assign">
-      <span class="cs-assign-label">编 入 我 方 舰 队</span>
-      <div class="cs-assign-row">${assignBtnsHTML}</div>
+    <div class="cs-page-enlist">
+      <div class="cs-enlist-prompt">${promptHTML}</div>
+      <div class="cs-enlist-actions">
+        <button type="button" class="cs-enlist-back" data-action="back"${canBack ? "" : " disabled"}>${backLabel}</button>
+        <button type="button" class="cs-enlist-cta cs-enlist-${ctaState}" data-action="select"${ctaState === "select" ? "" : " disabled"}>${ctaLabel}</button>
+      </div>
     </div>
     <div class="cs-page-foot">SOS 团战术档案 · <span>仅供出击参考</span></div>
     <div class="cs-flip-shade"></div>
@@ -503,7 +525,7 @@ export function createCharacterSelect(onLaunch) {
     currentChar: CHARACTER_ORDER[0],
     loadout: { main: null, sub1: null, sub2: null },
     flipping: false,
-    portraitImages: {},
+    color: "blue", // 阵营立绘：左蓝右红，默认蓝队
   };
 
   // ── DOM 顶层 ──
@@ -529,10 +551,22 @@ export function createCharacterSelect(onLaunch) {
       <div class="cs-sos-badge">SOS</div>
       <h1 class="cs-title">射手座之日</h1>
       <p class="cs-subtitle">Star-Calendar Roster · Confidential</p>
+      <div class="cs-faction" role="group" aria-label="选择阵营">
+        <span class="cs-faction-label">阵营</span>
+        <button type="button" class="cs-faction-btn blue active" data-color="blue">蓝队</button>
+        <button type="button" class="cs-faction-btn red" data-color="red">红队</button>
+      </div>
     </div>
     <div class="cs-folio right">For SOS Brigade Eyes Only</div>
   `;
   content.appendChild(header);
+
+  const factionBtns = {
+    blue: header.querySelector('.cs-faction-btn.blue'),
+    red: header.querySelector('.cs-faction-btn.red'),
+  };
+  factionBtns.blue.addEventListener("click", () => setColor("blue"));
+  factionBtns.red.addEventListener("click", () => setColor("red"));
 
   // ── 书本主体 ──
   const stage = document.createElement("section");
@@ -573,8 +607,8 @@ export function createCharacterSelect(onLaunch) {
   navNext.textContent = "›";
   stage.appendChild(navNext);
 
-  navPrev.addEventListener("click", () => step(-1));
-  navNext.addEventListener("click", () => step(1));
+  navPrev.addEventListener("click", () => stepArrow(-1, "next")); // ‹ 往左翻
+  navNext.addEventListener("click", () => stepArrow(1, "prev")); // › 往右翻
 
   // ── 底栏 ──
   const footer = document.createElement("footer");
@@ -641,25 +675,38 @@ export function createCharacterSelect(onLaunch) {
   `;
   content.appendChild(modeLinks);
 
-  // ── 预加载立绘 ──
-  for (const charId of CHARACTER_ORDER) {
-    loadPortraitImage(charId).then((img) => {
-      state.portraitImages[charId] = img;
-      if (state.currentChar === charId && !state.flipping) {
-        applyPortrait(pageLeft, charId);
-      }
-      for (const slot of SLOT_INFO) {
-        if (state.loadout[slot.key] === charId) updateFleetSlot(slot.key);
-      }
-    });
+  // ── 预加载某阵营的全部立绘 ──
+  function preloadColor(color) {
+    for (const charId of CHARACTER_ORDER) {
+      loadPortraitImage(charId, color).then(() => {
+        if (state.color !== color) return; // 加载完成时已切换阵营，忽略
+        if (state.currentChar === charId && !state.flipping) {
+          applyPortrait(pageLeft, charId);
+        }
+        const slot = findAssignedSlot(charId);
+        if (slot) updateFleetSlot(slot);
+      });
+    }
+  }
+
+  // ── 切换阵营（整体红/蓝立绘） ──
+  function setColor(color) {
+    if (color === state.color || !TEAM_COLORS.includes(color)) return;
+    state.color = color;
+    factionBtns.blue.classList.toggle("active", color === "blue");
+    factionBtns.red.classList.toggle("active", color === "red");
+    screen.classList.toggle("faction-red", color === "red");
+    preloadColor(color);
+    if (!state.flipping) renderBase();
+    for (const slot of SLOT_INFO) updateFleetSlot(slot.key);
   }
 
   // ── 立绘填充（真实图片优先，否则用生成占位 canvas） ──
   function portraitUrl(charId) {
-    if (HAS_PORTRAIT.has(charId) && state.portraitImages[charId]) {
-      return `url('./assets/portraits/${charId}.png')`;
+    if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
+      return `url('./assets/portraits/${state.color}/${charId}.png')`;
     }
-    const canvas = getPortrait(charId, 520, 760);
+    const canvas = getPortrait(charId, 520, 760, state.color);
     return `url(${canvas.toDataURL()})`;
   }
 
@@ -676,12 +723,20 @@ export function createCharacterSelect(onLaunch) {
 
   function renderRightInto(el, charId) {
     el.innerHTML = renderRightPageHTML(charId, state.loadout);
-    el.querySelectorAll(".cs-assign-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
+    const selectBtn = el.querySelector(".cs-enlist-cta[data-action='select']");
+    if (selectBtn) {
+      selectBtn.addEventListener("click", (e) => {
         e.stopPropagation();
-        assignToSlot(btn.dataset.slot);
+        selectCurrent();
       });
-    });
+    }
+    const backBtn = el.querySelector(".cs-enlist-back[data-action='back']");
+    if (backBtn) {
+      backBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        stepBack();
+      });
+    }
   }
 
   function renderBase() {
@@ -710,21 +765,27 @@ export function createCharacterSelect(onLaunch) {
     return window.matchMedia("(max-width: 980px)").matches;
   }
 
-  // ── 切换 + 翻页 ──
+  // ── 标签切换：翻页方向朝“被点标签所在的一侧”（右侧标签→往右，左侧标签→往左） ──
+  // 视觉：往右翻 = "prev" 动画；往左翻 = "next" 动画
   function switchTo(charId) {
     if (state.flipping) return;
     if (!CHARACTER_DEFS[charId]) return;
     if (charId === state.currentChar) return;
     const fromIdx = getCharIndex(state.currentChar);
     const toIdx = getCharIndex(charId);
-    const direction = toIdx > fromIdx ? "next" : "prev";
+    const direction = toIdx > fromIdx ? "prev" : "next";
     flipTo(charId, direction);
   }
 
-  function step(delta) {
+  // ── 箭头翻页：翻页方向永远跟随箭头朝向，与循环回绕无关 ──
+  // › 往右 = "prev"；‹ 往左 = "next"
+  function stepArrow(delta, direction) {
+    if (state.flipping) return;
     const idx = getCharIndex(state.currentChar);
     const nextIdx = (idx + delta + CHARACTER_ORDER.length) % CHARACTER_ORDER.length;
-    switchTo(CHARACTER_ORDER[nextIdx]);
+    const nextChar = CHARACTER_ORDER[nextIdx];
+    if (nextChar === state.currentChar) return;
+    flipTo(nextChar, direction);
   }
 
   function flipTo(nextChar, direction) {
@@ -788,30 +849,50 @@ export function createCharacterSelect(onLaunch) {
     }, FLIP_MS);
   }
 
-  // ── 编入 ──
-  function assignToSlot(slotKey) {
+  // ── 顺序编入向导 ──
+  // 当前步 = 第一个空舰位的序号（0=主舰,1=副一,2=副二）；返回 3 表示编队已满
+  function getStep() {
+    const i = SLOT_INFO.findIndex((s) => !state.loadout[s.key]);
+    return i === -1 ? SLOT_INFO.length : i;
+  }
+
+  // 把当前查看的角色选入当前这一步对应的舰位
+  function selectCurrent() {
+    if (state.flipping) return;
+    const curStep = getStep();
+    if (curStep >= SLOT_INFO.length) return;   // 编队已满
     const charId = state.currentChar;
-    const currentSlot = findAssignedSlot(charId);
-    if (currentSlot === slotKey) {
-      state.loadout[slotKey] = null;
-    } else {
-      if (currentSlot) state.loadout[currentSlot] = null;
-      // 若目标槽已被别人占用，先腾出
-      state.loadout[slotKey] = charId;
-    }
+    if (findAssignedSlot(charId)) return;      // 已编入，不能重复选
+    state.loadout[SLOT_INFO[curStep].key] = charId;
+    afterLoadoutChange();
+  }
+
+  // 退回上一步：清掉最近编入的舰位，重新选它
+  function stepBack() {
+    if (state.flipping) return;
+    const curStep = getStep();
+    if (curStep <= 0) return;
+    state.loadout[SLOT_INFO[curStep - 1].key] = null;
+    afterLoadoutChange();
+  }
+
+  function afterLoadoutChange() {
     if (!state.flipping) renderBase();
     for (const slot of SLOT_INFO) updateFleetSlot(slot.key);
+    refreshFleetTarget();
     updateLaunch();
+  }
 
-    // 自动翻到下一位未编入成员（编队未满时）
-    if (!state.loadout.main || !state.loadout.sub1 || !state.loadout.sub2) {
-      const nextChar = CHARACTER_ORDER.find(
-        (c) => !findAssignedSlot(c) && c !== charId,
-      );
-      if (nextChar) {
-        setTimeout(() => switchTo(nextChar), 360);
+  // 高亮底部舰队栏中“当前正在选择”的舰位
+  function refreshFleetTarget() {
+    const curStep = getStep();
+    SLOT_INFO.forEach((s, i) => {
+      const targeting = i === curStep;
+      fleetSlots[s.key].el.classList.toggle("targeting", targeting);
+      if (targeting && !state.loadout[s.key]) {
+        fleetSlots[s.key].name.textContent = "选择中";
       }
-    }
+    });
   }
 
   function updateFleetSlot(slotKey) {
@@ -821,11 +902,11 @@ export function createCharacterSelect(onLaunch) {
       const def = CHARACTER_DEFS[charId];
       els.el.classList.add("filled");
       els.name.textContent = def.shortName;
-      if (HAS_PORTRAIT.has(charId) && state.portraitImages[charId]) {
-        els.icon.style.backgroundImage = `url(./assets/portraits/${charId}.png)`;
+      if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
+        els.icon.style.backgroundImage = `url(./assets/portraits/${state.color}/${charId}.png)`;
         els.icon.style.backgroundPosition = "center 20%";
       } else {
-        const mini = getPortrait(charId, 120, 120);
+        const mini = getPortrait(charId, 120, 120, state.color);
         els.icon.style.backgroundImage = `url(${mini.toDataURL()})`;
       }
     } else {
@@ -843,7 +924,8 @@ export function createCharacterSelect(onLaunch) {
 
   function launch() {
     if (state.loadout.main && state.loadout.sub1 && state.loadout.sub2) {
-      hide(() => onLaunch(cloneLoadout(state.loadout)));
+      const color = state.color;
+      hide(() => onLaunch(cloneLoadout(state.loadout), color));
     }
   }
 
@@ -851,33 +933,70 @@ export function createCharacterSelect(onLaunch) {
     if (!screen.isConnected) return;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      step(-1);
+      stepArrow(-1, "next");
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      step(1);
-    } else if (e.key === "1") {
-      assignToSlot("main");
-    } else if (e.key === "2") {
-      assignToSlot("sub1");
-    } else if (e.key === "3") {
-      assignToSlot("sub2");
-    } else if (e.key === "Enter" && !launchBtn.disabled) {
-      launch();
+      stepArrow(1, "prev");
+    } else if (e.key === "Backspace" || e.key === "Escape") {
+      e.preventDefault();
+      stepBack();
+    } else if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      if (!launchBtn.disabled) launch();
+      else selectCurrent();
     }
   }
 
-  // ── 背景动画（烛光书桌 + 浮金尘） ──
+  // ── 背景动画（烛光书桌浮于星历之海：星空 + 星云 + 流星 + 烛火金尘） ──
+  const STAR_CX = 0.5, STAR_CY = 0.46;
+  // 星点：外围更亮，让空旷处布满星光；书本所在的中心偏暗不抢戏
+  const stars = [];
+  for (let i = 0; i < 240; i++) {
+    const x = Math.random();
+    const y = Math.random();
+    const dist = Math.min(1, Math.hypot(x - STAR_CX, y - STAR_CY) / 0.62); // 0=中心 1=边缘
+    const big = Math.random() < 0.14;
+    stars.push({
+      x, y,
+      r: big ? Math.random() * 1.5 + 1.4 : Math.random() * 1.2 + 0.4,
+      base: (0.32 + Math.random() * 0.55) * (0.42 + 0.58 * dist),
+      tw: 0.6 + Math.random() * 1.8,
+      phase: Math.random() * Math.PI * 2,
+      spike: big && Math.random() < 0.55,
+      hue: Math.random(),
+    });
+  }
+
+  // 静态星云团：给黑处补冷色
+  const nebulae = [
+    { x: 0.15, y: 0.24, r: 0.44, c: "#3a2e8a" }, // 紫
+    { x: 0.87, y: 0.70, r: 0.46, c: "#1f5a7a" }, // 青蓝
+    { x: 0.80, y: 0.16, r: 0.34, c: "#5a2a6a" }, // 品红
+    { x: 0.10, y: 0.82, r: 0.40, c: "#234a9a" }, // 靛蓝
+  ];
+
+  // 流星
+  const shooting = [];
+  let nextShoot = 1.4;
+
+  // 烛火金尘
   const particles = [];
-  for (let i = 0; i < 70; i++) {
+  for (let i = 0; i < 56; i++) {
     particles.push({
       x: Math.random() * 1920,
       y: Math.random() * 1080,
       vx: (Math.random() - 0.5) * 0.3,
       vy: -Math.random() * 0.4 - 0.1,
-      r: Math.random() * 1.7 + 0.4,
+      r: Math.random() * 1.6 + 0.4,
       alpha: Math.random() * 0.4 + 0.15,
       phase: Math.random() * Math.PI * 2,
     });
+  }
+
+  function starColor(hue) {
+    if (hue < 0.55) return "207,224,255"; // 冷白
+    if (hue < 0.85) return "255,247,214"; // 暖白/淡金
+    return "170,196,255";                  // 蓝
   }
 
   let bgAnimId = null;
@@ -885,27 +1004,107 @@ export function createCharacterSelect(onLaunch) {
     const bCtx = bgCanvas.getContext("2d");
     const w = bgCanvas.width;
     const h = bgCanvas.height;
+    const t = time * 0.001;
 
-    const grad = bCtx.createRadialGradient(w * 0.5, h * 0.4, 0, w * 0.5, h * 0.5, w * 0.85);
-    grad.addColorStop(0, "#3a2310");
-    grad.addColorStop(0.5, "#1c1006");
-    grad.addColorStop(1, "#070401");
+    // 深空底：暖光中心 → 深蓝星夜边缘
+    const grad = bCtx.createRadialGradient(w * STAR_CX, h * STAR_CY, 0, w * 0.5, h * 0.5, w * 0.9);
+    grad.addColorStop(0, "#2a1d12");
+    grad.addColorStop(0.44, "#13142c");
+    grad.addColorStop(1, "#070c20");
     bCtx.fillStyle = grad;
     bCtx.fillRect(0, 0, w, h);
 
-    const t = time * 0.001;
-    // 烛光呼吸
+    // 星云
     bCtx.save();
-    const breathe = 0.06 + Math.sin(t * 1.3) * 0.015;
+    bCtx.globalCompositeOperation = "lighter";
+    for (const n of nebulae) {
+      const drift = Math.sin(t * 0.12 + n.x * 6) * 0.01;
+      const g = bCtx.createRadialGradient(w * n.x, h * (n.y + drift), 0, w * n.x, h * (n.y + drift), w * n.r);
+      g.addColorStop(0, n.c + "2e");
+      g.addColorStop(0.5, n.c + "12");
+      g.addColorStop(1, "transparent");
+      bCtx.fillStyle = g;
+      bCtx.fillRect(0, 0, w, h);
+    }
+    bCtx.restore();
+
+    // 星点（闪烁）
+    bCtx.save();
+    for (const s of stars) {
+      const tw = 0.45 + 0.55 * Math.sin(t * s.tw + s.phase);
+      const a = s.base * tw;
+      if (a <= 0.012) continue;
+      const col = starColor(s.hue);
+      const px = s.x * w, py = s.y * h;
+      bCtx.globalAlpha = a;
+      bCtx.fillStyle = `rgb(${col})`;
+      bCtx.beginPath();
+      bCtx.arc(px, py, s.r, 0, Math.PI * 2);
+      bCtx.fill();
+      if (s.spike) {
+        bCtx.globalAlpha = a * 0.5;
+        bCtx.strokeStyle = `rgb(${col})`;
+        bCtx.lineWidth = 0.7;
+        const L = s.r * 4.6;
+        bCtx.beginPath();
+        bCtx.moveTo(px - L, py); bCtx.lineTo(px + L, py);
+        bCtx.moveTo(px, py - L); bCtx.lineTo(px, py + L);
+        bCtx.stroke();
+      }
+    }
+    bCtx.restore();
+
+    // 流星
+    if (t > nextShoot) {
+      const fromLeft = Math.random() < 0.5;
+      shooting.push({
+        x: (fromLeft ? Math.random() * 0.3 : 0.7 + Math.random() * 0.3) * w,
+        y: Math.random() * 0.42 * h,
+        vx: (fromLeft ? 1 : -1) * (5 + Math.random() * 3),
+        vy: 2.3 + Math.random() * 1.6,
+        life: 0,
+        max: 58 + Math.random() * 34,
+      });
+      nextShoot = t + 2.8 + Math.random() * 3.6;
+    }
+    bCtx.save();
+    bCtx.globalCompositeOperation = "lighter";
+    for (let i = shooting.length - 1; i >= 0; i--) {
+      const m = shooting[i];
+      m.life++;
+      m.x += m.vx;
+      m.y += m.vy;
+      if (m.life > m.max) { shooting.splice(i, 1); continue; }
+      const fade = Math.sin((m.life / m.max) * Math.PI); // 0→1→0
+      const tailX = m.x - m.vx * 7, tailY = m.y - m.vy * 7;
+      const lg = bCtx.createLinearGradient(tailX, tailY, m.x, m.y);
+      lg.addColorStop(0, "transparent");
+      lg.addColorStop(1, `rgba(240,228,200,${0.7 * fade})`);
+      bCtx.strokeStyle = lg;
+      bCtx.lineWidth = 1.6;
+      bCtx.beginPath();
+      bCtx.moveTo(tailX, tailY); bCtx.lineTo(m.x, m.y);
+      bCtx.stroke();
+      bCtx.globalAlpha = 0.9 * fade;
+      bCtx.fillStyle = "#fff6dc";
+      bCtx.beginPath(); bCtx.arc(m.x, m.y, 1.5, 0, Math.PI * 2); bCtx.fill();
+      bCtx.globalAlpha = 1;
+    }
+    bCtx.restore();
+
+    // 烛光呼吸（暖光落在书上）
+    bCtx.save();
+    const breathe = 0.07 + Math.sin(t * 1.3) * 0.018;
     bCtx.globalAlpha = breathe;
-    const candle = bCtx.createRadialGradient(w * 0.5, h * 0.46, 0, w * 0.5, h * 0.5, w * 0.55);
-    candle.addColorStop(0, "#d8a24e");
+    const candle = bCtx.createRadialGradient(w * 0.5, h * 0.46, 0, w * 0.5, h * 0.5, w * 0.5);
+    candle.addColorStop(0, "#e0a64e");
     candle.addColorStop(0.5, "#6b452040");
     candle.addColorStop(1, "transparent");
     bCtx.fillStyle = candle;
     bCtx.fillRect(0, 0, w, h);
     bCtx.restore();
 
+    // 金尘（烛火余烬）
     for (const p of particles) {
       p.x += p.vx;
       p.y += p.vy;
@@ -930,15 +1129,15 @@ export function createCharacterSelect(onLaunch) {
   // ── 显示 / 隐藏 ──
   function show() {
     document.body.appendChild(screen);
-    const stored = readStoredLoadoutForSelect();
-    if (stored) {
-      state.loadout.main = stored.main;
-      state.loadout.sub1 = stored.sub1;
-      state.loadout.sub2 = stored.sub2;
-      state.currentChar = stored.main || CHARACTER_ORDER[0];
-    }
+    // 不预填默认编队：每次都从第一步（选主舰）开始，由玩家自己选
+    state.loadout.main = null;
+    state.loadout.sub1 = null;
+    state.loadout.sub2 = null;
+    state.currentChar = CHARACTER_ORDER[0];
+    preloadColor(state.color);
     renderBase();
     for (const slot of SLOT_INFO) updateFleetSlot(slot.key);
+    refreshFleetTarget();
     updateLaunch();
     requestAnimationFrame(() => screen.classList.add("visible"));
     bgAnimId = requestAnimationFrame(animateBg);
@@ -960,33 +1159,16 @@ export function createCharacterSelect(onLaunch) {
     }, 640);
   }
 
-  function readStoredLoadoutForSelect() {
-    try {
-      const raw = window.localStorage.getItem("haruhi-player-loadout-v2");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      if (parsed.main && parsed.sub1 && parsed.sub2) {
-        for (const key of ["main", "sub1", "sub2"]) {
-          if (!CHARACTER_DEFS[parsed[key]]) return null;
-        }
-        return parsed;
-      }
-    } catch (_e) {
-      // ignore
-    }
-    return null;
-  }
-
   return { show, hide, screen };
 }
 
 // ═══════════════════════════════════════════════════
 // In-game Portrait Drawing Utility
 // ═══════════════════════════════════════════════════
-export function drawInGamePortrait(ctx, charId, canvasWidth, canvasHeight, alpha = 0.18) {
+export function drawInGamePortrait(ctx, charId, canvasWidth, canvasHeight, alpha = 0.18, color = "blue") {
   if (!charId || !CHARACTER_THEMES[charId]) return;
 
-  const portrait = getPortrait(charId, 300, 520);
+  const portrait = getPortrait(charId, 300, 520, color);
   const drawH = canvasHeight * 0.55;
   const drawW = drawH * (300 / 520);
   const x = canvasWidth - drawW - 10;

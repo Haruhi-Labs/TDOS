@@ -1101,11 +1101,11 @@ button.toggle-active {
   overflow: hidden;
   opacity: 0;
   transition: opacity 0.6s ease, transform 0.7s cubic-bezier(0.4, 0, 0, 1);
-  /* 老旧木桌 + 烛光 */
+  /* 烛光书桌浮于星空：暖光中心 → 深蓝星夜边缘（canvas 之下的兜底色） */
   background:
-    radial-gradient(ellipse at 50% 26%, #3a2310 0%, #1c1006 56%, #0a0502 100%),
-    radial-gradient(ellipse at 50% 108%, #4a2c12 0%, #0a0502 78%),
-    #070401;
+    radial-gradient(ellipse at 50% 30%, #3a2310 0%, #1a1530 54%, #0b1430 100%),
+    radial-gradient(ellipse at 50% 110%, #38240f 0%, #0a1028 80%),
+    #070d1e;
   font-family: var(--font-cn), var(--font-body);
   color: var(--ink);
 }
@@ -1130,10 +1130,10 @@ button.toggle-active {
   background:
     var(--tex-leather),
     repeating-linear-gradient(94deg, transparent 0, #00000010 2px, transparent 5px, transparent 26px, #00000008 28px, transparent 31px),
-    radial-gradient(ellipse at 50% 100%, transparent 46%, #07040188 100%);
+    radial-gradient(ellipse at 50% 100%, transparent 60%, #060a1c44 100%);
   background-size: 320px 320px, auto, cover;
   mix-blend-mode: multiply;
-  opacity: 0.7;
+  opacity: 0.4;
 }
 /* 顶部烛光金线 */
 .cs-screen::after {
@@ -1229,6 +1229,49 @@ button.toggle-active {
   font-style: italic;
 }
 
+/* 阵营切换（整体红/蓝立绘） */
+.cs-faction {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 7px;
+}
+.cs-faction-label {
+  font-family: var(--font-kai);
+  font-size: 0.74rem;
+  letter-spacing: 0.3em;
+  color: var(--gilt);
+}
+.cs-faction-btn {
+  font-family: var(--font-engrave);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding: 4px 16px;
+  border: 1px solid var(--brass);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2a1c0e 0%, #160c05 100%);
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: all 160ms ease;
+  box-shadow: inset 0 1px 0 #6c4a2855;
+}
+.cs-faction-btn:hover:not(.active) { color: var(--gilt-bright); border-color: var(--gilt); }
+.cs-faction-btn.blue.active {
+  border-color: #6fa0ff;
+  background: radial-gradient(ellipse at 50% 28%, #2849a8 0%, #14245a 68%, #0c1838 100%);
+  color: #dcebff;
+  text-shadow: 0 1px 2px #050912;
+  box-shadow: inset 0 1px 0 #4a6dc8aa, 0 0 14px #2849a888;
+}
+.cs-faction-btn.red.active {
+  border-color: var(--gilt-bright);
+  background: radial-gradient(ellipse at 50% 28%, #c8323a 0%, #7a161a 68%, #5a0e10 100%);
+  color: #ffe6dc;
+  text-shadow: 0 1px 2px #2a0607;
+  box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 14px #b8232a88;
+}
+
 /* ════════════════════════════════════════════════════════════
    书本本体（皮装精装）
    ════════════════════════════════════════════════════════════ */
@@ -1282,7 +1325,7 @@ button.toggle-active {
 .cs-page-half {
   position: relative;
   overflow: hidden;
-  padding: 26px 30px 22px;
+  padding: 22px 30px 16px;
   color: var(--ink);
   background:
     radial-gradient(circle at 12% 88%, #8a602033 0%, transparent 24%),
@@ -1333,6 +1376,8 @@ button.toggle-active {
 .cs-page-left { box-shadow: inset -26px 0 36px -16px #160c05b0; }
 .cs-page-right { box-shadow: inset 26px 0 36px -16px #160c05b0; }
 .cs-page-half > * { position: relative; z-index: 1; }
+/* 档案各块不被 flex 压缩，避免挤压时参数表等内容被裁切 */
+.cs-page-right > * { flex-shrink: 0; }
 
 /* 装订线：覆盖在书本之上的独立平面图层（书本是 preserve-3d，单独立层避免翻页 z 序错乱）
    翻页时书页从其下方穿过，像真正塞进书脊缝里，而不是突兀盖住书钉 */
@@ -1540,16 +1585,16 @@ button.toggle-active {
 
 /* flavor 题词（居中铭文式） */
 .cs-page-flavor {
-  margin: 6px 0 16px;
+  margin: 2px 0 10px;
   font-family: var(--font-cn);
-  font-size: 1.04rem;
-  line-height: 1.7;
+  font-size: 1.02rem;
+  line-height: 1.6;
   color: var(--oxblood);
   font-weight: 500;
   letter-spacing: 0.04em;
   text-align: center;
   position: relative;
-  padding: 10px 28px 12px;
+  padding: 6px 26px 8px;
 }
 .cs-page-flavor::before,
 .cs-page-flavor::after {
@@ -1566,7 +1611,7 @@ button.toggle-active {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 14px 0 9px;
+  margin: 10px 0 7px;
   font-family: var(--font-engrave);
   font-size: 0.72rem;
   letter-spacing: 0.22em;
@@ -1600,8 +1645,8 @@ button.toggle-active {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 8px 4px;
+  gap: 1px;
+  padding: 6px 4px;
   border-right: 1px solid #8a602033;
   border-bottom: 1px solid #8a602033;
 }
@@ -1621,10 +1666,10 @@ button.toggle-active {
 }
 
 /* 技能 */
-.cs-page-skills { display: grid; gap: 9px; }
+.cs-page-skills { display: grid; gap: 7px; }
 .cs-page-skill {
   position: relative;
-  padding: 8px 10px 8px 14px;
+  padding: 6px 10px 6px 14px;
   background: #00000008;
   border: 1px solid #8a602044;
   border-radius: 2px;
@@ -1666,59 +1711,95 @@ button.toggle-active {
   color: var(--ink-soft);
 }
 
-/* 编入 */
-.cs-page-assign { margin-top: 14px; }
-.cs-assign-label {
-  display: block;
+/* 顺序编入向导 */
+.cs-page-enlist { margin-top: 10px; }
+.cs-enlist-prompt {
   text-align: center;
   font-family: var(--font-kai);
-  font-size: 0.86rem;
-  letter-spacing: 0.4em;
-  color: var(--oxblood);
-  margin-bottom: 8px;
+  font-size: 0.92rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-soft);
+  margin-bottom: 9px;
 }
-.cs-assign-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.cs-assign-btn {
+.cs-enlist-prompt strong { color: var(--oxblood); font-weight: 700; }
+.cs-enlist-actions {
   display: grid;
-  gap: 2px;
-  padding: 9px 4px;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: stretch;
+}
+.cs-enlist-back {
+  font-family: var(--font-cn);
+  font-size: 0.82rem;
+  letter-spacing: 0.04em;
+  padding: 10px 14px;
   border: 1px solid var(--brass-dark);
   border-radius: 3px;
-  background: var(--brass-surface);
-  cursor: pointer;
-  transition: all 160ms ease;
-  box-shadow: inset 0 1px 0 #b8923c66, 0 2px 4px #00000055;
-}
-.cs-assign-btn-slot {
-  font-family: var(--font-engrave);
-  font-size: 0.84rem;
-  font-weight: 600;
-  color: var(--gilt-pale);
-  letter-spacing: 0.06em;
-}
-.cs-assign-btn-occupied {
-  font-family: var(--font-cn);
-  font-size: 0.68rem;
+  background: linear-gradient(180deg, #2a1c0e 0%, #160c05 100%);
   color: var(--ivory-soft);
-  opacity: 0.85;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 160ms ease;
+  box-shadow: inset 0 1px 0 #6c4a2855;
 }
-.cs-assign-btn:hover {
+.cs-enlist-back:hover:not(:disabled) {
+  border-color: var(--gilt);
+  color: var(--gilt-bright);
+  box-shadow: inset 0 1px 0 #6c4a2855, 0 0 10px #c8a24e44;
+}
+.cs-enlist-back:disabled { opacity: 0.32; cursor: default; }
+
+.cs-enlist-cta {
+  font-family: var(--font-engrave);
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  padding: 10px 16px;
+  border-radius: 3px;
+  border: 1px solid var(--gilt);
+  cursor: pointer;
+  transition: all 180ms ease;
+}
+.cs-enlist-cta:disabled { opacity: 1; filter: none; cursor: default; }
+.cs-enlist-select {
+  background: radial-gradient(ellipse at 50% 25%, #c8323a 0%, #7a161a 68%, #5a0e10 100%);
+  color: #fff3e0;
   border-color: var(--gilt-bright);
-  background: linear-gradient(180deg, #b8923c, #6b4d12);
-  box-shadow: inset 0 1px 0 #ffe9a8, 0 0 12px #c8a24e66;
+  text-shadow: 0 1px 2px #2a0607;
+  box-shadow: inset 0 1px 0 #ff8a6e55, 0 0 14px #b8232a55, 0 2px 6px #00000066;
 }
-.cs-assign-btn.current {
+.cs-enlist-select:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 22px #d44a4577, 0 3px 8px #00000088;
+}
+.cs-enlist-chosen {
+  background: linear-gradient(180deg, #6b4d12 0%, #3a2a08 100%);
+  color: var(--gilt-bright);
+  border-color: var(--gilt-deep);
+  box-shadow: inset 0 1px 0 #c8a24e55;
+}
+.cs-enlist-ready {
+  background: linear-gradient(180deg, #2a1c0e 0%, #160c05 100%);
+  color: var(--ink-faint);
+  border-color: var(--brass-dark);
+}
+
+/* 舰队栏中“当前正在选择”的舰位 */
+.cs-fleet-slot.targeting {
   border-color: var(--gilt-bright);
-  background: radial-gradient(ellipse at 50% 30%, #c8323a, #6e1115);
-  box-shadow: inset 0 1px 0 #ff8a6e66, 0 0 14px #b8232a66;
+  animation: cs-target-pulse 1.9s ease-in-out infinite;
 }
-.cs-assign-btn.current .cs-assign-btn-slot { color: #ffe6c0; }
-.cs-assign-btn.current .cs-assign-btn-occupied { color: #ffd8c0; }
+.cs-fleet-slot.targeting .cs-fleet-slot-label { color: var(--gilt-bright); }
+.cs-fleet-slot.targeting .cs-fleet-slot-name { color: var(--gilt-bright); font-style: italic; }
+@keyframes cs-target-pulse {
+  0%, 100% { box-shadow: inset 0 1px 0 #6c4a2855, 0 0 0 1px #f0d48844, 0 0 10px #c8a24e44; }
+  50% { box-shadow: inset 0 1px 0 #6c4a2855, 0 0 0 1px #f0d488aa, 0 0 18px #c8a24e88; }
+}
 
 /* 档案落款 */
 .cs-page-foot {
   margin-top: auto;
-  padding-top: 14px;
+  padding-top: 10px;
   text-align: center;
   font-family: var(--font-engrave);
   font-size: 0.62rem;
@@ -1833,8 +1914,6 @@ button.toggle-active {
   grid-template-columns: 1fr auto;
   align-items: end;
   gap: 14px;
-  width: min(92vw, 1040px);
-  margin: 0 auto;
 }
 
 .cs-tabs {

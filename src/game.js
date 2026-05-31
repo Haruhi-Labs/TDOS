@@ -20,6 +20,7 @@ import {
   drawInGamePortrait,
   CHARACTER_THEMES,
   getPortrait,
+  loadPortraitImage,
 } from "./character-select.js";
 
 const canvas = document.getElementById("gameCanvas");
@@ -83,6 +84,8 @@ const app = {
   state: null,
   playerLoadout: readStoredLoadout(),
   enemyLoadout: cloneLoadout(DEFAULT_AI_LOADOUT),
+  playerColor: "blue", // 玩家阵营立绘色（AI 对战时由角色选择决定）
+
   selectedShipKey: "main",
   selectedZoneId: 5,
   pointer: { x: canvas.width * 0.5, y: canvas.height * 0.5 },
@@ -1517,7 +1520,7 @@ function render() {
   // In-game character portrait (drawn in screen space, after camera restore)
   const activeShip = selectedShipState();
   if (activeShip && activeShip.alive) {
-    drawInGamePortrait(ctx, activeShip.characterId, canvas.width, canvas.height, 0.14);
+    drawInGamePortrait(ctx, activeShip.characterId, canvas.width, canvas.height, 0.14, app.playerColor);
   }
 
   drawMinimap();
@@ -2042,8 +2045,15 @@ function bindUiEvents() {
   });
 }
 
-function launchWithLoadout(loadout) {
+function launchWithLoadout(loadout, color) {
   app.playerLoadout = loadout;
+  if (color === "blue" || color === "red") {
+    app.playerColor = color;
+    // 预加载本队所选阵营立绘，保证画布角落立绘正确着色
+    for (const key of ["main", "sub1", "sub2"]) {
+      if (loadout[key]) loadPortraitImage(loadout[key], color);
+    }
+  }
   storeLoadout(loadout);
   syncLoadoutControls(loadout);
   resetMatch(true);
@@ -2054,8 +2064,8 @@ function launchWithLoadout(loadout) {
 }
 
 function showCharacterSelectScreen() {
-  const charSelect = createCharacterSelect((loadout) => {
-    launchWithLoadout(loadout);
+  const charSelect = createCharacterSelect((loadout, color) => {
+    launchWithLoadout(loadout, color);
   });
   charSelect.show();
 }
