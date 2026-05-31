@@ -36,8 +36,7 @@ function template(faction) {
       <div class="ts-vignette" aria-hidden="true"></div>
 
       <div class="ts-hero" aria-hidden="true">
-        <img class="ts-hero-img" src="/assets/portraits/${faction}/${HERO_CHAR}.png" alt="" />
-        <div class="ts-hero-fade"></div>
+        <canvas class="ts-hero-img"></canvas>
       </div>
 
       <div class="ts-content">
@@ -72,12 +71,36 @@ export function mount(root, ctx) {
   const bg = root.querySelector(".ts-bg");
   startStarfield(bg, signal);
 
-  // 立绘加载失败则隐藏（鹤屋/朝仓暂无立绘）
-  const heroImg = root.querySelector(".ts-hero-img");
-  heroImg.addEventListener("error", () => {
+  // 关键立绘：用 canvas 绘制（drawImage 走预乘 alpha，透明区不会产生白边/暗边）
+  const heroCanvas = root.querySelector(".ts-hero-img");
+  const heroImg = new Image();
+  heroImg.onload = drawHero;
+  heroImg.onerror = () => {
     const hero = root.querySelector(".ts-hero");
     if (hero) hero.style.display = "none";
-  }, { signal });
+  };
+  heroImg.src = `/assets/portraits/${faction}/${HERO_CHAR}.png?v=5`;
+
+  function drawHero() {
+    if (!heroCanvas || !heroImg.naturalWidth) return;
+    const dpr = window.devicePixelRatio || 1;
+    const cw = heroCanvas.clientWidth;
+    const ch = heroCanvas.clientHeight;
+    if (!cw || !ch) return;
+    heroCanvas.width = Math.round(cw * dpr);
+    heroCanvas.height = Math.round(ch * dpr);
+    const c = heroCanvas.getContext("2d");
+    c.clearRect(0, 0, heroCanvas.width, heroCanvas.height);
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = "high";
+    // contain，贴右下
+    const scale = Math.min(heroCanvas.width / heroImg.naturalWidth, heroCanvas.height / heroImg.naturalHeight);
+    const w = heroImg.naturalWidth * scale;
+    const h = heroImg.naturalHeight * scale;
+    c.drawImage(heroImg, heroCanvas.width - w, heroCanvas.height - h, w, h);
+  }
+  window.addEventListener("resize", drawHero, { signal });
+  requestAnimationFrame(drawHero); // 等布局完成后再画一次，避免首帧 clientWidth 为 0
 
   const items = Array.from(root.querySelectorAll(".ts-item"));
 

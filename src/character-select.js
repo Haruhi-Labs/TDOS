@@ -120,7 +120,7 @@ export function loadPortraitImage(charId, color = "blue") {
       imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `/assets/portraits/${color}/${charId}.png`;
+    img.src = `/assets/portraits/${color}/${charId}.png?v=5`;
   });
   imageCache.set(key, promise);
   return promise;
@@ -705,7 +705,7 @@ export function createCharacterSelect(onLaunch) {
   // ── 立绘填充（真实图片优先，否则用生成占位 canvas） ──
   function portraitUrl(charId) {
     if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url('/assets/portraits/${state.color}/${charId}.png')`;
+      return `url('/assets/portraits/${state.color}/${charId}.png?v=5')`;
     }
     const canvas = getPortrait(charId, 520, 760, state.color);
     return `url(${canvas.toDataURL()})`;
@@ -907,7 +907,7 @@ export function createCharacterSelect(onLaunch) {
       els.el.classList.add("filled");
       els.name.textContent = def.shortName;
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        els.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.png)`;
+        els.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.png?v=5)`;
         els.icon.style.backgroundPosition = "center 20%";
       } else {
         const mini = getPortrait(charId, 120, 120, state.color);
@@ -1172,29 +1172,21 @@ export function createCharacterSelect(onLaunch) {
 export function drawInGamePortrait(ctx, charId, canvasWidth, canvasHeight, alpha = 0.18, color = "blue") {
   if (!charId || !CHARACTER_THEMES[charId]) return;
 
-  const portrait = getPortrait(charId, 300, 520, color);
+  // 只画原始立绘（带真实透明通道），不再合成底图、也不画边缘羽化矩形，
+  // 保证透明区完全透明、不会给背景蒙上一层。
+  const img = getLoadedPortraitImage(charId, color);
+  if (!img) {
+    loadPortraitImage(charId, color); // 触发异步加载，加载完成后续帧自然画出
+    return;
+  }
+
   const drawH = canvasHeight * 0.55;
-  const drawW = drawH * (300 / 520);
+  const drawW = drawH * (img.width / img.height);
   const x = canvasWidth - drawW - 10;
   const y = canvasHeight - drawH + 20;
 
   ctx.save();
   ctx.globalAlpha = alpha;
-  ctx.drawImage(portrait, x, y, drawW, drawH);
-  ctx.restore();
-
-  // 边缘羽化（与画布背景色一致）
-  ctx.save();
-  const leftFade = ctx.createLinearGradient(x - 5, 0, x + drawW * 0.3, 0);
-  leftFade.addColorStop(0, "#03050c");
-  leftFade.addColorStop(1, "rgba(3,5,12,0)");
-  ctx.fillStyle = leftFade;
-  ctx.fillRect(x - 5, y, drawW * 0.35, drawH);
-
-  const bottomFade = ctx.createLinearGradient(0, canvasHeight - 30, 0, canvasHeight);
-  bottomFade.addColorStop(0, "rgba(3,5,12,0)");
-  bottomFade.addColorStop(1, "#03050c");
-  ctx.fillStyle = bottomFade;
-  ctx.fillRect(x, canvasHeight - 30, drawW, 30);
+  ctx.drawImage(img, x, y, drawW, drawH);
   ctx.restore();
 }

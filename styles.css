@@ -2163,22 +2163,16 @@ button.toggle-active {
   pointer-events: none;
 }
 .ts-hero-img {
+  /* canvas 填满 hero 容器，立绘在内部按 contain 贴右下绘制（预乘 alpha，无白/暗边） */
   position: absolute;
-  right: -3%;
-  bottom: 0;
+  inset: 0;
+  width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: bottom right;
-  filter: drop-shadow(-18px 8px 36px #03060ecc);
   -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 38%);
   mask-image: linear-gradient(90deg, transparent 2%, #000 38%);
   opacity: 0.92;
 }
-.ts-hero-fade {
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(90deg, var(--navy-abyss) 0%, transparent 44%);
-}
+/* .ts-hero-fade 已移除：它的渐变左缘在屏幕中央形成一道竖向深色“矩形边缘阴影” */
 
 /* 左侧内容 */
 .ts-content {
