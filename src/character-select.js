@@ -607,8 +607,8 @@ export function createCharacterSelect(onLaunch) {
   navNext.textContent = "›";
   stage.appendChild(navNext);
 
-  navPrev.addEventListener("click", () => stepArrow(-1, "next")); // ‹ 往左翻
-  navNext.addEventListener("click", () => stepArrow(1, "prev")); // › 往右翻
+  navPrev.addEventListener("click", () => stepArrow(-1)); // ‹ 上一位（翻页方向按目标相对位置）
+  navNext.addEventListener("click", () => stepArrow(1)); // › 下一位（翻页方向按目标相对位置）
 
   // ── 底栏 ──
   const footer = document.createElement("footer");
@@ -779,14 +779,16 @@ export function createCharacterSelect(onLaunch) {
     flipTo(charId, direction);
   }
 
-  // ── 箭头翻页：翻页方向永远跟随箭头朝向，与循环回绕无关 ──
-  // › 往右 = "prev"；‹ 往左 = "next"。首/末页继续点会循环回绕（有意设计，保持方向与箭头一致）。
-  function stepArrow(delta, direction) {
+  // ── 箭头翻页：与标签同一套「书页」逻辑——翻页方向由目标角色的相对位置决定，
+  //    去右边(后面)的角色从右往左翻(next)，去左边(前面)的从左往右翻(prev)。
+  //    箭头只决定移动方向(±1)，首/末页循环回绕。
+  function stepArrow(delta) {
     if (state.flipping) return;
-    const idx = getCharIndex(state.currentChar);
-    const nextIdx = (idx + delta + CHARACTER_ORDER.length) % CHARACTER_ORDER.length;
-    const nextChar = CHARACTER_ORDER[nextIdx];
-    if (nextChar === state.currentChar) return;
+    const fromIdx = getCharIndex(state.currentChar);
+    const toIdx = (fromIdx + delta + CHARACTER_ORDER.length) % CHARACTER_ORDER.length;
+    if (toIdx === fromIdx) return;
+    const nextChar = CHARACTER_ORDER[toIdx];
+    const direction = toIdx > fromIdx ? "next" : "prev";
     flipTo(nextChar, direction);
   }
 
@@ -935,10 +937,10 @@ export function createCharacterSelect(onLaunch) {
     if (!screen.isConnected) return;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
-      stepArrow(-1, "next");
+      stepArrow(-1);
     } else if (e.key === "ArrowRight") {
       e.preventDefault();
-      stepArrow(1, "prev");
+      stepArrow(1);
     } else if (e.key === "Backspace" || e.key === "Escape") {
       e.preventDefault();
       stepBack();
