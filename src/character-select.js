@@ -98,7 +98,7 @@ const imageCache = new Map();
 // 同步加载状态：成功时缓存 Image，失败时缓存 null
 const imageSyncMap = new Map();
 
-// 立绘按阵营分蓝/红两套：./assets/portraits/{color}/{charId}.png
+// 立绘按阵营分蓝/红两套：/assets/portraits/{color}/{charId}.png
 export const TEAM_COLORS = ["blue", "red"];
 function pkey(charId, color) {
   return `${color}/${charId}`;
@@ -120,7 +120,7 @@ export function loadPortraitImage(charId, color = "blue") {
       imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `./assets/portraits/${color}/${charId}.png`;
+    img.src = `/assets/portraits/${color}/${charId}.png`;
   });
   imageCache.set(key, promise);
   return promise;
@@ -670,8 +670,9 @@ export function createCharacterSelect(onLaunch) {
   const modeLinks = document.createElement("div");
   modeLinks.className = "cs-mode-links";
   modeLinks.innerHTML = `
-    <a href="./debug.html" class="cs-mode-link">AI vs AI</a>
-    <a href="./online.html" class="cs-mode-link">ONLINE</a>
+    <a href="/" class="cs-mode-link">主菜单</a>
+    <a href="/debug" class="cs-mode-link">AI vs AI</a>
+    <a href="/online" class="cs-mode-link">ONLINE</a>
   `;
   content.appendChild(modeLinks);
 
@@ -704,7 +705,7 @@ export function createCharacterSelect(onLaunch) {
   // ── 立绘填充（真实图片优先，否则用生成占位 canvas） ──
   function portraitUrl(charId) {
     if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url('./assets/portraits/${state.color}/${charId}.png')`;
+      return `url('/assets/portraits/${state.color}/${charId}.png')`;
     }
     const canvas = getPortrait(charId, 520, 760, state.color);
     return `url(${canvas.toDataURL()})`;
@@ -903,7 +904,7 @@ export function createCharacterSelect(onLaunch) {
       els.el.classList.add("filled");
       els.name.textContent = def.shortName;
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        els.icon.style.backgroundImage = `url(./assets/portraits/${state.color}/${charId}.png)`;
+        els.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.png)`;
         els.icon.style.backgroundPosition = "center 20%";
       } else {
         const mini = getPortrait(charId, 120, 120, state.color);

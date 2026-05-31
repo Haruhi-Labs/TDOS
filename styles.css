@@ -2117,3 +2117,363 @@ button.toggle-active {
   .cs-fleet-bar { grid-template-columns: repeat(3, 1fr) auto; }
   .cs-mode-links { justify-content: center; margin-top: 4px; }
 }
+
+/* ═══════════════════════════════════════════════════
+   主菜单 / 标题画面（路由 /）— 海军蓝星幕 + 烫金 + 关键立绘
+   ═══════════════════════════════════════════════════ */
+.app-root { min-height: 100vh; }
+.boot-splash {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  font-family: var(--font-engrave);
+  letter-spacing: 0.34em;
+  color: var(--text-muted);
+}
+
+.ts-stage {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 78% 16%, #1a2c64 0%, #0c1738 38%, #05091a 78%, #03060f 100%);
+}
+.ts-faction-red {
+  background: radial-gradient(120% 90% at 78% 16%, #4a1726 0%, #2a0c1c 40%, #14060f 80%, #0a040a 100%);
+}
+.ts-bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.ts-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: var(--tex-grain), radial-gradient(ellipse at 32% 50%, transparent 40%, #03060ccc 100%);
+  background-size: 180px 180px, cover;
+  mix-blend-mode: soft-light;
+  opacity: 0.6;
+}
+
+/* 关键立绘（右侧，向左羽化融入星幕） */
+.ts-hero {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(56%, 720px);
+  z-index: 1;
+  pointer-events: none;
+}
+.ts-hero-img {
+  position: absolute;
+  right: -3%;
+  bottom: 0;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom right;
+  filter: drop-shadow(-18px 8px 36px #03060ecc);
+  -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 38%);
+  mask-image: linear-gradient(90deg, transparent 2%, #000 38%);
+  opacity: 0.92;
+}
+.ts-hero-fade {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, var(--navy-abyss) 0%, transparent 44%);
+}
+
+/* 左侧内容 */
+.ts-content {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 34px;
+  width: min(560px, 94%);
+  padding: 48px clamp(24px, 6vw, 82px);
+}
+.ts-seal {
+  display: inline-grid;
+  place-content: center;
+  width: 50px;
+  height: 50px;
+  margin-bottom: 16px;
+  border-radius: 50%;
+  font-family: var(--font-engrave);
+  font-weight: 900;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  color: var(--oxblood-deep);
+  background: var(--gilt-foil);
+  box-shadow: 0 0 0 2px var(--oxblood-deep), 0 4px 16px #02060ec0, inset 0 1px 2px #fff3c8;
+}
+.ts-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: clamp(2.8rem, 7vw, 4.6rem);
+  font-weight: 900;
+  line-height: 1.02;
+  letter-spacing: 0.06em;
+  background: var(--gilt-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #160c05) drop-shadow(0 6px 16px #02060e);
+}
+.ts-subtitle {
+  margin: 10px 0 0;
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: 1.05rem;
+  letter-spacing: 0.22em;
+  color: var(--text-soft);
+}
+.ts-rule {
+  margin-top: 16px;
+  height: 2px;
+  width: 210px;
+  background: linear-gradient(90deg, var(--gilt-bright), var(--gilt) 42%, transparent);
+  box-shadow: 0 1px 3px #02060e;
+}
+
+.ts-menu { display: flex; flex-direction: column; gap: 4px; }
+.ts-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 13px 18px 13px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  cursor: pointer;
+  border-left: 2px solid transparent;
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
+}
+.ts-item:focus { outline: none; }
+.ts-item:hover,
+.ts-item:focus-visible {
+  background: linear-gradient(90deg, #f0d4881f, transparent 82%);
+  border-left-color: var(--gilt);
+  transform: translateX(6px);
+}
+.ts-item-no {
+  font-family: var(--font-title);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  min-width: 2.2em;
+  text-align: center;
+  color: var(--brass);
+  transition: color 0.18s ease;
+}
+.ts-item:hover .ts-item-no,
+.ts-item:focus-visible .ts-item-no { color: var(--gilt-bright); }
+.ts-item-body { display: flex; flex-direction: column; gap: 1px; flex: 1; }
+.ts-item-label {
+  font-family: var(--font-engrave);
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--text-primary);
+  transition: color 0.18s ease, text-shadow 0.18s ease;
+}
+.ts-item:hover .ts-item-label,
+.ts-item:focus-visible .ts-item-label {
+  color: var(--gilt-bright);
+  text-shadow: 0 0 16px #c8a24e44;
+}
+.ts-item-sub {
+  font-family: var(--font-cn);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.ts-item-cue {
+  font-size: 1.2rem;
+  color: var(--gilt);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.ts-item:hover .ts-item-cue,
+.ts-item:focus-visible .ts-item-cue { opacity: 1; transform: none; }
+
+.ts-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-cn);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.ts-ver { font-family: var(--font-italic); font-style: italic; }
+
+/* ═══════════════════════════════════════════════════
+   二级页面（档案 / 玩法）通用框架
+   ═══════════════════════════════════════════════════ */
+.page-stage {
+  position: relative;
+  min-height: 100vh;
+  overflow: auto;
+  display: flex;
+  justify-content: center;
+  background: radial-gradient(120% 90% at 50% 0%, #122050 0%, #0a1430 44%, #05091a 100%);
+}
+.page-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: var(--tex-grain), radial-gradient(ellipse at 50% 40%, transparent 55%, #03060ccc 100%);
+  background-size: 180px 180px, cover;
+  opacity: 0.5;
+  mix-blend-mode: soft-light;
+}
+.page-frame {
+  position: relative;
+  z-index: 1;
+  width: min(560px, 92%);
+  margin: 0 auto;
+  padding: 48px 0 56px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.page-frame-wide { width: min(860px, 92%); }
+.page-back {
+  align-self: flex-start;
+  font-family: var(--font-cn);
+  font-size: 0.9rem;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+  text-decoration: none;
+  border: 1px solid var(--brass);
+  border-radius: 999px;
+  padding: 6px 18px;
+  transition: all 0.16s ease;
+}
+.page-back:hover { color: var(--gilt-bright); border-color: var(--gilt); }
+.page-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: clamp(2rem, 5vw, 2.8rem);
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  background: var(--gilt-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 #160c05) drop-shadow(0 4px 10px #02060e);
+}
+.page-card {
+  padding: 24px;
+  border: 1px solid var(--brass);
+  border-radius: 8px;
+  background: var(--tex-leather), var(--leather-surface);
+  background-size: 220px 220px, cover;
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 0 0 1px #160c05, inset 0 0 36px #160c0588, 0 8px 28px #02060ec0, 0 0 0 2px #160c05;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 档案页 */
+.pv-field { display: flex; flex-direction: column; gap: 8px; }
+.pv-label { font-family: var(--font-cn); font-size: 0.82rem; letter-spacing: 0.1em; color: var(--text-soft); }
+#pvNickname {
+  font-family: var(--font-cn);
+  font-size: 1.05rem;
+  color: var(--text-primary);
+  background: #0c1430;
+  border: 1px solid var(--brass);
+  border-radius: 6px;
+  padding: 10px 14px;
+  box-shadow: inset 0 1px 4px #02060e;
+}
+#pvNickname:focus { outline: none; border-color: var(--gilt); box-shadow: inset 0 1px 4px #02060e, 0 0 0 2px #c8a24e44; }
+.pv-faction { display: flex; gap: 10px; }
+.pv-faction-btn {
+  flex: 1;
+  font-family: var(--font-cn);
+  font-size: 0.95rem;
+  letter-spacing: 0.06em;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text-soft);
+  background: #0c1430;
+  border: 1px solid var(--brass);
+  transition: all 0.16s ease;
+}
+.pv-faction-btn.blue.active { color: #fff; background: var(--navy-mid); border-color: var(--navy-edge); box-shadow: 0 0 0 1px var(--navy-edge), 0 3px 12px #14245a88; }
+.pv-faction-btn.red.active { color: #fff; background: var(--oxblood); border-color: var(--oxblood-bright); box-shadow: 0 0 0 1px var(--oxblood-bright), 0 3px 12px #7a161a88; }
+.pv-note { margin: 4px 0 0; font-family: var(--font-cn); font-size: 0.76rem; color: var(--text-muted); line-height: 1.6; }
+.pv-tip { font-family: var(--font-italic); font-style: italic; color: var(--text-muted); text-align: center; font-size: 0.9rem; }
+
+/* 玩法说明页 */
+.guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+.guide-item {
+  padding: 16px 18px;
+  border-radius: 8px;
+  background: var(--tex-paper), linear-gradient(160deg, var(--paper) 0%, var(--paper-warm) 100%);
+  background-size: 200px 200px, cover;
+  background-blend-mode: multiply, normal;
+  border: 1px solid var(--brass);
+  color: var(--ink);
+  box-shadow: 0 4px 16px #02060e80;
+}
+.guide-item h3 { margin: 0 0 6px; font-family: var(--font-engrave); font-size: 1.1rem; letter-spacing: 0.1em; color: var(--ink); }
+.guide-item p { margin: 0; font-family: var(--font-cn); font-size: 0.86rem; line-height: 1.65; color: var(--ink-soft); }
+.guide-subtitle { margin: 8px 0 0; font-family: var(--font-engrave); font-size: 1.2rem; letter-spacing: 0.14em; color: var(--gilt-bright); }
+.guide-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
+.guide-key { display: flex; align-items: center; gap: 10px; }
+.guide-key kbd {
+  font-family: var(--font-cn);
+  font-size: 0.76rem;
+  color: var(--gilt-bright);
+  background: #0c1430;
+  border: 1px solid var(--brass);
+  border-radius: 5px;
+  padding: 4px 9px;
+  box-shadow: inset 0 -2px 0 #02060e;
+  min-width: 6em;
+  text-align: center;
+}
+.guide-key span { font-family: var(--font-cn); font-size: 0.84rem; color: var(--text-soft); }
+
+@media (max-width: 760px) {
+  .ts-hero { width: 72%; opacity: 0.45; }
+  .ts-content { width: 100%; justify-content: flex-start; padding-top: 60px; }
+  .ts-item-label { font-size: 1.3rem; }
+}
+
+/* ── 战斗结算 overlay：再来一局 / 返回主菜单 ── */
+.overlay-actions { display: flex; gap: 14px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.overlay-home-link {
+  font-family: var(--font-cn);
+  letter-spacing: 0.08em;
+  text-decoration: none;
+}
+.btn-link-home { font-weight: 600; }
+
+@media (max-width: 720px) {
+  .menu-stage { padding: 28px 0 18px; gap: 22px; }
+  .menu-item-label { font-size: 1.32rem; }
+  .menu-item-mode { width: 100%; }
+  .home-profile-row { grid-template-columns: 1fr; gap: 12px; }
+  .home-fleet { grid-template-columns: 1fr; }
+}
+
+/* ── 联机：编队改用「翻书选角」覆盖层，隐藏原始下拉 ── */
+.online-hidden { display: none !important; }
+#openFleetSelectBtn {
+  width: 100%;
+  font-family: var(--font-cn);
+  letter-spacing: 0.08em;
+  color: var(--gilt-bright);
+  border-color: var(--gilt-deep);
+}
+#openFleetSelectBtn:hover { color: var(--gilt-pale); border-color: var(--gilt); }

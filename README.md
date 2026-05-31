@@ -2,43 +2,50 @@
 
 这是一个浏览器运行的《射手座之日》即时舰队对战原型。
 
-## 代码结构（已合并维护）
+## 技术架构
 
-- `shared/game-core.js`：统一游戏规则核心（舰船运动、分离、技能、视野、AI、战斗结算）。
-- `src/game.js`：本地 AI 模式前端，仅负责输入与渲染，规则由 `shared/game-core.js` 驱动。
-- `server/server.js`：网络对战服务端，仅负责房间/同步/网络协议，规则同样由 `shared/game-core.js` 驱动。
-- `src/online-client.js`：网络大厅与对战客户端渲染/插值/输入发送。
+基于 **Vite** 的单页应用（SPA）。一个入口 `index.html` + History 路由（`src/router.js`），干净 URL、无 `.html` 后缀。每个路由是一个「可挂载模块」（导出 `mount(root)` → 返回 `unmount()`），切换路由时统一停掉渲染循环 / 断开 WebSocket / 移除监听，避免泄漏。
 
-后续若要调整平衡或技能机制，优先修改 `shared/game-core.js`，本地与联机会同时生效。
+### 规则内核（单一事实来源）
+
+- `shared/game-core.js`：统一游戏规则核心（舰船运动、分离、技能、视野、AI、战斗结算）。三种模式与网络服务端全部由它驱动。
+
+### 应用骨架
+
+- `src/main.js`：装载样式 + 注册路由 + 启动。
+- `src/router.js`：极简 History 路由器（拦截站内 `<a href="/...">`、支持前进/后退、卸载上一路由）。
+- `src/profile.js`：统一玩家档案（昵称 + 阵营，并记忆上次出战编队），单一 `localStorage` 键 `haruhi-profile-v1`，首次读取自动从旧版割裂存储迁移。
+
+### 路由（干净 URL）
+
+| 路径 | 模块 | 说明 |
+| --- | --- | --- |
+| `/` | `src/menu.js` | 主菜单 / 标题画面（星幕 + 竖排菜单 + 关键立绘，↑↓/Enter） |
+| `/play` | `src/solo.js` | 单人 AI 实战：翻书选角 → 开战 → 结算 |
+| `/online` | `src/online.js` + `server/server.js` | 在线对战：大厅 + 与单机一致的翻书选角 |
+| `/debug` | `src/debug.js` | AI 推演观战（AI vs AI，可暂停/变速/单步） |
+| `/profile` | `src/profile-view.js` | 指挥官档案（呼号 + 默认阵营） |
+| `/guide` | `src/guide.js` | 玩法说明 |
+
+- `src/character-select.js`：翻书式选角覆盖层，**单人与在线共用**（出战编队一律在对战时选，不在档案里编辑）。
+- 后续若要调整平衡或技能机制，优先改 `shared/game-core.js`；调整玩家身份/存档，改 `src/profile.js`。
+
+> 已知后续项：三个游戏前端的渲染层（`drawShip/drawMinimap/render` 等）与镜头/输入逻辑仍各持一份拷贝，可进一步抽到共享前端模块去重；与游戏体验无关，未在本轮改动以规避破坏正在工作的渲染器。
 
 ## 运行方式
 
-### 1. 安装依赖（仅网络对战需要）
-
 ```bash
-cd /Users/haruhi/haruhi-game
-npm install
+cd /Volumes/data/haruhi-game
+npm install            # 安装依赖（含 Vite）
+
+npm run dev            # 启动开发服务器（默认 http://localhost:5173）
+npm run start:server   # 另开一个终端：启动网络对战服务端（WebSocket :21246，仅联机需要）
+
+npm run build          # 生产构建 → dist/
+npm run preview        # 预览生产构建
 ```
 
-### 2. 启动静态页面服务
-
-```bash
-cd /Users/haruhi/haruhi-game
-npm run start:web
-```
-
-### 3. 启动网络对战服务器（可选）
-
-```bash
-cd /Users/haruhi/haruhi-game
-npm run start:server
-```
-
-### 4. 打开页面
-
-- 本地 AI 对战：`http://localhost:8080/index.html`
-- AI 调试模式：`http://localhost:8080/debug.html`
-- 网络对战大厅：`http://localhost:8080/online.html`
+打开 `http://localhost:5173/` 即是主菜单；模式入口为干净 URL：`/play`、`/online`、`/debug`、`/profile`、`/guide`（无 `.html`）。开发服务器已把 `/ws` 代理到本地 `:21246`。
 
 ## 已实现机制
 

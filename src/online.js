@@ -10,10 +10,31 @@ import {
   skillMetaForCharacter,
 } from "../shared/game-core.js";
 
-const canvas = document.getElementById("onlineCanvas");
-const ctx = canvas.getContext("2d");
+import {
+  getLoadout,
+  setLoadout,
+  getNickname as getProfileNickname,
+  setNickname as setProfileNickname,
+} from "./profile.js";
 
-const ui = {
+// 联机选角与单机共用同一套「翻书选角」覆盖层
+import { createCharacterSelect } from "./character-select.js";
+
+// 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
+let canvas, ctx, ui, app;
+let ac = null; // AbortController：统一移除 window 级监听
+let rafId = 0; // 渲染循环句柄
+let running = false; // 渲染循环开关
+let charSelect = null; // 选角覆盖层（与单机一致），卸载时移除
+
+function addWin(type, handler) {
+  window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
+}
+
+function cacheDom() {
+  canvas = document.getElementById("onlineCanvas");
+  ctx = canvas.getContext("2d");
+  ui = {
   serverTargetValue: document.getElementById("serverTargetValue"),
   connectBtn: document.getElementById("connectBtn"),
   disconnectBtn: document.getElementById("disconnectBtn"),
@@ -58,6 +79,7 @@ const ui = {
   onlineSub2Role: document.getElementById("onlineSub2Role"),
   onlineLoadoutPreview: document.getElementById("onlineLoadoutPreview"),
   applyLoadoutOnlineBtn: document.getElementById("applyLoadoutOnlineBtn"),
+  openFleetSelectBtn: document.getElementById("openFleetSelectBtn"),
   onlineNicknameValue: document.getElementById("onlineNicknameValue"),
   onlineLog: document.getElementById("onlineLog"),
   onlineOverlay: document.getElementById("onlineOverlay"),
@@ -82,7 +104,8 @@ const ui = {
   onlineMobileFlagshipBtn: document.getElementById("onlineMobileFlagshipBtn"),
   onlineMobileSubSkillBtn: document.getElementById("onlineMobileSubSkillBtn"),
   onlineMobileThrottleButtons: Array.from(document.querySelectorAll("#onlineMobileBattleHud .mobile-throttle-btn")),
-};
+  };
+}
 
 const TAU = Math.PI * 2;
 const ROUTE_HANDLE_RADIUS = 11;
@@ -106,7 +129,8 @@ const CAMERA_ZOOM_MIN = 1;
 const CAMERA_ZOOM_MAX = 2.6;
 const CAMERA_ZOOM_STEP = 0.2;
 
-const app = {
+function initApp() {
+  app = {
   ws: null,
   connected: false,
   playerId: null,
@@ -164,7 +188,8 @@ const app = {
     r: Math.random() * 1.6 + 0.4,
     p: Math.random() * TAU,
   })),
-};
+  };
+}
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -227,24 +252,13 @@ function writeCookie(key, value, maxAgeSeconds) {
   document.cookie = `${key}=${encodeURIComponent(value)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax${secureFlag}`;
 }
 
+// 编队读写统一走玩家档案（src/profile.js），与单机/调试模式共享同一份身份数据
 function readStoredLoadout() {
-  try {
-    const raw = window.localStorage.getItem(ONLINE_LOADOUT_STORAGE_KEY);
-    if (!raw) {
-      return cloneLoadout(DEFAULT_TEAM_LOADOUT);
-    }
-    return normalizeLoadout(JSON.parse(raw), DEFAULT_TEAM_LOADOUT);
-  } catch (_error) {
-    return cloneLoadout(DEFAULT_TEAM_LOADOUT);
-  }
+  return getLoadout();
 }
 
 function storeLoadout(loadout) {
-  try {
-    window.localStorage.setItem(ONLINE_LOADOUT_STORAGE_KEY, JSON.stringify(loadout));
-  } catch (_error) {
-    // 忽略本地存储失败
-  }
+  setLoadout(loadout);
 }
 
 function roleSlotLabel(slotKey) {
@@ -343,7 +357,8 @@ function setNickname(name, options = {}) {
   }
   updateNicknameDisplay(safeName);
   if (persist && safeName) {
-    writeCookie(NICKNAME_COOKIE_KEY, safeName, NICKNAME_COOKIE_MAX_AGE);
+    setProfileNickname(safeName); // 写入统一档案，主菜单与其他模式同步
+    writeCookie(NICKNAME_COOKIE_KEY, safeName, NICKNAME_COOKIE_MAX_AGE); // 兼容旧版
   }
   return safeName;
 }
@@ -2858,6 +2873,7 @@ function drawNoDataHint() {
 }
 
 function renderFrame() {
+  if (!running) return;
   const state = getRenderState();
   app.lastRenderState = state;
 
@@ -2871,7 +2887,7 @@ function renderFrame() {
   if (!state) {
     ctx.restore();
     drawNoDataHint();
-    requestAnimationFrame(renderFrame);
+    rafId = requestAnimationFrame(renderFrame);
     return;
   }
 
@@ -2975,7 +2991,7 @@ function renderFrame() {
   ctx.restore();
   drawMinimap(state, ownTeam, enemyTeam, visibleEnemyIds);
 
-  requestAnimationFrame(renderFrame);
+  rafId = requestAnimationFrame(renderFrame);
 }
 
 function syncLoadoutToServer(logOnSuccess = true) {
@@ -2986,6 +3002,16 @@ function syncLoadoutToServer(logOnSuccess = true) {
   if (logOnSuccess) {
     log(sent ? "当前编队已同步到服务器" : "当前编队已保存在本地，连接后会自动同步");
   }
+}
+
+// 与单机一致的「翻书选角」：选完写回隐藏下拉并同步服务器
+function openOnlineCharSelect() {
+  if (charSelect && typeof charSelect.hide === "function") charSelect.hide();
+  charSelect = createCharacterSelect((loadout) => {
+    syncLoadoutControls(loadout); // 写入下拉，复用既有同步机制
+    syncLoadoutToServer(true); // 读取下拉 → app.playerLoadout → 本地档案 → 发服务器
+  });
+  charSelect.show();
 }
 
 function useFlagshipSkillOnline() {
@@ -3043,7 +3069,7 @@ function useSubSkillOnline() {
 
 function bindUiEvents() {
   ui.serverTargetValue.textContent = defaultServerUrl();
-  const savedName = sanitizeNickname(readCookie(NICKNAME_COOKIE_KEY));
+  const savedName = sanitizeNickname(getProfileNickname() || readCookie(NICKNAME_COOKIE_KEY));
   const fallbackName = `玩家${Math.floor(Math.random() * 900 + 100)}`;
   setNickname(savedName || fallbackName, { persist: true });
   ui.zoneValue.textContent = `战区 ${app.selectedZoneId}`;
@@ -3064,6 +3090,10 @@ function bindUiEvents() {
     ui.applyLoadoutOnlineBtn.addEventListener("click", () => {
       syncLoadoutToServer(true);
     });
+  }
+
+  if (ui.openFleetSelectBtn) {
+    ui.openFleetSelectBtn.addEventListener("click", openOnlineCharSelect);
   }
 
   ui.connectBtn.addEventListener("click", () => {
@@ -3307,7 +3337,7 @@ function bindUiEvents() {
     app.drag.lastSentAt = elapsedMs;
   });
 
-  window.addEventListener("mouseup", () => {
+  addWin("mouseup", () => {
     if (app.mobileMode) {
       return;
     }
@@ -3448,7 +3478,7 @@ function bindUiEvents() {
     }
   });
 
-  window.addEventListener("keydown", (event) => {
+  addWin("keydown", (event) => {
     if (event.defaultPrevented) {
       return;
     }
@@ -3593,17 +3623,212 @@ function bindUiEvents() {
       setCameraZoom(CAMERA_ZOOM_MIN);
     }
   });
-  window.addEventListener("resize", () => {
+  addWin("resize", () => {
     syncResponsiveMode();
     updateBattleStatus(currentBattleState());
   });
 }
 
-setBattleControlsEnabled(false);
-setRoomHudVisible(true);
-updateBattleNameplate();
-updateConnectionUi();
-syncResponsiveMode();
-bindUiEvents();
-connectServer();
-requestAnimationFrame(renderFrame);
+// ── 可挂载入口 ──
+export function mount(root) {
+  root.innerHTML = onlineTemplate();
+  cacheDom();
+  initApp();
+  ac = new AbortController();
+  running = true;
+  setBattleControlsEnabled(false);
+  setRoomHudVisible(true);
+  updateBattleNameplate();
+  updateConnectionUi();
+  syncResponsiveMode();
+  bindUiEvents();
+  connectServer();
+  rafId = requestAnimationFrame(renderFrame);
+  return unmount;
+}
+
+function unmount() {
+  running = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+  stopPingLoop();
+  if (app && app.throttleSendTimer) {
+    clearTimeout(app.throttleSendTimer);
+    app.throttleSendTimer = null;
+  }
+  disconnectServer();
+  if (ac) ac.abort();
+  ac = null;
+  if (charSelect && typeof charSelect.hide === "function") {
+    charSelect.hide();
+  }
+  charSelect = null;
+}
+
+function onlineTemplate() {
+  return `
+    <div class="app-shell online-shell">
+      <aside class="panel compact-panel">
+        <h1>射手座之日</h1>
+
+        <section class="controls slim-controls">
+          <div class="btn-col">
+            <a class="btn-link btn-link-home" href="/">← 主菜单</a>
+          </div>
+        </section>
+
+        <section class="status">
+          <div><span>舰体</span><strong id="hullValueOnline">100%</strong></div>
+          <div><span>能量</span><strong id="energyValueOnline">100%</strong></div>
+          <div><span>分离</span><strong id="splitValueOnline">编队</strong></div>
+          <div><span>战区</span><strong id="zoneValueOnline">战区 5</strong></div>
+          <div><span>选中</span><strong id="onlineSelectedValue">主舰</strong></div>
+        </section>
+
+        <div id="battleControls" class="disabled-panel">
+          <section class="controls slim-controls">
+            <h2>舰队控制</h2>
+            <div id="onlineShipQuickSwitch" class="ship-switch">
+              <button type="button" class="ship-switch-btn" data-ship="main">主舰</button>
+              <button type="button" class="ship-switch-btn" data-ship="sub1">副舰1</button>
+              <button type="button" class="ship-switch-btn" data-ship="sub2">副舰2</button>
+            </div>
+            <div class="btn-row">
+              <button id="onlineSplitOneBtn">一级分离</button>
+              <button id="onlineSplitTwoBtn">二级分离</button>
+            </div>
+            <div class="slider-wrap">
+              <label for="onlinePowerSlider">推进功率</label>
+              <input id="onlinePowerSlider" type="range" min="25" max="140" step="1" value="100" />
+              <strong id="onlinePowerValue">100%</strong>
+            </div>
+            <div class="zoom-control-row">
+              <button id="onlineZoomOutBtn" type="button">缩小</button>
+              <strong id="onlineZoomValue">100%</strong>
+              <button id="onlineZoomInBtn" type="button">放大</button>
+            </div>
+          </section>
+
+          <section class="controls slim-controls">
+            <h2>技能</h2>
+            <div class="btn-col">
+              <button id="onlineScoutBtn">派出侦查机</button>
+              <button id="onlineAutoScoutBtn" type="button">自动侦查：关</button>
+              <button id="onlineBrakeBtn" type="button">急刹</button>
+              <button id="onlineFlagshipBtn">旗舰技能</button>
+              <button id="onlineSubSkillBtn">分舰技能</button>
+            </div>
+          </section>
+        </div>
+
+        <section class="controls slim-controls">
+          <h2>日志</h2>
+          <div id="onlineLog" class="log"></div>
+        </section>
+      </aside>
+
+      <main class="game-wrap">
+        <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
+        <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
+          <div class="mobile-battle-head">
+            <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 | 战区5</div>
+            <div class="mobile-head-actions">
+              <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
+              <button id="onlineMobileZoomOutBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">-</button>
+              <button id="onlineMobileZoomInBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">+</button>
+            </div>
+          </div>
+          <div id="onlineMobileShipSwitch" class="mobile-ship-switch">
+            <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
+          </div>
+          <div class="mobile-action-grid">
+            <button id="onlineMobileSplitOneBtn" type="button">分离1</button>
+            <button id="onlineMobileSplitTwoBtn" type="button">分离2</button>
+            <button id="onlineMobileScoutBtn" type="button">侦察</button>
+            <button id="onlineMobileAutoScoutBtn" type="button">自动侦察</button>
+            <button id="onlineMobileBrakeBtn" type="button">急刹</button>
+            <button id="onlineMobileFlagshipBtn" type="button">旗舰技</button>
+            <button id="onlineMobileSubSkillBtn" type="button">分舰技</button>
+            <div class="mobile-throttle-row">
+              <button type="button" class="mobile-throttle-btn" data-throttle="70">70%</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="100">100%</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="125">125%</button>
+            </div>
+          </div>
+          <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换，点战场直接下航线，点右上小地图选战区。</div>
+        </section>
+
+        <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">
+          <div id="battleNameA" class="battle-name-side battle-name-a">左翼舰队</div>
+          <div class="battle-name-vs">VS</div>
+          <div id="battleNameB" class="battle-name-side battle-name-b">右翼舰队</div>
+        </section>
+
+        <section class="room-hud">
+          <div class="room-hud-head">
+            <h2>在线大厅</h2>
+            <div class="room-hud-tags">
+              <strong id="connectionValue">未连接</strong>
+              <strong id="seatValue">-</strong>
+            </div>
+          </div>
+
+          <div class="btn-row">
+            <button id="connectBtn">重新连接</button>
+            <button id="disconnectBtn">断开连接</button>
+          </div>
+
+          <div id="onlineNicknameValue" class="compact-meta">昵称：-</div>
+          <div class="zone-pick">
+            <label for="playerNameInput">昵称</label>
+            <input id="playerNameInput" maxlength="16" type="text" placeholder="输入昵称" />
+          </div>
+          <button id="applyNameBtn">保存昵称</button>
+
+          <section class="controls slim-controls room-inline-controls">
+            <h2>我的编队</h2>
+            <div class="loadout-grid online-hidden">
+              <label class="loadout-field" for="onlineMainRole"><span>主舰</span><select id="onlineMainRole"></select></label>
+              <label class="loadout-field" for="onlineSub1Role"><span>副舰一</span><select id="onlineSub1Role"></select></label>
+              <label class="loadout-field" for="onlineSub2Role"><span>副舰二</span><select id="onlineSub2Role"></select></label>
+            </div>
+            <div id="onlineLoadoutPreview" class="loadout-preview"></div>
+            <button id="openFleetSelectBtn" type="button">选择出战编队</button>
+            <button id="applyLoadoutOnlineBtn" class="online-hidden" type="button">同步当前编队</button>
+          </section>
+
+          <div class="btn-row">
+            <button id="createPublicBtn">创建公开房</button>
+            <button id="createPrivateBtn">创建私人房</button>
+          </div>
+          <button id="createAiRoomBtn">创建 AI 训练房</button>
+
+          <div class="join-code-wrap">
+            <input id="joinCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="输入 6 位房间号" />
+            <button id="joinCodeBtn">加入私人房</button>
+          </div>
+          <button id="refreshRoomsBtn">刷新公开房列表</button>
+
+          <div id="roomList" class="room-list room-list-compact"></div>
+
+          <div id="roomSummary" class="room-summary">未进入房间</div>
+          <button id="leaveRoomBtn" disabled>离开房间</button>
+
+          <div class="net-debug-hidden" aria-hidden="true">
+            <span id="serverTargetValue">-</span>
+            <span id="pingValue">-</span>
+            <span id="jitterValue">-</span>
+            <span id="interpValue">-</span>
+          </div>
+        </section>
+
+        <div id="onlineOverlay" class="overlay hidden">
+          <h2 id="onlineOverlayTitle"></h2>
+          <button id="onlineOverlayActionBtn" type="button">返回大厅</button>
+        </div>
+      </main>
+    </div>
+  `;
+}

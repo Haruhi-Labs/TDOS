@@ -23,10 +23,28 @@ import {
   loadPortraitImage,
 } from "./character-select.js";
 
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+import {
+  getLoadout,
+  setLoadout,
+  getFaction,
+  setFaction,
+} from "./profile.js";
 
-const ui = {
+// 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
+let canvas, ctx, ui, app;
+let ac = null; // AbortController：统一移除 window 级监听
+let rafId = 0; // 渲染循环句柄
+let running = false; // 渲染循环开关
+let charSelect = null; // 选角覆盖层引用，卸载时移除
+
+function addWin(type, handler) {
+  window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
+}
+
+function cacheDom() {
+  canvas = document.getElementById("gameCanvas");
+  ctx = canvas.getContext("2d");
+  ui = {
   hullValue: document.getElementById("hullValue"),
   energyValue: document.getElementById("energyValue"),
   splitValue: document.getElementById("splitValue"),
@@ -69,22 +87,23 @@ const ui = {
   mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
   mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
   mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
-};
+  };
+}
 
 const TAU = Math.PI * 2;
 const ROUTE_HANDLE_RADIUS = 11;
-const PLAYER_LOADOUT_STORAGE_KEY = "haruhi-player-loadout-v2";
 const MOBILE_ZOOM = 1.78;
 const CAMERA_ZOOM_MIN = 1;
 const CAMERA_ZOOM_MAX = 2.6;
 const CAMERA_ZOOM_STEP = 0.2;
 
-const app = {
+function initApp() {
+  app = {
   sim: null,
   state: null,
   playerLoadout: readStoredLoadout(),
   enemyLoadout: cloneLoadout(DEFAULT_AI_LOADOUT),
-  playerColor: "blue", // 玩家阵营立绘色（AI 对战时由角色选择决定）
+  playerColor: getFaction(), // 玩家阵营立绘色（取自统一档案，可被角色选择覆盖）
 
   selectedShipKey: "main",
   selectedZoneId: 5,
@@ -107,26 +126,16 @@ const app = {
     r: Math.random() * 1.6 + 0.4,
     p: Math.random() * TAU,
   })),
-};
+  };
+}
 
+// 编队读写统一走玩家档案（src/profile.js），与在线/调试模式共享同一份身份数据
 function readStoredLoadout() {
-  try {
-    const raw = window.localStorage.getItem(PLAYER_LOADOUT_STORAGE_KEY);
-    if (!raw) {
-      return cloneLoadout(DEFAULT_TEAM_LOADOUT);
-    }
-    return normalizeLoadout(JSON.parse(raw), DEFAULT_TEAM_LOADOUT);
-  } catch (_error) {
-    return cloneLoadout(DEFAULT_TEAM_LOADOUT);
-  }
+  return getLoadout();
 }
 
 function storeLoadout(loadout) {
-  try {
-    window.localStorage.setItem(PLAYER_LOADOUT_STORAGE_KEY, JSON.stringify(loadout));
-  } catch (_error) {
-    // 忽略存储失败
-  }
+  setLoadout(loadout);
 }
 
 function ownTeamState() {
@@ -1543,6 +1552,7 @@ function render() {
 }
 
 function tick(timestamp) {
+  if (!running) return;
   const dt = clamp((timestamp - app.lastTime) / 1000, 0, 0.05);
   app.lastTime = timestamp;
 
@@ -1554,7 +1564,7 @@ function tick(timestamp) {
   updateUi();
   render();
 
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
 }
 
 function useFlagshipSkill() {
@@ -1765,7 +1775,7 @@ function bindUiEvents() {
     }
   });
 
-  window.addEventListener("mouseup", () => {
+  addWin("mouseup", () => {
     if (app.mobileMode) {
       return;
     }
@@ -1894,7 +1904,7 @@ function bindUiEvents() {
     log(`当前最小可行转弯半径约 ${minRadius}`);
   });
 
-  window.addEventListener("keydown", (event) => {
+  addWin("keydown", (event) => {
     if (event.defaultPrevented) {
       return;
     }
@@ -2039,7 +2049,7 @@ function bindUiEvents() {
       return;
     }
   });
-  window.addEventListener("resize", () => {
+  addWin("resize", () => {
     syncResponsiveMode();
     updateUi();
   });
@@ -2049,6 +2059,7 @@ function launchWithLoadout(loadout, color) {
   app.playerLoadout = loadout;
   if (color === "blue" || color === "red") {
     app.playerColor = color;
+    setFaction(color); // 阵营写入统一档案，主菜单与在线模式同步
     // 预加载本队所选阵营立绘，保证画布角落立绘正确着色
     for (const key of ["main", "sub1", "sub2"]) {
       if (loadout[key]) loadPortraitImage(loadout[key], color);
@@ -2057,26 +2068,161 @@ function launchWithLoadout(loadout, color) {
   storeLoadout(loadout);
   syncLoadoutControls(loadout);
   resetMatch(true);
-  if (!app.tickRunning) {
+  if (!running) {
+    running = true;
     app.tickRunning = true;
-    requestAnimationFrame(tick);
+    app.lastTime = performance.now();
+    rafId = requestAnimationFrame(tick);
   }
 }
 
 function showCharacterSelectScreen() {
-  const charSelect = createCharacterSelect((loadout, color) => {
+  charSelect = createCharacterSelect((loadout, color) => {
     launchWithLoadout(loadout, color);
   });
   charSelect.show();
 }
 
-function start() {
+// ── 可挂载入口 ──
+export function mount(root) {
+  root.innerHTML = soloTemplate();
+  cacheDom();
+  initApp();
+  ac = new AbortController();
+  running = false;
+  rafId = 0;
   syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
-  app.tickRunning = false;
-  // Show character select screen first
   showCharacterSelectScreen();
+  return unmount;
 }
 
-start();
+function unmount() {
+  running = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+  if (ac) ac.abort();
+  ac = null;
+  // 选角覆盖层挂在 body 上：用 hide() 清掉它的 keydown 监听与背景 rAF，并移除节点
+  if (charSelect && typeof charSelect.hide === "function") {
+    charSelect.hide();
+  }
+  charSelect = null;
+  app = null;
+}
+
+function soloTemplate() {
+  return `
+    <div class="app-shell">
+      <aside class="panel compact-panel">
+        <h1>射手座之日</h1>
+
+        <section class="controls slim-controls">
+          <div class="btn-col">
+            <a class="btn-link btn-link-home" href="/">← 主菜单</a>
+          </div>
+        </section>
+
+        <section class="status">
+          <div><span>舰体</span><strong id="hullValue">100%</strong></div>
+          <div><span>能量</span><strong id="energyValue">100%</strong></div>
+          <div><span>分离</span><strong id="splitValue">编队</strong></div>
+          <div><span>战区</span><strong id="zoneValueLocal">战区5</strong></div>
+          <div><span>选中</span><strong id="selectedValue">主舰</strong></div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>开战编队</h2>
+          <div class="loadout-grid">
+            <label class="loadout-field" for="playerMainRole"><span>主舰</span><select id="playerMainRole"></select></label>
+            <label class="loadout-field" for="playerSub1Role"><span>副舰一</span><select id="playerSub1Role"></select></label>
+            <label class="loadout-field" for="playerSub2Role"><span>副舰二</span><select id="playerSub2Role"></select></label>
+          </div>
+          <div id="loadoutPreview" class="loadout-preview"></div>
+          <button id="applyLoadoutBtn">重新选择阵容</button>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>舰队控制</h2>
+          <div id="shipQuickSwitch" class="ship-switch">
+            <button type="button" class="ship-switch-btn" data-ship="main">主舰</button>
+            <button type="button" class="ship-switch-btn" data-ship="sub1">副舰1</button>
+            <button type="button" class="ship-switch-btn" data-ship="sub2">副舰2</button>
+          </div>
+          <div class="btn-row">
+            <button id="splitOneBtn">一级分离</button>
+            <button id="splitTwoBtn">二级分离</button>
+          </div>
+          <div class="slider-wrap">
+            <label for="powerSlider">推进功率</label>
+            <input id="powerSlider" type="range" min="25" max="140" step="1" value="100" />
+            <strong id="powerValue">100%</strong>
+          </div>
+          <div class="zoom-control-row">
+            <button id="zoomOutBtn" type="button">缩小</button>
+            <strong id="zoomValue">100%</strong>
+            <button id="zoomInBtn" type="button">放大</button>
+          </div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>技能</h2>
+          <div class="btn-col">
+            <button id="scoutBtn">派出侦查机</button>
+            <button id="autoScoutBtn" type="button">自动侦查：关</button>
+            <button id="brakeBtn" type="button">急刹</button>
+            <button id="flagshipBtn">旗舰技能</button>
+            <button id="subSkillBtn">分舰技能</button>
+          </div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>日志</h2>
+          <div id="log" class="log"></div>
+        </section>
+      </aside>
+
+      <main class="game-wrap">
+        <canvas id="gameCanvas" width="1440" height="1440"></canvas>
+        <section id="mobileBattleHud" class="mobile-battle-hud" aria-live="polite">
+          <div class="mobile-battle-head">
+            <div id="mobileBattleSummary" class="mobile-battle-summary">主舰 | 战区5</div>
+            <div class="mobile-head-actions">
+              <button id="mobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
+              <button id="mobileZoomOutBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">-</button>
+              <button id="mobileZoomInBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">+</button>
+            </div>
+          </div>
+          <div id="mobileShipSwitch" class="mobile-ship-switch">
+            <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
+          </div>
+          <div class="mobile-action-grid">
+            <button id="mobileSplitOneBtn" type="button">分离1</button>
+            <button id="mobileSplitTwoBtn" type="button">分离2</button>
+            <button id="mobileScoutBtn" type="button">侦察</button>
+            <button id="mobileAutoScoutBtn" type="button">自动侦察</button>
+            <button id="mobileBrakeBtn" type="button">急刹</button>
+            <button id="mobileFlagshipBtn" type="button">旗舰技</button>
+            <button id="mobileSubSkillBtn" type="button">分舰技</button>
+            <div class="mobile-throttle-row">
+              <button type="button" class="mobile-throttle-btn" data-throttle="70">70%</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="100">100%</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="125">125%</button>
+            </div>
+          </div>
+          <div id="mobileBattleHint" class="mobile-battle-hint">点舰船切换，点战场直接下航线，点右上小地图选战区。</div>
+        </section>
+        <div id="overlay" class="overlay hidden">
+          <h2 id="overlayTitle"></h2>
+          <div class="overlay-actions">
+            <button id="restartBtn">再来一局</button>
+            <a class="btn-link overlay-home-link" href="/">返回主菜单</a>
+          </div>
+        </div>
+      </main>
+    </div>
+  `;
+}

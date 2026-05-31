@@ -12,10 +12,22 @@ import {
   quadraticPoint,
 } from "../shared/game-core.js";
 
-const canvas = document.getElementById("debugCanvas");
-const ctx = canvas.getContext("2d");
+import { getLoadout } from "./profile.js";
 
-const ui = {
+// 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
+let canvas, ctx, ui, loadoutUi, app;
+let ac = null; // AbortController：统一移除 window 级监听
+let rafId = 0; // 渲染循环句柄
+let running = false; // 渲染循环开关
+
+function addWin(type, handler) {
+  window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
+}
+
+function cacheDom() {
+  canvas = document.getElementById("debugCanvas");
+  ctx = canvas.getContext("2d");
+  ui = {
   timeValue: document.getElementById("debugTimeValue"),
   phaseValue: document.getElementById("debugPhaseValue"),
   speedValue: document.getElementById("debugSpeedValue"),
@@ -38,9 +50,9 @@ const ui = {
   overlay: document.getElementById("debugOverlay"),
   overlayTitle: document.getElementById("debugOverlayTitle"),
   restartBtn: document.getElementById("debugRestartBtn"),
-};
+  };
 
-const loadoutUi = {
+  loadoutUi = {
   A: {
     main: document.getElementById("debugTeamAMainRole"),
     sub1: document.getElementById("debugTeamASub1Role"),
@@ -53,7 +65,8 @@ const loadoutUi = {
     sub2: document.getElementById("debugTeamBSub2Role"),
     preview: document.getElementById("debugTeamBPreview"),
   },
-};
+  };
+}
 
 const TAU = Math.PI * 2;
 const STORAGE_KEYS = {
@@ -63,10 +76,12 @@ const STORAGE_KEYS = {
 const MOBILE_ZOOM = 1.72;
 const SPEED_PRESETS = [0.5, 1, 2, 4];
 
-const app = {
+function initApp() {
+  app = {
   sim: null,
   state: null,
-  teamALoadout: readStoredLoadout("A", DEFAULT_TEAM_LOADOUT),
+  // A 队默认沿用玩家档案里的出战编队（与单机/在线共享），B 队默认 AI 阵容；两侧仍可各自独立改存
+  teamALoadout: readStoredLoadout("A", getLoadout()),
   teamBLoadout: readStoredLoadout("B", DEFAULT_AI_LOADOUT),
   selected: {
     seat: "A",
@@ -86,7 +101,8 @@ const app = {
     r: Math.random() * 1.6 + 0.4,
     p: Math.random() * TAU,
   })),
-};
+  };
+}
 
 function readStoredLoadout(seat, fallback) {
   try {
@@ -1453,6 +1469,7 @@ function render() {
 }
 
 function tick(timestamp) {
+  if (!running) return;
   const dt = clamp((timestamp - app.lastTime) / 1000, 0, 0.08);
   app.lastTime = timestamp;
 
@@ -1464,7 +1481,7 @@ function tick(timestamp) {
   updateUi();
   render();
 
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
 }
 
 function handleMinimapTap(screenPos) {
@@ -1559,7 +1576,7 @@ function bindUiEvents() {
     }
   });
 
-  window.addEventListener("keydown", (event) => {
+  addWin("keydown", (event) => {
     if (event.defaultPrevented) {
       return;
     }
@@ -1616,19 +1633,147 @@ function bindUiEvents() {
     }
   });
 
-  window.addEventListener("resize", () => {
+  addWin("resize", () => {
     syncResponsiveMode();
     updateUi();
   });
 }
 
-function start() {
+// ── 可挂载入口 ──
+export function mount(root) {
+  root.innerHTML = debugTemplate();
+  cacheDom();
+  initApp();
+  ac = new AbortController();
+  running = true;
   syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
   setSpeedScale(1, true);
   resetMatch(true);
-  requestAnimationFrame(tick);
+  rafId = requestAnimationFrame(tick);
+  return unmount;
 }
 
-start();
+function unmount() {
+  running = false;
+  if (rafId) cancelAnimationFrame(rafId);
+  rafId = 0;
+  if (ac) ac.abort();
+  ac = null;
+  app = null;
+}
+
+function debugTemplate() {
+  return `
+    <div class="app-shell debug-shell">
+      <aside class="panel compact-panel debug-panel">
+        <h1>射手座之日</h1>
+
+        <section class="controls slim-controls">
+          <div class="btn-col">
+            <a class="btn-link btn-link-home" href="/">← 主菜单</a>
+          </div>
+        </section>
+
+        <section class="status debug-status">
+          <div><span>时间</span><strong id="debugTimeValue">0.0秒</strong></div>
+          <div><span>状态</span><strong id="debugPhaseValue">运行中</strong></div>
+          <div><span>倍速</span><strong id="debugSpeedValue">1x</strong></div>
+          <div><span>选中</span><strong id="debugSelectedValue">A队 主舰</strong></div>
+          <div><span>A舰体</span><strong id="debugTeamAHullValue">100%</strong></div>
+          <div><span>A分离</span><strong id="debugTeamASplitValue">编队</strong></div>
+          <div><span>A侦获</span><strong id="debugTeamAVisionValue">0个目标</strong></div>
+          <div><span>B舰体</span><strong id="debugTeamBHullValue">100%</strong></div>
+          <div><span>B分离</span><strong id="debugTeamBSplitValue">编队</strong></div>
+          <div><span>B侦获</span><strong id="debugTeamBVisionValue">0个目标</strong></div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>调试控制</h2>
+          <div class="btn-col">
+            <button id="applyDebugSetupBtn">应用双方阵容并开战</button>
+          </div>
+          <div class="btn-row">
+            <button id="pauseDebugBtn">暂停</button>
+            <button id="stepDebugBtn">单步1秒</button>
+          </div>
+          <div id="debugSpeedRow" class="debug-speed-row">
+            <button type="button" class="debug-speed-btn" data-speed="0.5">0.5x</button>
+            <button type="button" class="debug-speed-btn" data-speed="1">1x</button>
+            <button type="button" class="debug-speed-btn" data-speed="2">2x</button>
+            <button type="button" class="debug-speed-btn" data-speed="4">4x</button>
+          </div>
+          <p class="hint">双方均由 AI 接管。观察者可切换任意舰船，查看射界、视野与航线；手机上点空白区域可挪动镜头。</p>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>阵容设置</h2>
+          <div class="debug-team-stack">
+            <section class="debug-team-block">
+              <div class="debug-team-head"><h3>A队</h3><strong class="debug-seat-tag seat-a">AI</strong></div>
+              <div class="loadout-grid">
+                <label class="loadout-field" for="debugTeamAMainRole"><span>主舰</span><select id="debugTeamAMainRole"></select></label>
+                <label class="loadout-field" for="debugTeamASub1Role"><span>副舰一</span><select id="debugTeamASub1Role"></select></label>
+                <label class="loadout-field" for="debugTeamASub2Role"><span>副舰二</span><select id="debugTeamASub2Role"></select></label>
+              </div>
+              <div id="debugTeamAPreview" class="loadout-preview"></div>
+            </section>
+            <section class="debug-team-block">
+              <div class="debug-team-head"><h3>B队</h3><strong class="debug-seat-tag seat-b">AI</strong></div>
+              <div class="loadout-grid">
+                <label class="loadout-field" for="debugTeamBMainRole"><span>主舰</span><select id="debugTeamBMainRole"></select></label>
+                <label class="loadout-field" for="debugTeamBSub1Role"><span>副舰一</span><select id="debugTeamBSub1Role"></select></label>
+                <label class="loadout-field" for="debugTeamBSub2Role"><span>副舰二</span><select id="debugTeamBSub2Role"></select></label>
+              </div>
+              <div id="debugTeamBPreview" class="loadout-preview"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>快速观察</h2>
+          <div id="debugFocusGrid" class="debug-focus-grid">
+            <button type="button" class="debug-focus-btn" data-seat="A" data-ship="main">A主</button>
+            <button type="button" class="debug-focus-btn" data-seat="B" data-ship="main">B主</button>
+            <button type="button" class="debug-focus-btn" data-seat="A" data-ship="sub1">A一</button>
+            <button type="button" class="debug-focus-btn" data-seat="B" data-ship="sub1">B一</button>
+            <button type="button" class="debug-focus-btn" data-seat="A" data-ship="sub2">A二</button>
+            <button type="button" class="debug-focus-btn" data-seat="B" data-ship="sub2">B二</button>
+          </div>
+          <div id="debugSelectedShipCard" class="loadout-preview debug-selected-card"></div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>AI态势</h2>
+          <div class="debug-team-stack">
+            <section class="debug-team-block">
+              <div class="debug-team-head"><h3>A队判断</h3><strong class="debug-seat-tag seat-a">AI</strong></div>
+              <div id="debugTeamAAiCard" class="loadout-preview debug-ai-card"></div>
+            </section>
+            <section class="debug-team-block">
+              <div class="debug-team-head"><h3>B队判断</h3><strong class="debug-seat-tag seat-b">AI</strong></div>
+              <div id="debugTeamBAiCard" class="loadout-preview debug-ai-card"></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="controls slim-controls">
+          <h2>日志</h2>
+          <div id="debugLog" class="log"></div>
+        </section>
+      </aside>
+
+      <main class="game-wrap">
+        <canvas id="debugCanvas" width="1440" height="1440"></canvas>
+        <div id="debugOverlay" class="overlay hidden">
+          <h2 id="debugOverlayTitle"></h2>
+          <div class="overlay-actions">
+            <button id="debugRestartBtn">重新推演</button>
+            <a class="btn-link overlay-home-link" href="/">返回主菜单</a>
+          </div>
+        </div>
+      </main>
+    </div>
+  `;
+}
