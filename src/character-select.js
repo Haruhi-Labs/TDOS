@@ -752,6 +752,10 @@ export function createCharacterSelect(onLaunch) {
       t.classList.toggle("current", c === state.currentChar);
       t.classList.toggle("assigned", Boolean(findAssignedSlot(c)));
     }
+    // 不循环：到首/末页时禁用对应箭头，使“到头了”一目了然
+    const idx = getCharIndex(state.currentChar);
+    navPrev.disabled = idx <= 0;
+    navNext.disabled = idx >= CHARACTER_ORDER.length - 1;
   }
 
   function findAssignedSlot(charId) {
@@ -778,12 +782,14 @@ export function createCharacterSelect(onLaunch) {
     flipTo(charId, direction);
   }
 
-  // ── 箭头翻页：翻页方向永远跟随箭头朝向，与循环回绕无关 ──
-  // › 往右 = "prev"；‹ 往左 = "next"
+  // ── 箭头翻页：永远按箭头朝向翻（› 往右 = "prev"；‹ 往左 = "next"）──
+  // 不循环回绕：到首/末页就停。否则回绕时「翻页方向」与「新角色出现的一侧」相反，
+  // 会出现“有时候反”的观感。两端到头后用箭头方向到另一端请用角色标签跳转。
   function stepArrow(delta, direction) {
     if (state.flipping) return;
     const idx = getCharIndex(state.currentChar);
-    const nextIdx = (idx + delta + CHARACTER_ORDER.length) % CHARACTER_ORDER.length;
+    const nextIdx = idx + delta;
+    if (nextIdx < 0 || nextIdx >= CHARACTER_ORDER.length) return; // 到头不回绕
     const nextChar = CHARACTER_ORDER[nextIdx];
     if (nextChar === state.currentChar) return;
     flipTo(nextChar, direction);
