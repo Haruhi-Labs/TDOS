@@ -560,6 +560,184 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 .log::-webkit-scrollbar-thumb { background: var(--brass); }
 
 /* ═══════════════════════════════════════════════════
+   对战控制台 — 压缩到一屏（仅 solo / online，debug 仍可滚动）
+   面板自身固定为视口高度且不滚动，日志吞掉剩余高度
+   ═══════════════════════════════════════════════════ */
+.battle-panel {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 28px);
+  max-height: calc(100vh - 28px);
+  overflow: hidden;
+  padding: 11px 13px 12px;
+  gap: 7px;
+}
+.battle-panel > * { margin: 0; }
+/* 对战面板内按钮统一收薄一点，挤出垂直空间给舰况 */
+.battle-panel button,
+.battle-panel .btn-link { padding-top: 5px; padding-bottom: 5px; }
+
+/* 标题压缩，保留烫金压印 */
+.battle-panel h1 {
+  margin: 0;
+  font-size: 1.15rem;
+  padding: 2px 0 7px;
+}
+
+/* 顶部动作行：主菜单 / 换阵容（等宽铺满） */
+.battle-panel .panel-actions {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 7px;
+}
+.battle-panel .panel-actions .btn-link,
+.battle-panel .panel-actions button { padding: 7px 8px; }
+
+/* 分区与状态格收紧 */
+.battle-panel .controls { margin-top: 0; padding-top: 8px; }
+.battle-panel .controls h2 { margin-bottom: 6px; }
+.battle-panel .status { margin: 0; gap: 5px; }
+.battle-panel .status div { padding: 4px 9px 4px 11px; }
+
+/* 推进功率：标签与数值同行，滑块独占一行 */
+.battle-panel .slider-wrap { gap: 4px; margin: 4px 0 0; }
+.battle-panel .slider-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.battle-panel .zoom-control-row { margin-top: 6px; }
+
+/* 在线模式：战斗控制容器跟随主列排布并保留禁用态滤镜 */
+.battle-panel #battleControls {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+/* 技能：2 列网格，整行按钮用 .span-2 */
+.battle-panel .btn-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 7px;
+}
+.battle-panel .btn-grid .span-2 { grid-column: 1 / -1; }
+
+/* 全队舰况 — 吃掉日志腾出的高度；每艘舰一张铜牌（血/能量条 + 状态） */
+.battle-panel .fleet-section {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.battle-panel .fleet-section h2 { flex: 0 0 auto; }
+.fleet-roster {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.fleet-row {
+  flex: 1 1 0;
+  min-height: 34px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  overflow: hidden;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--brass-dark);
+  border-radius: 3px;
+  padding: 4px 9px;
+  background: linear-gradient(180deg, #2a1c0e 0%, #1a1006 100%);
+  box-shadow: inset 0 1px 0 #6c4a2855, inset 0 -2px 4px #00000066;
+  color: var(--ivory-soft);
+  font: inherit;
+  font-family: var(--font-cn);
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+/* 用 .battle-panel 前缀提升优先级，压过基础 button:hover 的黄铜渐变 */
+.battle-panel .fleet-row:hover {
+  background: linear-gradient(180deg, #33230f 0%, #1d1206 100%);
+  border-color: var(--gilt);
+  box-shadow: inset 0 1px 0 #6c4a2855, inset 0 -2px 4px #00000066;
+}
+.battle-panel .fleet-row.active {
+  border-color: var(--gilt-bright);
+  background: linear-gradient(180deg, #3a280f 0%, #201406 100%);
+  box-shadow: inset 0 1px 0 #ffe9a855, inset 0 -2px 4px #160c05, 0 0 12px #c8a24e44;
+}
+.fleet-row.gone { opacity: 0.5; filter: grayscale(0.55); cursor: default; }
+
+.fleet-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.fleet-name {
+  color: var(--gilt-pale);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.fleet-row.active .fleet-name { color: var(--gilt-bright); }
+.fleet-state {
+  flex: 0 0 auto;
+  font-size: 0.72rem;
+  color: var(--text-soft);
+  letter-spacing: 0.05em;
+  font-family: var(--font-italic);
+  font-style: italic;
+  white-space: nowrap;
+}
+.fleet-state.danger { color: var(--oxblood-bright); font-style: normal; }
+
+.fleet-gauges {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.fleet-gauge {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+}
+.fleet-glabel { font-size: 0.68rem; color: var(--text-muted); letter-spacing: 0.04em; }
+.fleet-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: #160c05;
+  box-shadow: inset 0 1px 2px #00000099;
+  overflow: hidden;
+}
+.fleet-fill {
+  display: block;
+  height: 100%;
+  width: 100%;
+  border-radius: 3px;
+  transition: width 200ms ease;
+}
+.fleet-fill-hull { background: linear-gradient(90deg, var(--gilt-deep), var(--gilt-bright)); }
+.fleet-fill-hull.low { background: linear-gradient(90deg, #7a1c1c, var(--oxblood-bright)); }
+.fleet-fill-energy { background: linear-gradient(90deg, #2f5d52, #6fae97); }
+.fleet-pct {
+  min-width: 26px;
+  text-align: right;
+  font-size: 0.7rem;
+  color: var(--gilt-pale);
+  font-family: var(--font-engrave);
+  letter-spacing: 0.02em;
+}
+
+/* ═══════════════════════════════════════════════════
    战场画布 — 黄铜舷窗
    ═══════════════════════════════════════════════════ */
 .game-wrap {
@@ -1079,6 +1257,7 @@ button.toggle-active {
 @media (max-width: 980px) {
   .app-shell, .online-shell, .debug-shell { grid-template-columns: 1fr; }
   .panel { max-height: none; order: 2; }
+  .battle-panel { height: auto; max-height: none; overflow: visible; }
   .game-wrap { order: 1; padding-bottom: 198px; }
   .join-code-wrap { grid-template-columns: 1fr; }
   .room-hud { position: static; width: 100%; max-height: none; margin-top: 0; }

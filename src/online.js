@@ -83,6 +83,16 @@ function cacheDom() {
   openFleetSelectBtn: document.getElementById("openFleetSelectBtn"),
   onlineNicknameValue: document.getElementById("onlineNicknameValue"),
   onlineLog: document.getElementById("onlineLog"),
+  fleetRows: Array.from(document.querySelectorAll("#fleetRoster .fleet-row")).map((row) => ({
+    row,
+    key: row.dataset.ship,
+    name: row.querySelector(".fleet-name"),
+    state: row.querySelector(".fleet-state"),
+    hullFill: row.querySelector(".fleet-fill-hull"),
+    hullPct: row.querySelector(".fleet-pct-hull"),
+    enFill: row.querySelector(".fleet-fill-energy"),
+    enPct: row.querySelector(".fleet-pct-energy"),
+  })),
   onlineOverlay: document.getElementById("onlineOverlay"),
   onlineOverlayTitle: document.getElementById("onlineOverlayTitle"),
   onlineOverlayActionBtn: document.getElementById("onlineOverlayActionBtn"),
@@ -107,6 +117,8 @@ function cacheDom() {
   onlineMobileSubSkillBtn: document.getElementById("onlineMobileSubSkillBtn"),
   onlineMobileThrottleButtons: Array.from(document.querySelectorAll("#onlineMobileBattleHud .mobile-throttle-btn")),
   };
+  // 「选中」字段已从对战面板移除（信息与切舰按钮/滑块重复）；占位对象吞掉文本写入
+  if (!ui.selectedValue) ui.selectedValue = {};
 }
 
 const TAU = Math.PI * 2;
@@ -366,12 +378,60 @@ function setNickname(name, options = {}) {
 }
 
 function log(message) {
+  // 日志面板已被「全队舰况」取代；保留函数让各处事件调用安全空转
+  if (!ui.onlineLog) {
+    return;
+  }
   const row = document.createElement("div");
   const time = new Date().toLocaleTimeString("zh-CN", { hour12: false });
   row.textContent = `[${time}] ${message}`;
   ui.onlineLog.prepend(row);
   while (ui.onlineLog.children.length > 40) {
     ui.onlineLog.removeChild(ui.onlineLog.lastChild);
+  }
+}
+
+const FLEET_SLOT_LABEL = { main: "主舰", sub1: "副一", sub2: "副二" };
+
+// 全队舰况：逐舰刷新血/能量条 + 状态，并高亮当前选中舰
+function renderFleetRoster(own) {
+  if (!ui.fleetRows) {
+    return;
+  }
+  for (const cell of ui.fleetRows) {
+    const ship = own && own.ships ? own.ships[cell.key] : null;
+    cell.row.classList.toggle("active", cell.key === app.selectedShipKey);
+    if (!ship) {
+      cell.row.classList.add("gone");
+      cell.name.textContent = FLEET_SLOT_LABEL[cell.key] || cell.key;
+      cell.state.textContent = "—";
+      cell.state.classList.remove("danger");
+      cell.hullFill.style.width = "0%";
+      cell.enFill.style.width = "0%";
+      cell.hullPct.textContent = "—";
+      cell.enPct.textContent = "—";
+      continue;
+    }
+    const dead = !ship.alive;
+    const hull = dead ? 0 : Math.max(0, Math.round((Number(ship.hp) / Math.max(1, Number(ship.maxHp))) * 100));
+    const energy = energyPercentForShip(ship);
+    cell.row.classList.toggle("gone", dead);
+    cell.name.textContent = `${FLEET_SLOT_LABEL[cell.key] || cell.key} ${ship.characterName}`;
+    let state = "";
+    if (dead) {
+      state = "✖ 阵亡";
+    } else if (ship.braking) {
+      state = "急刹中";
+    } else if (cell.key !== "main" && ship.attached === false) {
+      state = "分离中";
+    }
+    cell.state.textContent = state;
+    cell.state.classList.toggle("danger", dead);
+    cell.hullFill.style.width = `${hull}%`;
+    cell.hullFill.classList.toggle("low", !dead && hull <= 30);
+    cell.enFill.style.width = `${energy}%`;
+    cell.hullPct.textContent = `${hull}%`;
+    cell.enPct.textContent = `${energy}%`;
   }
 }
 
@@ -1265,6 +1325,7 @@ function updateBattleStatus(state) {
     ui.onlineZoomOutBtn.disabled = app.cameraZoom <= CAMERA_ZOOM_MIN + 1e-3;
     ui.onlineZoomInBtn.disabled = app.cameraZoom >= CAMERA_ZOOM_MAX - 1e-3;
     updateSkillButtons(null);
+    renderFleetRoster(null);
     return;
   }
 
@@ -1287,6 +1348,7 @@ function updateBattleStatus(state) {
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
   updateSkillButtons(own);
+  renderFleetRoster(own);
   syncMobileHud(own);
   if (app.pendingSubSkillAim && ui.subSkillBtn.disabled) {
     app.pendingSubSkillAim = null;
@@ -3176,6 +3238,11 @@ function bindUiEvents() {
       selectShip(button.dataset.ship || "");
     });
   }
+  for (const cell of ui.fleetRows) {
+    cell.row.addEventListener("click", () => {
+      selectShip(cell.key || "");
+    });
+  }
   for (const button of ui.onlineMobileShipButtons) {
     button.addEventListener("click", () => {
       selectShip(button.dataset.ship || "", currentBattleState());
@@ -3746,21 +3813,18 @@ function onlineTemplate() {
 
       <!-- ── 战斗页 ── -->
       <div id="battleView" class="app-shell online-shell" hidden>
-        <aside class="panel compact-panel">
+        <aside class="panel compact-panel battle-panel">
           <h1>射手座之日</h1>
 
-          <section class="controls slim-controls">
-            <div class="btn-col">
-              <a class="btn-link btn-link-home" href="/">← 主菜单</a>
-            </div>
-          </section>
+          <div class="panel-actions">
+            <a class="btn-link btn-link-home" href="/">← 主菜单</a>
+          </div>
 
           <section class="status">
             <div><span>舰体</span><strong id="hullValueOnline">100%</strong></div>
             <div><span>能量</span><strong id="energyValueOnline">100%</strong></div>
             <div><span>分离</span><strong id="splitValueOnline">编队</strong></div>
             <div><span>战区</span><strong id="zoneValueOnline">战区 5</strong></div>
-            <div><span>选中</span><strong id="onlineSelectedValue">主舰</strong></div>
           </section>
 
           <div id="battleControls" class="disabled-panel">
@@ -3776,9 +3840,8 @@ function onlineTemplate() {
                 <button id="onlineSplitTwoBtn">二级分离</button>
               </div>
               <div class="slider-wrap">
-                <label for="onlinePowerSlider">推进功率</label>
+                <div class="slider-head"><label for="onlinePowerSlider">推进功率</label><strong id="onlinePowerValue">100%</strong></div>
                 <input id="onlinePowerSlider" type="range" min="25" max="140" step="1" value="100" />
-                <strong id="onlinePowerValue">100%</strong>
               </div>
               <div class="zoom-control-row">
                 <button id="onlineZoomOutBtn" type="button">缩小</button>
@@ -3789,19 +3852,41 @@ function onlineTemplate() {
 
             <section class="controls slim-controls">
               <h2>技能</h2>
-              <div class="btn-col">
-                <button id="onlineScoutBtn">派出侦查机</button>
-                <button id="onlineAutoScoutBtn" type="button">自动侦查：关</button>
-                <button id="onlineBrakeBtn" type="button">急刹</button>
+              <div class="btn-grid">
                 <button id="onlineFlagshipBtn">旗舰技能</button>
                 <button id="onlineSubSkillBtn">分舰技能</button>
+                <button id="onlineScoutBtn">派出侦查机</button>
+                <button id="onlineAutoScoutBtn" type="button">自动侦查：关</button>
+                <button id="onlineBrakeBtn" type="button" class="span-2">急刹</button>
               </div>
             </section>
           </div>
 
-          <section class="controls slim-controls">
-            <h2>日志</h2>
-            <div id="onlineLog" class="log"></div>
+          <section class="controls slim-controls fleet-section">
+            <h2>全队舰况</h2>
+            <div id="fleetRoster" class="fleet-roster">
+              <button type="button" class="fleet-row" data-ship="main">
+                <div class="fleet-row-head"><span class="fleet-name">主舰</span><span class="fleet-state"></span></div>
+                <div class="fleet-gauges">
+                  <div class="fleet-gauge"><span class="fleet-glabel">舰体</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
+                  <div class="fleet-gauge"><span class="fleet-glabel">能量</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
+                </div>
+              </button>
+              <button type="button" class="fleet-row" data-ship="sub1">
+                <div class="fleet-row-head"><span class="fleet-name">副一</span><span class="fleet-state"></span></div>
+                <div class="fleet-gauges">
+                  <div class="fleet-gauge"><span class="fleet-glabel">舰体</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
+                  <div class="fleet-gauge"><span class="fleet-glabel">能量</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
+                </div>
+              </button>
+              <button type="button" class="fleet-row" data-ship="sub2">
+                <div class="fleet-row-head"><span class="fleet-name">副二</span><span class="fleet-state"></span></div>
+                <div class="fleet-gauges">
+                  <div class="fleet-gauge"><span class="fleet-glabel">舰体</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
+                  <div class="fleet-gauge"><span class="fleet-glabel">能量</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
+                </div>
+              </button>
+            </div>
           </section>
         </aside>
 

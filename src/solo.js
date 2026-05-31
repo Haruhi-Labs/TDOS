@@ -69,6 +69,16 @@ function cacheDom() {
   loadoutPreview: document.getElementById("loadoutPreview"),
   applyLoadoutBtn: document.getElementById("applyLoadoutBtn"),
   log: document.getElementById("log"),
+  fleetRows: Array.from(document.querySelectorAll("#fleetRoster .fleet-row")).map((row) => ({
+    row,
+    key: row.dataset.ship,
+    name: row.querySelector(".fleet-name"),
+    state: row.querySelector(".fleet-state"),
+    hullFill: row.querySelector(".fleet-fill-hull"),
+    hullPct: row.querySelector(".fleet-pct-hull"),
+    enFill: row.querySelector(".fleet-fill-energy"),
+    enPct: row.querySelector(".fleet-pct-energy"),
+  })),
   overlay: document.getElementById("overlay"),
   overlayTitle: document.getElementById("overlayTitle"),
   restartBtn: document.getElementById("restartBtn"),
@@ -88,6 +98,8 @@ function cacheDom() {
   mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
   mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
   };
+  // 「选中」字段已从对战面板移除（信息与切舰按钮/滑块重复）；占位对象吞掉文本写入
+  if (!ui.selectedValue) ui.selectedValue = {};
 }
 
 const TAU = Math.PI * 2;
@@ -344,6 +356,10 @@ function routeHandleAtPoint(route, x, y) {
 }
 
 function log(message) {
+  // 日志面板已被「全队舰况」取代；保留函数让各处战斗事件调用安全空转
+  if (!ui.log) {
+    return;
+  }
   const row = document.createElement("div");
   const elapsed = app.state ? Math.floor(app.state.elapsed) : 0;
   row.textContent = `[${String(elapsed).padStart(3, "0")}秒] ${message}`;
@@ -354,7 +370,53 @@ function log(message) {
 }
 
 function clearLog() {
-  ui.log.innerHTML = "";
+  if (ui.log) {
+    ui.log.innerHTML = "";
+  }
+}
+
+const FLEET_SLOT_LABEL = { main: "主舰", sub1: "副一", sub2: "副二" };
+
+// 全队舰况：逐舰刷新血/能量条 + 状态，并高亮当前选中舰
+function renderFleetRoster(own) {
+  if (!ui.fleetRows) {
+    return;
+  }
+  for (const cell of ui.fleetRows) {
+    const ship = own && own.ships ? own.ships[cell.key] : null;
+    cell.row.classList.toggle("active", cell.key === app.selectedShipKey);
+    if (!ship) {
+      cell.row.classList.add("gone");
+      cell.name.textContent = FLEET_SLOT_LABEL[cell.key] || cell.key;
+      cell.state.textContent = "—";
+      cell.state.classList.remove("danger");
+      cell.hullFill.style.width = "0%";
+      cell.enFill.style.width = "0%";
+      cell.hullPct.textContent = "—";
+      cell.enPct.textContent = "—";
+      continue;
+    }
+    const dead = !ship.alive;
+    const hull = dead ? 0 : Math.max(0, Math.round((Number(ship.hp) / Math.max(1, Number(ship.maxHp))) * 100));
+    const energy = energyPercentForShip(ship);
+    cell.row.classList.toggle("gone", dead);
+    cell.name.textContent = `${FLEET_SLOT_LABEL[cell.key] || cell.key} ${ship.characterName}`;
+    let state = "";
+    if (dead) {
+      state = "✖ 阵亡";
+    } else if (ship.braking) {
+      state = "急刹中";
+    } else if (cell.key !== "main" && ship.attached === false) {
+      state = "分离中";
+    }
+    cell.state.textContent = state;
+    cell.state.classList.toggle("danger", dead);
+    cell.hullFill.style.width = `${hull}%`;
+    cell.hullFill.classList.toggle("low", !dead && hull <= 30);
+    cell.enFill.style.width = `${energy}%`;
+    cell.hullPct.textContent = `${hull}%`;
+    cell.enPct.textContent = `${energy}%`;
+  }
 }
 
 function applyAction(action) {
@@ -417,9 +479,10 @@ function populateLoadoutControls() {
 }
 
 function syncLoadoutControls(loadout) {
-  ui.playerMainRole.value = loadout.main;
-  ui.playerSub1Role.value = loadout.sub1;
-  ui.playerSub2Role.value = loadout.sub2;
+  // 内联编队下拉已从对战面板移除，换阵容统一走翻书选角；下拉存在时（其他模式）才回填
+  if (ui.playerMainRole) ui.playerMainRole.value = loadout.main;
+  if (ui.playerSub1Role) ui.playerSub1Role.value = loadout.sub1;
+  if (ui.playerSub2Role) ui.playerSub2Role.value = loadout.sub2;
   renderLoadoutPreview(loadout, ui.loadoutPreview);
   updateShipSwitchLabels(loadout);
 }
@@ -907,6 +970,7 @@ function updateUi() {
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
   updateSkillButtons(own);
+  renderFleetRoster(own);
   syncMobileHud(own);
 
   if (app.state.phase === "finished") {
@@ -1621,6 +1685,9 @@ function useSubSkill() {
 
 function bindUiEvents() {
   for (const select of [ui.playerMainRole, ui.playerSub1Role, ui.playerSub2Role]) {
+    if (!select) {
+      continue;
+    }
     select.addEventListener("change", () => {
       const normalized = readLoadoutFromControls();
       syncLoadoutControls(normalized);
@@ -1634,6 +1701,11 @@ function bindUiEvents() {
   for (const button of ui.shipSwitchButtons) {
     button.addEventListener("click", () => {
       setSelectedShip(button.dataset.ship || "");
+    });
+  }
+  for (const cell of ui.fleetRows) {
+    cell.row.addEventListener("click", () => {
+      setSelectedShip(cell.key || "");
     });
   }
   for (const button of ui.mobileShipButtons) {
@@ -2115,32 +2187,19 @@ function unmount() {
 function soloTemplate() {
   return `
     <div class="app-shell">
-      <aside class="panel compact-panel">
+      <aside class="panel compact-panel battle-panel">
         <h1>射手座之日</h1>
 
-        <section class="controls slim-controls">
-          <div class="btn-col">
-            <a class="btn-link btn-link-home" href="/">← 主菜单</a>
-          </div>
-        </section>
+        <div class="panel-actions">
+          <a class="btn-link btn-link-home" href="/">← 主菜单</a>
+          <button id="applyLoadoutBtn" type="button">换阵容</button>
+        </div>
 
         <section class="status">
           <div><span>舰体</span><strong id="hullValue">100%</strong></div>
           <div><span>能量</span><strong id="energyValue">100%</strong></div>
           <div><span>分离</span><strong id="splitValue">编队</strong></div>
           <div><span>战区</span><strong id="zoneValueLocal">战区5</strong></div>
-          <div><span>选中</span><strong id="selectedValue">主舰</strong></div>
-        </section>
-
-        <section class="controls slim-controls">
-          <h2>开战编队</h2>
-          <div class="loadout-grid">
-            <label class="loadout-field" for="playerMainRole"><span>主舰</span><select id="playerMainRole"></select></label>
-            <label class="loadout-field" for="playerSub1Role"><span>副舰一</span><select id="playerSub1Role"></select></label>
-            <label class="loadout-field" for="playerSub2Role"><span>副舰二</span><select id="playerSub2Role"></select></label>
-          </div>
-          <div id="loadoutPreview" class="loadout-preview"></div>
-          <button id="applyLoadoutBtn">重新选择阵容</button>
         </section>
 
         <section class="controls slim-controls">
@@ -2155,9 +2214,8 @@ function soloTemplate() {
             <button id="splitTwoBtn">二级分离</button>
           </div>
           <div class="slider-wrap">
-            <label for="powerSlider">推进功率</label>
+            <div class="slider-head"><label for="powerSlider">推进功率</label><strong id="powerValue">100%</strong></div>
             <input id="powerSlider" type="range" min="25" max="140" step="1" value="100" />
-            <strong id="powerValue">100%</strong>
           </div>
           <div class="zoom-control-row">
             <button id="zoomOutBtn" type="button">缩小</button>
@@ -2168,18 +2226,40 @@ function soloTemplate() {
 
         <section class="controls slim-controls">
           <h2>技能</h2>
-          <div class="btn-col">
-            <button id="scoutBtn">派出侦查机</button>
-            <button id="autoScoutBtn" type="button">自动侦查：关</button>
-            <button id="brakeBtn" type="button">急刹</button>
+          <div class="btn-grid">
             <button id="flagshipBtn">旗舰技能</button>
             <button id="subSkillBtn">分舰技能</button>
+            <button id="scoutBtn">派出侦查机</button>
+            <button id="autoScoutBtn" type="button">自动侦查：关</button>
+            <button id="brakeBtn" type="button" class="span-2">急刹</button>
           </div>
         </section>
 
-        <section class="controls slim-controls">
-          <h2>日志</h2>
-          <div id="log" class="log"></div>
+        <section class="controls slim-controls fleet-section">
+          <h2>全队舰况</h2>
+          <div id="fleetRoster" class="fleet-roster">
+            <button type="button" class="fleet-row" data-ship="main">
+              <div class="fleet-row-head"><span class="fleet-name">主舰</span><span class="fleet-state"></span></div>
+              <div class="fleet-gauges">
+                <div class="fleet-gauge"><span class="fleet-glabel">舰体</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
+                <div class="fleet-gauge"><span class="fleet-glabel">能量</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
+              </div>
+            </button>
+            <button type="button" class="fleet-row" data-ship="sub1">
+              <div class="fleet-row-head"><span class="fleet-name">副一</span><span class="fleet-state"></span></div>
+              <div class="fleet-gauges">
+                <div class="fleet-gauge"><span class="fleet-glabel">舰体</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
+                <div class="fleet-gauge"><span class="fleet-glabel">能量</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
+              </div>
+            </button>
+            <button type="button" class="fleet-row" data-ship="sub2">
+              <div class="fleet-row-head"><span class="fleet-name">副二</span><span class="fleet-state"></span></div>
+              <div class="fleet-gauges">
+                <div class="fleet-gauge"><span class="fleet-glabel">舰体</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
+                <div class="fleet-gauge"><span class="fleet-glabel">能量</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
+              </div>
+            </button>
+          </div>
         </section>
       </aside>
 
