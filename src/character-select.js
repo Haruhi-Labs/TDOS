@@ -4,6 +4,7 @@ import {
   cloneLoadout,
   DEFAULT_TEAM_LOADOUT,
 } from "../shared/game-core.js";
+import { isMobile } from "./mobile.js";
 
 // ═══════════════════════════════════════════════════
 // 角色主题色 — 取自立绘的复古太空军装
@@ -518,7 +519,8 @@ function renderRightPageHTML(charId, loadout) {
 // ═══════════════════════════════════════════════════
 // 创建角色选择屏（皮装名鉴 + 3D 翻页）
 // ═══════════════════════════════════════════════════
-export function createCharacterSelect(onLaunch) {
+// 桌面版：皮装对开书 + 3D 翻页（保持原样，仅在非移动端使用）
+function createDesktopCharacterSelect(onLaunch) {
   const FLIP_MS = 840;
 
   const state = {
@@ -1217,6 +1219,319 @@ export function createCharacterSelect(onLaunch) {
   }
 
   return { show, hide, screen };
+}
+
+// ═══════════════════════════════════════════════════
+// 移动端专属选人（触摸优先）
+// 抛弃「对开书 / 3D 翻页」桌面隐喻：整屏大立绘 + 左右滑动/点按切角色 +
+// 数据 chip + 底部常驻「编队槽 + 单一主操作（编入/出击）」。与桌面版共享角色数据与编队语义。
+// ═══════════════════════════════════════════════════
+const MOBILE_STATS = [
+  ["舰体", "hp"],
+  ["能量", "energy"],
+  ["航速", "speed"],
+  ["机动", "turnRate"],
+  ["射程", "range"],
+  ["视野", "vision"],
+  ["伤害", "damage"],
+  ["射速", "fireRate"],
+];
+
+function createMobileCharacterSelect(onLaunch) {
+  const state = {
+    idx: 0,
+    loadout: { main: null, sub1: null, sub2: null },
+    color: "blue",
+  };
+
+  const screen = document.createElement("div");
+  screen.className = "cs-screen csm";
+  screen.innerHTML = `
+    <div class="csm-top">
+      <a class="csm-back" href="/">‹ 主菜单</a>
+      <div class="csm-faction" role="group" aria-label="选择阵营">
+        <button type="button" class="csm-faction-btn blue active" data-color="blue">蓝队</button>
+        <button type="button" class="csm-faction-btn red" data-color="red">红队</button>
+      </div>
+    </div>
+    <div class="csm-stage">
+      <div class="csm-portrait"></div>
+      <button type="button" class="csm-arrow csm-prev" aria-label="上一位">‹</button>
+      <button type="button" class="csm-arrow csm-next" aria-label="下一位">›</button>
+      <div class="csm-caption">
+        <div class="csm-idx"></div>
+        <div class="csm-name"></div>
+        <div class="csm-title"></div>
+      </div>
+    </div>
+    <div class="csm-info">
+      <div class="csm-dots"></div>
+      <div class="csm-stats"></div>
+      <div class="csm-skills"></div>
+    </div>
+    <div class="csm-bar">
+      <div class="csm-fleet"></div>
+      <button type="button" class="csm-cta" disabled></button>
+    </div>
+  `;
+
+  const els = {
+    stage: screen.querySelector(".csm-stage"),
+    portrait: screen.querySelector(".csm-portrait"),
+    idx: screen.querySelector(".csm-idx"),
+    name: screen.querySelector(".csm-name"),
+    title: screen.querySelector(".csm-title"),
+    dots: screen.querySelector(".csm-dots"),
+    stats: screen.querySelector(".csm-stats"),
+    skills: screen.querySelector(".csm-skills"),
+    fleet: screen.querySelector(".csm-fleet"),
+    cta: screen.querySelector(".csm-cta"),
+    prev: screen.querySelector(".csm-prev"),
+    next: screen.querySelector(".csm-next"),
+    factionBlue: screen.querySelector(".csm-faction-btn.blue"),
+    factionRed: screen.querySelector(".csm-faction-btn.red"),
+  };
+
+  // 索引点
+  CHARACTER_ORDER.forEach((id, i) => {
+    const d = document.createElement("button");
+    d.type = "button";
+    d.className = "csm-dot";
+    d.dataset.idx = String(i);
+    d.setAttribute("aria-label", CHARACTER_DEFS[id].shortName);
+    d.addEventListener("click", () => go(i));
+    els.dots.appendChild(d);
+  });
+
+  // 编队槽
+  const fleetSlots = {};
+  for (const slot of SLOT_INFO) {
+    const s = document.createElement("button");
+    s.type = "button";
+    s.className = "csm-slot";
+    s.dataset.slot = slot.key;
+    s.innerHTML = `<span class="csm-slot-icon"></span><span class="csm-slot-label">${slot.short}</span>`;
+    s.addEventListener("click", () => {
+      if (state.loadout[slot.key]) {
+        state.loadout[slot.key] = null; // 点已填舰位 = 移出，便于重选
+        renderAll();
+      }
+    });
+    els.fleet.appendChild(s);
+    fleetSlots[slot.key] = { el: s, icon: s.querySelector(".csm-slot-icon") };
+  }
+
+  const curId = () => CHARACTER_ORDER[state.idx];
+  const assignedSlot = (charId) => SLOT_INFO.find((s) => state.loadout[s.key] === charId)?.key || null;
+  const nextStep = () => {
+    const i = SLOT_INFO.findIndex((s) => !state.loadout[s.key]);
+    return i === -1 ? SLOT_INFO.length : i;
+  };
+  const isReady = () => Boolean(state.loadout.main && state.loadout.sub1 && state.loadout.sub2);
+
+  function go(i) {
+    const n = CHARACTER_ORDER.length;
+    state.idx = ((i % n) + n) % n;
+    renderChar();
+  }
+
+  function ctaAction() {
+    if (isReady()) {
+      launch();
+      return;
+    }
+    const id = curId();
+    const slot = assignedSlot(id);
+    if (slot) {
+      state.loadout[slot] = null; // 当前舰已编入 → 移出
+      renderAll();
+      return;
+    }
+    const step = nextStep();
+    if (step < SLOT_INFO.length) {
+      state.loadout[SLOT_INFO[step].key] = id;
+      // 编入后自动跳到下一个未编入的角色，连选更顺
+      const taken = new Set(SLOT_INFO.map((s) => state.loadout[s.key]).filter(Boolean));
+      if (!isReady()) {
+        for (let k = 1; k <= CHARACTER_ORDER.length; k++) {
+          const ni = (state.idx + k) % CHARACTER_ORDER.length;
+          if (!taken.has(CHARACTER_ORDER[ni])) { state.idx = ni; break; }
+        }
+      }
+      renderAll();
+    }
+  }
+
+  function launch() {
+    if (!isReady()) return;
+    hide(() => onLaunch(cloneLoadout(state.loadout), state.color));
+  }
+
+  function setColor(color) {
+    if (color === state.color || !TEAM_COLORS.includes(color)) return;
+    state.color = color;
+    els.factionBlue.classList.toggle("active", color === "blue");
+    els.factionRed.classList.toggle("active", color === "red");
+    screen.classList.toggle("faction-red", color === "red");
+    preload(color);
+    renderAll();
+  }
+
+  function preload(color) {
+    for (const id of CHARACTER_ORDER) {
+      loadPortraitImage(id, color).then(() => {
+        if (state.color !== color) return;
+        if (id === curId()) applyPortrait();
+        if (assignedSlot(id)) renderSlot(assignedSlot(id));
+      });
+    }
+  }
+
+  function portraitUrl(charId) {
+    if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
+      return `url(/assets/portraits/${state.color}/${charId}.png?v=5)`;
+    }
+    return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
+  }
+  function applyPortrait() {
+    els.portrait.style.backgroundImage = portraitUrl(curId());
+  }
+
+  function renderSlot(key) {
+    const charId = state.loadout[key];
+    const s = fleetSlots[key];
+    s.el.classList.toggle("filled", Boolean(charId));
+    if (charId) {
+      if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
+        s.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.png?v=5)`;
+      } else {
+        s.icon.style.backgroundImage = `url(${getPortrait(charId, 120, 120, state.color).toDataURL()})`;
+      }
+    } else {
+      s.icon.style.backgroundImage = "";
+    }
+  }
+
+  function renderCta() {
+    const id = curId();
+    if (isReady()) {
+      els.cta.textContent = "出 击";
+      els.cta.className = "csm-cta ready";
+      els.cta.disabled = false;
+      return;
+    }
+    if (assignedSlot(id)) {
+      els.cta.textContent = "移出编队";
+      els.cta.className = "csm-cta remove";
+      els.cta.disabled = false;
+      return;
+    }
+    els.cta.textContent = `编入 · ${SLOT_INFO[nextStep()].label}`;
+    els.cta.className = "csm-cta select";
+    els.cta.disabled = false;
+  }
+
+  function renderChar() {
+    const id = curId();
+    const def = CHARACTER_DEFS[id];
+    applyPortrait();
+    els.idx.textContent = `${pad2(state.idx + 1)} / ${pad2(CHARACTER_ORDER.length)}`;
+    els.name.textContent = def.name;
+    els.title.textContent = def.title;
+    els.stats.innerHTML = MOBILE_STATS.map(([label, key]) => {
+      let v = def.stats[key];
+      if (key === "turnRate" || key === "fireRate") v = Number(v).toFixed(2);
+      return `<div class="csm-chip"><span>${label}</span><strong>${v}</strong></div>`;
+    }).join("");
+    els.skills.innerHTML = `
+      <button type="button" class="csm-skill"><span class="csm-skill-tag">旗舰技</span><span class="csm-skill-name">${def.flagshipSkill.name}</span><p class="csm-skill-desc">${def.flagshipSkill.description}</p></button>
+      <button type="button" class="csm-skill"><span class="csm-skill-tag">分舰技</span><span class="csm-skill-name">${def.subSkill.name}</span><p class="csm-skill-desc">${def.subSkill.description}</p></button>`;
+    for (const d of els.dots.children) d.classList.toggle("active", Number(d.dataset.idx) === state.idx);
+    els.stage.classList.toggle("is-assigned", Boolean(assignedSlot(id)));
+    renderCta();
+  }
+
+  function renderAll() {
+    const step = nextStep();
+    for (const s of SLOT_INFO) {
+      renderSlot(s.key);
+      fleetSlots[s.key].el.classList.toggle("targeting", SLOT_INFO.indexOf(s) === step && !isReady());
+    }
+    renderChar();
+  }
+
+  // ── 交互 ──
+  els.prev.addEventListener("click", () => go(state.idx - 1));
+  els.next.addEventListener("click", () => go(state.idx + 1));
+  els.cta.addEventListener("click", ctaAction);
+  els.factionBlue.addEventListener("click", () => setColor("blue"));
+  els.factionRed.addEventListener("click", () => setColor("red"));
+  els.skills.addEventListener("click", (e) => {
+    const sk = e.target.closest(".csm-skill");
+    if (sk) sk.classList.toggle("open");
+  });
+
+  // 立绘区左右滑动切角色
+  let tsx = null, tsy = null;
+  els.stage.addEventListener("touchstart", (e) => { const t = e.changedTouches[0]; tsx = t.clientX; tsy = t.clientY; }, { passive: true });
+  els.stage.addEventListener("touchend", (e) => {
+    if (tsx == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - tsx, dy = t.clientY - tsy;
+    if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy) * 1.3) go(state.idx + (dx < 0 ? 1 : -1));
+    tsx = tsy = null;
+  }, { passive: true });
+
+  function onKey(e) {
+    if (!screen.isConnected) return;
+    if (e.key === "ArrowLeft") { e.preventDefault(); go(state.idx - 1); }
+    else if (e.key === "ArrowRight") { e.preventDefault(); go(state.idx + 1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ctaAction(); }
+  }
+
+  function show() {
+    document.body.appendChild(screen);
+    state.loadout = { main: null, sub1: null, sub2: null };
+    state.idx = 0;
+    screen.classList.toggle("faction-red", state.color === "red");
+    els.factionBlue.classList.toggle("active", state.color === "blue");
+    els.factionRed.classList.toggle("active", state.color === "red");
+    preload(state.color);
+    renderAll();
+    requestAnimationFrame(() => screen.classList.add("visible"));
+    document.addEventListener("keydown", onKey);
+  }
+
+  function hide(callback) {
+    document.removeEventListener("keydown", onKey);
+    screen.classList.add("leaving");
+    screen.classList.remove("visible");
+    setTimeout(() => {
+      screen.remove();
+      screen.classList.remove("leaving");
+      if (callback) callback();
+    }, 480);
+  }
+
+  return { show, hide, screen };
+}
+
+// 对外入口：按视口在「桌面对开书」与「移动专属布局」之间选择（show 时判定，跨档自动重建）
+export function createCharacterSelect(onLaunch) {
+  let impl = null;
+  let builtMobile = null;
+  function ensure() {
+    const m = isMobile();
+    if (impl && builtMobile === m) return impl;
+    impl = m ? createMobileCharacterSelect(onLaunch) : createDesktopCharacterSelect(onLaunch);
+    builtMobile = m;
+    return impl;
+  }
+  return {
+    show() { ensure().show(); },
+    hide(cb) { if (impl) impl.hide(cb); else if (cb) cb(); },
+    get screen() { return impl ? impl.screen : null; },
+  };
 }
 
 // ═══════════════════════════════════════════════════

@@ -2378,6 +2378,215 @@ button.toggle-active {
 }
 .cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
 
+/* ═══════════════════════════════════════════════════
+   选人 · 移动端专属布局（触摸优先；DOM 仅在移动端生成，不与桌面书本共用）
+   竖屏：大立绘(占满) → 数据/技能 → 底部常驻编队槽+主操作
+   横屏：左立绘 · 右信息(滚) · 右下操作
+   ═══════════════════════════════════════════════════ */
+.csm {
+  display: flex;
+  flex-direction: column;
+  bottom: auto;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+.csm-top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: calc(env(safe-area-inset-top, 0px) + 8px) 12px 8px;
+  z-index: 3;
+}
+.csm-back {
+  font-family: var(--font-cn);
+  font-size: 0.9rem;
+  color: var(--gilt-pale);
+  text-decoration: none;
+  border: 1px solid var(--brass-dark);
+  border-radius: 999px;
+  padding: 7px 16px;
+  background: #160c05aa;
+}
+.csm-faction { display: flex; gap: 6px; }
+.csm-faction-btn {
+  padding: 7px 15px;
+  border-radius: 999px;
+  border: 1px solid var(--brass-dark);
+  background: #160c05aa;
+  color: var(--text-soft);
+  font-family: var(--font-cn);
+  font-size: 0.84rem;
+}
+.csm-faction-btn.blue.active { color: #fff; background: var(--navy-mid); border-color: var(--navy-edge); }
+.csm-faction-btn.red.active { color: #fff; background: var(--oxblood); border-color: var(--oxblood-bright); }
+
+.csm-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  touch-action: pan-y;
+}
+.csm-portrait {
+  position: absolute;
+  inset: 0;
+  background-position: center 6%;
+  background-repeat: no-repeat;
+  background-size: contain;
+  filter: drop-shadow(0 10px 26px #00000099);
+}
+.csm-arrow {
+  position: absolute;
+  top: 46%;
+  transform: translateY(-50%);
+  z-index: 2;
+  width: 40px;
+  height: 66px;
+  border: 1px solid var(--brass-dark);
+  border-radius: 8px;
+  background: #160c0599;
+  color: var(--gilt-bright);
+  font-size: 1.8rem;
+  line-height: 1;
+}
+.csm-prev { left: 6px; }
+.csm-next { right: 6px; }
+.csm-caption {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 2;
+  padding: 30px 16px 10px;
+  text-align: center;
+  background: linear-gradient(180deg, transparent, #05091af2 78%);
+  pointer-events: none;
+}
+.csm-idx { font-family: var(--font-body); font-size: 0.72rem; letter-spacing: 0.24em; color: var(--gilt); }
+.csm-name { font-family: var(--font-kai); font-size: 1.5rem; font-weight: 800; color: var(--ivory); text-shadow: 0 2px 6px #000; }
+.csm-title { font-family: var(--font-cn); font-size: 0.84rem; color: var(--gilt-pale); letter-spacing: 0.06em; }
+.csm-stage.is-assigned::after {
+  content: "已编入";
+  position: absolute;
+  top: 8px; left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  background: var(--gilt-bright);
+  color: #160c05;
+  font-family: var(--font-cn);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  padding: 3px 14px;
+  border-radius: 999px;
+}
+
+.csm-info { flex: 0 0 auto; padding: 8px 12px 0; }
+.csm-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 8px; }
+.csm-dot { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; background: #6c4a2877; }
+.csm-dot.active { background: var(--gilt-bright); box-shadow: 0 0 8px var(--gilt); }
+.csm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.csm-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 3px;
+  border: 1px solid var(--brass-dark);
+  border-radius: 6px;
+  background: linear-gradient(180deg, #2a1c0e, #160c05);
+}
+.csm-chip span { font-size: 0.6rem; color: var(--text-soft); letter-spacing: 0.02em; }
+.csm-chip strong { font-family: var(--font-engrave); font-size: 0.92rem; color: var(--gilt-bright); }
+.csm-skills { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+.csm-skill {
+  text-align: left;
+  border: 1px solid var(--brass-dark);
+  border-radius: 6px;
+  padding: 6px 9px;
+  background: #160c0566;
+  color: var(--gilt-pale);
+}
+.csm-skill-tag { font-size: 0.6rem; color: var(--oxblood-bright); margin-right: 6px; letter-spacing: 0.06em; }
+.csm-skill-name { font-family: var(--font-kai); font-size: 0.84rem; color: var(--gilt-pale); }
+.csm-skill-desc { display: none; margin: 5px 0 0; font-size: 0.72rem; line-height: 1.45; color: var(--text-soft); }
+.csm-skill.open .csm-skill-desc { display: block; }
+
+.csm-bar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  margin-top: 8px;
+  border-top: 1px solid var(--brass-dark);
+  background: var(--leather-surface);
+}
+.csm-fleet { display: flex; gap: 8px; flex: 0 0 auto; }
+.csm-slot {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--brass-dark);
+  border-radius: 10px;
+  background: #160c05;
+  overflow: hidden;
+}
+.csm-slot-icon { position: absolute; inset: 0; background: center 16% / cover no-repeat; }
+.csm-slot-label {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  z-index: 1;
+  font-size: 0.56rem;
+  text-align: center;
+  color: var(--gilt-pale);
+  background: #160c05cc;
+  padding: 1px 0;
+}
+.csm-slot.filled { border-color: var(--gilt); }
+.csm-slot.targeting { border-color: var(--gilt-bright); box-shadow: 0 0 0 2px var(--gilt-bright), 0 0 12px #c8a24e88; }
+.csm-cta {
+  flex: 1 1 auto;
+  min-height: 50px;
+  border: 1px solid var(--gilt);
+  border-radius: 10px;
+  font-family: var(--font-engrave);
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: var(--gilt-pale);
+  background: linear-gradient(180deg, #3a2410, #1a1006);
+}
+.csm-cta.select { color: #fff6dc; background: linear-gradient(180deg, #8a6a32, #5a3c16); }
+.csm-cta.ready {
+  color: #fff6dc;
+  border-color: var(--gilt-bright);
+  background: radial-gradient(ellipse at 50% 30%, #c8323a, #8a161a 60%, #5a0e10);
+  box-shadow: 0 0 18px #c8323a88;
+}
+
+/* 横屏 / 矮窗：左立绘、右信息(滚)、右下操作 */
+@media (max-height: 560px) {
+  .csm {
+    display: grid;
+    grid-template-columns: 1.05fr 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "top   top"
+      "stage info"
+      "stage bar";
+  }
+  .csm-top { grid-area: top; }
+  .csm-stage { grid-area: stage; }
+  .csm-info { grid-area: info; overflow-y: auto; min-height: 0; padding-bottom: 8px; }
+  .csm-bar { grid-area: bar; margin-top: 0; }
+  .csm-caption { padding-bottom: 8px; }
+  .csm-name { font-size: 1.2rem; }
+  .csm-skills { grid-template-columns: 1fr 1fr; }
+}
+
+
 /* ── 角色选择响应式（窄屏：上下堆叠，立绘页在上、档案页在下，可滚动） ── */
 /* ── 选人 · 竖屏手机：锁定一屏（不整页滚动）——立绘在上半固定、档案在下半自身滚动、底栏常驻 ── */
 @media (max-width: 980px) {
