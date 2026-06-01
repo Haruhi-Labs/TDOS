@@ -16,6 +16,7 @@ function template(profile) {
         <a class="page-back" href="/">‹ 返回主菜单</a>
         <h1 class="page-title">指挥官档案</h1>
 
+        <div class="page-scroll">
         <div class="page-card">
           <label class="pv-field">
             <span class="pv-label">呼号</span>
@@ -33,6 +34,7 @@ function template(profile) {
         </div>
 
         <p class="pv-tip">出战编队不在此处设定 —— 进入任意对战模式时挑选，并自动记住上次选择。</p>
+        </div>
       </div>
     </section>
   `;

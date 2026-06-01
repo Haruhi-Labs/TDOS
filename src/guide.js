@@ -57,10 +57,11 @@ function template() {
         <a class="page-back" href="/">‹ 返回主菜单</a>
         <h1 class="page-title">玩法说明</h1>
 
-        <div class="guide-grid">${sections}</div>
-
-        <h2 class="guide-subtitle">操作一览</h2>
-        <div class="guide-keys">${keys}</div>
+        <div class="page-scroll">
+          <div class="guide-grid">${sections}</div>
+          <h2 class="guide-subtitle">操作一览</h2>
+          <div class="guide-keys">${keys}</div>
+        </div>
       </div>
     </section>
   `;

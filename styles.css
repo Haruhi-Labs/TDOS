@@ -2379,54 +2379,60 @@ button.toggle-active {
 .cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
 
 /* ── 角色选择响应式（窄屏：上下堆叠，立绘页在上、档案页在下，可滚动） ── */
-/* ── 选人 · 竖屏手机：书本上下堆叠、可滚动；立绘页缩矮让档案/出击更易够到 ── */
+/* ── 选人 · 竖屏手机：锁定一屏（不整页滚动）——立绘在上半固定、档案在下半自身滚动、底栏常驻 ── */
 @media (max-width: 980px) {
-  .cs-screen { overflow-y: auto; }
+  .cs-screen { overflow: hidden; }
   .cs-content {
-    padding: 12px 12px 18px;
-    height: auto;
-    min-height: 100%;
-    grid-template-rows: auto auto auto auto;
-    gap: 10px;
+    height: 100vh;
+    height: 100dvh;
+    padding: 10px 12px 8px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    gap: 8px;
   }
-  .cs-title { font-size: 1.35rem; }
-  .cs-subtitle { font-size: 0.62rem; letter-spacing: 0.18em; }
+  .cs-title { font-size: 1.3rem; }
+  .cs-subtitle { display: none; }
   .cs-folio { display: none; }
-  .cs-book-stage { perspective: none; min-height: 0; width: 100%; }
+  .cs-header-center { gap: 3px; }
+  .cs-book-stage { perspective: none; min-height: 0; width: 100%; overflow: hidden; }
   .cs-book {
     grid-template-columns: 1fr;
-    height: auto;
+    grid-template-rows: minmax(0, 52%) minmax(0, 48%);
+    height: 100%;
     border-radius: 6px;
   }
   .cs-book::before, .cs-book::after { display: none; }
   .cs-gutter { display: none; }
   .cs-page-left {
-    min-height: 42vh;
+    min-height: 0;
     border-radius: 4px 4px 0 0;
     box-shadow: inset 0 -22px 30px -16px #160c05b0;
   }
   .cs-page-right {
+    min-height: 0;
+    overflow-y: auto; /* 档案在下半部自身滚动，出击/编入始终可见 */
     border-radius: 0 0 4px 4px;
     box-shadow: inset 0 22px 30px -16px #160c05b0;
   }
   .cs-page-flipper { display: none !important; }
-  /* 竖排时书本很高，箭头若居中会落在两页交界处；上移到立绘区两侧 */
-  .cs-nav-btn { width: 36px; height: 52px; font-size: 1.3rem; top: 21vh; }
+  /* 箭头压在立绘区（上半）两侧 */
+  .cs-nav-btn { width: 34px; height: 46px; font-size: 1.2rem; top: 26%; }
   .cs-nav-prev { left: 2px; }
   .cs-nav-next { right: 2px; }
-  .cs-footer { grid-template-columns: 1fr; gap: 12px; }
-  .cs-tabs { justify-content: center; }
+  .cs-footer { grid-template-columns: 1fr; gap: 8px; }
+  /* 标签单行横向滚动，底栏高度可控 */
+  .cs-tabs { justify-content: flex-start; flex-wrap: nowrap; overflow-x: auto; gap: 4px; padding-bottom: 2px; }
   /* 三个舰位一排，出击键独占整行更易点 */
   .cs-fleet-bar { grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .cs-fleet-bar .cs-launch { grid-column: 1 / -1; width: 100%; }
-  .cs-mode-links { justify-content: center; margin-top: 4px; }
+  .cs-fleet-bar .cs-launch { grid-column: 1 / -1; width: 100%; padding: 9px 18px; }
+  .cs-mode-links { justify-content: center; margin-top: 2px; gap: 14px; }
 }
 
 /* ── 选人 · 横屏 / 矮窗：恢复双栏并排书本（避免立绘被压成扁条），档案页自身可滚 ── */
 @media (max-width: 980px) and (max-height: 560px) {
   .cs-screen { overflow: hidden; }
   .cs-content {
-    height: 100%;
+    height: 100vh;
+    height: 100dvh;
     grid-template-rows: auto minmax(0, 1fr) auto;
     padding: 8px 12px 8px;
     gap: 6px;
@@ -2435,7 +2441,7 @@ button.toggle-active {
   .cs-sos-badge { padding: 2px 10px; font-size: 0.6rem; }
   .cs-title { font-size: 1.05rem; margin: 0; }
   .cs-subtitle { display: none; }
-  .cs-book { grid-template-columns: 1fr 1fr; height: 100%; }
+  .cs-book { grid-template-columns: 1fr 1fr; grid-template-rows: 100%; height: 100%; }
   .cs-page-left {
     min-height: 0;
     border-radius: 4px 0 0 4px;
@@ -2687,6 +2693,8 @@ button.toggle-active {
   gap: 20px;
 }
 .page-frame-wide { width: min(860px, 92%); }
+/* 可滚内容区：桌面下与原本布局一致（纵向 flex + 间距），移动端用于「标题固定、内容自滚」 */
+.page-scroll { display: flex; flex-direction: column; gap: 20px; }
 .page-back {
   align-self: flex-start;
   font-family: var(--font-cn);
@@ -2789,10 +2797,113 @@ button.toggle-active {
 }
 .guide-key span { font-family: var(--font-cn); font-size: 0.84rem; color: var(--text-soft); }
 
+/* ── 内容页（档案 / 玩法说明）移动端锁一屏：返回+标题常驻，内容区自身滚动 ── */
+@media (max-width: 980px) {
+  .page-stage { min-height: 0; height: 100vh; height: 100dvh; overflow: hidden; align-items: stretch; }
+  .page-frame, .page-frame-wide {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 14px 14px 16px;
+    gap: 12px;
+    overflow: hidden;
+  }
+  .page-title { font-size: 1.7rem; }
+  .page-back { padding: 5px 14px; font-size: 0.84rem; }
+  .page-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; gap: 12px; padding-right: 2px; }
+  .page-card { padding: 16px; }
+  /* 玩法说明：双列 + 紧凑字号，尽量一屏放下，放不下时内容区自滚 */
+  .guide-grid { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .guide-item { padding: 9px 11px; }
+  .guide-item h3 { font-size: 0.92rem; margin-bottom: 3px; letter-spacing: 0.06em; }
+  .guide-item p { font-size: 0.7rem; line-height: 1.45; }
+  .guide-subtitle { margin: 2px 0 0; font-size: 0.98rem; }
+  .guide-keys { grid-template-columns: 1fr 1fr; gap: 6px; }
+  .guide-key span { font-size: 0.74rem; }
+}
+
+/* ── 在线大厅移动端锁一屏：顶栏常驻，卡片区自身滚动 ── */
+@media (max-width: 980px) {
+  .lobby-view { overflow: hidden; }
+  .lobby-frame {
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
+    margin: 0;
+    padding: 12px 14px 14px;
+    gap: 12px;
+  }
+  .lobby-title { font-size: clamp(1.4rem, 6vw, 1.9rem); }
+  .lobby-grid {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    gap: 12px;
+    padding-right: 2px;
+  }
+  .lobby-card { padding: 14px 16px; gap: 8px; }
+}
+
+/* ── AI 推演（debug）移动端锁一屏：观战画布常驻，控制台在其后自身滚动 ── */
+@media (max-width: 980px) {
+  .debug-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    height: 100dvh;
+    overflow: hidden;
+    padding: 8px;
+    gap: 8px;
+  }
+  .debug-shell .game-wrap {
+    order: 0;
+    flex: 0 0 auto;
+    padding-bottom: 0;
+    display: flex;
+    justify-content: center;
+  }
+  .debug-shell #debugCanvas { width: min(100%, 46dvh); }
+  .debug-shell .debug-panel {
+    order: 1;
+    flex: 1 1 auto;
+    min-height: 0;
+    height: auto;
+    max-height: none;
+    overflow-y: auto;
+  }
+}
+/* debug 横屏：画布居左、控制台居右自身滚动 */
+@media (max-width: 980px) and (max-height: 560px) {
+  .debug-shell { flex-direction: row; align-items: stretch; }
+  .debug-shell .game-wrap { flex: 1 1 auto; min-width: 0; align-items: center; }
+  .debug-shell #debugCanvas { width: auto; height: 100%; max-width: 100%; max-height: 100%; }
+  .debug-shell .debug-panel { flex: 0 0 auto; width: min(52%, 400px); height: 100%; }
+}
+
 @media (max-width: 760px) {
   .ts-hero { width: 72%; opacity: 0.45; }
   .ts-content { width: 100%; justify-content: flex-start; padding-top: 60px; }
   .ts-item-label { font-size: 1.3rem; }
+}
+
+/* ── 主菜单 · 横屏 / 矮窗：压成一屏（去掉徽记/副标题/分隔线，菜单收紧居中）── */
+@media (max-width: 980px) and (max-height: 560px) {
+  .ts-content {
+    min-height: 0;
+    height: 100vh;
+    height: 100dvh;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px clamp(16px, 5vw, 60px);
+    width: min(620px, 94%);
+  }
+  .ts-seal, .ts-subtitle, .ts-rule { display: none; }
+  .ts-title { font-size: 1.5rem; }
+  .ts-menu { gap: 3px; }
+  .ts-item { padding: 8px 14px; gap: 12px; }
+  .ts-item-label { font-size: 1.15rem; }
+  .ts-item-sub { font-size: 0.66rem; }
+  .ts-foot { font-size: 0.66rem; }
 }
 
 /* ── 战斗结算 overlay：再来一局 / 返回主菜单 ── */
