@@ -2379,6 +2379,7 @@ button.toggle-active {
 .cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
 
 /* ── 角色选择响应式（窄屏：上下堆叠，立绘页在上、档案页在下，可滚动） ── */
+/* ── 选人 · 竖屏手机：书本上下堆叠、可滚动；立绘页缩矮让档案/出击更易够到 ── */
 @media (max-width: 980px) {
   .cs-screen { overflow-y: auto; }
   .cs-content {
@@ -2386,10 +2387,12 @@ button.toggle-active {
     height: auto;
     min-height: 100%;
     grid-template-rows: auto auto auto auto;
+    gap: 10px;
   }
-  .cs-title { font-size: 1.4rem; }
+  .cs-title { font-size: 1.35rem; }
+  .cs-subtitle { font-size: 0.62rem; letter-spacing: 0.18em; }
   .cs-folio { display: none; }
-  .cs-book-stage { perspective: none; min-height: 0; }
+  .cs-book-stage { perspective: none; min-height: 0; width: 100%; }
   .cs-book {
     grid-template-columns: 1fr;
     height: auto;
@@ -2398,7 +2401,7 @@ button.toggle-active {
   .cs-book::before, .cs-book::after { display: none; }
   .cs-gutter { display: none; }
   .cs-page-left {
-    min-height: 54vh;
+    min-height: 42vh;
     border-radius: 4px 4px 0 0;
     box-shadow: inset 0 -22px 30px -16px #160c05b0;
   }
@@ -2407,13 +2410,63 @@ button.toggle-active {
     box-shadow: inset 0 22px 30px -16px #160c05b0;
   }
   .cs-page-flipper { display: none !important; }
-  .cs-nav-btn { width: 34px; height: 52px; font-size: 1.3rem; }
-  .cs-nav-prev { left: -4px; }
-  .cs-nav-next { right: -4px; }
-  .cs-footer { grid-template-columns: 1fr; gap: 10px; }
+  /* 竖排时书本很高，箭头若居中会落在两页交界处；上移到立绘区两侧 */
+  .cs-nav-btn { width: 36px; height: 52px; font-size: 1.3rem; top: 21vh; }
+  .cs-nav-prev { left: 2px; }
+  .cs-nav-next { right: 2px; }
+  .cs-footer { grid-template-columns: 1fr; gap: 12px; }
   .cs-tabs { justify-content: center; }
-  .cs-fleet-bar { grid-template-columns: repeat(3, 1fr) auto; }
+  /* 三个舰位一排，出击键独占整行更易点 */
+  .cs-fleet-bar { grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .cs-fleet-bar .cs-launch { grid-column: 1 / -1; width: 100%; }
   .cs-mode-links { justify-content: center; margin-top: 4px; }
+}
+
+/* ── 选人 · 横屏 / 矮窗：恢复双栏并排书本（避免立绘被压成扁条），档案页自身可滚 ── */
+@media (max-width: 980px) and (max-height: 560px) {
+  .cs-screen { overflow: hidden; }
+  .cs-content {
+    height: 100%;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    padding: 8px 12px 8px;
+    gap: 6px;
+  }
+  .cs-header-center { flex-direction: row; gap: 12px; }
+  .cs-sos-badge { padding: 2px 10px; font-size: 0.6rem; }
+  .cs-title { font-size: 1.05rem; margin: 0; }
+  .cs-subtitle { display: none; }
+  .cs-book { grid-template-columns: 1fr 1fr; height: 100%; }
+  .cs-page-left {
+    min-height: 0;
+    border-radius: 4px 0 0 4px;
+    box-shadow: inset -22px 0 30px -16px #160c05b0;
+  }
+  .cs-page-right {
+    min-height: 0;
+    border-radius: 0 4px 4px 0;
+    box-shadow: inset 22px 0 30px -16px #160c05b0;
+    overflow-y: auto; /* 短屏档案多：右页自身滚动，编入/出击按钮始终可达 */
+  }
+  .cs-gutter { display: block; }
+  .cs-nav-btn { top: 50%; width: 28px; height: 42px; font-size: 1.05rem; }
+  .cs-nav-prev { left: 0; }
+  .cs-nav-next { right: 0; }
+  .cs-footer { grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+  .cs-fleet-bar { grid-template-columns: repeat(3, auto) auto; }
+  .cs-fleet-bar .cs-launch { grid-column: auto; width: auto; min-width: 92px; padding: 8px 14px; font-size: 0.95rem; letter-spacing: 0.2em; }
+  .cs-tabs { justify-content: flex-start; }
+  .cs-mode-links { margin-top: 0; gap: 12px; }
+}
+
+/* ── 选人 · 超窄手机：再收紧字号与舰位牌 ── */
+@media (max-width: 560px) {
+  .cs-title { font-size: 1.2rem; }
+  .cs-fleet-slot { padding: 4px 8px 4px 5px; gap: 5px; }
+  .cs-fleet-slot-icon { width: 30px; height: 30px; }
+  .cs-fleet-slot-name { font-size: 0.84rem; }
+  .cs-fleet-slot-label { font-size: 0.58rem; }
+  .cs-tab { padding: 5px 8px 7px; }
+  .cs-tab-name { font-size: 0.82rem; }
 }
 
 /* ═══════════════════════════════════════════════════
