@@ -2521,7 +2521,18 @@ button.toggle-active {
 }
 .csm-skill-tag { font-size: 0.6rem; color: var(--oxblood-bright); margin-right: 6px; letter-spacing: 0.06em; }
 .csm-skill-name { font-family: var(--font-kai); font-size: 0.84rem; color: var(--gilt-pale); }
-.csm-skill-desc { display: block; margin: 5px 0 0; font-size: 0.72rem; line-height: 1.45; color: var(--text-soft); }
+/* 固定 4 行高：不同角色技能说明长短不一，但卡片高度恒定 —— 切换不顶动版面、也不出现滚动条 */
+.csm-skill-desc {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+  min-height: 5.8em;
+  margin: 5px 0 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--text-soft);
+}
 
 .csm-bar {
   flex: 0 0 auto;
