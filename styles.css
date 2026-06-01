@@ -2118,6 +2118,7 @@ button.toggle-active {
   transform-style: preserve-3d;
   transition: transform 0.82s cubic-bezier(0.46, 0.03, 0.28, 1);
   will-change: transform;
+  pointer-events: none; /* 纯装饰动画层：点击穿透到底页，配合 finishFlip 实现「翻页途中点即生效」 */
 }
 .cs-page-flipper.next {
   right: 10px;
@@ -2166,6 +2167,15 @@ button.toggle-active {
 }
 @keyframes cs-shade-away { 0% { opacity: 0; } 100% { opacity: 1; } }
 @keyframes cs-shade-rest { 0% { opacity: 1; } 50% { opacity: 0.92; } 100% { opacity: 0; } }
+
+/* —— 翻页流畅化 ——
+   翻动中的临时书页去掉「逐帧重算」的开销：drop-shadow 滤镜、两层 mix-blend-mode:multiply
+   纸纹/磨损伪元素 —— 这些在 3D 旋转中每帧重栅格化（尤其翻到中段背面首次绘制时最卡）。
+   底页（静止）仍保留全部质感，收尾切回时几乎无差别。 */
+.cs-flip-side { will-change: transform; }
+.cs-flip-side::before,
+.cs-flip-side::after { display: none; }
+.cs-flip-side .cs-portrait { filter: none; }
 
 /* ── 翻页箭头 ── */
 .cs-nav-btn {

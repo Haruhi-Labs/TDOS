@@ -525,6 +525,8 @@ export function createCharacterSelect(onLaunch) {
     currentChar: CHARACTER_ORDER[0],
     loadout: { main: null, sub1: null, sub2: null },
     flipping: false,
+    flipTimer: null, // 翻页收尾定时器
+    flipComplete: null, // 翻页收尾函数（可被提前调用 —— 翻页途中点击即生效）
     color: "blue", // 阵营立绘：左蓝右红，默认蓝队
   };
 
@@ -681,6 +683,7 @@ export function createCharacterSelect(onLaunch) {
     for (const charId of CHARACTER_ORDER) {
       loadPortraitImage(charId, color).then(() => {
         if (state.color !== color) return; // 加载完成时已切换阵营，忽略
+        buildSmallUrl(charId, color); // 预生成降采样图，翻页时直接用，避免翻页途中才 toDataURL 卡顿
         if (state.currentChar === charId && !state.flipping) {
           applyPortrait(pageLeft, charId);
         }
@@ -703,10 +706,33 @@ export function createCharacterSelect(onLaunch) {
   }
 
   // ── 立绘填充（真实图片优先，否则用生成占位 canvas） ──
+  // 页面立绘降采样缓存：原图 3000×4000，页面只显示约 380px。
+  // 直接拿原图当背景，翻页 3D 旋转时浏览器要逐帧把超大纹理重采样 → 掉帧（尤其翻到中段背面首绘）。
+  // 预先把它降到 ~760 宽缓存起来，翻页时纹理小一个量级，旋转顺滑很多。
+  const pagePortraitCache = {};
+  function buildSmallUrl(charId, color) {
+    const key = `${color}/${charId}`;
+    if (pagePortraitCache[key]) return pagePortraitCache[key];
+    const img = HAS_PORTRAIT.has(charId) ? getLoadedPortraitImage(charId, color) : null;
+    if (!img || !img.naturalWidth) return null;
+    const w = 860; // 页面立绘框约 413px，dpr2 需 ~826px；860 足够清晰且比原图 3000 轻 ~12×
+    const h = Math.round((w * img.naturalHeight) / img.naturalWidth);
+    const cv = document.createElement("canvas");
+    cv.width = w;
+    cv.height = h;
+    const cx = cv.getContext("2d");
+    cx.imageSmoothingEnabled = true;
+    cx.imageSmoothingQuality = "high";
+    cx.drawImage(img, 0, 0, w, h);
+    const url = `url(${cv.toDataURL("image/png")})`;
+    pagePortraitCache[key] = url;
+    return url;
+  }
+
   function portraitUrl(charId) {
-    if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url('/assets/portraits/${state.color}/${charId}.png?v=5')`;
-    }
+    const small = buildSmallUrl(charId, state.color);
+    if (small) return small;
+    // 真图未就绪：先用生成占位，加载完成后 preloadColor 会替换为降采样图
     const canvas = getPortrait(charId, 520, 760, state.color);
     return `url(${canvas.toDataURL()})`;
   }
@@ -770,7 +796,7 @@ export function createCharacterSelect(onLaunch) {
   //    翻到左边(前面)的角色，页从左往右翻(= "prev"/往右)。 ──
   // 视觉：往右翻 = "prev" 动画；往左翻 = "next" 动画
   function switchTo(charId) {
-    if (state.flipping) return;
+    finishFlip(); // 翻页途中点别的角色：先把当前页收尾，再从落定的当前角色翻过去
     if (!CHARACTER_DEFS[charId]) return;
     if (charId === state.currentChar) return;
     const fromIdx = getCharIndex(state.currentChar);
@@ -783,7 +809,7 @@ export function createCharacterSelect(onLaunch) {
   //    前进(›,delta>0)恒从右往左翻(next)；后退(‹,delta<0)恒从左往右翻(prev)。
   //    首/末页循环回绕时，会刻意保持同向（与目标相对位置相反一次），避免动画方向突变。
   function stepArrow(delta) {
-    if (state.flipping) return;
+    finishFlip(); // 连续翻页更跟手：先收尾再从落定角色继续翻
     const fromIdx = getCharIndex(state.currentChar);
     const toIdx = (fromIdx + delta + CHARACTER_ORDER.length) % CHARACTER_ORDER.length;
     if (toIdx === fromIdx) return;
@@ -792,7 +818,14 @@ export function createCharacterSelect(onLaunch) {
     flipTo(nextChar, direction);
   }
 
+  // 立即收尾当前翻页：把逻辑状态与底页落到目标、移除动画层。
+  // 用于「翻页途中点击即生效」—— 任何交互先收尾再执行，结果落在目标角色上。
+  function finishFlip() {
+    if (state.flipComplete) state.flipComplete();
+  }
+
   function flipTo(nextChar, direction) {
+    finishFlip(); // 上一次翻页若未结束，先瞬间收尾，避免叠加
     // 窄屏（上下堆叠）：跳过 3D 翻页，直接换页
     if (isNarrow()) {
       state.currentChar = nextChar;
@@ -840,7 +873,14 @@ export function createCharacterSelect(onLaunch) {
       requestAnimationFrame(() => flipper.classList.add("flipping"));
     });
 
-    setTimeout(() => {
+    // 收尾抽成可提前调用的函数：到点自动收尾，或被 finishFlip() 立即收尾
+    const complete = () => {
+      if (state.flipComplete !== complete) return; // 已收尾，避免重复
+      state.flipComplete = null;
+      if (state.flipTimer) {
+        clearTimeout(state.flipTimer);
+        state.flipTimer = null;
+      }
       state.currentChar = nextChar;
       if (direction === "next") {
         renderLeftInto(pageLeft, nextChar);
@@ -850,7 +890,14 @@ export function createCharacterSelect(onLaunch) {
       flipper.remove();
       refreshTabs();
       state.flipping = false;
-    }, FLIP_MS);
+    };
+    state.flipComplete = complete;
+    // 收尾绑在真实的 transitionend 上：动画若因主线程忙而延后起步，也能完整转完再收尾，
+    // 不会被固定定时器提前掐断（之前那种「翻一半就跳完」的卡顿主因之一）。
+    flipper.addEventListener("transitionend", (e) => {
+      if (e.propertyName === "transform") complete();
+    });
+    state.flipTimer = setTimeout(complete, FLIP_MS + 1200); // 兜底：transitionend 没来时（极少数情况）
   }
 
   // ── 顺序编入向导 ──
@@ -862,7 +909,7 @@ export function createCharacterSelect(onLaunch) {
 
   // 把当前查看的角色选入当前这一步对应的舰位
   function selectCurrent() {
-    if (state.flipping) return;
+    finishFlip(); // 翻页途中点「出战/编入」即生效：先把页落定到目标角色，再编入
     const curStep = getStep();
     if (curStep >= SLOT_INFO.length) return;   // 编队已满
     const charId = state.currentChar;
@@ -873,7 +920,7 @@ export function createCharacterSelect(onLaunch) {
 
   // 退回上一步：清掉最近编入的舰位，重新选它
   function stepBack() {
-    if (state.flipping) return;
+    finishFlip();
     const curStep = getStep();
     if (curStep <= 0) return;
     state.loadout[SLOT_INFO[curStep - 1].key] = null;
@@ -927,6 +974,7 @@ export function createCharacterSelect(onLaunch) {
   }
 
   function launch() {
+    finishFlip();
     if (state.loadout.main && state.loadout.sub1 && state.loadout.sub2) {
       const color = state.color;
       hide(() => onLaunch(cloneLoadout(state.loadout), color));
@@ -1150,6 +1198,11 @@ export function createCharacterSelect(onLaunch) {
 
   function hide(callback) {
     document.removeEventListener("keydown", onKey);
+    if (state.flipTimer) {
+      clearTimeout(state.flipTimer);
+      state.flipTimer = null;
+    }
+    state.flipComplete = null;
     screen.classList.add("leaving");
     screen.classList.remove("visible");
     if (bgAnimId) {
