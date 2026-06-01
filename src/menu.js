@@ -129,6 +129,23 @@ export function mount(root, ctx) {
     const vh = GROUP_VH * scale;
     const offX = (CW - vw) / 2;
     const offY = CH - vh; // 脚底贴画布底
+    const U = vh; // 后处理尺度基准
+
+    // ① 落地阴影池：把群像“踩”在地上
+    c.save();
+    c.translate(offX + vw * 0.52, offY + vh * 0.985);
+    c.scale(1, 0.16);
+    const pool = c.createRadialGradient(0, 0, 0, 0, 0, vw * 0.46);
+    pool.addColorStop(0, "rgba(0,0,0,0.7)");
+    pool.addColorStop(0.6, "rgba(2,4,12,0.4)");
+    pool.addColorStop(1, "rgba(0,0,0,0)");
+    c.fillStyle = pool;
+    c.beginPath();
+    c.arc(0, 0, vw * 0.46, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+
+    // ② 立绘 + 相互分离投影（由后到前，叠压处产生接触阴影，读出前后层次）
     for (const g of GROUP_LAYOUT) {
       const im = heroImgs[g.id];
       if (!im || !im.naturalWidth) continue;
@@ -141,18 +158,66 @@ export function mount(root, ctx) {
       const dW = dH * (sw / sh);
       const headFrac = (hcx - L) / (R - L); // 头部在裁剪框内的横向比例
       const dy = offY + g.by * vh - dH;
+      c.save();
+      c.shadowColor = "rgba(3,6,16,0.6)";
+      c.shadowBlur = U * 0.05;
+      c.shadowOffsetY = U * 0.022;
       if (g.flip) {
         const dx = offX + g.hx * vw - (1 - headFrac) * dW;
-        c.save();
+        c.shadowOffsetX = U * 0.012;
         c.translate(CW, 0);
         c.scale(-1, 1);
         c.drawImage(im, sx, sy, sw, sh, CW - (dx + dW), dy, dW, dH);
-        c.restore();
       } else {
         const dx = offX + g.hx * vw - headFrac * dW;
+        c.shadowOffsetX = -U * 0.012;
         c.drawImage(im, sx, sy, sw, sh, dx, dy, dW, dH);
       }
+      c.restore();
     }
+
+    // 复用一块离屏画布做柔光与提色（ctx.filter 不支持时自动降级为普通拷贝，构图照样成立）
+    const fxCanvas = document.createElement("canvas");
+    fxCanvas.width = CW;
+    fxCanvas.height = CH;
+    const fc = fxCanvas.getContext("2d");
+
+    // ③ 柔光 Bloom：模糊副本以 screen 叠加，给立绘通透高光
+    fc.filter = `blur(${U * 0.012}px)`;
+    fc.drawImage(heroCanvas, 0, 0);
+    c.save();
+    c.globalCompositeOperation = "screen";
+    c.globalAlpha = 0.18;
+    c.drawImage(fxCanvas, 0, 0);
+    c.restore();
+
+    // ④ 调色：仅作用于立绘像素 —— 顶部暖光、底部冷暗、左右冷暖侧光，聚焦面部
+    c.save();
+    c.globalCompositeOperation = "source-atop";
+    const vert = c.createLinearGradient(0, offY, 0, offY + vh);
+    vert.addColorStop(0, "rgba(255,226,170,0.12)");
+    vert.addColorStop(0.42, "rgba(255,238,210,0)");
+    vert.addColorStop(0.72, "rgba(12,22,52,0)");
+    vert.addColorStop(1, "rgba(8,16,42,0.5)");
+    c.fillStyle = vert;
+    c.fillRect(0, offY, CW, vh);
+    const side = c.createLinearGradient(offX, 0, offX + vw, 0);
+    side.addColorStop(0, "rgba(80,120,210,0.10)");
+    side.addColorStop(0.6, "rgba(0,0,0,0)");
+    side.addColorStop(1, "rgba(255,214,150,0.12)");
+    c.fillStyle = side;
+    c.fillRect(0, offY, CW, vh);
+    c.restore();
+
+    // ⑤ 全局微提饱和与对比，让立绘更通透
+    fc.filter = "none";
+    fc.clearRect(0, 0, CW, CH);
+    fc.drawImage(heroCanvas, 0, 0);
+    c.clearRect(0, 0, CW, CH);
+    c.save();
+    c.filter = "saturate(1.12) contrast(1.05)";
+    c.drawImage(fxCanvas, 0, 0);
+    c.restore();
   }
   window.addEventListener("resize", drawGroup, { signal });
   requestAnimationFrame(drawGroup); // 等布局完成后再画一次，避免首帧 clientWidth 为 0
