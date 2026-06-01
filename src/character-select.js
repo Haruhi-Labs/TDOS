@@ -1255,14 +1255,9 @@ function createMobileCharacterSelect(onLaunch) {
       </div>
     </div>
     <div class="csm-stage">
-      <div class="csm-portrait"></div>
+      <div class="csm-track"></div>
       <button type="button" class="csm-arrow csm-prev" aria-label="上一位">‹</button>
       <button type="button" class="csm-arrow csm-next" aria-label="下一位">›</button>
-      <div class="csm-caption">
-        <div class="csm-idx"></div>
-        <div class="csm-name"></div>
-        <div class="csm-title"></div>
-      </div>
     </div>
     <div class="csm-info">
       <div class="csm-dots"></div>
@@ -1277,10 +1272,7 @@ function createMobileCharacterSelect(onLaunch) {
 
   const els = {
     stage: screen.querySelector(".csm-stage"),
-    portrait: screen.querySelector(".csm-portrait"),
-    idx: screen.querySelector(".csm-idx"),
-    name: screen.querySelector(".csm-name"),
-    title: screen.querySelector(".csm-title"),
+    track: screen.querySelector(".csm-track"),
     dots: screen.querySelector(".csm-dots"),
     stats: screen.querySelector(".csm-stats"),
     skills: screen.querySelector(".csm-skills"),
@@ -1291,6 +1283,25 @@ function createMobileCharacterSelect(onLaunch) {
     factionBlue: screen.querySelector(".csm-faction-btn.blue"),
     factionRed: screen.querySelector(".csm-faction-btn.red"),
   };
+
+  // 立绘轮播：每位一张幻灯（立绘 + 名牌），整轨随手指/箭头平滑滑动
+  const slideEls = [];
+  const slidePortraits = [];
+  CHARACTER_ORDER.forEach((id, i) => {
+    const def = CHARACTER_DEFS[id];
+    const slide = document.createElement("div");
+    slide.className = "csm-slide";
+    slide.innerHTML = `
+      <div class="csm-portrait"></div>
+      <div class="csm-caption">
+        <div class="csm-idx">${pad2(i + 1)} / ${pad2(CHARACTER_ORDER.length)}</div>
+        <div class="csm-name">${def.name}</div>
+        <div class="csm-title">${def.title}</div>
+      </div>`;
+    els.track.appendChild(slide);
+    slideEls.push(slide);
+    slidePortraits.push(slide.querySelector(".csm-portrait"));
+  });
 
   // 索引点
   CHARACTER_ORDER.forEach((id, i) => {
@@ -1328,11 +1339,25 @@ function createMobileCharacterSelect(onLaunch) {
     return i === -1 ? SLOT_INFO.length : i;
   };
   const isReady = () => Boolean(state.loadout.main && state.loadout.sub1 && state.loadout.sub2);
+  const slideW = () => els.stage.clientWidth || window.innerWidth;
+
+  function snapToIdx(animate = true) {
+    els.track.classList.remove("csm-dragging");
+    if (!animate) {
+      els.track.style.transition = "none";
+      els.track.style.transform = `translateX(${-state.idx * slideW()}px)`;
+      void els.track.offsetWidth; // 强制回流，使后续变化才有过渡
+      els.track.style.transition = "";
+      return;
+    }
+    els.track.style.transform = `translateX(${-state.idx * slideW()}px)`;
+  }
 
   function go(i) {
     const n = CHARACTER_ORDER.length;
-    state.idx = ((i % n) + n) % n;
-    renderChar();
+    state.idx = Math.max(0, Math.min(n - 1, i)); // 不循环：与轨道滑动一致
+    renderInfo();
+    snapToIdx(true);
   }
 
   function ctaAction() {
@@ -1359,6 +1384,7 @@ function createMobileCharacterSelect(onLaunch) {
         }
       }
       renderAll();
+      snapToIdx(true); // 滑到自动跳转后的新角色
     }
   }
 
@@ -1373,15 +1399,17 @@ function createMobileCharacterSelect(onLaunch) {
     els.factionBlue.classList.toggle("active", color === "blue");
     els.factionRed.classList.toggle("active", color === "red");
     screen.classList.toggle("faction-red", color === "red");
+    applyAllSlides();
     preload(color);
     renderAll();
   }
 
   function preload(color) {
-    for (const id of CHARACTER_ORDER) {
+    for (let i = 0; i < CHARACTER_ORDER.length; i++) {
+      const id = CHARACTER_ORDER[i];
       loadPortraitImage(id, color).then(() => {
         if (state.color !== color) return;
-        if (id === curId()) applyPortrait();
+        applySlide(i);
         if (assignedSlot(id)) renderSlot(assignedSlot(id));
       });
     }
@@ -1393,8 +1421,11 @@ function createMobileCharacterSelect(onLaunch) {
     }
     return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
   }
-  function applyPortrait() {
-    els.portrait.style.backgroundImage = portraitUrl(curId());
+  function applySlide(i) {
+    slidePortraits[i].style.backgroundImage = portraitUrl(CHARACTER_ORDER[i]);
+  }
+  function applyAllSlides() {
+    for (let i = 0; i < CHARACTER_ORDER.length; i++) applySlide(i);
   }
 
   function renderSlot(key) {
@@ -1431,23 +1462,17 @@ function createMobileCharacterSelect(onLaunch) {
     els.cta.disabled = false;
   }
 
-  function renderChar() {
-    const id = curId();
-    const def = CHARACTER_DEFS[id];
-    applyPortrait();
-    els.idx.textContent = `${pad2(state.idx + 1)} / ${pad2(CHARACTER_ORDER.length)}`;
-    els.name.textContent = def.name;
-    els.title.textContent = def.title;
+  function renderInfo() {
+    const def = CHARACTER_DEFS[curId()];
     els.stats.innerHTML = MOBILE_STATS.map(([label, key]) => {
       let v = def.stats[key];
       if (key === "turnRate" || key === "fireRate") v = Number(v).toFixed(2);
       return `<div class="csm-chip"><span>${label}</span><strong>${v}</strong></div>`;
     }).join("");
     els.skills.innerHTML = `
-      <button type="button" class="csm-skill"><span class="csm-skill-tag">旗舰技</span><span class="csm-skill-name">${def.flagshipSkill.name}</span><p class="csm-skill-desc">${def.flagshipSkill.description}</p></button>
-      <button type="button" class="csm-skill"><span class="csm-skill-tag">分舰技</span><span class="csm-skill-name">${def.subSkill.name}</span><p class="csm-skill-desc">${def.subSkill.description}</p></button>`;
+      <div class="csm-skill"><span class="csm-skill-tag">旗舰技</span><span class="csm-skill-name">${def.flagshipSkill.name}</span><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
+      <div class="csm-skill"><span class="csm-skill-tag">分舰技</span><span class="csm-skill-name">${def.subSkill.name}</span><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
     for (const d of els.dots.children) d.classList.toggle("active", Number(d.dataset.idx) === state.idx);
-    els.stage.classList.toggle("is-assigned", Boolean(assignedSlot(id)));
     renderCta();
   }
 
@@ -1457,7 +1482,8 @@ function createMobileCharacterSelect(onLaunch) {
       renderSlot(s.key);
       fleetSlots[s.key].el.classList.toggle("targeting", SLOT_INFO.indexOf(s) === step && !isReady());
     }
-    renderChar();
+    slideEls.forEach((sl, i) => sl.classList.toggle("is-assigned", Boolean(assignedSlot(CHARACTER_ORDER[i]))));
+    renderInfo();
   }
 
   // ── 交互 ──
@@ -1466,21 +1492,46 @@ function createMobileCharacterSelect(onLaunch) {
   els.cta.addEventListener("click", ctaAction);
   els.factionBlue.addEventListener("click", () => setColor("blue"));
   els.factionRed.addEventListener("click", () => setColor("red"));
-  els.skills.addEventListener("click", (e) => {
-    const sk = e.target.closest(".csm-skill");
-    if (sk) sk.classList.toggle("open");
-  });
 
-  // 立绘区左右滑动切角色
-  let tsx = null, tsy = null;
-  els.stage.addEventListener("touchstart", (e) => { const t = e.changedTouches[0]; tsx = t.clientX; tsy = t.clientY; }, { passive: true });
-  els.stage.addEventListener("touchend", (e) => {
-    if (tsx == null) return;
+  // 立绘区：手指拖动跟手平滑滑动；松手按位移决定切换或回弹
+  let dragX0 = null, dragY0 = null, dragging = false, dragBase = 0;
+  els.stage.addEventListener("touchstart", (e) => {
     const t = e.changedTouches[0];
-    const dx = t.clientX - tsx, dy = t.clientY - tsy;
-    if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy) * 1.3) go(state.idx + (dx < 0 ? 1 : -1));
-    tsx = tsy = null;
+    dragX0 = t.clientX; dragY0 = t.clientY; dragging = false;
+    dragBase = -state.idx * slideW();
   }, { passive: true });
+  els.stage.addEventListener("touchmove", (e) => {
+    if (dragX0 == null) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - dragX0, dy = t.clientY - dragY0;
+    if (!dragging) {
+      if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        dragging = true;
+        els.track.classList.add("csm-dragging");
+      } else if (Math.abs(dy) > 12) {
+        dragX0 = null; // 纵向意图，交给页面
+        return;
+      } else {
+        return;
+      }
+    }
+    const W = slideW(), n = CHARACTER_ORDER.length;
+    let x = dragBase + dx;
+    if (x > 0) x *= 0.35; // 头部阻尼
+    else if (x < -(n - 1) * W) x = -(n - 1) * W + (x + (n - 1) * W) * 0.35; // 尾部阻尼
+    els.track.style.transform = `translateX(${x}px)`;
+  }, { passive: true });
+  els.stage.addEventListener("touchend", (e) => {
+    if (dragX0 == null) { dragging = false; return; }
+    const dx = e.changedTouches[0].clientX - dragX0;
+    if (dragging) {
+      if (Math.abs(dx) > slideW() * 0.16) go(state.idx + (dx < 0 ? 1 : -1));
+      else snapToIdx(true);
+    }
+    dragX0 = dragY0 = null; dragging = false;
+  }, { passive: true });
+
+  function onResize() { snapToIdx(false); }
 
   function onKey(e) {
     if (!screen.isConnected) return;
@@ -1496,14 +1547,20 @@ function createMobileCharacterSelect(onLaunch) {
     screen.classList.toggle("faction-red", state.color === "red");
     els.factionBlue.classList.toggle("active", state.color === "blue");
     els.factionRed.classList.toggle("active", state.color === "red");
+    applyAllSlides();
     preload(state.color);
     renderAll();
-    requestAnimationFrame(() => screen.classList.add("visible"));
+    requestAnimationFrame(() => {
+      screen.classList.add("visible");
+      snapToIdx(false); // 等布局拿到 stage 宽度后定位轨道
+    });
+    window.addEventListener("resize", onResize);
     document.addEventListener("keydown", onKey);
   }
 
   function hide(callback) {
     document.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", onResize);
     screen.classList.add("leaving");
     screen.classList.remove("visible");
     setTimeout(() => {
