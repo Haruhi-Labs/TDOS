@@ -6,6 +6,7 @@
 
 import { getFaction } from "./profile.js";
 import { startStarfield } from "./starfield.js";
+import { isMobile } from "./mobile.js";
 
 const ITEMS = [
   { href: "/play", no: "I", label: "单人实战", sub: "挑选舰队，迎击 AI 舰群" },
@@ -41,8 +42,8 @@ const GROUP_LAYOUT = [
 const GROUP_VW = 820;
 const GROUP_VH = 940;
 
-function template(faction) {
-  const items = ITEMS.map(
+function menuItemsHTML() {
+  return ITEMS.map(
     (it, i) => `
     <a class="ts-item" href="${it.href}" data-index="${i}">
       <span class="ts-item-no">${it.no}</span>
@@ -53,6 +54,29 @@ function template(faction) {
       <span class="ts-item-cue">▸</span>
     </a>`,
   ).join("");
+}
+
+// 移动端专属：群像作满屏背景 + 大触控菜单行（复用 .ts-bg/.ts-hero-img/.ts-item 钩子，逻辑共享）
+function mobileTemplate(faction) {
+  return `
+    <section class="ts-stage mmenu ts-faction-${faction}">
+      <canvas class="ts-bg" aria-hidden="true"></canvas>
+      <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
+      <div class="mmenu-scrim" aria-hidden="true"></div>
+      <div class="mmenu-shell">
+        <header class="mmenu-head">
+          <div class="ts-seal">SOS</div>
+          <h1 class="ts-title">射手座之日</h1>
+        </header>
+        <nav class="ts-menu mmenu-list" aria-label="主菜单">${menuItemsHTML()}</nav>
+        <footer class="mmenu-foot">原型版 v1.0</footer>
+      </div>
+    </section>
+  `;
+}
+
+function template(faction) {
+  const items = menuItemsHTML();
 
   return `
     <section class="ts-stage ts-faction-${faction}">
@@ -86,7 +110,7 @@ function template(faction) {
 
 export function mount(root, ctx) {
   const faction = getFaction();
-  root.innerHTML = template(faction);
+  root.innerHTML = (isMobile() ? mobileTemplate : template)(faction);
 
   const ac = new AbortController();
   const { signal } = ac;

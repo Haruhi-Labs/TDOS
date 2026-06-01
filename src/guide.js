@@ -3,6 +3,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { startStarfield } from "./starfield.js";
+import { isMobile } from "./mobile.js";
 
 const SECTIONS = [
   {
@@ -67,8 +68,32 @@ function template() {
   `;
 }
 
+// 移动端专属：顶栏固定 + 原生可滚的说明列表（不挤成桌面双列网格）
+function mobileTemplate() {
+  const sections = SECTIONS.map(
+    (s) => `<div class="m-guide-item"><h3>${s.title}</h3><p>${s.body}</p></div>`,
+  ).join("");
+  const keys = KEYS.map(
+    ([k, v]) => `<div class="m-guide-key"><kbd>${k}</kbd><span>${v}</span></div>`,
+  ).join("");
+  return `
+    <section class="mpage">
+      <canvas class="page-stars" aria-hidden="true"></canvas>
+      <div class="mpage-top">
+        <a class="mpage-back" href="/">‹</a>
+        <h1 class="mpage-title">玩法说明</h1>
+      </div>
+      <div class="mpage-body">
+        ${sections}
+        <h2 class="m-guide-sub">操作一览</h2>
+        ${keys}
+      </div>
+    </section>
+  `;
+}
+
 export function mount(root) {
-  root.innerHTML = template();
+  root.innerHTML = isMobile() ? mobileTemplate() : template();
   const ac = new AbortController();
   startStarfield(root.querySelector(".page-stars"), ac.signal);
   return () => ac.abort();

@@ -2588,6 +2588,127 @@ button.toggle-active {
 
 
 /* ── 角色选择响应式（窄屏：上下堆叠，立绘页在上、档案页在下，可滚动） ── */
+/* ═══════════════════════════════════════════════════
+   移动端通用内容页外壳（档案 / 玩法说明）—— 顶栏常驻 + 内容区原生滚动
+   ═══════════════════════════════════════════════════ */
+.mpage {
+  position: fixed;
+  inset: 0;
+  bottom: auto;
+  height: 100vh;
+  height: 100dvh;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: radial-gradient(120% 90% at 50% 0%, #122050 0%, #0a1430 44%, #05091a 100%);
+}
+.mpage-top {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 12px) 14px 8px;
+}
+.mpage-back {
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--brass);
+  border-radius: 50%;
+  background: #160c0588;
+  color: var(--gilt-pale);
+  text-decoration: none;
+  font-size: 1.4rem;
+}
+.mpage-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-weight: 900;
+  font-size: 1.5rem;
+  letter-spacing: 0.08em;
+  background: var(--gilt-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 0 #160c05);
+}
+.mpage-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 16px calc(env(safe-area-inset-bottom, 0px) + 18px);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* 档案表单 */
+.mfield { display: flex; flex-direction: column; gap: 8px; }
+.mfield-label { font-family: var(--font-cn); font-size: 0.84rem; letter-spacing: 0.06em; color: var(--gilt-pale); }
+.mfield input { width: 100%; padding: 13px 14px; font-size: 1rem; border-radius: 10px; }
+.m-faction { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.m-faction .pv-faction-btn { padding: 14px 0; font-size: 1rem; border-radius: 10px; }
+/* 玩法说明：原生卡片列表 */
+.m-guide-item { border: 1px solid var(--brass-dark); border-radius: 8px; padding: 12px 14px; background: #160c0566; }
+.m-guide-item h3 { margin: 0 0 5px; font-family: var(--font-engrave); font-size: 1rem; letter-spacing: 0.06em; color: var(--gilt-bright); }
+.m-guide-item p { margin: 0; font-family: var(--font-cn); font-size: 0.82rem; line-height: 1.55; color: var(--text-soft); }
+.m-guide-sub { margin: 6px 0 0; font-family: var(--font-engrave); font-size: 1.05rem; letter-spacing: 0.1em; color: var(--gilt-bright); }
+.m-guide-key { display: flex; align-items: center; gap: 12px; border: 1px solid var(--brass-dark); border-radius: 8px; padding: 9px 12px; background: #160c0544; }
+.m-guide-key kbd { font-family: var(--font-body); font-size: 0.76rem; color: var(--gilt-pale); border: 1px solid var(--brass-dark); border-radius: 5px; padding: 3px 9px; background: #0c1430; white-space: nowrap; }
+.m-guide-key span { font-family: var(--font-cn); font-size: 0.84rem; color: var(--text-soft); }
+
+/* ═══════════════════════════════════════════════════
+   移动端主菜单 —— 群像作满屏背景 + 大触控菜单行
+   ═══════════════════════════════════════════════════ */
+.mmenu {
+  min-height: 0;
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+.mmenu-hero { position: absolute; inset: 0; width: 100%; opacity: 0.5; }
+.mmenu-scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(180deg, #05091acc 0%, #05091a44 28%, #05091a99 66%, #05091af2 100%);
+}
+.mmenu-shell {
+  position: relative;
+  z-index: 2;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: calc(env(safe-area-inset-top, 0px) + 20px) 18px calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+.mmenu-head { display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+.mmenu-list { gap: 10px; margin-top: auto; }
+.mmenu-foot { text-align: center; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
+.mmenu .ts-item {
+  padding: 15px 18px;
+  border: 1px solid var(--brass-dark);
+  border-radius: 12px;
+  background: #160c05aa;
+}
+.mmenu .ts-item-no { color: var(--gilt); }
+.mmenu .ts-item-label { font-size: 1.35rem; }
+.mmenu .ts-item-cue { opacity: 1; transform: none; }
+/* 横屏 / 矮窗：菜单收紧成两列，仍一屏 */
+@media (max-height: 560px) {
+  .mmenu-head .ts-subtitle { display: none; }
+  .mmenu .mmenu-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .mmenu .ts-item { padding: 10px 14px; }
+  .mmenu .ts-item-label { font-size: 1.1rem; }
+  .mmenu .ts-item-sub { display: none; }
+}
+
 /* ── 选人 · 竖屏手机：锁定一屏（不整页滚动）——立绘在上半固定、档案在下半自身滚动、底栏常驻 ── */
 @media (max-width: 980px) {
   .cs-screen { overflow: hidden; }

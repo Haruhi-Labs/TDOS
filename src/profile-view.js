@@ -6,6 +6,35 @@
 
 import { getProfile, setNickname, setFaction, getFaction } from "./profile.js";
 import { startStarfield } from "./starfield.js";
+import { isMobile } from "./mobile.js";
+
+// 移动端专属：满宽表单 + 大触控目标（复用同样的 #pvNickname / .pv-faction-btn 钩子，逻辑共享）
+function mobileTemplate(profile) {
+  return `
+    <section class="mpage">
+      <canvas class="page-stars" aria-hidden="true"></canvas>
+      <div class="mpage-top">
+        <a class="mpage-back" href="/">‹</a>
+        <h1 class="mpage-title">指挥官档案</h1>
+      </div>
+      <div class="mpage-body">
+        <label class="mfield">
+          <span class="mfield-label">呼号</span>
+          <input id="pvNickname" type="text" maxlength="16" placeholder="输入呼号" autocomplete="off" value="${escapeAttr(profile.nickname)}" />
+        </label>
+        <div class="mfield">
+          <span class="mfield-label">默认阵营</span>
+          <div class="m-faction">
+            <button type="button" class="pv-faction-btn blue" data-color="blue">蓝队</button>
+            <button type="button" class="pv-faction-btn red" data-color="red">红队</button>
+          </div>
+          <p class="pv-note">阵营色用于立绘与画面着色；每局开战仍可在选角页临时切换。</p>
+        </div>
+        <p class="pv-tip">出战编队不在此处设定 —— 进入任意对战模式时挑选，并自动记住上次选择。</p>
+      </div>
+    </section>
+  `;
+}
 
 function template(profile) {
   return `
@@ -45,7 +74,7 @@ function escapeAttr(value) {
 }
 
 export function mount(root) {
-  root.innerHTML = template(getProfile());
+  root.innerHTML = (isMobile() ? mobileTemplate : template)(getProfile());
   const ac = new AbortController();
   const { signal } = ac;
   startStarfield(root.querySelector(".page-stars"), signal);
