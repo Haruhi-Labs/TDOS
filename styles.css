@@ -2440,25 +2440,25 @@ button.toggle-active {
   opacity: 0.6;
 }
 
-/* 关键立绘（右侧，向左羽化融入星幕） */
+/* 七人群像（右侧，向左羽化融入星幕） */
 .ts-hero {
   position: absolute;
   top: 0;
   right: 0;
   bottom: 0;
-  width: min(56%, 720px);
+  width: min(62%, 880px);
   z-index: 1;
   pointer-events: none;
 }
 .ts-hero-img {
-  /* canvas 填满 hero 容器，立绘在内部按 contain 贴右下绘制（预乘 alpha，无白/暗边） */
+  /* canvas 填满 hero 容器，群像在内部按 contain 底部居中合成（预乘 alpha，无白/暗边） */
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  -webkit-mask-image: linear-gradient(90deg, transparent 2%, #000 38%);
-  mask-image: linear-gradient(90deg, transparent 2%, #000 38%);
-  opacity: 0.92;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 16%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 16%);
+  opacity: 0.96;
 }
 /* .ts-hero-fade 已移除：它的渐变左缘在屏幕中央形成一道竖向深色“矩形边缘阴影” */
 
