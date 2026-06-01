@@ -1282,10 +1282,11 @@ function syncMobileHud(own) {
 
   const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
   const throttleValue = Math.round(clamp((selectedShip?.throttle || app.throttle || 1) * 100, 25, 140));
-  ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} | 战区${app.selectedZoneId} | 推进${throttleValue}%`;
+  const hullPercent = Math.round((own.hullRatio || 0) * 100);
+  ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} · 区${app.selectedZoneId} · 体${hullPercent}%`;
   ui.onlineMobileBattleHint.textContent = app.pendingSubSkillAim
-    ? "技能瞄准中：点主视图确认，点右上小地图先挪镜头。"
-    : "点舰船切换，点主视图直接下航线，点右上小地图选战区，+/-可缩放。";
+    ? "技能瞄准中：点战场确认，点右上小地图先挪镜头"
+    : "点舰船切换 · 点战场下航线 · 点右上小地图选战区";
 
   for (const button of ui.onlineMobileShipButtons) {
     const ship = own.ships ? own.ships[button.dataset.ship] : null;
@@ -3812,7 +3813,7 @@ function onlineTemplate() {
       </section>
 
       <!-- ── 战斗页 ── -->
-      <div id="battleView" class="app-shell online-shell" hidden>
+      <div id="battleView" class="app-shell online-shell battle-shell" hidden>
         <aside class="panel compact-panel battle-panel">
           <h1>射手座之日</h1>
 
@@ -3894,12 +3895,9 @@ function onlineTemplate() {
           <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
           <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
             <div class="mobile-battle-head">
-              <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 | 战区5</div>
-              <div class="mobile-head-actions">
-                <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
-                <button id="onlineMobileZoomOutBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">-</button>
-                <button id="onlineMobileZoomInBtn" type="button" class="mobile-chip-btn mobile-zoom-btn">+</button>
-              </div>
+              <a class="mobile-menu-btn" href="/">← 菜单</a>
+              <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 · 区5 · 推进100%</div>
+              <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
             </div>
             <div id="onlineMobileShipSwitch" class="mobile-ship-switch">
               <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
@@ -3909,18 +3907,23 @@ function onlineTemplate() {
             <div class="mobile-action-grid">
               <button id="onlineMobileSplitOneBtn" type="button">分离1</button>
               <button id="onlineMobileSplitTwoBtn" type="button">分离2</button>
-              <button id="onlineMobileScoutBtn" type="button">侦察</button>
-              <button id="onlineMobileAutoScoutBtn" type="button">自动侦察</button>
               <button id="onlineMobileBrakeBtn" type="button">急刹</button>
               <button id="onlineMobileFlagshipBtn" type="button">旗舰技</button>
               <button id="onlineMobileSubSkillBtn" type="button">分舰技</button>
-              <div class="mobile-throttle-row">
-                <button type="button" class="mobile-throttle-btn" data-throttle="70">70%</button>
-                <button type="button" class="mobile-throttle-btn" data-throttle="100">100%</button>
-                <button type="button" class="mobile-throttle-btn" data-throttle="125">125%</button>
-              </div>
+              <button id="onlineMobileScoutBtn" type="button">侦察</button>
+              <button id="onlineMobileAutoScoutBtn" type="button">自动侦察</button>
+              <button id="onlineMobileZoomOutBtn" type="button" class="mobile-zoom-btn">缩小</button>
+              <button id="onlineMobileZoomInBtn" type="button" class="mobile-zoom-btn">放大</button>
             </div>
-            <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换，点战场直接下航线，点右上小地图选战区。</div>
+            <div class="mobile-throttle-wrap">
+              <span class="mobile-throttle-label">推进</span>
+              <button type="button" class="mobile-throttle-btn" data-throttle="40">40</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="70">70</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="100">100</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
+            </div>
+            <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点右上小地图选战区</div>
           </section>
 
           <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">
