@@ -570,7 +570,8 @@ function buildServerUrlCandidates() {
   const list = [];
 
   if (pageHost) {
-    list.push(`${pageProtocol}://${pageHost}/test-game/ws/`);
+    // 同源 WS：跟随部署 base（线上 /test-game/ → /test-game/ws/；dev / → /ws/）
+    list.push(`${pageProtocol}://${pageHost}${import.meta.env.BASE_URL}ws/`);
   }
   if (pageHostname) {
     list.push(`${directProtocol}://${pageHostname}:${REMOTE_WS_PORT}/`);

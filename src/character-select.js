@@ -121,7 +121,7 @@ export function loadPortraitImage(charId, color = "blue") {
       imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `/assets/portraits/${color}/${charId}.webp`;
+    img.src = `${import.meta.env.BASE_URL}assets/portraits/${color}/${charId}.webp`;
   });
   imageCache.set(key, promise);
   return promise;
@@ -958,7 +958,7 @@ function createDesktopCharacterSelect(onLaunch) {
       els.icon.style.backgroundSize = "cover";
       els.icon.style.backgroundPosition = "center 20%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        els.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.webp)`;
+        els.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
       } else {
         const mini = getPortrait(charId, 120, 120, state.color);
         els.icon.style.backgroundImage = `url(${mini.toDataURL()})`;
@@ -967,7 +967,7 @@ function createDesktopCharacterSelect(onLaunch) {
       els.el.classList.remove("filled");
       els.name.textContent = "— —";
       // 未选：用 SOS团 徽记占位
-      els.icon.style.backgroundImage = "url(/assets/brand/sos-gold.png)";
+      els.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/brand/sos-gold.png)`;
       els.icon.style.backgroundSize = "76%";
       els.icon.style.backgroundPosition = "center";
     }
@@ -1464,7 +1464,7 @@ function createMobileCharacterSelect(onLaunch) {
 
   function portraitUrl(charId) {
     if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url(/assets/portraits/${state.color}/${charId}.webp)`;
+      return `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
     }
     return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
   }
@@ -1486,13 +1486,13 @@ function createMobileCharacterSelect(onLaunch) {
       s.icon.style.backgroundSize = "cover";
       s.icon.style.backgroundPosition = "center 16%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        s.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.webp)`;
+        s.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
       } else {
         s.icon.style.backgroundImage = `url(${getPortrait(charId, 120, 120, state.color).toDataURL()})`;
       }
     } else {
       // 未选：用 SOS团 徽记占位
-      s.icon.style.backgroundImage = "url(/assets/brand/sos-gold.png)";
+      s.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/brand/sos-gold.png)`;
       s.icon.style.backgroundSize = "72%";
       s.icon.style.backgroundPosition = "center";
     }

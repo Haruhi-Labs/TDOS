@@ -5,7 +5,30 @@
 // · 切换路由时先卸载上一个（停 rAF、断 socket、移除监听），再挂载下一个，
 //   避免多个游戏循环/网络连接泄漏并存。
 // · 拦截站内 <a href="/..."> 点击走 pushState；支持浏览器前进/后退。
+// · base 感知：线上挂在 /test-game/ 子路径下时，内部一律用「应用路径」
+//   (/、/play …)，与 location.pathname 间靠 toAppPath/toUrlPath 剥离/拼接
+//   base，保证导航、刷新、前进后退都不会逃出子路径。本地 dev base 为 /。
 // ═══════════════════════════════════════════════════════════════
+
+// 部署 base（Vite 注入）：本地 dev 为 "/"，线上构建为 "/test-game/"。
+const RAW_BASE = import.meta.env.BASE_URL || "/"; // "/" 或 "/test-game/"
+const BASE = RAW_BASE.replace(/\/+$/, ""); // "" 或 "/test-game"
+
+// location.pathname → 应用路径（剥掉 base 前缀）
+function toAppPath(pathname) {
+  let p = pathname || "/";
+  if (BASE && (p === BASE || p.startsWith(BASE + "/"))) {
+    p = p.slice(BASE.length) || "/";
+  }
+  if (!p.startsWith("/")) p = "/" + p;
+  return p;
+}
+
+// 应用路径 → 完整 URL 路径（拼上 base）
+function toUrlPath(appPath) {
+  if (!appPath || appPath === "/") return RAW_BASE; // "/" 或 "/test-game/"
+  return BASE + appPath; // "/play" 或 "/test-game/play"
+}
 
 export function createRouter({ routes, outlet, notFound, onNavigate }) {
   let teardown = null; // 当前路由的卸载函数
@@ -52,10 +75,12 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
     teardown = typeof result === "function" ? result : null;
   }
 
+  // path 为应用路径（/、/play …），对外（含 window.__navigate）统一用此约定
   function navigate(path, { replace = false } = {}) {
-    if (path === location.pathname) return;
-    if (replace) history.replaceState({}, "", path);
-    else history.pushState({}, "", path);
+    const url = toUrlPath(path);
+    if (url === location.pathname) return;
+    if (replace) history.replaceState({}, "", url);
+    else history.pushState({}, "", url);
     render(path);
   }
 
@@ -73,8 +98,10 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
 
   function start() {
     document.addEventListener("click", onClick);
-    window.addEventListener("popstate", () => render(location.pathname));
-    render(location.pathname);
+    window.addEventListener("popstate", () =>
+      render(toAppPath(location.pathname)),
+    );
+    render(toAppPath(location.pathname));
   }
 
   return { start, navigate };
