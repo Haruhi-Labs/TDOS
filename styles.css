@@ -2,9 +2,8 @@
    射手座之日 — 「皮装星历名鉴」复古仿真主题
    深棕牛皮 · 黄铜仪表 · 烫金箔 · 做旧羊皮纸 · 烛光
    立绘配色：海军蓝制服 + 金穗滚边 + 朱红披风 + 米白衬里
+   字体改由 index.html 的 <link rel=preconnect>+<link rel=stylesheet> 加载（并行、不串行阻塞）
    ════════════════════════════════════════════════════════════ */
-
-@import url("https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700;800;900&family=Cinzel+Decorative:wght@700;900&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=Noto+Serif+SC:wght@400;500;600;700;900&display=swap");
 
 :root {
   /* ── 海军制服蓝（战场/画布侧主色） ── */

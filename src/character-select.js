@@ -99,7 +99,7 @@ const imageCache = new Map();
 // 同步加载状态：成功时缓存 Image，失败时缓存 null
 const imageSyncMap = new Map();
 
-// 立绘按阵营分蓝/红两套：/assets/portraits/{color}/{charId}.png
+// 立绘按阵营分蓝/红两套：/assets/portraits/{color}/{charId}.webp
 export const TEAM_COLORS = ["blue", "red"];
 function pkey(charId, color) {
   return `${color}/${charId}`;
@@ -121,7 +121,7 @@ export function loadPortraitImage(charId, color = "blue") {
       imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `/assets/portraits/${color}/${charId}.png?v=5`;
+    img.src = `/assets/portraits/${color}/${charId}.webp`;
   });
   imageCache.set(key, promise);
   return promise;
@@ -958,7 +958,7 @@ function createDesktopCharacterSelect(onLaunch) {
       els.icon.style.backgroundSize = "cover";
       els.icon.style.backgroundPosition = "center 20%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        els.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.png?v=5)`;
+        els.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.webp)`;
       } else {
         const mini = getPortrait(charId, 120, 120, state.color);
         els.icon.style.backgroundImage = `url(${mini.toDataURL()})`;
@@ -1197,9 +1197,22 @@ function createDesktopCharacterSelect(onLaunch) {
     for (const slot of SLOT_INFO) updateFleetSlot(slot.key);
     refreshFleetTarget();
     updateLaunch();
-    requestAnimationFrame(() => screen.classList.add("visible"));
     bgAnimId = requestAnimationFrame(animateBg);
     document.addEventListener("keydown", onKey);
+    // 等当前角色立绘解码就绪再淡入，避免直接进入时闪现占位图（最多等 300ms 兜底）
+    let shown = false;
+    const reveal = () => {
+      if (shown) return;
+      shown = true;
+      applyPortrait(pageLeft, state.currentChar);
+      requestAnimationFrame(() => screen.classList.add("visible"));
+    };
+    loadPortraitImage(state.currentChar, state.color).then((img) => {
+      // 真图就绪：即便已被 300ms 兜底先行展示占位，也在此刻重绘为真图
+      if (img && shown) applyPortrait(pageLeft, state.currentChar);
+      reveal();
+    });
+    setTimeout(reveal, 300);
   }
 
   function hide(callback) {
@@ -1451,7 +1464,7 @@ function createMobileCharacterSelect(onLaunch) {
 
   function portraitUrl(charId) {
     if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url(/assets/portraits/${state.color}/${charId}.png?v=5)`;
+      return `url(/assets/portraits/${state.color}/${charId}.webp)`;
     }
     return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
   }
@@ -1473,7 +1486,7 @@ function createMobileCharacterSelect(onLaunch) {
       s.icon.style.backgroundSize = "cover";
       s.icon.style.backgroundPosition = "center 16%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        s.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.png?v=5)`;
+        s.icon.style.backgroundImage = `url(/assets/portraits/${state.color}/${charId}.webp)`;
       } else {
         s.icon.style.backgroundImage = `url(${getPortrait(charId, 120, 120, state.color).toDataURL()})`;
       }
@@ -1593,12 +1606,26 @@ function createMobileCharacterSelect(onLaunch) {
     applyAllSlides();
     preload(state.color);
     renderAll();
-    requestAnimationFrame(() => {
-      screen.classList.add("visible");
-      snapToIdx(false); // 等布局拿到 stage 宽度后定位轨道
-    });
+    snapToIdx(false);
     window.addEventListener("resize", onResize);
     document.addEventListener("keydown", onKey);
+    // 等当前角色立绘解码就绪再淡入，避免直接进入时闪现占位图（最多等 300ms 兜底）
+    let shown = false;
+    const reveal = () => {
+      if (shown) return;
+      shown = true;
+      applyAllSlides();
+      requestAnimationFrame(() => {
+        screen.classList.add("visible");
+        snapToIdx(false);
+      });
+    };
+    loadPortraitImage(CHARACTER_ORDER[state.idx], state.color).then((img) => {
+      // 真图就绪：即便已被 300ms 兜底先行展示占位，也在此刻重绘为真图
+      if (img && shown) applyAllSlides();
+      reveal();
+    });
+    setTimeout(reveal, 300);
   }
 
   function hide(callback) {

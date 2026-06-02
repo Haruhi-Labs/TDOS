@@ -130,7 +130,7 @@ export function mount(root, ctx) {
       drawGroup();
     };
     im.onerror = () => {}; // 单张缺失就跳过，不影响其余
-    im.src = `/assets/portraits/${faction}/${g.id}.png?v=5`;
+    im.src = `/assets/portraits/${faction}/${g.id}.webp`;
   }
 
   function drawGroup() {
