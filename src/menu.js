@@ -65,7 +65,7 @@ function mobileTemplate(faction) {
       <div class="mmenu-scrim" aria-hidden="true"></div>
       <div class="mmenu-shell">
         <header class="mmenu-head">
-          <div class="ts-seal">SOS</div>
+          <div class="ts-seal" role="img" aria-label="SOS团"></div>
           <h1 class="ts-title">射手座之日</h1>
         </header>
         <nav class="ts-menu mmenu-list" aria-label="主菜单">${menuItemsHTML()}</nav>
@@ -89,7 +89,7 @@ function template(faction) {
 
       <div class="ts-content">
         <header class="ts-head">
-          <div class="ts-seal">SOS</div>
+          <div class="ts-seal" role="img" aria-label="SOS团"></div>
           <h1 class="ts-title">射手座之日</h1>
           <p class="ts-subtitle">Star-Calendar Fleet Operations</p>
           <div class="ts-rule"></div>
