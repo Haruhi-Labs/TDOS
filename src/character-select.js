@@ -1284,24 +1284,36 @@ function createMobileCharacterSelect(onLaunch) {
     factionRed: screen.querySelector(".csm-faction-btn.red"),
   };
 
-  // 立绘轮播：每位一张幻灯（立绘 + 名牌），整轨随手指/箭头平滑滑动
-  const slideEls = [];
-  const slidePortraits = [];
-  CHARACTER_ORDER.forEach((id, i) => {
-    const def = CHARACTER_DEFS[id];
+  // 立绘轮播：每位一张幻灯（立绘 + 名牌）。首尾各放一张克隆实现无缝循环：
+  // 轨道顺序 = [末位克隆, 0, 1, …, N-1, 首位克隆]，真实第 idx 张在 DOM 第 idx+1 位。
+  const N = CHARACTER_ORDER.length;
+  function makeSlide(charId, labelIdx) {
+    const def = CHARACTER_DEFS[charId];
     const slide = document.createElement("div");
     slide.className = "csm-slide";
     slide.innerHTML = `
       <div class="csm-portrait"></div>
       <div class="csm-caption">
-        <div class="csm-idx">${pad2(i + 1)} / ${pad2(CHARACTER_ORDER.length)}</div>
+        <div class="csm-idx">${pad2(labelIdx + 1)} / ${pad2(N)}</div>
         <div class="csm-name">${def.name}</div>
         <div class="csm-title">${def.title}</div>
       </div>`;
+    return slide;
+  }
+  const cloneLast = makeSlide(CHARACTER_ORDER[N - 1], N - 1);
+  els.track.appendChild(cloneLast);
+  const slideEls = [];
+  const slidePortraits = [];
+  CHARACTER_ORDER.forEach((id, i) => {
+    const slide = makeSlide(id, i);
     els.track.appendChild(slide);
     slideEls.push(slide);
     slidePortraits.push(slide.querySelector(".csm-portrait"));
   });
+  const cloneFirst = makeSlide(CHARACTER_ORDER[0], 0);
+  els.track.appendChild(cloneFirst);
+  const cloneFirstPortrait = cloneFirst.querySelector(".csm-portrait");
+  const cloneLastPortrait = cloneLast.querySelector(".csm-portrait");
 
   // 索引点
   CHARACTER_ORDER.forEach((id, i) => {
@@ -1341,24 +1353,42 @@ function createMobileCharacterSelect(onLaunch) {
   const isReady = () => Boolean(state.loadout.main && state.loadout.sub1 && state.loadout.sub2);
   const slideW = () => els.stage.clientWidth || window.innerWidth;
 
-  function snapToIdx(animate = true) {
+  // 轨道定位：移到 DOM 第 pos 位（含首尾克隆），pos = idx + 1
+  function trackTo(pos, animate) {
     els.track.classList.remove("csm-dragging");
     if (!animate) {
       els.track.style.transition = "none";
-      els.track.style.transform = `translateX(${-state.idx * slideW()}px)`;
+      els.track.style.transform = `translateX(${-pos * slideW()}px)`;
       void els.track.offsetWidth; // 强制回流，使后续变化才有过渡
       els.track.style.transition = "";
-      return;
+    } else {
+      els.track.style.transform = `translateX(${-pos * slideW()}px)`;
     }
-    els.track.style.transform = `translateX(${-state.idx * slideW()}px)`;
   }
+  function snapToIdx(animate = true) { trackTo(state.idx + 1, animate); }
 
+  // 循环切换：越过末位→滑到尾部「首位克隆」，越过首位→滑到头部「末位克隆」；
+  // 动画结束后瞬移到对应真实幻灯（克隆与真实外观一致，看不出跳变）。
+  let wrapResetPos = null;
   function go(i) {
-    const n = CHARACTER_ORDER.length;
-    state.idx = Math.max(0, Math.min(n - 1, i)); // 不循环：与轨道滑动一致
-    renderInfo();
-    snapToIdx(true);
+    if (i >= N) {
+      state.idx = 0; renderInfo();
+      wrapResetPos = 1; trackTo(N + 1, true);
+    } else if (i < 0) {
+      state.idx = N - 1; renderInfo();
+      wrapResetPos = N; trackTo(0, true);
+    } else {
+      state.idx = i; renderInfo();
+      wrapResetPos = null; // 普通移动：清掉可能挂起的循环归位，避免动画被打断时错位
+      snapToIdx(true);
+    }
   }
+  els.track.addEventListener("transitionend", (e) => {
+    if (e.propertyName === "transform" && wrapResetPos != null) {
+      trackTo(wrapResetPos, false);
+      wrapResetPos = null;
+    }
+  });
 
   function ctaAction() {
     if (isReady()) {
@@ -1422,7 +1452,10 @@ function createMobileCharacterSelect(onLaunch) {
     return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
   }
   function applySlide(i) {
-    slidePortraits[i].style.backgroundImage = portraitUrl(CHARACTER_ORDER[i]);
+    const url = portraitUrl(CHARACTER_ORDER[i]);
+    slidePortraits[i].style.backgroundImage = url;
+    if (i === 0) cloneFirstPortrait.style.backgroundImage = url; // 首位克隆同步
+    if (i === N - 1) cloneLastPortrait.style.backgroundImage = url; // 末位克隆同步
   }
   function applyAllSlides() {
     for (let i = 0; i < CHARACTER_ORDER.length; i++) applySlide(i);
@@ -1498,7 +1531,7 @@ function createMobileCharacterSelect(onLaunch) {
   els.stage.addEventListener("touchstart", (e) => {
     const t = e.changedTouches[0];
     dragX0 = t.clientX; dragY0 = t.clientY; dragging = false;
-    dragBase = -state.idx * slideW();
+    dragBase = -(state.idx + 1) * slideW(); // 真实槽位偏移（首位克隆占 DOM 0）
   }, { passive: true });
   els.stage.addEventListener("touchmove", (e) => {
     if (dragX0 == null) return;
@@ -1515,10 +1548,11 @@ function createMobileCharacterSelect(onLaunch) {
         return;
       }
     }
-    const W = slideW(), n = CHARACTER_ORDER.length;
+    const W = slideW();
     let x = dragBase + dx;
-    if (x > 0) x *= 0.35; // 头部阻尼
-    else if (x < -(n - 1) * W) x = -(n - 1) * W + (x + (n - 1) * W) * 0.35; // 尾部阻尼
+    // 允许拖进首尾克隆（DOM 0 / N+1）以便循环；再往外才阻尼回弹
+    if (x > 0) x *= 0.35;
+    else if (x < -(N + 1) * W) x = -(N + 1) * W + (x + (N + 1) * W) * 0.35;
     els.track.style.transform = `translateX(${x}px)`;
   }, { passive: true });
   els.stage.addEventListener("touchend", (e) => {
