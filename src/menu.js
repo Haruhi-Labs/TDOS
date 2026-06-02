@@ -41,6 +41,8 @@ const GROUP_LAYOUT = [
 // 编排基准画布的宽高比（定死构图，再 contain 适配各种屏幕比例）
 const GROUP_VW = 820;
 const GROUP_VH = 940;
+// 移动端 hero 较窄：在 contain 基础上放大并居中，核心人物更醒目（两侧最外的人略裁出框）
+const MOBILE_HERO_ZOOM = 1.18;
 
 function menuItemsHTML() {
   return ITEMS.map(
@@ -56,18 +58,18 @@ function menuItemsHTML() {
   ).join("");
 }
 
-// 移动端专属：群像作满屏背景 + 大触控菜单行（复用 .ts-bg/.ts-hero-img/.ts-item 钩子，逻辑共享）
+// 移动端专属：纵向堆叠 —— 标题 / 清晰群像 hero / 大触控菜单行
+// （复用 .ts-bg/.ts-hero-img/.ts-item 钩子，逻辑共享；群像在流内，不再压成满屏毛玻璃背景）
 function mobileTemplate(faction) {
   return `
     <section class="ts-stage mmenu ts-faction-${faction}">
       <canvas class="ts-bg" aria-hidden="true"></canvas>
-      <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
-      <div class="mmenu-scrim" aria-hidden="true"></div>
       <div class="mmenu-shell">
         <header class="mmenu-head">
           <div class="ts-seal" role="img" aria-label="SOS团"></div>
           <h1 class="ts-title">射手座之日</h1>
         </header>
+        <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
         <nav class="ts-menu mmenu-list" aria-label="主菜单">${menuItemsHTML()}</nav>
         <footer class="mmenu-foot">原型版 v1.0</footer>
       </div>
@@ -110,7 +112,8 @@ function template(faction) {
 
 export function mount(root, ctx) {
   const faction = getFaction();
-  root.innerHTML = (isMobile() ? mobileTemplate : template)(faction);
+  const mobile = isMobile();
+  root.innerHTML = (mobile ? mobileTemplate : template)(faction);
 
   const ac = new AbortController();
   const { signal } = ac;
@@ -147,12 +150,14 @@ export function mount(root, ctx) {
     c.clearRect(0, 0, CW, CH);
     c.imageSmoothingEnabled = true;
     c.imageSmoothingQuality = "high";
-    // 把基准构图（GROUP_VW×GROUP_VH）按 contain 适配画布，并底部居中
-    const scale = Math.min(CW / GROUP_VW, CH / GROUP_VH);
+    // 把基准构图（GROUP_VW×GROUP_VH）适配画布：桌面 contain 底部居中；
+    // 移动端 hero 较窄，放大并居中、脚底略压出框，使核心人物醒目而非七人挤成一排
+    const fit = Math.min(CW / GROUP_VW, CH / GROUP_VH);
+    const scale = mobile ? fit * MOBILE_HERO_ZOOM : fit;
     const vw = GROUP_VW * scale;
     const vh = GROUP_VH * scale;
     const offX = (CW - vw) / 2;
-    const offY = CH - vh; // 脚底贴画布底
+    const offY = mobile ? CH - vh * 0.94 : CH - vh; // 移动端把脚底压出画面 6%，头部留在框内
     const U = vh; // 后处理尺度基准
 
     // ① 落地阴影池：把群像“踩”在地上
