@@ -2224,12 +2224,14 @@ button.toggle-active {
   color: var(--ink-soft);
   cursor: pointer;
   transition: all 180ms ease;
-  transform: translateY(6px);
+  /* 用 position/top 做「书签升降」而非 transform：避免被提到合成层后文字发虚 */
+  position: relative;
+  top: 6px;
   box-shadow: inset 0 1px 0 #f0e4c266;
 }
-.cs-tab:hover { transform: translateY(2px); color: var(--ink); }
+.cs-tab:hover { top: 2px; color: var(--ink); }
 .cs-tab.current {
-  transform: translateY(0);
+  top: 0;
   background:
     var(--tex-paper),
     linear-gradient(180deg, #f0e4c2 0%, #ddca9c 100%);
