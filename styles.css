@@ -417,9 +417,10 @@ input[type="text"]::placeholder { color: var(--text-muted); font-style: italic; 
       0 2px 6px #02060ea0;
   }
 }
+/* 点击反馈：轻微按压缩放（似移动端），不再上下浮动 */
 button:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: inset 0 2px 5px #160c05ee, inset 0 0 0 1px #00000080;
+  transform: scale(0.97);
+  box-shadow: inset 0 1px 3px #160c05cc;
 }
 button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.5); }
 
@@ -2156,11 +2157,9 @@ button.toggle-active {
 @keyframes cs-shade-rest { 0% { opacity: 1; } 50% { opacity: 0.92; } 100% { opacity: 0; } }
 
 /* —— 翻页流畅化 ——
-   把翻页层提升为独立合成层（will-change）后，纸纹/磨损（含 multiply 混合）随层一次性
-   栅格化、旋转中不再逐帧重算，所以可保留 —— 翻页中纹理与底页一致、不再消失。
-   仍去掉立绘 drop-shadow 滤镜（这项在旋转中确实逐帧重算、开销最大）。 */
+   把翻页层提升为独立合成层（will-change）后，纸纹/磨损/立绘投影随层一次性栅格化、
+   旋转中不再逐帧重算 —— 故全部保留，翻页中与底页一致、纹理与立绘阴影都不再消失。 */
 .cs-flip-side { will-change: transform; }
-.cs-flip-side .cs-portrait { filter: none; }
 
 /* ── 翻页箭头 ── */
 .cs-nav-btn {
@@ -2168,9 +2167,12 @@ button.toggle-active {
   top: 50%;
   transform: translateY(-50%);
   z-index: 12;
-  width: 40px;
-  height: 64px;
-  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 46px;
+  height: 120px; /* 增大可点范围：沿书侧更高的竖条，便于点中 */
+  border-radius: 6px;
   border: 1px solid var(--gilt);
   background: var(--brass-surface);
   color: var(--gilt-bright);
@@ -2178,8 +2180,10 @@ button.toggle-active {
   line-height: 1;
   cursor: pointer;
   box-shadow: inset 0 1px 0 #f0d48866, 0 4px 12px #00000099;
-  transition: all 180ms ease;
+  transition: background 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
+/* 按下保持纵向居中 + 轻微缩放（覆盖全局 button:active 的 scale，避免丢失 -50% 居中） */
+.cs-nav-btn:active:not(:disabled) { transform: translateY(-50%) scale(0.96); }
 .cs-nav-btn:hover {
   background: linear-gradient(180deg, #b8923c, #6b4d12);
   color: #fff6dc;
