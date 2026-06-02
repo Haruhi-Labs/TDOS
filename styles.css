@@ -2156,12 +2156,10 @@ button.toggle-active {
 @keyframes cs-shade-rest { 0% { opacity: 1; } 50% { opacity: 0.92; } 100% { opacity: 0; } }
 
 /* —— 翻页流畅化 ——
-   翻动中的临时书页去掉「逐帧重算」的开销：drop-shadow 滤镜、两层 mix-blend-mode:multiply
-   纸纹/磨损伪元素 —— 这些在 3D 旋转中每帧重栅格化（尤其翻到中段背面首次绘制时最卡）。
-   底页（静止）仍保留全部质感，收尾切回时几乎无差别。 */
+   把翻页层提升为独立合成层（will-change）后，纸纹/磨损（含 multiply 混合）随层一次性
+   栅格化、旋转中不再逐帧重算，所以可保留 —— 翻页中纹理与底页一致、不再消失。
+   仍去掉立绘 drop-shadow 滤镜（这项在旋转中确实逐帧重算、开销最大）。 */
 .cs-flip-side { will-change: transform; }
-.cs-flip-side::before,
-.cs-flip-side::after { display: none; }
 .cs-flip-side .cs-portrait { filter: none; }
 
 /* ── 翻页箭头 ── */
