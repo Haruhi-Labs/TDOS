@@ -403,16 +403,19 @@ input[type="text"] {
 }
 input[type="text"]::placeholder { color: var(--text-muted); font-style: italic; }
 
-button:hover:not(:disabled),
-.btn-link:hover {
-  background: linear-gradient(180deg, #8a6a32 0%, #5a3c16 100%);
-  border-color: var(--gilt-bright);
-  color: #fff6dc;
-  box-shadow:
-    inset 0 1px 0 #f0d48899,
-    inset 0 -2px 4px #160c05cc,
-    0 0 14px #c8a24e55,
-    0 2px 6px #02060ea0;
+/* hover 效果只给真正能悬停的指针（桌面鼠标）；触摸设备点一下 :hover 会“粘住”不退，故屏蔽 */
+@media (hover: hover) {
+  button:hover:not(:disabled),
+  .btn-link:hover {
+    background: linear-gradient(180deg, #8a6a32 0%, #5a3c16 100%);
+    border-color: var(--gilt-bright);
+    color: #fff6dc;
+    box-shadow:
+      inset 0 1px 0 #f0d48899,
+      inset 0 -2px 4px #160c05cc,
+      0 0 14px #c8a24e55,
+      0 2px 6px #02060ea0;
+  }
 }
 button:active:not(:disabled) {
   transform: translateY(1px);
@@ -2462,8 +2465,14 @@ button.toggle-active {
   font-size: 1.8rem;
   line-height: 1;
 }
-/* 按下只做轻微缩放，保持纵向居中（覆盖全局 button:active 的 translateY 下沉） */
-.csm-arrow:active:not(:disabled) { transform: translateY(-50%) scale(0.93); box-shadow: none; }
+/* 按下时瞬间点亮一下（松手即复原），并保持纵向居中（覆盖全局 button:active 的 translateY 下沉） */
+.csm-arrow:active:not(:disabled) {
+  transform: translateY(-50%) scale(0.93);
+  background: linear-gradient(180deg, #8a6a32, #5a3c16);
+  border-color: var(--gilt-bright);
+  color: #fff6dc;
+  box-shadow: none;
+}
 .csm-prev { left: 6px; }
 .csm-next { right: 6px; }
 .csm-caption {
