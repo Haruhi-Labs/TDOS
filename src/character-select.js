@@ -1470,8 +1470,8 @@ function createMobileCharacterSelect(onLaunch) {
       return `<div class="csm-chip"><span>${label}</span><strong>${v}</strong></div>`;
     }).join("");
     els.skills.innerHTML = `
-      <div class="csm-skill"><span class="csm-skill-tag">旗舰技</span><span class="csm-skill-name">${def.flagshipSkill.name}</span><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
-      <div class="csm-skill"><span class="csm-skill-tag">分舰技</span><span class="csm-skill-name">${def.subSkill.name}</span><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
+      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">旗舰技</span><span class="csm-skill-name">${def.flagshipSkill.name}</span></div><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
+      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">分舰技</span><span class="csm-skill-name">${def.subSkill.name}</span></div><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
     for (const d of els.dots.children) d.classList.toggle("active", Number(d.dataset.idx) === state.idx);
     renderCta();
   }

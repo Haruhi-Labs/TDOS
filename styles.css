@@ -2476,8 +2476,9 @@ button.toggle-active {
   pointer-events: none;
 }
 .csm-idx { font-family: var(--font-body); font-size: 0.72rem; letter-spacing: 0.24em; color: var(--gilt); }
-.csm-name { font-family: var(--font-kai); font-size: 1.5rem; font-weight: 800; color: var(--ivory); text-shadow: 0 2px 6px #000; }
-.csm-title { font-family: var(--font-cn); font-size: 0.84rem; color: var(--gilt-pale); letter-spacing: 0.06em; }
+/* 名牌单行：名字/称号都不换行（超长省略），避免称号多出一行造成卡片/名牌高度不一 */
+.csm-name { font-family: var(--font-kai); font-size: 1.5rem; font-weight: 800; color: var(--ivory); text-shadow: 0 2px 6px #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.csm-title { font-family: var(--font-cn); font-size: 0.84rem; color: var(--gilt-pale); letter-spacing: 0.06em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .csm-slide.is-assigned::after {
   content: "已编入";
   position: absolute;
@@ -2519,8 +2520,9 @@ button.toggle-active {
   background: #160c0566;
   color: var(--gilt-pale);
 }
-.csm-skill-tag { font-size: 0.6rem; color: var(--oxblood-bright); margin-right: 6px; letter-spacing: 0.06em; }
-.csm-skill-name { font-family: var(--font-kai); font-size: 0.84rem; color: var(--gilt-pale); }
+.csm-skill-head { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; overflow: hidden; }
+.csm-skill-tag { flex: 0 0 auto; font-size: 0.6rem; color: var(--oxblood-bright); letter-spacing: 0.06em; }
+.csm-skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-kai); font-size: 0.84rem; color: var(--gilt-pale); }
 /* 固定 4 行高：不同角色技能说明长短不一，但卡片高度恒定 —— 切换不顶动版面、也不出现滚动条 */
 .csm-skill-desc {
   display: -webkit-box;
