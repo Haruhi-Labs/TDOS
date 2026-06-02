@@ -34,7 +34,7 @@ const GROUP_LAYOUT = [
   { id: "koizumi", hx: 0.72, by: 1.0, h: 0.85, flip: true },
   { id: "kyon", hx: 0.33, by: 1.0, h: 0.85, flip: false },
   { id: "asakura", hx: 0.2, by: 0.99, h: 0.77, flip: true },
-  { id: "tsuruya", hx: 0.86, by: 0.99, h: 0.8, flip: true },
+  { id: "tsuruya", hx: 0.86, by: 0.99, h: 0.72, flip: true },
   { id: "future1096", hx: 0.62, by: 1.0, h: 0.73, flip: false },
   { id: "yuki", hx: 0.43, by: 1.0, h: 0.71, flip: false },
 ];
