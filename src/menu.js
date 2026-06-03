@@ -41,8 +41,8 @@ const GROUP_LAYOUT = [
 // 编排基准画布的宽高比（定死构图，再 contain 适配各种屏幕比例）
 const GROUP_VW = 820;
 const GROUP_VH = 940;
-// 移动端 hero 较窄：在 contain 基础上放大并居中，核心人物更醒目（两侧最外的人略裁出框）
-const MOBILE_HERO_ZOOM = 1.18;
+// 移动端 hero：在 contain 基础上轻微放大并居中；幅度小以免裁到头部，下半身没入菜单羽化
+const MOBILE_HERO_ZOOM = 1.06;
 
 function menuItemsHTML() {
   return ITEMS.map(
@@ -157,7 +157,9 @@ export function mount(root, ctx) {
     const vw = GROUP_VW * scale;
     const vh = GROUP_VH * scale;
     const offX = (CW - vw) / 2;
-    const offY = mobile ? CH - vh * 0.94 : CH - vh; // 移动端把脚底压出画面 6%，头部留在框内
+    // 移动端：锚定让头部完整留在框内（仅留极小顶边距），下半身自然没入菜单区羽化；
+    // 桌面：脚底贴画布底
+    const offY = mobile ? Math.max(CH - vh, CH * 0.03) : CH - vh;
     const U = vh; // 后处理尺度基准
 
     // ① 落地阴影池：把群像“踩”在地上

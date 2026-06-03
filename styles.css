@@ -84,6 +84,7 @@
 html, body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--text-primary);
   font-family: var(--font-cn), var(--font-body);
   font-feature-settings: "palt";
@@ -2683,8 +2684,11 @@ button.toggle-active {
 /* ═══════════════════════════════════════════════════
    移动端主菜单 —— 群像作满屏背景 + 大触控菜单行
    ═══════════════════════════════════════════════════ */
-.mmenu {
-  min-height: 0;
+/* 用组合选择器(.ts-stage.mmenu)提高优先级，压过后文 .ts-stage{min-height:100vh}，
+   否则移动端菜单会被撑到「大视口」100vh，比可视区高，底部内容钻到 Safari 地址栏后面 */
+.ts-stage.mmenu {
+  min-height: 100vh;
+  min-height: 100dvh;
   height: 100vh;
   height: 100dvh;
   display: flex;
@@ -2700,8 +2704,8 @@ button.toggle-active {
   opacity: 1;
 }
 .mmenu .ts-hero-img {
-  -webkit-mask-image: linear-gradient(180deg, #000 76%, transparent 100%);
-  mask-image: linear-gradient(180deg, #000 76%, transparent 100%);
+  -webkit-mask-image: linear-gradient(180deg, #000 64%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 64%, transparent 100%);
   opacity: 1;
 }
 .mmenu-shell {
@@ -2724,7 +2728,8 @@ button.toggle-active {
   background: #160c05aa;
 }
 .mmenu .ts-item-no { color: var(--gilt); }
-.mmenu .ts-item-label { font-size: 1.35rem; }
+.mmenu .ts-item-label { font-size: 1.3rem; }
+.mmenu .ts-item-sub { display: none; } /* 移动端隐藏副标题，单行更紧凑，给群像 hero 让出竖向空间 */
 .mmenu .ts-item-cue { opacity: 1; transform: none; }
 /* 横屏 / 矮窗：菜单收紧成两列，仍一屏 */
 @media (max-height: 560px) {
@@ -2740,7 +2745,7 @@ button.toggle-active {
 /* ═══════════════════════════════════════════════════
    主菜单 / 标题画面（路由 /）— 海军蓝星幕 + 烫金 + 关键立绘
    ═══════════════════════════════════════════════════ */
-.app-root { min-height: 100vh; }
+.app-root { min-height: 100vh; min-height: 100dvh; }
 .boot-splash {
   min-height: 100vh;
   display: grid;
