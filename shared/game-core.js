@@ -507,6 +507,10 @@ function nextEntityId() {
   return globalEntityId;
 }
 
+export function __resetEntityIds(state = 1) {
+  globalEntityId = state;
+}
+
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -2583,8 +2587,13 @@ class Team {
   pickTargetFor(attacker, enemyTeam) {
     const candidates = enemyTeam.getEntities();
     const range = attacker.attackRange || attacker.effectiveRange();
+    // 集火钩子(惰性)：bot 可在 attacker.preferredFocusId 指定一个集火/补刀目标；
+    // 仅当该目标当前可命中(可见+在射程+有火力密度)时优先打它，否则回退取最近。
+    // 未设置时行为与原版完全一致(基线 bot 不设置)。
+    const focusId = attacker.preferredFocusId;
     let nearest = null;
     let nearestDist = Infinity;
+    let focusTarget = null;
     for (const target of candidates) {
       if (!target.alive) {
         continue;
@@ -2603,8 +2612,12 @@ class Team {
         nearestDist = d;
         nearest = target;
       }
+      if (focusId && target.id === focusId && d <= range
+        && (typeof attacker.broadsideMultiplier !== "function" || attacker.broadsideMultiplier(target) > 0)) {
+        focusTarget = target;
+      }
     }
-    return nearest;
+    return focusTarget || nearest;
   }
 
   stepCombat(enemyTeam) {
@@ -2683,7 +2696,7 @@ const HARD_AI_PROFILE = Object.freeze({
   aggressiveScoutWindow: 0.45,
 });
 
-class BotController {
+export class BotController {
   constructor(team, enemy) {
     this.team = team;
     this.enemy = enemy;
@@ -3753,9 +3766,21 @@ class BotController {
       + isolatedTargetScore * 0.26
       - energyRecoveryNeed * 0.32;
 
+    // 收尾判断：是否占优(领先) + 是否到了该收尾的窗口(敌方濒临覆灭)。
+    // 领先时不应因自身低血/低能转入防守，而应压制收尾——破解"双方都低血同时转防守"的平局僵局。
+    const enemyHullTeam = this.enemy.hullRatio();
+    const ownHullTeam = this.team.hullRatio();
+    const enemyAliveCount = this.enemy.getAllShips().filter((s) => s && s.alive).length;
+    const ownAliveCount = this.team.getAllShips().filter((s) => s && s.alive).length;
+    const winning = ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + 0.08;
+    const closeoutWindow = enemyAliveCount > 0
+      && (enemyAliveCount < ownAliveCount || enemyHullTeam < 0.3 || (killWindow && winning));
+
     return {
       focus,
       rangeRef,
+      winning,
+      closeoutWindow,
       dist,
       mainHull,
       mainEnergyRatio,
@@ -3974,6 +3999,32 @@ class BotController {
     };
   }
 
+  // U2 集火补刀：给本队各舰指定一个"可命中的最该补刀目标"(血量最低的可见敌舰)，
+  // 经惰性钩子 ship.preferredFocusId 下发；pickTargetFor 仅在该目标可命中时采用，否则取最近。
+  // 集中火力按序消灭(先杀残血/先减敌数)，破解原版火力均摊(HHI≈0.33)与残血苟活~35s 的平局根因。
+  assignFireFocus() {
+    const ships = this.team.getAllShips();
+    for (const s of ships) { if (s) s.preferredFocusId = null; }
+    const enemies = this.enemy.getAllShips().filter((e) => e && e.alive);
+    if (enemies.length <= 1) return; // 仅一个目标无需集火
+    const visible = enemies.filter((e) => this.team.visibleEnemyIds.has(e.id));
+    if (!visible.length) return; // 看不见就不强制集火(交由 U1 压近夺视野)
+    const main = this.team.ships.main;
+    const anchor = main && main.alive ? main : ships.find((s) => s && s.alive);
+    // 有效血量：带"待用复活"(如长门旗舰被动给全队1次52%血复活)的舰，集火"击杀"它也会满血复活，
+    // 复活前不应把它当最该补刀者——其有效血量计入复活量，避免过度集中浪费火力(对抗压测发现的回归)。
+    const effHp = (e) => e.hp + (e.reviveCharges > 0 ? e.maxHp * 0.52 : 0);
+    let best = null;
+    let bestScore = Infinity;
+    for (const e of visible) {
+      const d = anchor ? distance(anchor.x, anchor.y, e.x, e.y) : 0;
+      const score = effHp(e) + d * 0.06; // 有效血量为主、距离为辅，选真正最该补刀且多舰够得到者
+      if (score < bestScore) { bestScore = score; best = e; }
+    }
+    if (!best) return;
+    for (const s of ships) { if (s && s.alive) s.preferredFocusId = best.id; }
+  }
+
   update(dt, elapsed) {
     this.moveTimer -= dt;
     this.scoutTimer -= dt;
@@ -3984,6 +4035,7 @@ class BotController {
 
     this.refreshIntel();
     this.updateStuckState(dt);
+    this.assignFireFocus();
     const main = this.team.ships.main;
     const focus = main.alive ? this.selectEnemyFocus(main) : null;
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
@@ -4204,13 +4256,14 @@ class BotController {
     if (mode === "collapse") {
       return (context.killWindow ? 3.4 : 0)
         + (context.localAdvantage > 1 ? 1.9 : 0)
+        + (context.closeoutWindow ? 1.6 : 0) // 收尾窗口：强力倾向冲杀残敌
         + (context.intelSolid ? 1 : -0.55)
         + (context.safeExchange ? 0.72 : 0)
         + context.isolatedTargetScore * 0.92
         + context.counterCollapse * 0.68
         + (context.pressureDrive > 0.85 ? 0.55 : 0)
         + context.energySurplus * 0.48
-        - context.energyRecoveryNeed * 0.55;
+        - context.energyRecoveryNeed * (context.closeoutWindow ? 0.12 : 0.55); // 收尾时不为省能放弃击杀
     }
     if (mode === "broadside") {
       return (context.broadsideWindow ? 2.4 : -0.45)
@@ -4233,16 +4286,17 @@ class BotController {
     }
     if (mode === "press") {
       return 1.55
+        + (context.closeoutWindow ? 1.3 : 0) // 收尾窗口：维持压制把残敌打死
         + (rangeRatio > 1.08 ? 0.92 : 0)
         + (context.localAdvantage > 0.9 ? 0.72 : 0)
-        - (context.defensivePressure ? 1.05 : 0)
+        - (context.defensivePressure && !context.winning ? 1.05 : 0) // 占优时防御压力不削弱压制
         - (context.enemyBroadsideRisk ? 0.78 : 0)
         + (context.arcAdvantage > 0.2 ? 0.36 : 0)
         + context.pressureDrive * 1.08
         + (context.trackableIntel ? 0.82 : 0)
         + context.counterCollapse * 0.34
         + context.energySurplus * 0.34
-        - context.energyRecoveryNeed * (context.emergencyCommit ? 0.08 : 0.34);
+        - context.energyRecoveryNeed * (context.emergencyCommit || context.closeoutWindow ? 0.08 : 0.34);
     }
     return 0;
   }
@@ -4250,7 +4304,8 @@ class BotController {
   chooseMode(context) {
     const forcedMode = context.edgePressure > 0.34
       ? "recover"
-      : (context.energyRecoveryNeed >= 0.78 || context.energyRatio < 0.12) && !context.emergencyCommit && !context.focus.visible && context.dist > context.rangeRef * 0.84
+      // 收尾窗口下不强制去充能(harvest)——该把残局打完，否则双方都去充能拖成平局
+      : (context.energyRecoveryNeed >= 0.78 || context.energyRatio < 0.12) && !context.emergencyCommit && !context.closeoutWindow && !context.focus.visible && context.dist > context.rangeRef * 0.84
         ? "harvest"
       : context.searchRequired && context.focus.source === "spawn"
         ? "search"
@@ -4261,12 +4316,13 @@ class BotController {
       return this.mode;
     }
 
-    if (context.mainHull < 0.26 && context.dist < context.rangeRef * 1.22) {
+    // 低血转防守——但若正占优(领先/敌濒覆灭)则不退，继续压制把对手打死，避免领先方陪跑成平局
+    if (context.mainHull < 0.26 && context.dist < context.rangeRef * 1.22 && !context.winning) {
       this.mode = context.detachedCount > 0 ? "regroup" : "kite";
       this.modeTimer = randomInRange(1.6, 2.8);
       return this.mode;
     }
-    if ((context.focus.visible || context.maxShipThreat > 0.7) && context.energyRatio < 0.12 && context.dist < context.rangeRef * 0.96) {
+    if ((context.focus.visible || context.maxShipThreat > 0.7) && context.energyRatio < 0.12 && context.dist < context.rangeRef * 0.96 && !context.winning) {
       this.mode = "regroup";
       this.modeTimer = randomInRange(1.8, 3);
       return this.mode;
@@ -4998,6 +5054,31 @@ class BotController {
     ], 1.22);
   }
 
+  // U1 视野收尾：交火落点常停在"打得到却看不见"的盲区(vision≈166 ≪ range≈505)，
+  // 双方互相失明便不开火、拖成平局。此处在进攻意图下把落点从盲区沿原方向(保留侧舷角)
+  // 拉进视野距离，使舰真正夺取目标并持续开火。仅作用于进攻模式+愿意交战时。
+  engageTarget(ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
+    if (!target || !enemy || !ship) return target;
+    const aggressive = combatRole && (mode === "press" || mode === "collapse" || mode === "broadside" || mode === "cutoff");
+    if (!aggressive) return target;
+    const want = tactical.killWindow || tactical.emergencyCommit
+      || tactical.localAdvantage >= 0.82 || tactical.intelSolid;
+    if (!want) return target;
+    const vision = ship.effectiveVision();
+    const ox = target.x - enemy.x;
+    const oy = target.y - enemy.y;
+    const off = Math.hypot(ox, oy);
+    if (off < 1) return target;
+    const visionEngage = clamp(vision * 0.88, 90, Math.max(vision, 90));
+    if (off <= visionEngage + 6) return target; // 已在视野内
+    const k = visionEngage / off;
+    return {
+      ...target,
+      x: this.team.match.clampX(enemy.x + ox * k, this.safeRoutePadding()),
+      y: this.team.match.clampY(enemy.y + oy * k, this.safeRoutePadding()),
+    };
+  }
+
   issueShipRoute(ship, targetX, targetY, throttle, padding = this.team.match.mapPadding) {
     if (!ship || !ship.alive) {
       return null;
@@ -5082,6 +5163,7 @@ class BotController {
       shouldUseDetachedRoles: false,
     };
     const intelLeadShip = detachedPlan.intelLeadKey ? this.team.ships[detachedPlan.intelLeadKey] : null;
+    let mainHeldForIntelLead = false;
     if (
       detachedPlan.intelLeadKey
       && !tactical.killWindow
@@ -5106,7 +5188,13 @@ class BotController {
       const supportExchange = this.evaluateArcExchange(main, enemyEstimate, supportCandidate, 1.24);
       if (currentRange < supportRange - 28 || supportExchange.enemyDensity <= 1.15 || (intelLeadShip?.characterId === "yuki" && (enemyEstimate.visible || tactical.intelSolid))) {
         mainTarget = supportCandidate;
+        // 仅长门前探(其视野远、专职侦察)时主舰保持支援位不压近；其余情况仍可压近夺视野/吃侧舷
+        mainHeldForIntelLead = intelLeadShip?.characterId === "yuki";
       }
+    }
+    // U1 视野收尾：主舰若非"为前探僚舰保持火力支援位"，则在进攻意图下压近到视野距离夺取目标
+    if (!mainHeldForIntelLead) {
+      mainTarget = this.engageTarget(main, enemyEstimate, mainTarget, mode, tactical);
     }
     const throttleShift = tactical.emergencyCommit
       ? 0.06 + tactical.energySurplus * 0.05
@@ -5165,6 +5253,7 @@ class BotController {
       if (!directive) {
         return;
       }
+      directive.target = this.engageTarget(ship, enemyEstimate, directive.target, mode, tactical, { combatRole: role === "fire" || role === "front" });
       let throttleRange = directive.throttle;
       if (role === "escape") {
         throttleRange = { min: 1.04, max: 1.2 };
