@@ -906,34 +906,34 @@ function drawRoute(route, selected) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // ① 外发光
-  ctx.setLineDash([]);
+  // 航线主体:渐变虚线 + 同步发光虚线,沿航向缓缓流动
+  const dash = [11, 9];
+  const dashOffset = -time * 28;
+
+  // ① 发光虚线
+  ctx.setLineDash(dash);
+  ctx.lineDashOffset = dashOffset;
   ctx.lineWidth = selected ? 7.5 : 5;
-  ctx.strokeStyle = selected ? "#39d8ff2e" : "#39d8ff1c";
+  ctx.strokeStyle = selected ? "#39d8ff33" : "#39d8ff1f";
   tracePath();
   ctx.stroke();
 
-  // ② 主线:舰身青 → 目标薄荷 渐变实线
+  // ② 主虚线:舰身青 → 目标薄荷 渐变
   const grad = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
   grad.addColorStop(0, selected ? "#7ce6ff" : "#6fcdeecc");
   grad.addColorStop(1, selected ? "#a9f7d2" : "#86dcc0cc");
-  ctx.lineWidth = selected ? 2.6 : 1.9;
+  ctx.lineWidth = selected ? 2.8 : 2.0;
   ctx.strokeStyle = grad;
+  ctx.setLineDash(dash);
+  ctx.lineDashOffset = dashOffset;
   tracePath();
   ctx.stroke();
 
-  if (selected) {
-    // ③ 流动虚线:传达行进方向
-    ctx.lineWidth = 2.6;
-    ctx.strokeStyle = "#eafcff88";
-    ctx.setLineDash([9, 17]);
-    ctx.lineDashOffset = -time * 46;
-    tracePath();
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.lineDashOffset = 0;
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
 
-    // ④ 终点:目标十字标记
+  if (selected) {
+    // 终点:目标十字标记
     drawTargetMarker(p2, heading, time);
 
     // ⑤ 进度点

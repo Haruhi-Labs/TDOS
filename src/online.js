@@ -1937,10 +1937,12 @@ function routeHandleAtPoint(route, x, y) {
   if (!route) {
     return null;
   }
-  if (distance(x, y, route.p1.x, route.p1.y) <= ROUTE_HANDLE_RADIUS) {
+  // 抓取半径明显大于绘制半径(11),让控制点/端点更好点中、减少"盲区"
+  const grab = ROUTE_HANDLE_RADIUS + 15;
+  if (distance(x, y, route.p1.x, route.p1.y) <= grab) {
     return "control";
   }
-  if (distance(x, y, route.p2.x, route.p2.y) <= ROUTE_HANDLE_RADIUS + 1.5) {
+  if (distance(x, y, route.p2.x, route.p2.y) <= grab) {
     return "end";
   }
   return null;
@@ -2538,34 +2540,34 @@ function drawRoute(route, selected, time = 0) {
   ctx.lineCap = "round";
   ctx.lineJoin = "round";
 
-  // ① 外发光:宽而透明的同路径描边,航线在星空上浮起、边缘柔和
-  ctx.setLineDash([]);
+  // 航线主体:渐变虚线 + 同步发光虚线,沿航向缓缓流动(轻盈好看,并传达方向)
+  const dash = [11, 9];
+  const dashOffset = -time * 28;
+
+  // ① 发光虚线:宽而透明,航线在星空上浮起
+  ctx.setLineDash(dash);
+  ctx.lineDashOffset = dashOffset;
   ctx.lineWidth = selected ? 7.5 : 5;
-  ctx.strokeStyle = selected ? "#39d8ff2e" : "#39d8ff1c";
+  ctx.strokeStyle = selected ? "#39d8ff33" : "#39d8ff1f";
   tracePath();
   ctx.stroke();
 
-  // ② 主线:舰身青 → 目标薄荷 的渐变实线,清晰锐利
+  // ② 主虚线:舰身青 → 目标薄荷 的渐变
   const grad = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
   grad.addColorStop(0, selected ? "#7ce6ff" : "#6fcdeecc");
   grad.addColorStop(1, selected ? "#a9f7d2" : "#86dcc0cc");
-  ctx.lineWidth = selected ? 2.6 : 1.9;
+  ctx.lineWidth = selected ? 2.8 : 2.0;
   ctx.strokeStyle = grad;
+  ctx.setLineDash(dash);
+  ctx.lineDashOffset = dashOffset;
   tracePath();
   ctx.stroke();
 
-  if (selected) {
-    // ③ 流动虚线:沿航向缓缓移动,传达行进方向
-    ctx.lineWidth = 2.6;
-    ctx.strokeStyle = "#eafcff88";
-    ctx.setLineDash([9, 17]);
-    ctx.lineDashOffset = -time * 46;
-    tracePath();
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.lineDashOffset = 0;
+  ctx.setLineDash([]);
+  ctx.lineDashOffset = 0;
 
-    // ④ 终点:目标十字标记(环 + 四向刻度 + 心点 + 航向箭头)
+  if (selected) {
+    // 终点:目标十字标记(环 + 四向刻度 + 心点 + 航向箭头)
     drawTargetMarker(p2, heading, time);
 
     // ⑤ 控制点 + 控制多边形(仅桌面可拖拽):琥珀色"旋钮"
@@ -3467,10 +3469,10 @@ function bindUiEvents() {
   bindPressButton(ui.subSkillBtn, useSubSkillOnline);
   bindPressButton(ui.onlineMobileSubSkillBtn, useSubSkillOnline);
 
-  // 桌面右键:在落点创建路径点(设目标),并进入"按住拖动调曲率"
+  // 桌面右键:在落点创建路径点(设目标);屏蔽浏览器右键菜单
   canvas.addEventListener("contextmenu", (event) => {
     if (!app.mobileMode) {
-      event.preventDefault(); // 右键已用于设航线,屏蔽浏览器右键菜单
+      event.preventDefault();
     }
   });
 
@@ -3478,53 +3480,59 @@ function bindUiEvents() {
     if (app.mobileMode) {
       return;
     }
-    if (event.button !== 2) {
-      return; // 只响应右键;左键留给"选战区"(click 事件处理)
-    }
     if (!app.room || app.room.status !== "running") {
       return;
     }
-    event.preventDefault();
     if (app.pendingSubSkillAim) {
-      return; // 技能瞄准中不抢右键
+      return; // 技能瞄准中不处理航线
     }
 
     const state = app.lastRenderState;
     if (!state) {
       return;
     }
-
     const ship = getSelectedShipFromState(state);
-    if (!ship || !ship.alive || !ship.canControl) {
-      log("当前舰船不可操作");
+
+    // 左键:抓取航线手柄拖拽 —— 控制点=调曲率,端点=调路径。没抓到手柄则交给 click 选战区。
+    if (event.button === 0) {
+      if (!ship || !ship.alive || !ship.canControl) {
+        return;
+      }
+      const ownTeam = teamBySeat(state, app.seat);
+      const route = getDisplayRouteForShip(ownTeam, ship);
+      if (!route) {
+        return;
+      }
+      const pos = pointerFromEvent(event);
+      const handle = routeHandleAtPoint(route, pos.x, pos.y);
+      if (handle) {
+        app.drag = { handle, shipKey: ship.key, lastSentAt: 0 };
+      }
       return;
     }
 
-    const pos = pointerFromEvent(event);
-    app.pointer = pos;
-
-    // 落点创建路径点(默认曲率);随后按住右键拖动 → 调曲率(见 mousemove)
-    const seq = sendAction({
-      type: "set_route",
-      shipKey: ship.key,
-      endX: pos.x,
-      endY: pos.y,
-      throttle: app.throttle,
-      anchorToMain: ship.key === "main",
-    });
-    if (seq !== null) {
-      applySetRouteOverride(ship.key, seq, pos.x, pos.y);
-      log(`${ship.name} 已设定航线(按住右键拖动调曲率)`);
+    // 右键:在落点创建路径点(设目标,默认曲率;之后用左键拖控制点调曲率)
+    if (event.button === 2) {
+      event.preventDefault();
+      if (!ship || !ship.alive || !ship.canControl) {
+        log("当前舰船不可操作");
+        return;
+      }
+      const pos = pointerFromEvent(event);
+      app.pointer = pos;
+      const seq = sendAction({
+        type: "set_route",
+        shipKey: ship.key,
+        endX: pos.x,
+        endY: pos.y,
+        throttle: app.throttle,
+        anchorToMain: ship.key === "main",
+      });
+      if (seq !== null) {
+        applySetRouteOverride(ship.key, seq, pos.x, pos.y);
+        log(`${ship.name} 已设定航线(左键拖控制点调曲率/端点调路径)`);
+      }
     }
-
-    app.drag = {
-      handle: "control",
-      shipKey: ship.key,
-      downX: pos.x,
-      downY: pos.y,
-      moved: false,
-      lastSentAt: 0,
-    };
   });
 
   canvas.addEventListener("mousemove", (event) => {
@@ -3532,18 +3540,9 @@ function bindUiEvents() {
       app.pointer = pointerFromEvent(event);
       return;
     }
-    const pos = pointerFromEvent(event);
-    app.pointer = pos;
+    app.pointer = pointerFromEvent(event);
     if (!app.drag || !app.room || app.room.status !== "running") {
       return;
-    }
-
-    // 仅当移动超过阈值才视作"调曲率",避免纯单击的微抖把控制点拽歪
-    if (!app.drag.moved) {
-      if (distance(pos.x, pos.y, app.drag.downX, app.drag.downY) < 8) {
-        return;
-      }
-      app.drag.moved = true;
     }
 
     const elapsedMs = performance.now();
@@ -3551,14 +3550,29 @@ function bindUiEvents() {
       return;
     }
 
-    const seq = sendAction({
-      type: "route_control",
-      shipKey: app.drag.shipKey,
-      controlX: pos.x,
-      controlY: pos.y,
-    });
-    if (seq !== null) {
-      applyRouteControlOverride(app.drag.shipKey, seq, pos.x, pos.y);
+    const pos = pointerFromEvent(event);
+    let seq = null;
+
+    if (app.drag.handle === "control") {
+      seq = sendAction({
+        type: "route_control",
+        shipKey: app.drag.shipKey,
+        controlX: pos.x,
+        controlY: pos.y,
+      });
+      if (seq !== null) {
+        applyRouteControlOverride(app.drag.shipKey, seq, pos.x, pos.y);
+      }
+    } else if (app.drag.handle === "end") {
+      seq = sendAction({
+        type: "route_end",
+        shipKey: app.drag.shipKey,
+        endX: pos.x,
+        endY: pos.y,
+      });
+      if (seq !== null) {
+        applyRouteEndOverride(app.drag.shipKey, seq, pos.x, pos.y);
+      }
     }
 
     app.drag.lastSentAt = elapsedMs;
@@ -3569,7 +3583,8 @@ function bindUiEvents() {
       return;
     }
     if (app.drag) {
-      app.drag = null; // 右键拖拽结束;不抑制后续左键(左键=选战区,不受影响)
+      app.drag = null;
+      app.suppressClick = true; // 拖拽手柄结束后,抑制这次 click 的战区切换
     }
   });
 
