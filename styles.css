@@ -3306,3 +3306,18 @@ button.toggle-active {
 @media (prefers-reduced-motion: reduce) {
   #app > *, .ts-content, .page-frame, .lobby-frame { animation: none; }
 }
+
+/* AI推演：对照旧AI开关 */
+.debug-legacy-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  font-family: var(--font-cn);
+  font-size: 0.82rem;
+  color: var(--gilt-pale);
+  cursor: pointer;
+  user-select: none;
+}
+.debug-legacy-toggle input { accent-color: var(--gilt); width: 15px; height: 15px; cursor: pointer; }
+.debug-seat-tag { transition: color 0.2s; }

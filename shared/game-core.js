@@ -2701,6 +2701,9 @@ export class BotController {
     this.team = team;
     this.enemy = enemy;
     this.profile = HARD_AI_PROFILE;
+    // 旧版AI开关：true 时关闭全部升级(集火/视野收尾/收尾压制)，行为回到升级前的基线AI。
+    // 用于 AI推演里「对手用旧AI」对照展示，无需打包冻结副本。
+    this.legacy = false;
 
     this.moveTimer = 0;
     this.scoutTimer = this.profile.initialScoutTimer;
@@ -3772,9 +3775,9 @@ export class BotController {
     const ownHullTeam = this.team.hullRatio();
     const enemyAliveCount = this.enemy.getAllShips().filter((s) => s && s.alive).length;
     const ownAliveCount = this.team.getAllShips().filter((s) => s && s.alive).length;
-    const winning = ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + 0.08;
-    const closeoutWindow = enemyAliveCount > 0
-      && (enemyAliveCount < ownAliveCount || enemyHullTeam < 0.3 || (killWindow && winning));
+    const winning = this.legacy ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + 0.08);
+    const closeoutWindow = this.legacy ? false : (enemyAliveCount > 0
+      && (enemyAliveCount < ownAliveCount || enemyHullTeam < 0.3 || (killWindow && winning)));
 
     return {
       focus,
@@ -4003,6 +4006,7 @@ export class BotController {
   // 经惰性钩子 ship.preferredFocusId 下发；pickTargetFor 仅在该目标可命中时采用，否则取最近。
   // 集中火力按序消灭(先杀残血/先减敌数)，破解原版火力均摊(HHI≈0.33)与残血苟活~35s 的平局根因。
   assignFireFocus() {
+    if (this.legacy) return; // 旧版AI：不集火，各舰取最近(pickTargetFor 钩子未设=原行为)
     const ships = this.team.getAllShips();
     for (const s of ships) { if (s) s.preferredFocusId = null; }
     const enemies = this.enemy.getAllShips().filter((e) => e && e.alive);
@@ -5058,6 +5062,7 @@ export class BotController {
   // 双方互相失明便不开火、拖成平局。此处在进攻意图下把落点从盲区沿原方向(保留侧舷角)
   // 拉进视野距离，使舰真正夺取目标并持续开火。仅作用于进攻模式+愿意交战时。
   engageTarget(ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
+    if (this.legacy) return target; // 旧版AI：不做视野收尾压近
     if (!target || !enemy || !ship) return target;
     const aggressive = combatRole && (mode === "press" || mode === "collapse" || mode === "broadside" || mode === "cutoff");
     if (!aggressive) return target;
@@ -5452,8 +5457,11 @@ export class MatchSimulation {
     this.bursts = [];
     this.floatingTexts = [];
     this.bots = {};
+    const legacyAiSeats = normalizeAiSeats(mode, options.legacyAiSeats); // 指定哪些AI席位用旧版AI
     for (const seat of this.aiSeats) {
-      this.bots[seat] = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
+      const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
+      bot.legacy = legacyAiSeats.includes(seat);
+      this.bots[seat] = bot;
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;

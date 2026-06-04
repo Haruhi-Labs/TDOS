@@ -50,6 +50,9 @@ function cacheDom() {
   overlay: document.getElementById("debugOverlay"),
   overlayTitle: document.getElementById("debugOverlayTitle"),
   restartBtn: document.getElementById("debugRestartBtn"),
+  legacyToggle: document.getElementById("debugLegacyToggle"),
+  seatTagA: document.getElementById("debugSeatTagA"),
+  seatTagB: document.getElementById("debugSeatTagB"),
   };
 
   loadoutUi = {
@@ -83,6 +86,8 @@ function initApp() {
   // A 队默认沿用玩家档案里的出战编队（与单机/在线共享），B 队默认 AI 阵容；两侧仍可各自独立改存
   teamALoadout: readStoredLoadout("A", getLoadout()),
   teamBLoadout: readStoredLoadout("B", DEFAULT_AI_LOADOUT),
+  // 对照开关：B 队改用升级前的旧版AI，便于直观对比新AI的压制力
+  opponentLegacy: window.localStorage.getItem("haruhi-debug-legacy-b") === "1",
   selected: {
     seat: "A",
     shipId: null,
@@ -486,19 +491,27 @@ function clearLog() {
 }
 
 function createSimulation() {
+  const legacyB = app.opponentLegacy;
   return new MatchSimulation({
     mode: "pvp",
     aiSeats: ["A", "B"],
+    legacyAiSeats: legacyB ? ["B"] : [], // B 队用旧版AI做对照
     worldSize: canvas.width,
     teamNames: {
-      A: "调试舰队A",
-      B: "调试舰队B",
+      A: legacyB ? "新版AI · A队" : "调试舰队A",
+      B: legacyB ? "旧版AI · B队" : "调试舰队B",
     },
     teamLoadouts: {
       A: app.teamALoadout,
       B: app.teamBLoadout,
     },
   });
+}
+
+function refreshLegacyLabels() {
+  const on = app.opponentLegacy;
+  if (ui.seatTagA) ui.seatTagA.textContent = on ? "新AI" : "AI";
+  if (ui.seatTagB) ui.seatTagB.textContent = on ? "旧AI" : "AI";
 }
 
 function setSelectedShip(seat, shipId) {
@@ -1557,6 +1570,18 @@ function bindUiEvents() {
     resetMatch(true);
   });
 
+  if (ui.legacyToggle) {
+    ui.legacyToggle.checked = app.opponentLegacy;
+    refreshLegacyLabels();
+    ui.legacyToggle.addEventListener("change", () => {
+      app.opponentLegacy = ui.legacyToggle.checked;
+      window.localStorage.setItem("haruhi-debug-legacy-b", app.opponentLegacy ? "1" : "0");
+      refreshLegacyLabels();
+      resetMatch(true);
+      log(app.opponentLegacy ? "对照模式开启：B队改用旧版AI" : "对照模式关闭：双方均为新AI");
+    });
+  }
+
   canvas.addEventListener("click", (event) => {
     if (!app.state) {
       return;
@@ -1704,6 +1729,10 @@ function debugTemplate() {
             <button type="button" class="debug-speed-btn" data-speed="2">2x</button>
             <button type="button" class="debug-speed-btn" data-speed="4">4x</button>
           </div>
+          <label class="debug-legacy-toggle" for="debugLegacyToggle">
+            <input type="checkbox" id="debugLegacyToggle" />
+            <span>对手(B队)用旧版AI · 对照新AI压制力</span>
+          </label>
           <p class="hint">双方均由 AI 接管。观察者可切换任意舰船，查看射界、视野与航线；手机上点空白区域可挪动镜头。</p>
         </section>
 
@@ -1711,7 +1740,7 @@ function debugTemplate() {
           <h2>阵容设置</h2>
           <div class="debug-team-stack">
             <section class="debug-team-block">
-              <div class="debug-team-head"><h3>A队</h3><strong class="debug-seat-tag seat-a">AI</strong></div>
+              <div class="debug-team-head"><h3>A队</h3><strong class="debug-seat-tag seat-a" id="debugSeatTagA">AI</strong></div>
               <div class="loadout-grid">
                 <label class="loadout-field" for="debugTeamAMainRole"><span>主舰</span><select id="debugTeamAMainRole"></select></label>
                 <label class="loadout-field" for="debugTeamASub1Role"><span>副舰一</span><select id="debugTeamASub1Role"></select></label>
@@ -1720,7 +1749,7 @@ function debugTemplate() {
               <div id="debugTeamAPreview" class="loadout-preview"></div>
             </section>
             <section class="debug-team-block">
-              <div class="debug-team-head"><h3>B队</h3><strong class="debug-seat-tag seat-b">AI</strong></div>
+              <div class="debug-team-head"><h3>B队</h3><strong class="debug-seat-tag seat-b" id="debugSeatTagB">AI</strong></div>
               <div class="loadout-grid">
                 <label class="loadout-field" for="debugTeamBMainRole"><span>主舰</span><select id="debugTeamBMainRole"></select></label>
                 <label class="loadout-field" for="debugTeamBSub1Role"><span>副舰一</span><select id="debugTeamBSub1Role"></select></label>
