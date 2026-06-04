@@ -995,7 +995,9 @@ class Ship {
     const turnRate = Math.max(0.05, anchor.effectiveTurnRate() * throttleFactor);
     const speedRef = Math.max(anchor.speed, anchor.effectiveSpeed() * Math.max(0.32, this.throttle), 8);
     let minTurnRadius = clamp((speedRef / turnRate) * 1.05, 30, 560);
-    let maxStartDeviation = (Math.PI / 180) * clamp(52 - speedRef * 0.22, 16, 42);
+    // 起始偏角放宽:让控制点能越过 p0→p2 弦线两侧,曲线可在凹/凸之间自由调整。
+    // 实际弯曲锐度仍由下面的最小转弯半径(maxCurvature)兜底,不会变得不可跟随。
+    let maxStartDeviation = (Math.PI / 180) * clamp(100 - speedRef * 0.22, 62, 88);
     if (this.team.hasKyonFlagship()) {
       minTurnRadius *= 0.62;
       maxStartDeviation *= 1.4;
