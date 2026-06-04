@@ -1446,6 +1446,12 @@ class Scout {
       this.command.x = this.anchor.x;
       this.command.y = this.anchor.y;
     }
+    // 若指定了 seekPoint(敌方估计位置)，先直飞该点把视野覆盖到目标，再在战区巡逻——
+    // 比"飞战区中心+随机巡逻"更快找到敌人(战区≈480px ≫ 侦察视野≈95px，随机巡逻常错过)。
+    if (config.seekPoint && Number.isFinite(config.seekPoint.x) && Number.isFinite(config.seekPoint.y)) {
+      this.command.x = config.seekPoint.x;
+      this.command.y = config.seekPoint.y;
+    }
 
     this.patrolTimer = randomInRange(1.0, 2.4);
   }
@@ -2226,15 +2232,19 @@ class Team {
     if (this.cooldowns.scout > 0) {
       return false;
     }
-    if (!this.spendEnergyForShip("main", cost)) {
-      return false;
-    }
-    const zone = this.match.zoneById(zoneId);
-    const source = this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive);
+    // 侦察机从「指定舰船」处发出(默认主舰)——前出的分离舰可更快把侦察部署到位。
+    // 能量从该舰所属能量池扣除(分离后副舰用自己的池)。
+    const requested = options.fromShipKey ? this.ships[options.fromShipKey] : null;
+    const source = (requested && requested.alive ? requested : null)
+      || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
     if (!source) {
       return false;
     }
-    this.scouts.push(new Scout(this, source.x, source.y, { zone }));
+    if (!this.spendEnergyForShip(source.key || "main", cost)) {
+      return false;
+    }
+    const zone = this.match.zoneById(zoneId);
+    this.scouts.push(new Scout(this, source.x, source.y, { zone, seekPoint: options.seekPoint }));
     this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
     return true;
   }
@@ -3932,6 +3942,20 @@ export class BotController {
     return this.zoneForPoint(probeX, probeY).id;
   }
 
+  // 选侦察机起源舰：取离"敌方估计位置(或目标战区中心)"最近的存活舰，使侦察最快抵近目标(前出分离舰优先)
+  pickScoutSourceKey(zoneId, aimPoint = null) {
+    const c = (aimPoint && Number.isFinite(aimPoint.x)) ? aimPoint : this.zoneCenter(zoneId);
+    let bestKey = "main";
+    let bestD = Infinity;
+    for (const key of ["main", "sub1", "sub2"]) {
+      const ship = this.team.ships[key];
+      if (!ship || !ship.alive) continue;
+      const d = c ? distance(ship.x, ship.y, c.x, c.y) : 0;
+      if (d < bestD) { bestD = d; bestKey = key; }
+    }
+    return bestKey;
+  }
+
   pickScoutZoneId(main, enemyEstimate = null) {
     const focus = enemyEstimate || this.primaryEnemyEstimate();
     if (focus && focus.zoneId) {
@@ -4035,7 +4059,12 @@ export class BotController {
     if (this.scoutTimer <= 0 && !this.team.areSkillsDisabled()) {
       if (this.shouldLaunchScout(this.currentContext)) {
         const zoneId = this.pickScoutZoneId(this.team.ships.main, this.currentContext?.focus || this.primaryEnemyEstimate());
-        const launched = this.team.launchScout(zoneId);
+        // 从最靠近敌方估计位置的存活舰发出侦察机——前出的分离舰能更快把视野部署到目标(用户思路)
+        const scoutAim = this.currentContext?.focus || this.primaryEnemyEstimate();
+        const scoutSourceKey = this.pickScoutSourceKey(zoneId, scoutAim);
+        // seekPoint=敌方估计位置：让侦察机直飞过去覆盖目标，显著提高找到敌人的可靠性
+        const seekPoint = scoutAim && Number.isFinite(scoutAim.x) ? { x: scoutAim.x, y: scoutAim.y } : null;
+        const launched = this.team.launchScout(zoneId, { fromShipKey: scoutSourceKey, seekPoint });
         this.lastScoutDecision = {
           action: launched ? "launch" : "retry",
           zoneId,
@@ -5595,7 +5624,7 @@ export class MatchSimulation {
 
     if (type === "launch_scout") {
       const zoneId = Number(action.zoneId) || 5;
-      return team.launchScout(zoneId);
+      return team.launchScout(zoneId, { fromShipKey: action.shipKey });
     }
 
     if (type === "configure_auto_scout") {

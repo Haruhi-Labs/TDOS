@@ -799,9 +799,11 @@ function updateSkillButtons(own) {
   const selected = selectedShipState();
   const mainShip = own.ships ? own.ships.main : null;
   const mainEnergy = mainShip ? Number(mainShip.fleetEnergy) || 0 : 0;
+  // 侦察机现从选中舰发出：按选中舰的可用能量判定是否可派
+  const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
 
   const scoutLocked = own.skillsDisabled;
-  ui.scoutBtn.disabled = scoutLocked || (cooldowns.scout || 0) > 0 || mainEnergy < SCOUT_LAUNCH_COST;
+  ui.scoutBtn.disabled = scoutLocked || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
   ui.scoutBtn.textContent = scoutLocked
     ? "派出侦查机（已被封印）"
     : (cooldowns.scout || 0) > 0
@@ -1763,13 +1765,13 @@ function bindUiEvents() {
   });
 
   bindPressButton(ui.scoutBtn, () => {
-    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId });
+    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
     if (ok) {
       log(`侦查机已派往战区${app.selectedZoneId}`);
     }
   });
   bindPressButton(ui.mobileScoutBtn, () => {
-    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId });
+    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
     if (ok) {
       log(`侦查机已派往战区${app.selectedZoneId}`);
     }
@@ -2061,7 +2063,7 @@ function bindUiEvents() {
     // X — launch scout
     if (event.code === "KeyX") {
       event.preventDefault();
-      const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId });
+      const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
       if (ok) {
         log(`侦查机已派往战区${app.selectedZoneId}`);
       }

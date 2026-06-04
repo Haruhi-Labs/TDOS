@@ -1183,8 +1183,10 @@ function updateSkillButtons(own) {
   const selected = own.ships ? own.ships[app.selectedShipKey] : null;
   const mainShip = own.ships ? own.ships.main : null;
   const mainEnergy = Number(mainShip?.fleetEnergy) || 0;
+  // 侦察机从选中舰发出：按选中舰可用能量判定
+  const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
 
-  ui.scoutBtn.disabled = own.skillsDisabled || (cooldowns.scout || 0) > 0 || mainEnergy < SCOUT_LAUNCH_COST;
+  ui.scoutBtn.disabled = own.skillsDisabled || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
   ui.scoutBtn.textContent = own.skillsDisabled
     ? "派出侦查机（已被封印）"
     : (cooldowns.scout || 0) > 0
@@ -3302,6 +3304,7 @@ function bindUiEvents() {
     const seq = sendAction({
       type: "launch_scout",
       zoneId: app.selectedZoneId,
+      shipKey: app.selectedShipKey,
     });
     if (seq !== null) {
       log(`侦查机已派往战区 ${app.selectedZoneId}`);
@@ -3311,6 +3314,7 @@ function bindUiEvents() {
     const seq = sendAction({
       type: "launch_scout",
       zoneId: app.selectedZoneId,
+      shipKey: app.selectedShipKey,
     });
     if (seq !== null) {
       log(`侦查机已派往战区 ${app.selectedZoneId}`);
