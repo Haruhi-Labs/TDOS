@@ -8,7 +8,7 @@ import { isMobile } from "./mobile.js";
 const CREDITS = [
   { role: "画师", name: "橙海" },
   { role: "设计 · 开发", name: "春日しゅぎ" },
-  { role: "出品", name: "凉宫春日开发组" },
+  { role: "出品", name: "凉宫春日应援团超能力者组" },
 ];
 
 function rowsHTML() {
