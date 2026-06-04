@@ -2748,6 +2748,9 @@ export class BotController {
     this.pendingSightings = new Map();
     this.searchSweepSign = 1;
     this.lastSearchAdvanceAt = this.team.match.elapsed;
+    // 情报占据图(belief)：像人一样推理敌人位置——持续预测(向外扩散可能区)、排除(己方视野
+    // 看过且无敌的区清零)、缩小到最高概率未排除区去搜。初始以敌出生点为峰。
+    this.belief = this.initBelief(enemyMain);
     this.lastTacticalPlan = {
       focus: this.debugContact(this.enemyIntel.main),
       searchCenter: this.debugPoint(this.zoneCenter(spawnZone.id)),
@@ -3175,6 +3178,112 @@ export class BotController {
     }
     this.enemyIntel.searchZoneId = snapshot.zoneId;
     return this.projectContact(snapshot, 0);
+  }
+
+  // ── 情报占据图(belief)：类人地推理"敌人可能在哪" ──
+  initBelief(enemyMain) {
+    const ws = this.team.match.worldSize;
+    const cols = 16;
+    const rows = 16;
+    const belief = { cols, rows, cell: ws / cols, w: new Float64Array(cols * rows) };
+    if (enemyMain) {
+      belief.w[this.beliefIdxFor(belief, enemyMain.x, enemyMain.y)] = 1;
+    }
+    return belief;
+  }
+
+  beliefIdxFor(b, x, y) {
+    const cx = clamp(Math.floor(x / b.cell), 0, b.cols - 1);
+    const cy = clamp(Math.floor(y / b.cell), 0, b.rows - 1);
+    return cy * b.cols + cx;
+  }
+
+  // 每tick更新：①看见→坍缩到可见处；否则 ②预测(向四邻扩散) ③排除(己方视野看过且无敌的区清零) ④兜底重播种
+  updateBelief(dt) {
+    const b = this.belief;
+    if (!b) return;
+    const { cols, rows, cell } = b;
+    const n = cols * rows;
+
+    const visible = [];
+    for (const s of this.enemy.getAllShips()) {
+      if (s && s.alive && this.team.visibleEnemyIds.has(s.id)) visible.push(s);
+    }
+    if (visible.length) {
+      // 坍缩：看得见就把概率集中到可见位置(清掉旧弥散)
+      b.w.fill(0);
+      for (const s of visible) b.w[this.beliefIdxFor(b, s.x, s.y)] = 1;
+      return;
+    }
+
+    // ① 预测：敌可能已移动→概率按"敌最大速度×dt"向四邻扩散
+    const enemyMaxSpeed = 46;
+    const leak = clamp((enemyMaxSpeed * Math.max(dt, 0)) / Math.max(cell, 1), 0, 0.22);
+    let w = b.w;
+    if (leak > 0.0008) {
+      const next = new Float64Array(n);
+      for (let cy = 0; cy < rows; cy++) {
+        for (let cx = 0; cx < cols; cx++) {
+          const i = cy * cols + cx;
+          const v = w[i];
+          if (v <= 1e-9) continue;
+          const nb = [];
+          if (cx > 0) nb.push(i - 1);
+          if (cx < cols - 1) nb.push(i + 1);
+          if (cy > 0) nb.push(i - cols);
+          if (cy < rows - 1) nb.push(i + cols);
+          const out = v * leak;
+          next[i] += v - out;
+          const share = out / Math.max(1, nb.length);
+          for (const j of nb) next[j] += share;
+        }
+      }
+      b.w = next;
+      w = next;
+    }
+
+    // ② 排除：己方每个视野源覆盖到的cell若无敌→几乎清零(看过、是空的)
+    for (const src of this.team.getVisionSources()) {
+      const r = src.range;
+      if (!(r > 0)) continue;
+      const minx = clamp(Math.floor((src.x - r) / cell), 0, cols - 1);
+      const maxx = clamp(Math.floor((src.x + r) / cell), 0, cols - 1);
+      const miny = clamp(Math.floor((src.y - r) / cell), 0, rows - 1);
+      const maxy = clamp(Math.floor((src.y + r) / cell), 0, rows - 1);
+      for (let cy = miny; cy <= maxy; cy++) {
+        for (let cx = minx; cx <= maxx; cx++) {
+          const ccx = (cx + 0.5) * cell;
+          const ccy = (cy + 0.5) * cell;
+          if (distance(src.x, src.y, ccx, ccy) <= r + cell * 0.3) {
+            w[cy * cols + cx] *= 0.04;
+          }
+        }
+      }
+    }
+
+    // ③ 兜底：若几乎全被排除(敌一定还在地图某处)→铺一层弱先验，以最后已知/出生点加权，保持有处可搜
+    let total = 0;
+    for (let i = 0; i < n; i++) total += w[i];
+    if (total < 0.04) {
+      for (let i = 0; i < n; i++) w[i] += 0.015;
+      const seed = this.enemyIntel?.main;
+      if (seed && Number.isFinite(seed.x)) w[this.beliefIdxFor(b, seed.x, seed.y)] += 0.4;
+    }
+  }
+
+  // 最高概率(且未排除)区域的中心——下一步该去搜/侦察的地方
+  beliefPeak() {
+    const b = this.belief;
+    if (!b) return null;
+    let best = -1;
+    let bi = -1;
+    for (let i = 0; i < b.w.length; i++) {
+      if (b.w[i] > best) { best = b.w[i]; bi = i; }
+    }
+    if (bi < 0 || best <= 1e-6) return null;
+    const cx = bi % b.cols;
+    const cy = Math.floor(bi / b.cols);
+    return { x: (cx + 0.5) * b.cell, y: (cy + 0.5) * b.cell, weight: best };
   }
 
   refreshIntel() {
@@ -3904,12 +4013,18 @@ export class BotController {
   }
 
   acquireSearchCenter(main, enemyEstimate = null) {
-    if (enemyEstimate && enemyEstimate.zoneId && (enemyEstimate.visible || enemyEstimate.age <= 10)) {
-      const preferredZoneId = !enemyEstimate.visible && enemyEstimate.source !== "spawn"
-        ? (this.likelyProbeZoneId(enemyEstimate) || enemyEstimate.zoneId)
-        : enemyEstimate.zoneId;
-      this.enemyIntel.searchZoneId = preferredZoneId;
-      return this.zoneCenter(preferredZoneId);
+    // 看得见敌人→直接以其所在战区为中心
+    if (enemyEstimate && enemyEstimate.visible && enemyEstimate.zoneId) {
+      this.enemyIntel.searchZoneId = enemyEstimate.zoneId;
+      return this.zoneCenter(enemyEstimate.zoneId);
+    }
+
+    // 看不见→去 belief 占据图的"最高概率(且未被排除)区域"——类人:持续预测+排除看过的+缩小可能区
+    const peak = this.beliefPeak();
+    if (peak) {
+      const zone = this.zoneForPoint(peak.x, peak.y);
+      if (zone) this.enemyIntel.searchZoneId = zone.id;
+      return { zoneId: this.enemyIntel.searchZoneId || 5, x: peak.x, y: peak.y };
     }
 
     if (!this.enemyIntel.searchZoneId) {
@@ -4028,6 +4143,7 @@ export class BotController {
     this.modeTimer -= dt;
 
     this.refreshIntel();
+    this.updateBelief(dt);
     this.updateStuckState(dt);
     const main = this.team.ships.main;
     const focus = main.alive ? this.selectEnemyFocus(main) : null;
@@ -4058,11 +4174,13 @@ export class BotController {
 
     if (this.scoutTimer <= 0 && !this.team.areSkillsDisabled()) {
       if (this.shouldLaunchScout(this.currentContext)) {
-        const zoneId = this.pickScoutZoneId(this.team.ships.main, this.currentContext?.focus || this.primaryEnemyEstimate());
-        // 从最靠近敌方估计位置的存活舰发出侦察机——前出的分离舰能更快把视野部署到目标(用户思路)
-        const scoutAim = this.currentContext?.focus || this.primaryEnemyEstimate();
+        const focusEst = this.currentContext?.focus || this.primaryEnemyEstimate();
+        const zoneId = this.pickScoutZoneId(this.team.ships.main, focusEst);
+        // 侦察目标点：看得见就奔可见处；看不见就奔 belief 占据图的最高概率(未排除)区——
+        // 让侦察去"最该排查"的地方，系统化缩小可能区(类人搜索)。前出分离舰就近发出，最快覆盖。
+        const peak = (focusEst && focusEst.visible) ? null : this.beliefPeak();
+        const scoutAim = peak || focusEst;
         const scoutSourceKey = this.pickScoutSourceKey(zoneId, scoutAim);
-        // seekPoint=敌方估计位置：让侦察机直飞过去覆盖目标，显著提高找到敌人的可靠性
         const seekPoint = scoutAim && Number.isFinite(scoutAim.x) ? { x: scoutAim.x, y: scoutAim.y } : null;
         const launched = this.team.launchScout(zoneId, { fromShipKey: scoutSourceKey, seekPoint });
         this.lastScoutDecision = {
@@ -4349,19 +4467,27 @@ export class BotController {
   }
 
   computeSearchTarget(main, enemyEstimate, searchCenter) {
-    const focus = enemyEstimate || searchCenter;
-    const spread = enemyEstimate
-      ? clamp(72 + (enemyEstimate.uncertainty || 0) * 0.44 + enemyEstimate.age * 10, 72, 210)
-      : 160;
-    const sweepOffset = this.searchSweepSign * spread * 0.28;
-    const toward = Math.atan2(focus.y - main.y, focus.x - main.x);
-    const forwardAngle = Number.isFinite(focus.angle) ? focus.angle : toward;
-    const forwardPush = enemyEstimate
-      ? clamp(90 + (enemyEstimate.uncertainty || 0) * 0.22 + enemyEstimate.age * 8, 90, 210)
-      : 135;
+    // 直奔 belief 占据图给出的最高概率区(searchCenter 已含"预测扩散+排除看过的")，
+    // 仅叠加小幅横扫提升覆盖。不再按"敌朝向"额外外推——belief 已含预测，再外推会把搜索带偏
+    // (静止/朝我之敌会被推过头而错过)，这正是原搜索找不到龟缩敌人的根因。
+    const visible = enemyEstimate && enemyEstimate.visible;
+    if (visible) {
+      // 看得见时(罕见进此分支)：贴近其估计位置
+      const t = Math.atan2(enemyEstimate.y - main.y, enemyEstimate.x - main.x);
+      const sweep = this.searchSweepSign * 90;
+      return {
+        x: enemyEstimate.x + Math.cos(t + Math.PI * 0.5) * sweep,
+        y: enemyEstimate.y + Math.sin(t + Math.PI * 0.5) * sweep,
+      };
+    }
+    const unc = enemyEstimate ? (enemyEstimate.uncertainty || 0) : 90;
+    const spread = clamp(64 + unc * 0.4, 64, 190);
+    const toward = Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
+    const perp = toward + Math.PI * 0.5;
+    const sweepOffset = this.searchSweepSign * spread * 0.34;
     return {
-      x: lerp(searchCenter.x, focus.x, 0.78) + Math.cos(forwardAngle) * forwardPush + Math.cos(toward + Math.PI * 0.5) * sweepOffset + randomInRange(-spread * 0.16, spread * 0.16),
-      y: lerp(searchCenter.y, focus.y, 0.78) + Math.sin(forwardAngle) * forwardPush + Math.sin(toward + Math.PI * 0.5) * sweepOffset + randomInRange(-spread * 0.16, spread * 0.16),
+      x: searchCenter.x + Math.cos(perp) * sweepOffset + randomInRange(-spread * 0.14, spread * 0.14),
+      y: searchCenter.y + Math.sin(perp) * sweepOffset + randomInRange(-spread * 0.14, spread * 0.14),
     };
   }
 
