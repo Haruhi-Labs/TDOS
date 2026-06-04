@@ -5228,6 +5228,21 @@ export class BotController {
         return;
       }
       directive.target = this.engageTarget(ship, enemyEstimate, directive.target, mode, tactical, { combatRole: role === "fire" || role === "front" });
+      // 编队凝聚(反孤立)：交战角色的分离舰不得离主力太远，避免被各个击破，并让火力自然汇聚到同一片战区
+      // (公平的"集中兵力"——靠站位凝聚，而非锁定目标)。后撤/侦察/逃逸不受此限。
+      if (!this.legacy && (role === "fire" || role === "flank" || role === "front") && main.alive) {
+        const leash = clamp(main.effectiveRange() * 0.40, 150, 235);
+        const dxm = directive.target.x - main.x;
+        const dym = directive.target.y - main.y;
+        const dm = Math.hypot(dxm, dym);
+        if (dm > leash) {
+          directive.target = {
+            ...directive.target,
+            x: this.team.match.clampX(main.x + (dxm / dm) * leash, this.safeRoutePadding(8)),
+            y: this.team.match.clampY(main.y + (dym / dm) * leash, this.safeRoutePadding(8)),
+          };
+        }
+      }
       let throttleRange = directive.throttle;
       if (role === "escape") {
         throttleRange = { min: 1.04, max: 1.2 };
