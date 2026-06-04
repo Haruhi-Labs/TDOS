@@ -550,18 +550,18 @@ function createDesktopCharacterSelect(onLaunch) {
   const header = document.createElement("header");
   header.className = "cs-header";
   header.innerHTML = `
-    <div class="cs-folio left">SOS 团 · 机密名鉴 · 卷一</div>
+    <div class="cs-folio left">SOS团 舰员档案</div>
     <div class="cs-header-center">
       <div class="cs-sos-badge" role="img" aria-label="SOS团"></div>
       <h1 class="cs-title">射手座之日</h1>
-      <p class="cs-subtitle">Star-Calendar Roster · Confidential</p>
+      <p class="cs-subtitle">The Day of Sagittarius</p>
       <div class="cs-faction" role="group" aria-label="选择阵营">
         <span class="cs-faction-label">阵营</span>
         <button type="button" class="cs-faction-btn blue active" data-color="blue">蓝队</button>
         <button type="button" class="cs-faction-btn red" data-color="red">红队</button>
       </div>
     </div>
-    <div class="cs-folio right">For SOS Brigade Eyes Only</div>
+    <div class="cs-folio right"></div>
   `;
   content.appendChild(header);
 
@@ -675,8 +675,6 @@ function createDesktopCharacterSelect(onLaunch) {
   modeLinks.className = "cs-mode-links";
   modeLinks.innerHTML = `
     <a href="/" class="cs-mode-link">主菜单</a>
-    <a href="/debug" class="cs-mode-link">AI vs AI</a>
-    <a href="/online" class="cs-mode-link">ONLINE</a>
   `;
   content.appendChild(modeLinks);
 
