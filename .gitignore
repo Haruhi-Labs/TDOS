@@ -6,3 +6,4 @@ dist/
 # AI 对抗测试脚手架(本地)
 bench/
 shared/game-core.baseline.js
+shared/game-core.fair0.js
