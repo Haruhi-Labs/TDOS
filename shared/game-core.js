@@ -2667,6 +2667,8 @@ class Team {
   }
 }
 
+const POKE_VISION_MULT = 1.7;
+
 const HARD_AI_PROFILE = Object.freeze({
   initialScoutTimer: 1.55,
   initialFlagshipTimer: 5.6,
@@ -5027,6 +5029,26 @@ export class BotController {
   engageTarget(ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
     if (this.legacy) return target; // 旧版AI：不做视野收尾压近
     if (!target || !enemy || !ship) return target;
+    // 吊在远处打(攻击射程≈505 ≫ 视野≈166，开火只需"队伍视野")：已侦得目标(enemy.visible)且落点在
+    // 0.9×射程以内→把落点外推到 0.9×射程。敌视野够不到这个距离→敌看不见我便打不还手。
+    // 情境化：中立交火期远吊安全输出(也抗对手远吊)；但到了收尾窗口(已占优、敌濒覆灭)就改为压近快速补杀。
+    if (enemy.visible && !tactical.closeoutWindow) {
+      // 站在敌视野之外打：交火距离取"敌方视野×POKE_VISION_MULT"(刚好够不到我)，clamp 在射程内。
+      // 比满射程远吊更靠前→火力更集中/压制更强，又仍在敌视野外→不挨打。
+      const enemyVis = this.estimateVisionRange(enemy);
+      const pokeR = clamp(enemyVis * POKE_VISION_MULT, enemyVis + 30, ship.effectiveRange() * 0.95);
+      const px = target.x - enemy.x;
+      const py = target.y - enemy.y;
+      const pOff = Math.hypot(px, py);
+      if (pOff > 1 && Math.abs(pOff - pokeR) > 12 && pOff < ship.effectiveRange() * 0.98) {
+        const pk = pokeR / pOff;
+        return {
+          ...target,
+          x: this.team.match.clampX(enemy.x + px * pk, this.safeRoutePadding()),
+          y: this.team.match.clampY(enemy.y + py * pk, this.safeRoutePadding()),
+        };
+      }
+    }
     const aggressive = combatRole && (mode === "press" || mode === "collapse" || mode === "broadside" || mode === "cutoff");
     if (!aggressive) return target;
     // 是否压近夺视野要judicious：常规敌人压近能吃到侧舷1.5倍密度，值得贴上去交火；
