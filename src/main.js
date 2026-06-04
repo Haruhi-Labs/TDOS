@@ -15,6 +15,7 @@ import { createRouter } from "./router.js";
 import * as menu from "./menu.js";
 import * as profileView from "./profile-view.js";
 import * as guide from "./guide.js";
+import * as credits from "./credits.js";
 
 const outlet = document.getElementById("app");
 
@@ -22,6 +23,7 @@ const routes = {
   "/": menu,
   "/profile": profileView,
   "/guide": guide,
+  "/credits": credits,
   "/play": () => import("./solo.js"),
   "/online": () => import("./online.js"),
   "/debug": () => import("./debug.js"),
