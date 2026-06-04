@@ -879,6 +879,23 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 .mobile-action-grid > button,
 .mobile-throttle-row { min-height: 42px; }
 
+/* 战区九宫格选择器：对应战场 3×3,点格子选战区 */
+.mobile-zone-select { display: flex; align-items: center; gap: 8px; }
+.mobile-zone-label {
+  flex: 0 0 auto;
+  font-family: var(--font-engrave);
+  font-size: 0.74rem;
+  letter-spacing: 0.14em;
+  color: var(--text-soft);
+}
+.mobile-zone-grid {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.mobile-zone-btn { min-height: 38px; padding: 6px 0; font-family: var(--font-engrave); font-weight: 600; }
+
 .mobile-throttle-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -894,6 +911,7 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 /* ── 选中 / 激活态：点亮黄铜 ── */
 .ship-switch-btn.active,
 .mobile-ship-btn.active,
+.mobile-zone-btn.active,
 .debug-focus-btn.active,
 button.toggle-active {
   background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%);

@@ -108,6 +108,7 @@ function cacheDom() {
   onlineMobileZoomOutBtn: document.getElementById("onlineMobileZoomOutBtn"),
   onlineMobileZoomInBtn: document.getElementById("onlineMobileZoomInBtn"),
   onlineMobileShipButtons: Array.from(document.querySelectorAll("#onlineMobileShipSwitch .mobile-ship-btn")),
+  onlineMobileZoneButtons: Array.from(document.querySelectorAll("#onlineMobileZoneGrid .mobile-zone-btn")),
   onlineMobileSplitOneBtn: document.getElementById("onlineMobileSplitOneBtn"),
   onlineMobileSplitTwoBtn: document.getElementById("onlineMobileSplitTwoBtn"),
   onlineMobileScoutBtn: document.getElementById("onlineMobileScoutBtn"),
@@ -1292,7 +1293,7 @@ function syncMobileHud(own) {
   ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} · 区${app.selectedZoneId} · 体${hullPercent}%`;
   ui.onlineMobileBattleHint.textContent = app.pendingSubSkillAim
     ? "技能瞄准中：点战场确认，点右上小地图先挪镜头"
-    : "点舰船切换 · 点战场下航线 · 点右上小地图选战区";
+    : "点舰船切换 · 点战场下航线 · 点战区格选战区";
 
   for (const button of ui.onlineMobileShipButtons) {
     const ship = own.ships ? own.ships[button.dataset.ship] : null;
@@ -1317,6 +1318,10 @@ function syncMobileHud(own) {
   for (const button of ui.onlineMobileThrottleButtons) {
     const preset = Number(button.dataset.throttle);
     button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
+  }
+
+  for (const button of ui.onlineMobileZoneButtons) {
+    button.classList.toggle("active", Number(button.dataset.zone) === app.selectedZoneId);
   }
 }
 
@@ -3391,6 +3396,11 @@ function bindUiEvents() {
       selectShip(button.dataset.ship || "", currentBattleState());
     });
   }
+  for (const button of ui.onlineMobileZoneButtons) {
+    button.addEventListener("click", () => {
+      setSelectedZoneId(Number(button.dataset.zone) || app.selectedZoneId); // 仅选区,不挪镜头
+    });
+  }
 
   ui.powerSlider.addEventListener("input", () => {
     setThrottleFromSlider(true);
@@ -4040,6 +4050,20 @@ function onlineTemplate() {
               <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
               <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
             </div>
+            <div class="mobile-zone-select">
+              <span class="mobile-zone-label">战区</span>
+              <div id="onlineMobileZoneGrid" class="mobile-zone-grid">
+                <button type="button" class="mobile-zone-btn" data-zone="1">1</button>
+                <button type="button" class="mobile-zone-btn" data-zone="2">2</button>
+                <button type="button" class="mobile-zone-btn" data-zone="3">3</button>
+                <button type="button" class="mobile-zone-btn" data-zone="4">4</button>
+                <button type="button" class="mobile-zone-btn" data-zone="5">5</button>
+                <button type="button" class="mobile-zone-btn" data-zone="6">6</button>
+                <button type="button" class="mobile-zone-btn" data-zone="7">7</button>
+                <button type="button" class="mobile-zone-btn" data-zone="8">8</button>
+                <button type="button" class="mobile-zone-btn" data-zone="9">9</button>
+              </div>
+            </div>
             <div class="mobile-action-grid">
               <button id="onlineMobileSplitOneBtn" type="button">分离1</button>
               <button id="onlineMobileSplitTwoBtn" type="button">分离2</button>
@@ -4059,7 +4083,7 @@ function onlineTemplate() {
               <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
               <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
             </div>
-            <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点右上小地图选战区</div>
+            <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点战区格选战区</div>
           </section>
 
           <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">

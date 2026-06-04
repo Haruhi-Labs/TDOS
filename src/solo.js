@@ -89,6 +89,7 @@ function cacheDom() {
   mobileZoomOutBtn: document.getElementById("mobileZoomOutBtn"),
   mobileZoomInBtn: document.getElementById("mobileZoomInBtn"),
   mobileShipButtons: Array.from(document.querySelectorAll("#mobileShipSwitch .mobile-ship-btn")),
+  mobileZoneButtons: Array.from(document.querySelectorAll("#mobileZoneGrid .mobile-zone-btn")),
   mobileSplitOneBtn: document.getElementById("mobileSplitOneBtn"),
   mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
   mobileScoutBtn: document.getElementById("mobileScoutBtn"),
@@ -578,7 +579,7 @@ function resetMatch(logMessage = true) {
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
     clearLog();
-    log(app.mobileMode ? "战斗开始。点战场直接移动，点右上小地图选战区。" : "战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。");
+    log(app.mobileMode ? "战斗开始。点战场直接移动，点战区格选战区。" : "战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。");
   }
   updateUi();
 }
@@ -914,7 +915,7 @@ function syncMobileHud(own) {
   ui.mobileBattleSummary.textContent = `${shipName} · 区${app.selectedZoneId} · 体${hullPercent}%`;
   ui.mobileBattleHint.textContent = app.pendingSubSkillAim
     ? "技能瞄准中：点战场确认，点右上小地图先挪镜头"
-    : "点舰船切换 · 点战场下航线 · 点右上小地图选战区";
+    : "点舰船切换 · 点战场下航线 · 点战区格选战区";
 
   const buttonStates = {
     main: own.ships.main,
@@ -946,6 +947,10 @@ function syncMobileHud(own) {
   for (const button of ui.mobileThrottleButtons) {
     const preset = Number(button.dataset.throttle);
     button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
+  }
+
+  for (const button of ui.mobileZoneButtons) {
+    button.classList.toggle("active", Number(button.dataset.zone) === app.selectedZoneId);
   }
 }
 
@@ -1870,6 +1875,11 @@ function bindUiEvents() {
       setSelectedShip(button.dataset.ship || "");
     });
   }
+  for (const button of ui.mobileZoneButtons) {
+    button.addEventListener("click", () => {
+      setSelectedZoneId(Number(button.dataset.zone) || app.selectedZoneId); // 仅选区,不挪镜头
+    });
+  }
 
   ui.powerSlider.addEventListener("input", () => {
     setThrottleValue(ui.powerSlider.value);
@@ -2416,6 +2426,20 @@ function soloTemplate() {
             <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
             <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
           </div>
+          <div class="mobile-zone-select">
+            <span class="mobile-zone-label">战区</span>
+            <div id="mobileZoneGrid" class="mobile-zone-grid">
+              <button type="button" class="mobile-zone-btn" data-zone="1">1</button>
+              <button type="button" class="mobile-zone-btn" data-zone="2">2</button>
+              <button type="button" class="mobile-zone-btn" data-zone="3">3</button>
+              <button type="button" class="mobile-zone-btn" data-zone="4">4</button>
+              <button type="button" class="mobile-zone-btn" data-zone="5">5</button>
+              <button type="button" class="mobile-zone-btn" data-zone="6">6</button>
+              <button type="button" class="mobile-zone-btn" data-zone="7">7</button>
+              <button type="button" class="mobile-zone-btn" data-zone="8">8</button>
+              <button type="button" class="mobile-zone-btn" data-zone="9">9</button>
+            </div>
+          </div>
           <div class="mobile-action-grid">
             <button id="mobileSplitOneBtn" type="button">分离1</button>
             <button id="mobileSplitTwoBtn" type="button">分离2</button>
@@ -2435,7 +2459,7 @@ function soloTemplate() {
             <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
             <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
           </div>
-          <div id="mobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点右上小地图选战区</div>
+          <div id="mobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点战区格选战区</div>
         </section>
         <div id="overlay" class="overlay hidden">
           <h2 id="overlayTitle"></h2>
