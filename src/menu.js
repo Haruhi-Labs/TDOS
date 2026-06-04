@@ -93,7 +93,7 @@ function template(faction) {
         <header class="ts-head">
           <div class="ts-seal" role="img" aria-label="SOS团"></div>
           <h1 class="ts-title">射手座之日</h1>
-          <p class="ts-subtitle">Star-Calendar Fleet Operations</p>
+          <p class="ts-subtitle">The Day of Sagittarius</p>
           <div class="ts-rule"></div>
         </header>
 
