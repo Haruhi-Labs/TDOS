@@ -103,6 +103,10 @@ function cacheDom() {
 }
 
 const TAU = Math.PI * 2;
+// 逻辑世界尺寸：所有游戏/坐标运算都在这个固定的 1440 空间里(与画布物理像素解耦)。
+// 画布 backing store 改为按设备像素铺满显示区域,渲染时整体放大 LOGICAL→设备像素,
+// 从而在 Retina/大屏上像素级清晰、无放大模糊。
+const LOGICAL = 1440;
 const ROUTE_HANDLE_RADIUS = 11;
 const MOBILE_ZOOM = 1.78;
 const CAMERA_ZOOM_MIN = 1;
@@ -119,7 +123,7 @@ function initApp() {
 
   selectedShipKey: "main",
   selectedZoneId: 5,
-  pointer: { x: canvas.width * 0.5, y: canvas.height * 0.5 },
+  pointer: { x: LOGICAL * 0.5, y: LOGICAL * 0.5 },
   drag: null,
   suppressMapClick: false,
   pendingSubSkillAim: null,
@@ -128,13 +132,13 @@ function initApp() {
   tickRunning: false,
   paused: false,
   mobileMode: false,
-  cameraCenterX: canvas.width * 0.5,
-  cameraCenterY: canvas.height * 0.5,
+  cameraCenterX: LOGICAL * 0.5,
+  cameraCenterY: LOGICAL * 0.5,
   cameraZoom: 1,
   cameraManualUntil: 0,
   stars: Array.from({ length: 220 }, () => ({
-    x: Math.random() * canvas.width,
-    y: Math.random() * canvas.height,
+    x: Math.random() * LOGICAL,
+    y: Math.random() * LOGICAL,
     r: Math.random() * 1.6 + 0.4,
     p: Math.random() * TAU,
   })),
@@ -181,11 +185,11 @@ function prefersMobileBattleMode() {
 
 function screenPointFromEvent(event) {
   const rect = canvas.getBoundingClientRect();
-  const x = (event.clientX - rect.left) * (canvas.width / rect.width);
-  const y = (event.clientY - rect.top) * (canvas.height / rect.height);
+  const x = (event.clientX - rect.left) * (LOGICAL / rect.width);
+  const y = (event.clientY - rect.top) * (LOGICAL / rect.height);
   return {
-    x: clamp(x, 0, canvas.width),
-    y: clamp(y, 0, canvas.height),
+    x: clamp(x, 0, LOGICAL),
+    y: clamp(y, 0, LOGICAL),
   };
 }
 
@@ -195,13 +199,13 @@ function effectiveViewZoom(zoomRatio = app.cameraZoom) {
 }
 
 function clampCameraCenter(centerX, centerY, zoom = effectiveViewZoom()) {
-  const width = canvas.width / zoom;
-  const height = canvas.height / zoom;
+  const width = LOGICAL / zoom;
+  const height = LOGICAL / zoom;
   const halfW = width * 0.5;
   const halfH = height * 0.5;
   return {
-    x: clamp(centerX, halfW, canvas.width - halfW),
-    y: clamp(centerY, halfH, canvas.height - halfH),
+    x: clamp(centerX, halfW, LOGICAL - halfW),
+    y: clamp(centerY, halfH, LOGICAL - halfH),
     width,
     height,
     zoom,
@@ -223,8 +227,8 @@ function currentViewState() {
 function worldPointFromScreenPoint(x, y) {
   const view = currentViewState();
   return {
-    x: clamp(view.left + x / view.zoom, 0, canvas.width),
-    y: clamp(view.top + y / view.zoom, 0, canvas.height),
+    x: clamp(view.left + x / view.zoom, 0, LOGICAL),
+    y: clamp(view.top + y / view.zoom, 0, LOGICAL),
   };
 }
 
@@ -237,9 +241,9 @@ function minimapRect() {
   if (!app.mobileMode) {
     return null;
   }
-  const size = clamp(canvas.width * 0.145, 180, 230);
+  const size = clamp(LOGICAL * 0.145, 180, 230);
   return {
-    x: canvas.width - size - 18,
+    x: LOGICAL - size - 18,
     y: 18,
     width: size,
     height: size,
@@ -255,8 +259,8 @@ function minimapWorldPointFromScreenPoint(screenX, screenY) {
     return null;
   }
   return {
-    x: clamp(((screenX - rect.x) / rect.width) * canvas.width, 0, canvas.width),
-    y: clamp(((screenY - rect.y) / rect.height) * canvas.height, 0, canvas.height),
+    x: clamp(((screenX - rect.x) / rect.width) * LOGICAL, 0, LOGICAL),
+    y: clamp(((screenY - rect.y) / rect.height) * LOGICAL, 0, LOGICAL),
   };
 }
 
@@ -280,19 +284,19 @@ function setCameraZoom(nextZoom, focusScreen = null) {
   let centerY = prevView.top + prevView.height * 0.5;
 
   if (focusScreen) {
-    const worldX = clamp(prevView.left + focusScreen.x / prevView.zoom, 0, canvas.width);
-    const worldY = clamp(prevView.top + focusScreen.y / prevView.zoom, 0, canvas.height);
+    const worldX = clamp(prevView.left + focusScreen.x / prevView.zoom, 0, LOGICAL);
+    const worldY = clamp(prevView.top + focusScreen.y / prevView.zoom, 0, LOGICAL);
     const zoom = effectiveViewZoom(zoomRatio);
-    const width = canvas.width / zoom;
-    const height = canvas.height / zoom;
+    const width = LOGICAL / zoom;
+    const height = LOGICAL / zoom;
     centerX = worldX - focusScreen.x / zoom + width * 0.5;
     centerY = worldY - focusScreen.y / zoom + height * 0.5;
   }
 
   app.cameraZoom = zoomRatio;
   if (!app.mobileMode && zoomRatio <= CAMERA_ZOOM_MIN + 1e-3) {
-    app.cameraCenterX = canvas.width * 0.5;
-    app.cameraCenterY = canvas.height * 0.5;
+    app.cameraCenterX = LOGICAL * 0.5;
+    app.cameraCenterY = LOGICAL * 0.5;
     app.cameraManualUntil = 0;
   } else {
     centerCameraOn(centerX, centerY, Boolean(focusScreen));
@@ -309,8 +313,8 @@ function adjustCameraZoom(direction, focusScreen = null) {
 function updateCamera() {
   const shouldTrack = app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3;
   if (!shouldTrack) {
-    app.cameraCenterX = canvas.width * 0.5;
-    app.cameraCenterY = canvas.height * 0.5;
+    app.cameraCenterX = LOGICAL * 0.5;
+    app.cameraCenterY = LOGICAL * 0.5;
     return;
   }
   const ship = selectedShipState();
@@ -323,8 +327,8 @@ function updateCamera() {
   const lead = clamp((ship.speed || 0) * 3.2, 34, 92);
   const targetX = ship.x + Math.cos(ship.angle || 0) * lead;
   const targetY = ship.y + Math.sin(ship.angle || 0) * lead;
-  app.cameraCenterX = clamp(app.cameraCenterX + (targetX - app.cameraCenterX) * 0.14, 0, canvas.width);
-  app.cameraCenterY = clamp(app.cameraCenterY + (targetY - app.cameraCenterY) * 0.14, 0, canvas.height);
+  app.cameraCenterX = clamp(app.cameraCenterX + (targetX - app.cameraCenterX) * 0.14, 0, LOGICAL);
+  app.cameraCenterY = clamp(app.cameraCenterY + (targetY - app.cameraCenterY) * 0.14, 0, LOGICAL);
 }
 
 function syncResponsiveMode() {
@@ -335,6 +339,7 @@ function syncResponsiveMode() {
   if (ui.mobileBattleHud) {
     ui.mobileBattleHud.hidden = !app.mobileMode;
   }
+  resizeCanvas(); // 显示尺寸/方向变化时,同步 backing store 到设备像素,保持清晰
 }
 
 function zoneFromPoint(x, y) {
@@ -540,7 +545,7 @@ function updateShipSwitchLabels(loadout) {
 function createSimulation() {
   return new MatchSimulation({
     mode: "ai",
-    worldSize: canvas.width,
+    worldSize: LOGICAL,
     teamNames: {
       A: "SOS先遣舰队",
       B: "统合思念体舰队",
@@ -1002,12 +1007,12 @@ function updateUi() {
 }
 
 function drawBackground(elapsed) {
-  const gradient = ctx.createLinearGradient(0, 0, canvas.width, canvas.height);
+  const gradient = ctx.createLinearGradient(0, 0, LOGICAL, LOGICAL);
   gradient.addColorStop(0, "#040d18");
   gradient.addColorStop(0.5, "#071423");
   gradient.addColorStop(1, "#050b14");
   ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, LOGICAL, LOGICAL);
 
   for (const star of app.stars) {
     const alpha = 0.24 + Math.sin(elapsed * 1.6 + star.p) * 0.24 + 0.34;
@@ -1042,48 +1047,170 @@ function drawRoute(route, selected) {
   }
 
   const { p0, p1, p2 } = route;
+  const time = (app.state && app.state.elapsed) || 0;
+  // 末段切线(二次贝塞尔在 t=1 的方向 ∝ p2-p1)→ 航向,用于终点箭头朝向
+  let hx = p2.x - p1.x;
+  let hy = p2.y - p1.y;
+  if (Math.hypot(hx, hy) < 1e-3) {
+    hx = p2.x - p0.x;
+    hy = p2.y - p0.y;
+  }
+  const heading = Math.atan2(hy, hx);
+
+  // 沿航线描一条二次曲线路径(供多次不同样式描边复用)
+  const tracePath = () => {
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+  };
 
   ctx.save();
-  ctx.lineWidth = 1.2;
-  ctx.strokeStyle = selected ? "#a6ebff66" : "#77d8ff55";
-  ctx.setLineDash([6, 5]);
-  ctx.beginPath();
-  ctx.moveTo(p0.x, p0.y);
-  ctx.lineTo(p1.x, p1.y);
-  ctx.lineTo(p2.x, p2.y);
-  ctx.stroke();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
 
+  // ① 外发光:一条宽而透明的同路径描边,让航线在星空背景上"浮起来"、边缘柔和
   ctx.setLineDash([]);
-  ctx.strokeStyle = selected ? "#c4f4ff" : "#8fe9ff";
-  ctx.lineWidth = selected ? 2.8 : 2.2;
-  ctx.beginPath();
-  ctx.moveTo(p0.x, p0.y);
-  ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
+  ctx.lineWidth = selected ? 7.5 : 5;
+  ctx.strokeStyle = selected ? "#39d8ff2e" : "#39d8ff1c";
+  tracePath();
   ctx.stroke();
 
-  if (selected && !app.mobileMode) {
-    ctx.fillStyle = "#ffdd8a";
-    ctx.beginPath();
-    ctx.arc(p1.x, p1.y, ROUTE_HANDLE_RADIUS, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = "#fff2bf";
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
+  // ② 主线:从舰身青 → 目标薄荷的渐变,清晰锐利的实线
+  const grad = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
+  grad.addColorStop(0, selected ? "#7ce6ff" : "#6fcdeecc");
+  grad.addColorStop(1, selected ? "#a9f7d2" : "#86dcc0cc");
+  ctx.lineWidth = selected ? 2.6 : 1.9;
+  ctx.strokeStyle = grad;
+  tracePath();
+  ctx.stroke();
 
-    ctx.fillStyle = "#9af7b5";
-    ctx.beginPath();
-    ctx.arc(p2.x, p2.y, ROUTE_HANDLE_RADIUS - 1, 0, TAU);
-    ctx.fill();
-    ctx.strokeStyle = "#ddffe8";
+  // ③ 流动虚线:沿航向缓缓移动,直观传达"行进方向"(仅选中,避免画面杂乱)
+  if (selected) {
+    ctx.lineWidth = 2.6;
+    ctx.strokeStyle = "#eafcff88";
+    ctx.setLineDash([9, 17]);
+    ctx.lineDashOffset = -time * 46;
+    tracePath();
     ctx.stroke();
-
-    const progressPoint = quadraticPoint(p0, p1, p2, clamp(route.t || 0, 0, 1));
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(progressPoint.x, progressPoint.y, 3.2, 0, TAU);
-    ctx.fill();
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
   }
 
+  if (selected) {
+    // ④ 终点:目标十字标记(环 + 四向刻度 + 心点 + 航向箭头),清楚地读作"到这里"
+    drawTargetMarker(p2, heading, time);
+
+    // ⑤ 进度点:沿曲线滑动的亮点,表示当前推进位置
+    const progressPoint = quadraticPoint(p0, p1, p2, clamp(route.t || 0, 0, 1));
+    ctx.fillStyle = "#39d8ff44";
+    ctx.beginPath();
+    ctx.arc(progressPoint.x, progressPoint.y, 6, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = "#ffffff";
+    ctx.beginPath();
+    ctx.arc(progressPoint.x, progressPoint.y, 3, 0, TAU);
+    ctx.fill();
+
+    // ⑥ 控制点 + 控制多边形(仅桌面可拖拽):琥珀色"旋钮",一眼可抓
+    if (!app.mobileMode) {
+      ctx.lineWidth = 1.1;
+      ctx.strokeStyle = "#ffd9912e";
+      ctx.setLineDash([2, 6]);
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      drawCurveKnob(p1);
+    }
+  }
+
+  ctx.restore();
+}
+
+// 目标十字标记:柔光底 + 外环(带呼吸脉冲)+ 四向刻度 + 中心点 + 航向箭头
+function drawTargetMarker(p, heading, time) {
+  const r = ROUTE_HANDLE_RADIUS + 1;
+  const pulse = 0.5 + 0.5 * Math.sin(time * 3.0);
+
+  ctx.save();
+  ctx.lineCap = "round";
+
+  // 柔光底
+  ctx.fillStyle = "#7df7c024";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r + 5, 0, TAU);
+  ctx.fill();
+
+  // 外环(脉冲)
+  ctx.strokeStyle = "#8af7c0";
+  ctx.lineWidth = 2.2;
+  ctx.globalAlpha = 0.75 + pulse * 0.25;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, r + pulse * 2.2, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
+
+  // 四向刻度
+  ctx.strokeStyle = "#cfffe6";
+  ctx.lineWidth = 1.8;
+  for (let i = 0; i < 4; i++) {
+    const a = (i * Math.PI) / 2;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    ctx.beginPath();
+    ctx.moveTo(p.x + ca * (r + 3), p.y + sa * (r + 3));
+    ctx.lineTo(p.x + ca * (r + 7), p.y + sa * (r + 7));
+    ctx.stroke();
+  }
+
+  // 中心点
+  ctx.fillStyle = "#eafff5";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 2.6, 0, TAU);
+  ctx.fill();
+
+  // 航向箭头(指向行进方向,落在环外)
+  ctx.save();
+  ctx.translate(p.x + Math.cos(heading) * (r + 11), p.y + Math.sin(heading) * (r + 11));
+  ctx.rotate(heading);
+  ctx.fillStyle = "#8af7c0";
+  ctx.beginPath();
+  ctx.moveTo(6, 0);
+  ctx.lineTo(-4, -4.2);
+  ctx.lineTo(-1.6, 0);
+  ctx.lineTo(-4, 4.2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  ctx.restore();
+}
+
+// 曲度控制旋钮:柔光底 + 琥珀环 + 中心点,读作"可拖拽手柄"
+function drawCurveKnob(p) {
+  ctx.save();
+  ctx.fillStyle = "#ffd29120";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, ROUTE_HANDLE_RADIUS + 4, 0, TAU);
+  ctx.fill();
+
+  ctx.fillStyle = "#1b1305cc";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, ROUTE_HANDLE_RADIUS, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = "#ffd27a";
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, ROUTE_HANDLE_RADIUS, 0, TAU);
+  ctx.stroke();
+
+  ctx.fillStyle = "#ffe6b0";
+  ctx.beginPath();
+  ctx.arc(p.x, p.y, 3.4, 0, TAU);
+  ctx.fill();
   ctx.restore();
 }
 
@@ -1429,10 +1556,10 @@ function drawMinimap() {
 
   if (Array.isArray(app.state.zones)) {
     for (const zone of app.state.zones) {
-      const zx = rect.x + (zone.x / canvas.width) * rect.width;
-      const zy = rect.y + (zone.y / canvas.height) * rect.height;
-      const zw = (zone.width / canvas.width) * rect.width;
-      const zh = (zone.height / canvas.height) * rect.height;
+      const zx = rect.x + (zone.x / LOGICAL) * rect.width;
+      const zy = rect.y + (zone.y / LOGICAL) * rect.height;
+      const zw = (zone.width / LOGICAL) * rect.width;
+      const zh = (zone.height / LOGICAL) * rect.height;
       ctx.strokeStyle = zone.id === app.selectedZoneId ? "#6fd9ff" : "#2d5d884f";
       ctx.lineWidth = zone.id === app.selectedZoneId ? 1.6 : 1;
       ctx.strokeRect(zx, zy, zw, zh);
@@ -1443,8 +1570,8 @@ function drawMinimap() {
     if (!ship || !ship.alive) {
       return;
     }
-    const x = rect.x + (ship.x / canvas.width) * rect.width;
-    const y = rect.y + (ship.y / canvas.height) * rect.height;
+    const x = rect.x + (ship.x / LOGICAL) * rect.width;
+    const y = rect.y + (ship.y / LOGICAL) * rect.height;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, 3.2, 0, TAU);
@@ -1472,10 +1599,10 @@ function drawMinimap() {
   ctx.strokeStyle = "#ffe08a";
   ctx.lineWidth = 1.6;
   ctx.strokeRect(
-    rect.x + (view.left / canvas.width) * rect.width,
-    rect.y + (view.top / canvas.height) * rect.height,
-    (view.width / canvas.width) * rect.width,
-    (view.height / canvas.height) * rect.height,
+    rect.x + (view.left / LOGICAL) * rect.width,
+    rect.y + (view.top / LOGICAL) * rect.height,
+    (view.width / LOGICAL) * rect.width,
+    (view.height / LOGICAL) * rect.height,
   );
 
   ctx.fillStyle = "#d2ecff";
@@ -1496,15 +1623,42 @@ function drawShipGroup(shipGroup, color, visibleEnemyIds = null) {
   }
 }
 
+// 把 backing store(画布物理像素)对齐到显示区域的设备像素,告别 1440 固定缓冲被放大产生的模糊。
+function resizeCanvas() {
+  if (!canvas) {
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const cssW = rect.width || canvas.clientWidth || LOGICAL;
+  // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [LOGICAL, 2880]:
+  // 不低于原始 1440(绝不劣化),不超 2880(控住超大屏/高 DPR 的内存与填充开销)。
+  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
+  const backing = Math.max(LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
+  if (canvas.width !== backing) {
+    canvas.width = backing;
+    canvas.height = backing;
+  }
+}
+
 function render() {
   if (!app.state) {
     return;
   }
 
+  // backing store(设备像素)对逻辑世界(LOGICAL)的比例:整幅画面放大到物理像素 → 矢量线条像素级清晰。
+  const scale = canvas.width / LOGICAL;
   updateCamera();
   const view = currentViewState();
+  ctx.setTransform(scale, 0, 0, scale, 0, 0); // 基准变换:屏幕/UI 空间(逻辑坐标 → 物理像素)
   ctx.save();
-  ctx.setTransform(view.zoom, 0, 0, view.zoom, -view.left * view.zoom, -view.top * view.zoom);
+  ctx.setTransform(
+    view.zoom * scale,
+    0,
+    0,
+    view.zoom * scale,
+    -view.left * view.zoom * scale,
+    -view.top * view.zoom * scale
+  ); // 世界/相机空间
   drawBackground(app.state.elapsed || 0);
   drawZones();
 
@@ -1596,7 +1750,7 @@ function render() {
   // In-game character portrait (drawn in screen space, after camera restore)
   const activeShip = selectedShipState();
   if (activeShip && activeShip.alive) {
-    drawInGamePortrait(ctx, activeShip.characterId, canvas.width, canvas.height, 0.14, app.playerColor);
+    drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, app.playerColor);
   }
 
   drawMinimap();
@@ -1605,15 +1759,15 @@ function render() {
   if (app.paused) {
     ctx.save();
     ctx.fillStyle = "rgba(2,8,15,0.45)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillRect(0, 0, LOGICAL, LOGICAL);
     ctx.fillStyle = "#e4f0ff";
     ctx.font = 'bold 42px "Noto Sans SC", "PingFang SC", sans-serif';
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText("PAUSED", canvas.width * 0.5, canvas.height * 0.5 - 20);
+    ctx.fillText("PAUSED", LOGICAL * 0.5, LOGICAL * 0.5 - 20);
     ctx.fillStyle = "#8ab8d8";
     ctx.font = '16px "Noto Sans SC", "PingFang SC", sans-serif';
-    ctx.fillText("按空格键继续", canvas.width * 0.5, canvas.height * 0.5 + 24);
+    ctx.fillText("按空格键继续", LOGICAL * 0.5, LOGICAL * 0.5 + 24);
     ctx.restore();
   }
 }
@@ -2143,6 +2297,7 @@ function launchWithLoadout(loadout, color) {
   storeLoadout(loadout);
   syncLoadoutControls(loadout);
   resetMatch(true);
+  resizeCanvas(); // 战斗画布此刻可见且已布局,按设备像素定 backing,首帧即清晰
   if (!running) {
     running = true;
     app.tickRunning = true;
