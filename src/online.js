@@ -3467,15 +3467,26 @@ function bindUiEvents() {
   bindPressButton(ui.subSkillBtn, useSubSkillOnline);
   bindPressButton(ui.onlineMobileSubSkillBtn, useSubSkillOnline);
 
+  // 桌面右键:在落点创建路径点(设目标),并进入"按住拖动调曲率"
+  canvas.addEventListener("contextmenu", (event) => {
+    if (!app.mobileMode) {
+      event.preventDefault(); // 右键已用于设航线,屏蔽浏览器右键菜单
+    }
+  });
+
   canvas.addEventListener("mousedown", (event) => {
     if (app.mobileMode) {
       return;
     }
-    if (event.button !== 0) {
-      return;
+    if (event.button !== 2) {
+      return; // 只响应右键;左键留给"选战区"(click 事件处理)
     }
     if (!app.room || app.room.status !== "running") {
       return;
+    }
+    event.preventDefault();
+    if (app.pendingSubSkillAim) {
+      return; // 技能瞄准中不抢右键
     }
 
     const state = app.lastRenderState;
@@ -3485,24 +3496,33 @@ function bindUiEvents() {
 
     const ship = getSelectedShipFromState(state);
     if (!ship || !ship.alive || !ship.canControl) {
-      return;
-    }
-
-    const ownTeam = teamBySeat(state, app.seat);
-    const route = getDisplayRouteForShip(ownTeam, ship);
-    if (!route) {
+      log("当前舰船不可操作");
       return;
     }
 
     const pos = pointerFromEvent(event);
-    const handle = routeHandleAtPoint(route, pos.x, pos.y);
-    if (!handle) {
-      return;
+    app.pointer = pos;
+
+    // 落点创建路径点(默认曲率);随后按住右键拖动 → 调曲率(见 mousemove)
+    const seq = sendAction({
+      type: "set_route",
+      shipKey: ship.key,
+      endX: pos.x,
+      endY: pos.y,
+      throttle: app.throttle,
+      anchorToMain: ship.key === "main",
+    });
+    if (seq !== null) {
+      applySetRouteOverride(ship.key, seq, pos.x, pos.y);
+      log(`${ship.name} 已设定航线(按住右键拖动调曲率)`);
     }
 
     app.drag = {
-      handle,
+      handle: "control",
       shipKey: ship.key,
+      downX: pos.x,
+      downY: pos.y,
+      moved: false,
       lastSentAt: 0,
     };
   });
@@ -3512,9 +3532,18 @@ function bindUiEvents() {
       app.pointer = pointerFromEvent(event);
       return;
     }
-    app.pointer = pointerFromEvent(event);
+    const pos = pointerFromEvent(event);
+    app.pointer = pos;
     if (!app.drag || !app.room || app.room.status !== "running") {
       return;
+    }
+
+    // 仅当移动超过阈值才视作"调曲率",避免纯单击的微抖把控制点拽歪
+    if (!app.drag.moved) {
+      if (distance(pos.x, pos.y, app.drag.downX, app.drag.downY) < 8) {
+        return;
+      }
+      app.drag.moved = true;
     }
 
     const elapsedMs = performance.now();
@@ -3522,29 +3551,14 @@ function bindUiEvents() {
       return;
     }
 
-    const pos = pointerFromEvent(event);
-    let seq = null;
-
-    if (app.drag.handle === "control") {
-      seq = sendAction({
-        type: "route_control",
-        shipKey: app.drag.shipKey,
-        controlX: pos.x,
-        controlY: pos.y,
-      });
-      if (seq !== null) {
-        applyRouteControlOverride(app.drag.shipKey, seq, pos.x, pos.y);
-      }
-    } else if (app.drag.handle === "end") {
-      seq = sendAction({
-        type: "route_end",
-        shipKey: app.drag.shipKey,
-        endX: pos.x,
-        endY: pos.y,
-      });
-      if (seq !== null) {
-        applyRouteEndOverride(app.drag.shipKey, seq, pos.x, pos.y);
-      }
+    const seq = sendAction({
+      type: "route_control",
+      shipKey: app.drag.shipKey,
+      controlX: pos.x,
+      controlY: pos.y,
+    });
+    if (seq !== null) {
+      applyRouteControlOverride(app.drag.shipKey, seq, pos.x, pos.y);
     }
 
     app.drag.lastSentAt = elapsedMs;
@@ -3555,8 +3569,7 @@ function bindUiEvents() {
       return;
     }
     if (app.drag) {
-      app.drag = null;
-      app.suppressClick = true;
+      app.drag = null; // 右键拖拽结束;不抑制后续左键(左键=选战区,不受影响)
     }
   });
 
@@ -3655,41 +3668,7 @@ function bindUiEvents() {
     setSelectedZoneId(zone.id);
   });
 
-  canvas.addEventListener("dblclick", (event) => {
-    if (app.mobileMode) {
-      return;
-    }
-    if (event.button !== 0) {
-      return;
-    }
-    if (!app.room || app.room.status !== "running") {
-      return;
-    }
-    if (app.pendingSubSkillAim) {
-      return;
-    }
-
-    const pos = pointerFromEvent(event);
-    const ship = getLatestOwnShip(app.selectedShipKey);
-    if (!ship || !ship.alive || !ship.canControl) {
-      log("当前舰船不可操作");
-      return;
-    }
-
-    const seq = sendAction({
-      type: "set_route",
-      shipKey: ship.key,
-      endX: pos.x,
-      endY: pos.y,
-      throttle: app.throttle,
-      anchorToMain: ship.key === "main",
-    });
-
-    if (seq !== null) {
-      applySetRouteOverride(ship.key, seq, pos.x, pos.y);
-      log(`${ship.name} 已设定新航线`);
-    }
-  });
+  // 双击设目标点的旧逻辑已移除 → 改用右键单击(见上方 mousedown)。
 
   addWin("keydown", (event) => {
     if (event.defaultPrevented) {

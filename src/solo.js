@@ -576,7 +576,7 @@ function resetMatch(logMessage = true) {
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
     clearLog();
-    log(app.mobileMode ? "战斗开始。点战场直接移动，点右上小地图选战区。" : "战斗开始。单击选战区，双击设目标点，拖拽控制点可调曲线。");
+    log(app.mobileMode ? "战斗开始。点战场直接移动，点右上小地图选战区。" : "战斗开始。左键单击选战区，右键单击设目标点（按住右键拖动可调曲率）。");
   }
   updateUi();
 }
@@ -1944,35 +1944,48 @@ function bindUiEvents() {
     showCharacterSelectScreen();
   });
 
+  // 桌面右键:在落点创建路径点(设目标),并进入"按住拖动调曲率"
+  canvas.addEventListener("contextmenu", (event) => {
+    if (!app.mobileMode) {
+      event.preventDefault(); // 右键已用于设航线,屏蔽浏览器右键菜单
+    }
+  });
+
   canvas.addEventListener("mousedown", (event) => {
     if (app.mobileMode) {
       return;
     }
-    if (event.button !== 0 || !app.state || app.state.phase === "finished") {
+    if (event.button !== 2 || !app.state || app.state.phase === "finished") {
+      return; // 只响应右键;左键留给"选战区"(click 事件处理)
+    }
+    event.preventDefault();
+
+    if (app.pendingSubSkillAim) {
+      return; // 技能瞄准中不抢右键
+    }
+
+    const ship = selectedShipState();
+    if (!ship || !ship.alive || !ship.canControl) {
+      log("当前没有可用舰船可设置目标点");
       return;
     }
 
     const pos = pointerFromEvent(event);
     app.pointer = pos;
 
-    if (app.pendingSubSkillAim) {
-      return;
-    }
-
-    const ship = selectedShipState();
-    if (!ship || !ship.alive || !ship.canControl) {
-      return;
-    }
-
-    const handle = routeHandleAtPoint(ship.route, pos.x, pos.y);
-    if (!handle) {
-      return;
-    }
-
+    // 落点创建路径点(默认曲率);随后按住右键拖动 → 调曲率(见 mousemove)
+    setRouteForSelectedShip(pos.x, pos.y);
     app.drag = {
-      handle,
+      handle: "control",
       shipKey: ship.key,
+      downX: pos.x,
+      downY: pos.y,
+      moved: false,
     };
+
+    const shipSim = selectedShipSim();
+    const minRadius = shipSim ? Math.round(shipSim.routeConstraintProfile().minTurnRadius) : 0;
+    log(`${ship.name} 已设置航线(按住右键拖动调曲率,最小转弯半径约 ${minRadius})`);
   });
 
   canvas.addEventListener("mousemove", (event) => {
@@ -1987,21 +2000,20 @@ function bindUiEvents() {
       return;
     }
 
-    if (app.drag.handle === "control") {
-      applyAction({
-        type: "route_control",
-        shipKey: app.drag.shipKey,
-        controlX: pos.x,
-        controlY: pos.y,
-      });
-    } else {
-      applyAction({
-        type: "route_end",
-        shipKey: app.drag.shipKey,
-        endX: pos.x,
-        endY: pos.y,
-      });
+    // 仅当移动超过阈值才视作"调曲率",避免纯单击的微抖把控制点拽歪
+    if (!app.drag.moved) {
+      if (distance(pos.x, pos.y, app.drag.downX, app.drag.downY) < 8) {
+        return;
+      }
+      app.drag.moved = true;
     }
+
+    applyAction({
+      type: "route_control",
+      shipKey: app.drag.shipKey,
+      controlX: pos.x,
+      controlY: pos.y,
+    });
   });
 
   addWin("mouseup", () => {
@@ -2011,8 +2023,7 @@ function bindUiEvents() {
     if (!app.drag) {
       return;
     }
-    app.drag = null;
-    app.suppressMapClick = true;
+    app.drag = null; // 右键拖拽结束;不抑制后续左键(左键=选战区,不受影响)
   });
 
   canvas.addEventListener("wheel", (event) => {
@@ -2097,41 +2108,7 @@ function bindUiEvents() {
     setSelectedZoneId(zone.id);
   });
 
-  canvas.addEventListener("dblclick", (event) => {
-    if (app.mobileMode) {
-      return;
-    }
-    if (event.button !== 0 || !app.state || app.state.phase === "finished") {
-      return;
-    }
-
-    if (app.pendingSubSkillAim) {
-      return;
-    }
-
-    const pos = pointerFromEvent(event);
-    app.pointer = pos;
-
-    const ship = selectedShipState();
-    if (!ship || !ship.alive || !ship.canControl) {
-      log("当前没有可用舰船可设置目标点");
-      return;
-    }
-
-    const throttle = clamp(Number(ui.powerSlider.value) / 100, 0.25, 1.4);
-    applyAction({
-      type: "set_route",
-      shipKey: ship.key,
-      endX: pos.x,
-      endY: pos.y,
-      throttle,
-      anchorToMain: ship.key === "main",
-    });
-    const shipSim = selectedShipSim();
-    const minRadius = shipSim ? Math.round(shipSim.routeConstraintProfile().minTurnRadius) : 0;
-    log(`${ship.name} 已设置贝塞尔航线`);
-    log(`当前最小可行转弯半径约 ${minRadius}`);
-  });
+  // 双击设目标点的旧逻辑已移除 → 改用右键单击(见上方 mousedown)。
 
   addWin("keydown", (event) => {
     if (event.defaultPrevented) {
