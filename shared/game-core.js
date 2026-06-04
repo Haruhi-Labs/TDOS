@@ -2587,13 +2587,8 @@ class Team {
   pickTargetFor(attacker, enemyTeam) {
     const candidates = enemyTeam.getEntities();
     const range = attacker.attackRange || attacker.effectiveRange();
-    // 集火钩子(惰性)：bot 可在 attacker.preferredFocusId 指定一个集火/补刀目标；
-    // 仅当该目标当前可命中(可见+在射程+有火力密度)时优先打它，否则回退取最近。
-    // 未设置时行为与原版完全一致(基线 bot 不设置)。
-    const focusId = attacker.preferredFocusId;
     let nearest = null;
     let nearestDist = Infinity;
-    let focusTarget = null;
     for (const target of candidates) {
       if (!target.alive) {
         continue;
@@ -2612,12 +2607,8 @@ class Team {
         nearestDist = d;
         nearest = target;
       }
-      if (focusId && target.id === focusId && d <= range
-        && (typeof attacker.broadsideMultiplier !== "function" || attacker.broadsideMultiplier(target) > 0)) {
-        focusTarget = target;
-      }
     }
-    return focusTarget || nearest;
+    return nearest;
   }
 
   stepCombat(enemyTeam) {
@@ -4002,33 +3993,6 @@ export class BotController {
     };
   }
 
-  // U2 集火补刀：给本队各舰指定一个"可命中的最该补刀目标"(血量最低的可见敌舰)，
-  // 经惰性钩子 ship.preferredFocusId 下发；pickTargetFor 仅在该目标可命中时采用，否则取最近。
-  // 集中火力按序消灭(先杀残血/先减敌数)，破解原版火力均摊(HHI≈0.33)与残血苟活~35s 的平局根因。
-  assignFireFocus() {
-    if (this.legacy) return; // 旧版AI：不集火，各舰取最近(pickTargetFor 钩子未设=原行为)
-    const ships = this.team.getAllShips();
-    for (const s of ships) { if (s) s.preferredFocusId = null; }
-    const enemies = this.enemy.getAllShips().filter((e) => e && e.alive);
-    if (enemies.length <= 1) return; // 仅一个目标无需集火
-    const visible = enemies.filter((e) => this.team.visibleEnemyIds.has(e.id));
-    if (!visible.length) return; // 看不见就不强制集火(交由 U1 压近夺视野)
-    const main = this.team.ships.main;
-    const anchor = main && main.alive ? main : ships.find((s) => s && s.alive);
-    // 有效血量：带"待用复活"(如长门旗舰被动给全队1次52%血复活)的舰，集火"击杀"它也会满血复活，
-    // 复活前不应把它当最该补刀者——其有效血量计入复活量，避免过度集中浪费火力(对抗压测发现的回归)。
-    const effHp = (e) => e.hp + (e.reviveCharges > 0 ? e.maxHp * 0.52 : 0);
-    let best = null;
-    let bestScore = Infinity;
-    for (const e of visible) {
-      const d = anchor ? distance(anchor.x, anchor.y, e.x, e.y) : 0;
-      const score = effHp(e) + d * 0.06; // 有效血量为主、距离为辅，选真正最该补刀且多舰够得到者
-      if (score < bestScore) { bestScore = score; best = e; }
-    }
-    if (!best) return;
-    for (const s of ships) { if (s && s.alive) s.preferredFocusId = best.id; }
-  }
-
   update(dt, elapsed) {
     this.moveTimer -= dt;
     this.scoutTimer -= dt;
@@ -4039,7 +4003,6 @@ export class BotController {
 
     this.refreshIntel();
     this.updateStuckState(dt);
-    this.assignFireFocus();
     const main = this.team.ships.main;
     const focus = main.alive ? this.selectEnemyFocus(main) : null;
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
@@ -5066,8 +5029,14 @@ export class BotController {
     if (!target || !enemy || !ship) return target;
     const aggressive = combatRole && (mode === "press" || mode === "collapse" || mode === "broadside" || mode === "cutoff");
     if (!aggressive) return target;
-    const want = tactical.killWindow || tactical.emergencyCommit
-      || tactical.localAdvantage >= 0.82 || tactical.intelSolid;
+    // 是否压近夺视野要judicious：常规敌人压近能吃到侧舷1.5倍密度，值得贴上去交火；
+    // 但对手是阿虚(Kyon)旗舰时射界密度被抹平、贴脸纯比血厚——此时只有真正占优/收尾才压近，
+    // 否则保持站位别一头扎进肉阵容被对耗(对抗实测的回归)。
+    const enemyFlatDensity = typeof this.enemy.hasKyonFlagship === "function" && this.enemy.hasKyonFlagship();
+    const want = tactical.killWindow || tactical.emergencyCommit || tactical.winning
+      || (enemyFlatDensity
+        ? tactical.localAdvantage >= 1.05
+        : (tactical.localAdvantage >= 0.82 || tactical.intelSolid));
     if (!want) return target;
     const vision = ship.effectiveVision();
     const ox = target.x - enemy.x;
