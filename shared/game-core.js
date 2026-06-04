@@ -3271,29 +3271,32 @@ export class BotController {
     }
 
     // ── 间接情报(很关键:敌舰本体多数时间在视野外，靠"看到的子弹/敌侦察机"反推敌方范围) ──
-    const match = this.team.match;
-    // (a) 敌方子弹:朝我方飞来→开火的敌舰在其"逆飞行方向"、射程之内。只用我方能感知到的子弹(公平)。
-    if (match.projectiles) {
-      for (const p of match.projectiles) {
-        if (!p || !p.alive || p.team === this.team) continue;
-        if (!this.perceivesPoint(p.x, p.y)) continue;
-        const vx = p.targetX - p.x;
-        const vy = p.targetY - p.y;
-        const vl = Math.hypot(vx, vy);
-        if (vl < 1) continue;
-        const bx = -vx / vl;
-        const by = -vy / vl; // 指向开火舰
-        for (const seg of [[130, 0.4], [280, 0.6], [430, 0.4]]) {
-          w[this.beliefIdxFor(b, p.x + bx * seg[0], p.y + by * seg[0])] += seg[1];
+    // noIndirectIntel=true 时整体跳过(用于控制变量对照实验)
+    if (!this.noIndirectIntel) {
+      const match = this.team.match;
+      // (a) 敌方子弹:朝我方飞来→开火的敌舰在其"逆飞行方向"、射程之内。只用我方能感知到的子弹(公平)。
+      if (match.projectiles) {
+        for (const p of match.projectiles) {
+          if (!p || !p.alive || p.team === this.team) continue;
+          if (!this.perceivesPoint(p.x, p.y)) continue;
+          const vx = p.targetX - p.x;
+          const vy = p.targetY - p.y;
+          const vl = Math.hypot(vx, vy);
+          if (vl < 1) continue;
+          const bx = -vx / vl;
+          const by = -vy / vl; // 指向开火舰
+          for (const seg of [[130, 0.4], [280, 0.6], [430, 0.4]]) {
+            w[this.beliefIdxFor(b, p.x + bx * seg[0], p.y + by * seg[0])] += seg[1];
+          }
         }
       }
-    }
-    // (b) 敌方侦察机:看到的敌侦察机→敌方在该带活动，且其发射处(逆其朝向)有敌舰
-    for (const sc of this.enemy.scouts) {
-      if (!sc || !sc.alive || !this.team.visibleEnemyIds.has(sc.id)) continue;
-      const ang = Number.isFinite(sc.angle) ? sc.angle : 0;
-      w[this.beliefIdxFor(b, sc.x - Math.cos(ang) * 240, sc.y - Math.sin(ang) * 240)] += 0.35;
-      w[this.beliefIdxFor(b, sc.x, sc.y)] += 0.18;
+      // (b) 敌方侦察机:看到的敌侦察机→敌方在该带活动，且其发射处(逆其朝向)有敌舰
+      for (const sc of this.enemy.scouts) {
+        if (!sc || !sc.alive || !this.team.visibleEnemyIds.has(sc.id)) continue;
+        const ang = Number.isFinite(sc.angle) ? sc.angle : 0;
+        w[this.beliefIdxFor(b, sc.x - Math.cos(ang) * 240, sc.y - Math.sin(ang) * 240)] += 0.35;
+        w[this.beliefIdxFor(b, sc.x, sc.y)] += 0.18;
+      }
     }
 
     // ③ 兜底：若几乎全被排除(敌一定还在地图某处)→铺一层弱先验，以最后已知/出生点加权，保持有处可搜
