@@ -109,6 +109,8 @@ function cacheDom() {
   onlineMobileZoomInBtn: document.getElementById("onlineMobileZoomInBtn"),
   onlineMobileShipButtons: Array.from(document.querySelectorAll("#onlineMobileShipSwitch .mobile-ship-btn")),
   onlineMobileZoneButtons: Array.from(document.querySelectorAll("#onlineMobileZoneGrid .mobile-zone-btn")),
+  onlineMobileZoneChipBtn: document.getElementById("onlineMobileZoneChipBtn"),
+  onlineMobileZonePop: document.getElementById("onlineMobileZonePop"),
   onlineMobileSplitOneBtn: document.getElementById("onlineMobileSplitOneBtn"),
   onlineMobileSplitTwoBtn: document.getElementById("onlineMobileSplitTwoBtn"),
   onlineMobileScoutBtn: document.getElementById("onlineMobileScoutBtn"),
@@ -1290,10 +1292,13 @@ function syncMobileHud(own) {
   const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
   const throttleValue = Math.round(clamp((selectedShip?.throttle || app.throttle || 1) * 100, 25, 140));
   const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} · 区${app.selectedZoneId} · 体${hullPercent}%`;
+  ui.onlineMobileBattleSummary.textContent = `${selectedShip ? selectedShip.characterName : "无"} · 体${hullPercent}%`;
+  if (ui.onlineMobileZoneChipBtn) {
+    ui.onlineMobileZoneChipBtn.textContent = `区${app.selectedZoneId}`;
+  }
   ui.onlineMobileBattleHint.textContent = app.pendingSubSkillAim
     ? "技能瞄准中：点战场确认，点右上小地图先挪镜头"
-    : "点舰船切换 · 点战场下航线 · 点战区格选战区";
+    : "点舰船切换 · 点战场下航线 · 点「区N」选战区";
 
   for (const button of ui.onlineMobileShipButtons) {
     const ship = own.ships ? own.ships[button.dataset.ship] : null;
@@ -3396,9 +3401,20 @@ function bindUiEvents() {
       selectShip(button.dataset.ship || "", currentBattleState());
     });
   }
+  if (ui.onlineMobileZoneChipBtn) {
+    ui.onlineMobileZoneChipBtn.addEventListener("click", () => {
+      if (ui.onlineMobileZonePop) ui.onlineMobileZonePop.hidden = false; // 弹出九宫格,按需出现不占常驻空间
+    });
+  }
+  if (ui.onlineMobileZonePop) {
+    ui.onlineMobileZonePop.addEventListener("click", (event) => {
+      if (event.target === ui.onlineMobileZonePop) ui.onlineMobileZonePop.hidden = true; // 点背景关闭
+    });
+  }
   for (const button of ui.onlineMobileZoneButtons) {
     button.addEventListener("click", () => {
       setSelectedZoneId(Number(button.dataset.zone) || app.selectedZoneId); // 仅选区,不挪镜头
+      if (ui.onlineMobileZonePop) ui.onlineMobileZonePop.hidden = true; // 选完即关
     });
   }
 
@@ -4042,27 +4058,14 @@ function onlineTemplate() {
           <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
             <div class="mobile-battle-head">
               <a class="mobile-menu-btn" href="/">← 菜单</a>
-              <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 · 区5 · 推进100%</div>
+              <div id="onlineMobileBattleSummary" class="mobile-battle-summary">主舰 · 体100%</div>
+              <button id="onlineMobileZoneChipBtn" type="button" class="mobile-chip-btn">区5</button>
               <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
             </div>
             <div id="onlineMobileShipSwitch" class="mobile-ship-switch">
               <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
               <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
               <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
-            </div>
-            <div class="mobile-zone-select">
-              <span class="mobile-zone-label">战区</span>
-              <div id="onlineMobileZoneGrid" class="mobile-zone-grid">
-                <button type="button" class="mobile-zone-btn" data-zone="1">1</button>
-                <button type="button" class="mobile-zone-btn" data-zone="2">2</button>
-                <button type="button" class="mobile-zone-btn" data-zone="3">3</button>
-                <button type="button" class="mobile-zone-btn" data-zone="4">4</button>
-                <button type="button" class="mobile-zone-btn" data-zone="5">5</button>
-                <button type="button" class="mobile-zone-btn" data-zone="6">6</button>
-                <button type="button" class="mobile-zone-btn" data-zone="7">7</button>
-                <button type="button" class="mobile-zone-btn" data-zone="8">8</button>
-                <button type="button" class="mobile-zone-btn" data-zone="9">9</button>
-              </div>
             </div>
             <div class="mobile-action-grid">
               <button id="onlineMobileSplitOneBtn" type="button">分离1</button>
@@ -4083,8 +4086,24 @@ function onlineTemplate() {
               <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
               <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
             </div>
-            <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点战区格选战区</div>
+            <div id="onlineMobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点「区N」选战区</div>
           </section>
+          <div id="onlineMobileZonePop" class="mobile-zone-pop" hidden>
+            <div class="mobile-zone-pop-card">
+              <div class="mobile-zone-pop-title">选择战区</div>
+              <div id="onlineMobileZoneGrid" class="mobile-zone-pop-grid">
+                <button type="button" class="mobile-zone-btn" data-zone="1">1</button>
+                <button type="button" class="mobile-zone-btn" data-zone="2">2</button>
+                <button type="button" class="mobile-zone-btn" data-zone="3">3</button>
+                <button type="button" class="mobile-zone-btn" data-zone="4">4</button>
+                <button type="button" class="mobile-zone-btn" data-zone="5">5</button>
+                <button type="button" class="mobile-zone-btn" data-zone="6">6</button>
+                <button type="button" class="mobile-zone-btn" data-zone="7">7</button>
+                <button type="button" class="mobile-zone-btn" data-zone="8">8</button>
+                <button type="button" class="mobile-zone-btn" data-zone="9">9</button>
+              </div>
+            </div>
+          </div>
 
           <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">
             <div id="battleNameA" class="battle-name-side battle-name-a">左翼舰队</div>

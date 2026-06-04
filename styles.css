@@ -879,22 +879,39 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 .mobile-action-grid > button,
 .mobile-throttle-row { min-height: 42px; }
 
-/* 战区九宫格选择器：对应战场 3×3,点格子选战区 */
-.mobile-zone-select { display: flex; align-items: center; gap: 8px; }
-.mobile-zone-label {
-  flex: 0 0 auto;
+/* 战区选择：按需弹出的九宫格(对应战场 3×3)。常驻只占头部一个「区N」chip,不挤压战斗界面 */
+.mobile-zone-pop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(4, 8, 16, 0.55);
+}
+.mobile-zone-pop[hidden] { display: none; }
+.mobile-zone-pop-card {
+  background: linear-gradient(180deg, #2a1c0c 0%, #1c1308 100%);
+  border: 1px solid var(--gilt);
+  border-radius: 12px;
+  padding: 14px 16px 16px;
+  box-shadow: 0 18px 50px #000000c0;
+}
+.mobile-zone-pop-title {
+  text-align: center;
   font-family: var(--font-engrave);
-  font-size: 0.74rem;
-  letter-spacing: 0.14em;
-  color: var(--text-soft);
+  font-size: 0.82rem;
+  letter-spacing: 0.18em;
+  color: var(--gilt-bright);
+  margin-bottom: 10px;
 }
-.mobile-zone-grid {
-  flex: 1 1 auto;
+.mobile-zone-pop-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 4px;
+  grid-template-columns: repeat(3, 66px);
+  grid-auto-rows: 66px;
+  gap: 8px;
 }
-.mobile-zone-btn { min-height: 38px; padding: 6px 0; font-family: var(--font-engrave); font-weight: 600; }
+.mobile-zone-btn { font-family: var(--font-engrave); font-weight: 600; font-size: 1.15rem; }
 
 .mobile-throttle-row {
   display: grid;

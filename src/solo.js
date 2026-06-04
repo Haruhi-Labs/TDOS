@@ -90,6 +90,8 @@ function cacheDom() {
   mobileZoomInBtn: document.getElementById("mobileZoomInBtn"),
   mobileShipButtons: Array.from(document.querySelectorAll("#mobileShipSwitch .mobile-ship-btn")),
   mobileZoneButtons: Array.from(document.querySelectorAll("#mobileZoneGrid .mobile-zone-btn")),
+  mobileZoneChipBtn: document.getElementById("mobileZoneChipBtn"),
+  mobileZonePop: document.getElementById("mobileZonePop"),
   mobileSplitOneBtn: document.getElementById("mobileSplitOneBtn"),
   mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
   mobileScoutBtn: document.getElementById("mobileScoutBtn"),
@@ -579,7 +581,7 @@ function resetMatch(logMessage = true) {
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
     clearLog();
-    log(app.mobileMode ? "战斗开始。点战场直接移动，点战区格选战区。" : "战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。");
+    log(app.mobileMode ? "战斗开始。点战场直接移动，点「区N」选战区。" : "战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。");
   }
   updateUi();
 }
@@ -912,10 +914,13 @@ function syncMobileHud(own) {
   const shipName = selected ? selected.characterName : "无";
   const throttleValue = Math.round(clamp((selected?.throttle || 1) * 100, 25, 140));
   const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.mobileBattleSummary.textContent = `${shipName} · 区${app.selectedZoneId} · 体${hullPercent}%`;
+  ui.mobileBattleSummary.textContent = `${shipName} · 体${hullPercent}%`;
+  if (ui.mobileZoneChipBtn) {
+    ui.mobileZoneChipBtn.textContent = `区${app.selectedZoneId}`;
+  }
   ui.mobileBattleHint.textContent = app.pendingSubSkillAim
     ? "技能瞄准中：点战场确认，点右上小地图先挪镜头"
-    : "点舰船切换 · 点战场下航线 · 点战区格选战区";
+    : "点舰船切换 · 点战场下航线 · 点「区N」选战区";
 
   const buttonStates = {
     main: own.ships.main,
@@ -1875,9 +1880,20 @@ function bindUiEvents() {
       setSelectedShip(button.dataset.ship || "");
     });
   }
+  if (ui.mobileZoneChipBtn) {
+    ui.mobileZoneChipBtn.addEventListener("click", () => {
+      if (ui.mobileZonePop) ui.mobileZonePop.hidden = false; // 弹出九宫格,按需出现不占常驻空间
+    });
+  }
+  if (ui.mobileZonePop) {
+    ui.mobileZonePop.addEventListener("click", (event) => {
+      if (event.target === ui.mobileZonePop) ui.mobileZonePop.hidden = true; // 点背景关闭
+    });
+  }
   for (const button of ui.mobileZoneButtons) {
     button.addEventListener("click", () => {
       setSelectedZoneId(Number(button.dataset.zone) || app.selectedZoneId); // 仅选区,不挪镜头
+      if (ui.mobileZonePop) ui.mobileZonePop.hidden = true; // 选完即关
     });
   }
 
@@ -2418,27 +2434,14 @@ function soloTemplate() {
         <section id="mobileBattleHud" class="mobile-battle-hud" aria-live="polite">
           <div class="mobile-battle-head">
             <a class="mobile-menu-btn" href="/">← 菜单</a>
-            <div id="mobileBattleSummary" class="mobile-battle-summary">主舰 · 区5 · 推进100%</div>
+            <div id="mobileBattleSummary" class="mobile-battle-summary">主舰 · 体100%</div>
+            <button id="mobileZoneChipBtn" type="button" class="mobile-chip-btn">区5</button>
             <button id="mobileCenterBtn" type="button" class="mobile-chip-btn">跟随</button>
           </div>
           <div id="mobileShipSwitch" class="mobile-ship-switch">
             <button type="button" class="mobile-ship-btn" data-ship="main">主舰</button>
             <button type="button" class="mobile-ship-btn" data-ship="sub1">副一</button>
             <button type="button" class="mobile-ship-btn" data-ship="sub2">副二</button>
-          </div>
-          <div class="mobile-zone-select">
-            <span class="mobile-zone-label">战区</span>
-            <div id="mobileZoneGrid" class="mobile-zone-grid">
-              <button type="button" class="mobile-zone-btn" data-zone="1">1</button>
-              <button type="button" class="mobile-zone-btn" data-zone="2">2</button>
-              <button type="button" class="mobile-zone-btn" data-zone="3">3</button>
-              <button type="button" class="mobile-zone-btn" data-zone="4">4</button>
-              <button type="button" class="mobile-zone-btn" data-zone="5">5</button>
-              <button type="button" class="mobile-zone-btn" data-zone="6">6</button>
-              <button type="button" class="mobile-zone-btn" data-zone="7">7</button>
-              <button type="button" class="mobile-zone-btn" data-zone="8">8</button>
-              <button type="button" class="mobile-zone-btn" data-zone="9">9</button>
-            </div>
           </div>
           <div class="mobile-action-grid">
             <button id="mobileSplitOneBtn" type="button">分离1</button>
@@ -2459,8 +2462,24 @@ function soloTemplate() {
             <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
             <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
           </div>
-          <div id="mobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点战区格选战区</div>
+          <div id="mobileBattleHint" class="mobile-battle-hint">点舰船切换 · 点战场下航线 · 点「区N」选战区</div>
         </section>
+        <div id="mobileZonePop" class="mobile-zone-pop" hidden>
+          <div class="mobile-zone-pop-card">
+            <div class="mobile-zone-pop-title">选择战区</div>
+            <div id="mobileZoneGrid" class="mobile-zone-pop-grid">
+              <button type="button" class="mobile-zone-btn" data-zone="1">1</button>
+              <button type="button" class="mobile-zone-btn" data-zone="2">2</button>
+              <button type="button" class="mobile-zone-btn" data-zone="3">3</button>
+              <button type="button" class="mobile-zone-btn" data-zone="4">4</button>
+              <button type="button" class="mobile-zone-btn" data-zone="5">5</button>
+              <button type="button" class="mobile-zone-btn" data-zone="6">6</button>
+              <button type="button" class="mobile-zone-btn" data-zone="7">7</button>
+              <button type="button" class="mobile-zone-btn" data-zone="8">8</button>
+              <button type="button" class="mobile-zone-btn" data-zone="9">9</button>
+            </div>
+          </div>
+        </div>
         <div id="overlay" class="overlay hidden">
           <h2 id="overlayTitle"></h2>
           <div class="overlay-actions">
