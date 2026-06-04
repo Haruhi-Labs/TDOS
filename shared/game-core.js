@@ -3290,12 +3290,26 @@ export class BotController {
           }
         }
       }
-      // (b) 敌方侦察机:看到的敌侦察机→敌方在该带活动，且其发射处(逆其朝向)有敌舰
+      // (b) 敌方侦察机:区分两类,避免被长门"一圈侦察机"误导——
+      //   · burst(长门旗舰技):一圈(16架)围着发射舰orbit,逐个回溯方向会被环切线带偏、且落点成一圈
+      //     (峰偏到环上而非中心)。正确读法=一圈侦察机的"质心"≈敌舰所在 → 只在质心加权,不逐个回溯。
+      //   · 普通(transit):单架从敌舰飞向战区,逆其朝向≈发射处有敌舰 → 回溯加权。
+      let bx0 = 0;
+      let by0 = 0;
+      let bn = 0;
       for (const sc of this.enemy.scouts) {
         if (!sc || !sc.alive || !this.team.visibleEnemyIds.has(sc.id)) continue;
+        if (sc.pattern === "burst") {
+          bx0 += sc.x; by0 += sc.y; bn++;
+          continue; // burst 不逐个回溯(会误导),留到下面按质心处理
+        }
         const ang = Number.isFinite(sc.angle) ? sc.angle : 0;
         w[this.beliefIdxFor(b, sc.x - Math.cos(ang) * 240, sc.y - Math.sin(ang) * 240)] += 0.35;
         w[this.beliefIdxFor(b, sc.x, sc.y)] += 0.18;
+      }
+      if (bn >= 3) {
+        // 看到≥3架一圈侦察机→敌舰在它们质心附近(一圈对称,质心≈圆心=发射舰)。这是很强的情报,给高权重。
+        w[this.beliefIdxFor(b, bx0 / bn, by0 / bn)] += 1.3;
       }
     }
 
