@@ -1394,7 +1394,7 @@ button.toggle-active {
   inset: 0;
   z-index: 1000;
   overflow: hidden;
-  opacity: 0;
+  opacity: 1; /* 背景幕一进入就不透明,立即遮住下方对战页(消除进入 /play 时的闪现) */
   transition: opacity 0.6s ease, transform 0.7s cubic-bezier(0.4, 0, 0, 1);
   /* 烛光书桌浮于星空：暖光中心 → 深蓝星夜边缘（canvas 之下的兜底色） */
   background:
@@ -1404,7 +1404,9 @@ button.toggle-active {
   font-family: var(--font-cn), var(--font-body);
   color: var(--ink);
 }
-.cs-screen.visible { opacity: 1; }
+/* 背景幕(渐变 + 木纹 + 星空 canvas)始终在场;书页/页眉/页脚等内容随 visible 淡入 */
+.cs-screen > :not(.cs-bg-canvas) { opacity: 0; transition: opacity 0.45s ease; }
+.cs-screen.visible > :not(.cs-bg-canvas) { opacity: 1; }
 .cs-screen.leaving { opacity: 0; transform: scale(1.05); pointer-events: none; }
 
 .cs-bg-canvas {
