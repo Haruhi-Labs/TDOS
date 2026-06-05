@@ -3469,8 +3469,9 @@ function bindUiEvents() {
   bindPressButton(ui.subSkillBtn, useSubSkillOnline);
   bindPressButton(ui.onlineMobileSubSkillBtn, useSubSkillOnline);
 
-  // 桌面右键:在落点创建路径点(设目标);屏蔽浏览器右键菜单
-  canvas.addEventListener("contextmenu", (event) => {
+  // 桌面右键用于设航线:窗口级屏蔽右键菜单——含「右键拖动后在画布外松开」的情况,
+  // 避免 Windows 右键拖动触发浏览器手势/右键菜单。随 ac 在卸载时自动移除。
+  addWin("contextmenu", (event) => {
     if (!app.mobileMode) {
       event.preventDefault();
     }
