@@ -177,3 +177,20 @@ export function setFaction(faction) {
   saveProfile({ faction });
   return getFaction();
 }
+
+// ── 单人 AI 难度(独立存储,默认普通)──
+const DIFFICULTY_KEY = "haruhi-ai-difficulty-v1";
+export const AI_DIFFICULTIES = ["easy", "normal", "hard", "master"];
+const DEFAULT_DIFFICULTY = "normal";
+
+export function getDifficulty() {
+  if (!hasStorage()) return DEFAULT_DIFFICULTY;
+  const v = window.localStorage.getItem(DIFFICULTY_KEY);
+  return AI_DIFFICULTIES.includes(v) ? v : DEFAULT_DIFFICULTY;
+}
+
+export function setDifficulty(level) {
+  if (!hasStorage() || !AI_DIFFICULTIES.includes(level)) return getDifficulty();
+  window.localStorage.setItem(DIFFICULTY_KEY, level);
+  return level;
+}

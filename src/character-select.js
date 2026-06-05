@@ -5,6 +5,41 @@ import {
   DEFAULT_TEAM_LOADOUT,
 } from "../shared/game-core.js";
 import { isMobile } from "./mobile.js";
+import { getDifficulty, setDifficulty } from "./profile.js";
+
+// 单人难度档(仅在 solo 的选角页显示;只改AI反应时间,不削弱能力)
+const DIFFICULTY_LEVELS = [
+  { key: "easy", label: "简单" },
+  { key: "normal", label: "普通" },
+  { key: "hard", label: "困难" },
+  { key: "master", label: "极限" },
+];
+
+// 构建难度选择器(prefix: "cs" 桌面 / "csm" 移动),自动读写本地存储并高亮当前档
+function buildDifficultyEl(prefix) {
+  const wrap = document.createElement("div");
+  wrap.className = `${prefix}-difficulty`;
+  wrap.setAttribute("role", "group");
+  wrap.setAttribute("aria-label", "选择难度");
+  wrap.innerHTML =
+    `<span class="${prefix}-faction-label">难度</span>` +
+    DIFFICULTY_LEVELS.map(
+      (d) => `<button type="button" class="${prefix}-diff-btn" data-diff="${d.key}">${d.label}</button>`,
+    ).join("");
+  const btns = Array.from(wrap.querySelectorAll(`.${prefix}-diff-btn`));
+  const sync = () => {
+    const cur = getDifficulty();
+    for (const b of btns) b.classList.toggle("active", b.dataset.diff === cur);
+  };
+  for (const b of btns) {
+    b.addEventListener("click", () => {
+      setDifficulty(b.dataset.diff);
+      sync();
+    });
+  }
+  sync();
+  return wrap;
+}
 
 // ═══════════════════════════════════════════════════
 // 角色主题色 — 取自立绘的复古太空军装
@@ -520,7 +555,7 @@ function renderRightPageHTML(charId, loadout) {
 // 创建角色选择屏（皮装名鉴 + 3D 翻页）
 // ═══════════════════════════════════════════════════
 // 桌面版：皮装对开书 + 3D 翻页（保持原样，仅在非移动端使用）
-function createDesktopCharacterSelect(onLaunch) {
+function createDesktopCharacterSelect(onLaunch, opts = {}) {
   const FLIP_MS = 840;
 
   const state = {
@@ -564,6 +599,9 @@ function createDesktopCharacterSelect(onLaunch) {
     <div class="cs-folio right"></div>
   `;
   content.appendChild(header);
+  if (opts.showDifficulty) {
+    header.querySelector(".cs-header-center")?.appendChild(buildDifficultyEl("cs"));
+  }
 
   const factionBtns = {
     blue: header.querySelector('.cs-faction-btn.blue'),
@@ -1252,7 +1290,7 @@ const MOBILE_STATS = [
   ["射速", "fireRate"],
 ];
 
-function createMobileCharacterSelect(onLaunch) {
+function createMobileCharacterSelect(onLaunch, opts = {}) {
   const state = {
     idx: 0,
     loadout: { main: null, sub1: null, sub2: null },
@@ -1284,6 +1322,9 @@ function createMobileCharacterSelect(onLaunch) {
       <button type="button" class="csm-cta" disabled></button>
     </div>
   `;
+  if (opts.showDifficulty) {
+    screen.querySelector(".csm-top")?.appendChild(buildDifficultyEl("csm"));
+  }
 
   const els = {
     stage: screen.querySelector(".csm-stage"),
@@ -1642,13 +1683,13 @@ function createMobileCharacterSelect(onLaunch) {
 }
 
 // 对外入口：按视口在「桌面对开书」与「移动专属布局」之间选择（show 时判定，跨档自动重建）
-export function createCharacterSelect(onLaunch) {
+export function createCharacterSelect(onLaunch, opts = {}) {
   let impl = null;
   let builtMobile = null;
   function ensure() {
     const m = isMobile();
     if (impl && builtMobile === m) return impl;
-    impl = m ? createMobileCharacterSelect(onLaunch) : createDesktopCharacterSelect(onLaunch);
+    impl = m ? createMobileCharacterSelect(onLaunch, opts) : createDesktopCharacterSelect(onLaunch, opts);
     builtMobile = m;
     return impl;
   }

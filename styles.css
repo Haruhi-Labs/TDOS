@@ -1553,6 +1553,53 @@ button.toggle-active {
   box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 14px #b8232a88;
 }
 
+/* 难度选择器(仅单人选角页):沿用阵营按钮外观,选中点亮黄铜 */
+.cs-difficulty {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 7px;
+}
+.cs-diff-btn {
+  font-family: var(--font-engrave);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 4px 12px;
+  border: 1px solid var(--brass);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2a1c0e 0%, #160c05 100%);
+  color: var(--ink-faint);
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+.cs-diff-btn:hover:not(.active) { color: var(--gilt-bright); border-color: var(--gilt); }
+.cs-diff-btn.active {
+  border-color: var(--gilt-bright);
+  background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%);
+  color: #fff6dc;
+  box-shadow: inset 0 1px 0 #ffe9a8, 0 0 12px #c8a24e88;
+}
+/* 移动版 */
+.csm-difficulty { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
+.csm-faction-label { font-family: var(--font-kai); font-size: 0.7rem; letter-spacing: 0.16em; color: var(--gilt); }
+.csm-diff-btn {
+  font-size: 0.72rem;
+  padding: 5px 11px;
+  border: 1px solid var(--brass);
+  border-radius: 4px;
+  background: #160c05;
+  color: var(--ink-faint);
+  cursor: pointer;
+}
+.csm-diff-btn.active {
+  border-color: var(--gilt-bright);
+  background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%);
+  color: #fff6dc;
+}
+
 /* ════════════════════════════════════════════════════════════
    书本本体（皮装精装）
    ════════════════════════════════════════════════════════════ */

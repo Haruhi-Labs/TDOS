@@ -28,6 +28,7 @@ import {
   setLoadout,
   getFaction,
   setFaction,
+  getDifficulty,
 } from "./profile.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
@@ -556,6 +557,7 @@ function createSimulation() {
       A: app.playerLoadout,
       B: app.enemyLoadout,
     },
+    aiDifficulty: getDifficulty(), // 单人难度:只调AI反应时间(感知延迟/改航间隔),不削弱能力
   });
 }
 
@@ -2291,7 +2293,7 @@ function launchWithLoadout(loadout, color) {
 function showCharacterSelectScreen() {
   charSelect = createCharacterSelect((loadout, color) => {
     launchWithLoadout(loadout, color);
-  });
+  }, { showDifficulty: true });
   charSelect.show();
 }
 

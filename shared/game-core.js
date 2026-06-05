@@ -2701,6 +2701,17 @@ const HARD_AI_PROFILE = Object.freeze({
   aggressiveScoutWindow: 0.45,
 });
 
+// 单人难度:不削弱AI任何能力(瞄准/伤害/航速/技能/视野全不变),只通过"反应时间"做平衡——
+//  reactionMult 放大感知延迟(perceptionDelayFor):AI 看到/响应玩家动作更慢;
+//  replanMult   放大改航间隔(moveReplan):AI 调整走位更不勤。
+// master = 当前满状态AI(乘子均为1,行为与既有基准完全不变)。
+const AI_DIFFICULTY = Object.freeze({
+  easy: { reactionMult: 9.0, replanMult: 2.4 }, // 反应~0.75s/峰值~1.4s,改航~3.2-5.2s:走位明显迟钝,易被绕/被晃
+  normal: { reactionMult: 4.5, replanMult: 1.7 }, // 反应~0.37s,改航~2.3-3.7s
+  hard: { reactionMult: 2.2, replanMult: 1.25 }, // 反应~0.18s
+  master: { reactionMult: 1.0, replanMult: 1.0 }, // 满状态AI:乘子均1,行为与既有基准完全一致
+});
+
 export class BotController {
   constructor(team, enemy) {
     this.team = team;
@@ -2709,6 +2720,10 @@ export class BotController {
     // 旧版AI开关：true 时关闭全部升级(集火/视野收尾/收尾压制)，行为回到升级前的基线AI。
     // 用于 AI推演里「对手用旧AI」对照展示，无需打包冻结副本。
     this.legacy = false;
+    // 单人难度(默认 master=满状态)。reactionMult/replanMult 仅放大反应延迟与改航间隔,不碰任何能力。
+    this.difficulty = "master";
+    this.reactionMult = 1;
+    this.replanMult = 1;
 
     this.moveTimer = 0;
     this.scoutTimer = this.profile.initialScoutTimer;
@@ -3025,11 +3040,24 @@ export class BotController {
     return value - Math.floor(value);
   }
 
+  setDifficulty(level) {
+    const d = AI_DIFFICULTY[level];
+    this.difficulty = d ? level : "master";
+    this.reactionMult = (d || AI_DIFFICULTY.master).reactionMult;
+    this.replanMult = (d || AI_DIFFICULTY.master).replanMult;
+    return this;
+  }
+
   perceptionDelayFor(entity) {
     const base = entity.kind === "ship" ? 0.14 : entity.kind === "wingman" ? 0.1 : 0.08;
     const roleBias = entity.slotKey === "main" ? -0.02 : 0;
     const jitter = this.stableNoise(entity.id, 3) * 0.08;
-    return clamp((base + roleBias + jitter) * this.profile.reactionScale, this.profile.reactionMin, this.profile.reactionMax);
+    const mult = this.reactionMult || 1; // 难度:放大反应时间(感知延迟),不改任何能力
+    return clamp(
+      (base + roleBias + jitter) * this.profile.reactionScale * mult,
+      this.profile.reactionMin * mult,
+      this.profile.reactionMax * mult,
+    );
   }
 
   queueSighting(entity) {
@@ -4222,7 +4250,7 @@ export class BotController {
 
     if (this.moveTimer <= 0 || this.stuckTimer > this.profile.stuckTrigger) {
       this.issueMovement(this.currentContext);
-      this.moveTimer = randomInRange(this.profile.moveReplanMin, this.profile.moveReplanMax);
+      this.moveTimer = randomInRange(this.profile.moveReplanMin, this.profile.moveReplanMax) * (this.replanMult || 1);
       this.stuckTimer = 0;
     }
 
@@ -5673,9 +5701,11 @@ export class MatchSimulation {
     this.floatingTexts = [];
     this.bots = {};
     const legacyAiSeats = normalizeAiSeats(mode, options.legacyAiSeats); // 指定哪些AI席位用旧版AI
+    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
     for (const seat of this.aiSeats) {
       const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
       bot.legacy = legacyAiSeats.includes(seat);
+      bot.setDifficulty(aiDifficulty);
       this.bots[seat] = bot;
     }
     this.botA = this.bots.A || null;
