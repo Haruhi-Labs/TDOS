@@ -879,40 +879,6 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 .mobile-action-grid > button,
 .mobile-throttle-row { min-height: 42px; }
 
-/* 战区选择：按需弹出的九宫格(对应战场 3×3)。常驻只占头部一个「区N」chip,不挤压战斗界面 */
-.mobile-zone-pop {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(4, 8, 16, 0.55);
-}
-.mobile-zone-pop[hidden] { display: none; }
-.mobile-zone-pop-card {
-  background: linear-gradient(180deg, #2a1c0c 0%, #1c1308 100%);
-  border: 1px solid var(--gilt);
-  border-radius: 12px;
-  padding: 14px 16px 16px;
-  box-shadow: 0 18px 50px #000000c0;
-}
-.mobile-zone-pop-title {
-  text-align: center;
-  font-family: var(--font-engrave);
-  font-size: 0.82rem;
-  letter-spacing: 0.18em;
-  color: var(--gilt-bright);
-  margin-bottom: 10px;
-}
-.mobile-zone-pop-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 66px);
-  grid-auto-rows: 66px;
-  gap: 8px;
-}
-.mobile-zone-btn { font-family: var(--font-engrave); font-weight: 600; font-size: 1.15rem; }
-
 .mobile-throttle-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -928,7 +894,6 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 /* ── 选中 / 激活态：点亮黄铜 ── */
 .ship-switch-btn.active,
 .mobile-ship-btn.active,
-.mobile-zone-btn.active,
 .debug-focus-btn.active,
 button.toggle-active {
   background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%);
