@@ -720,8 +720,10 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   const modeLinks = document.createElement("div");
   modeLinks.className = "cs-mode-links";
   modeLinks.innerHTML = `
+    <button type="button" class="cs-mode-link" data-action="random">随机编队</button>
     <a href="/" class="cs-mode-link">主菜单</a>
   `;
+  modeLinks.querySelector('[data-action="random"]').addEventListener("click", randomFill);
   content.appendChild(modeLinks);
 
   // ── 预加载某阵营的全部立绘 ──
@@ -978,6 +980,21 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     for (const slot of SLOT_INFO) updateFleetSlot(slot.key);
     refreshFleetTarget();
     updateLaunch();
+  }
+
+  // 随机编队：从 7 人里抽 3 名不重复，填满 主/副一/副二，书页翻到主舰；可反复点重抽
+  function randomFill() {
+    finishFlip();
+    const pool = CHARACTER_ORDER.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    state.loadout.main = pool[0];
+    state.loadout.sub1 = pool[1];
+    state.loadout.sub2 = pool[2];
+    state.currentChar = pool[0];
+    afterLoadoutChange();
   }
 
   // 高亮底部舰队栏中“当前正在选择”的舰位
@@ -1310,6 +1327,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   screen.innerHTML = `
     <div class="csm-top">
       <a class="csm-back" href="/">‹ 主菜单</a>
+      <button type="button" class="csm-random" data-action="random">随机编队</button>
       <div class="csm-faction" role="group" aria-label="选择阵营">
         <button type="button" class="csm-faction-btn blue active" data-color="blue">蓝队</button>
         <button type="button" class="csm-faction-btn red" data-color="red">红队</button>
@@ -1352,6 +1370,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     cta: screen.querySelector(".csm-cta"),
     prev: screen.querySelector(".csm-prev"),
     next: screen.querySelector(".csm-next"),
+    random: screen.querySelector(".csm-random"),
     factionBlue: screen.querySelector(".csm-faction-btn.blue"),
     factionRed: screen.querySelector(".csm-faction-btn.red"),
   };
@@ -1490,6 +1509,21 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     }
   }
 
+  // 随机编队：抽 3 名不重复填满，滑到主舰；可反复点重抽
+  function randomFill() {
+    const pool = CHARACTER_ORDER.slice();
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [pool[i], pool[j]] = [pool[j], pool[i]];
+    }
+    state.loadout.main = pool[0];
+    state.loadout.sub1 = pool[1];
+    state.loadout.sub2 = pool[2];
+    state.idx = CHARACTER_ORDER.indexOf(pool[0]);
+    renderAll();
+    snapToIdx(false);
+  }
+
   function launch() {
     if (!isReady()) return;
     hide(() => onLaunch(cloneLoadout(state.loadout), state.color));
@@ -1600,6 +1634,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   els.prev.addEventListener("click", () => go(state.idx - 1));
   els.next.addEventListener("click", () => go(state.idx + 1));
   els.cta.addEventListener("click", ctaAction);
+  els.random?.addEventListener("click", randomFill);
   els.factionBlue.addEventListener("click", () => setColor("blue"));
   els.factionRed.addEventListener("click", () => setColor("red"));
 

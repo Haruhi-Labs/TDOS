@@ -2433,6 +2433,7 @@ button.toggle-active {
   transition: all 160ms ease;
 }
 .cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
+button.cs-mode-link { appearance: none; -webkit-appearance: none; background: none; border: 0; border-bottom: 1px solid transparent; padding: 0; cursor: pointer; }
 
 /* ═══════════════════════════════════════════════════
    选人 · 移动端专属布局（触摸优先；DOM 仅在移动端生成，不与桌面书本共用）
@@ -2465,6 +2466,12 @@ button.toggle-active {
   border-radius: 999px;
   padding: 7px 16px;
   background: #160c05aa;
+}
+.csm-random {
+  appearance: none; -webkit-appearance: none;
+  font-family: var(--font-cn); font-size: 0.84rem;
+  color: var(--gilt-pale); border: 1px solid var(--brass); border-radius: 999px;
+  padding: 7px 14px; background: #160c05aa; cursor: pointer;
 }
 .csm-faction { display: flex; gap: 6px; }
 .csm-faction-btn {
