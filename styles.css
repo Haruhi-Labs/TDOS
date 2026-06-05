@@ -1553,6 +1553,16 @@ button.toggle-active {
   box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 14px #b8232a88;
 }
 
+/* 阵营 + 难度 并排成一行(仅单人选角页) */
+.cs-setup-row { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; margin-top: 7px; }
+.cs-setup-row .cs-faction, .cs-setup-row .cs-difficulty { margin-top: 0; }
+.csm-setup-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 0 10px 6px; }
+.csm-setup-row .csm-difficulty { margin-top: 0; }
+/* 移动端紧凑化,让阵营+难度尽量同一行 */
+.csm-setup-row .csm-faction-btn { padding: 4px 9px; font-size: 0.72rem; }
+.csm-setup-row .csm-diff-btn { padding: 4px 8px; font-size: 0.66rem; }
+.csm-setup-row .csm-faction-label { letter-spacing: 0.08em; }
+
 /* 难度选择器(仅单人选角页):沿用阵营按钮外观,选中点亮黄铜 */
 .cs-difficulty {
   display: inline-flex;

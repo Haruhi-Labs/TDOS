@@ -600,7 +600,15 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   `;
   content.appendChild(header);
   if (opts.showDifficulty) {
-    header.querySelector(".cs-header-center")?.appendChild(buildDifficultyEl("cs"));
+    const center = header.querySelector(".cs-header-center");
+    const faction = center?.querySelector(".cs-faction");
+    if (center && faction) {
+      const row = document.createElement("div");
+      row.className = "cs-setup-row";
+      center.insertBefore(row, faction); // 阵营与难度并排成一行
+      row.appendChild(faction);
+      row.appendChild(buildDifficultyEl("cs"));
+    }
   }
 
   const factionBtns = {
@@ -1323,7 +1331,15 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     </div>
   `;
   if (opts.showDifficulty) {
-    screen.querySelector(".csm-top")?.appendChild(buildDifficultyEl("csm"));
+    const top = screen.querySelector(".csm-top");
+    const faction = top?.querySelector(".csm-faction");
+    if (top && faction) {
+      const row = document.createElement("div");
+      row.className = "csm-setup-row";
+      top.insertAdjacentElement("afterend", row); // 顶栏下方整行,阵营与难度并排
+      row.appendChild(faction);
+      row.appendChild(buildDifficultyEl("csm"));
+    }
   }
 
   const els = {
