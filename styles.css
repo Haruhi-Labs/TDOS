@@ -3147,10 +3147,6 @@ button.toggle-active {
 .qs-steps b, .qs-goal b, .m-guide-item b { color: var(--gilt-bright); font-weight: 700; }
 .guide-item b { color: var(--gilt-deep); font-weight: 700; }
 
-.guide-tips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
-.guide-tips li { position: relative; padding-left: 18px; font-family: var(--font-cn); font-size: 0.84rem; line-height: 1.55; color: var(--text-soft); }
-.guide-tips li::before { content: "▸"; position: absolute; left: 2px; color: var(--gilt); }
-
 /* ── 内容页（档案 / 玩法说明）移动端锁一屏：返回+标题常驻，内容区自身滚动 ── */
 @media (max-width: 980px) {
   .page-stage { min-height: 0; height: 100vh; height: 100dvh; overflow: hidden; align-items: stretch; }
