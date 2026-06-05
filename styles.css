@@ -88,6 +88,9 @@ html, body {
   /* 屏蔽移动端双击缩放（及点击延迟）：manipulation 仍保留滚动与捏合缩放；
      根元素生效即对全文档兜底，画布/轮播自有的 touch-action(none/pan-y)更具体仍覆盖 */
   touch-action: manipulation;
+  /* 禁用触控板「两指横扫=前进/后退」导航 + 下拉刷新 + 过滚回弹：
+     避免战斗中右键/拖拽误触把人甩出游戏页 */
+  overscroll-behavior: none;
   color: var(--text-primary);
   font-family: var(--font-cn), var(--font-body);
   font-feature-settings: "palt";
