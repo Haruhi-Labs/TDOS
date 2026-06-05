@@ -3125,6 +3125,32 @@ button.toggle-active {
 }
 .guide-key span { font-family: var(--font-cn); font-size: 0.84rem; color: var(--text-soft); }
 
+/* 玩法说明：三步开打 + 贴士 + 强调字 */
+.guide-quickstart {
+  border: 1px solid var(--gilt);
+  border-radius: 10px;
+  padding: 14px 18px 16px;
+  background: linear-gradient(180deg, #2a1c0c66 0%, #160c0588 100%);
+}
+.qs-head { font-family: var(--font-engrave); font-size: 1.05rem; letter-spacing: 0.18em; color: var(--gilt-bright); margin-bottom: 11px; }
+.qs-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 9px; }
+.qs-steps li { display: flex; align-items: flex-start; gap: 11px; }
+.qs-no {
+  flex: 0 0 auto; width: 22px; height: 22px;
+  display: inline-flex; align-items: center; justify-content: center; border-radius: 50%;
+  background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%); color: #fff6dc;
+  font-family: var(--font-engrave); font-size: 0.82rem; font-weight: 700;
+  box-shadow: inset 0 1px 0 #ffe9a8; margin-top: 1px;
+}
+.qs-steps li > span:last-child { font-family: var(--font-cn); font-size: 0.88rem; line-height: 1.55; color: var(--text-soft); }
+.qs-goal { margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--brass-dark); font-family: var(--font-cn); font-size: 0.86rem; color: var(--text-soft); }
+.qs-steps b, .qs-goal b, .m-guide-item b { color: var(--gilt-bright); font-weight: 700; }
+.guide-item b { color: var(--gilt-deep); font-weight: 700; }
+
+.guide-tips { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
+.guide-tips li { position: relative; padding-left: 18px; font-family: var(--font-cn); font-size: 0.84rem; line-height: 1.55; color: var(--text-soft); }
+.guide-tips li::before { content: "▸"; position: absolute; left: 2px; color: var(--gilt); }
+
 /* ── 内容页（档案 / 玩法说明）移动端锁一屏：返回+标题常驻，内容区自身滚动 ── */
 @media (max-width: 980px) {
   .page-stage { min-height: 0; height: 100vh; height: 100dvh; overflow: hidden; align-items: stretch; }
