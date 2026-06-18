@@ -2836,7 +2836,7 @@ const HARD_AI_PROFILE = Object.freeze({
 // 单人难度:四档同时调三件事——
 //  reactionMult 放大感知延迟(perceptionDelayFor):AI 看到/响应玩家动作更慢;
 //  replanMult   放大改航间隔(moveReplan):AI 调整走位更不勤;
-//  statMult     敌方舰队数值缩放(血量+伤害):简单0.8 / 普通1.0 / 困难1.2 / 极限1.0;
+//  statMult     敌方舰队数值缩放(血量+伤害):简单0.8 / 普通1.0 / 困难1.2 / 极限1.1;
 //  focusLowHp   极限专属:开火锁定射程内血量最低的敌人(收残血)。其余三档与玩家同规则"取最近"。
 // 注:极限(=满状态AI,也是 benchmark/默认席位)的锁血是经用户明确要求开放的"最高难度"特性,
 //  与历史上被移除的"全AI默认偷偷锁血"作弊不同——此处仅在玩家主动选择极限档时生效。
@@ -2844,7 +2844,7 @@ const AI_DIFFICULTY = Object.freeze({
   easy: { reactionMult: 9.0, replanMult: 2.4, statMult: 0.8, focusLowHp: false }, // 反应~0.75s/峰值~1.4s,改航~3.2-5.2s + 数值×0.8:既迟钝又脆
   normal: { reactionMult: 4.5, replanMult: 1.7, statMult: 1.0, focusLowHp: false }, // 反应~0.37s,改航~2.3-3.7s,数值×1.0
   hard: { reactionMult: 2.2, replanMult: 1.25, statMult: 1.2, focusLowHp: false }, // 反应~0.18s + 数值×1.2:更肉更痛
-  master: { reactionMult: 1.0, replanMult: 1.0, statMult: 1.0, focusLowHp: true }, // 满状态AI:反应最快,数值×1.0,且锁血集火残血
+  master: { reactionMult: 1.0, replanMult: 1.0, statMult: 1.1, focusLowHp: true }, // 满状态AI:反应最快 + 数值×1.1 + 智能集火残血:无可争议最难
 });
 
 export class BotController {
