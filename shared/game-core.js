@@ -52,6 +52,13 @@ export function fireArcDensityMultiplier(relativeAngle, uniformOutput = false) {
   return 0;
 }
 
+// 尾击:炮弹从目标「尾部射界」方向命中时伤害放大。判定范围与尾部射界(0x 火力带)完全一致——
+// 即来袭方向相对目标朝向的夹角 |θ| > 150°(正后 60° 锥)。
+const REAR_STRIKE_MIN_DEG = 150;
+const REAR_STRIKE_MULT = 1.2;
+// 撞击:两船船体重叠的瞬间,各自速度衰减到该比例(减速),并把彼此轻推开以解除重叠。
+const COLLISION_SPEED_KEEP = 0.6;
+
 export const CHARACTER_ORDER = ["haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura"];
 
 export const CHARACTER_DEFS = {
@@ -702,6 +709,9 @@ class Projectile {
     this.color = color || team.projectileColor;
     this.radius = 2;
     this.alive = true;
+    // 发射点(射手开火时的位置),用于尾击判定:看来袭方向落在目标哪个射界
+    this.originX = x;
+    this.originY = y;
   }
 
   update(dt, match) {
@@ -742,8 +752,22 @@ class Projectile {
       match.spawnFloatingText(this.x, this.y, "未命中", "#92c5ff");
       return;
     }
-    hitTarget.takeDamage(this.damage, null, match);
-    match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(this.damage)}`, "#ffd178");
+    // 尾击:来袭方向(发射点相对目标)落在目标尾部射界(|θ|>150°)→ 伤害 ×1.2
+    let damage = this.damage;
+    let rear = false;
+    if (hitTarget.kind === "ship" && Number.isFinite(hitTarget.angle)) {
+      const bearing = Math.atan2(this.originY - hitTarget.y, this.originX - hitTarget.x);
+      const rel = Math.abs(shortestAngleDelta(hitTarget.angle, bearing));
+      if (rel >= REAR_STRIKE_MIN_DEG * DEG_TO_RAD) {
+        damage *= REAR_STRIKE_MULT;
+        rear = true;
+      }
+    }
+    hitTarget.takeDamage(damage, null, match);
+    match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(damage)}`, rear ? "#ffb066" : "#ffd178");
+    if (rear) {
+      match.spawnFloatingText(hitTarget.x + 12, hitTarget.y - 22, "尾击", "#ff9d5a");
+    }
     match.spawnBurst(hitTarget.x, hitTarget.y, "#ffdb9b", 7);
   }
 
@@ -6006,6 +6030,36 @@ export class MatchSimulation {
     return false;
   }
 
+  // 撞击:任意两艘存活舰船的船体重叠时各自减速并轻推分开(同队编队跟随的舰之间不互撞,免抖动)。
+  resolveShipCollisions() {
+    const ships = [...this.teamA.getAllShips(), ...this.teamB.getAllShips()].filter((s) => s.alive);
+    for (let i = 0; i < ships.length; i++) {
+      for (let j = i + 1; j < ships.length; j++) {
+        const a = ships[i];
+        const b = ships[j];
+        if (a.team === b.team && (a.isAttached() || b.isAttached())) {
+          continue;
+        }
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const d = Math.hypot(dx, dy);
+        const minD = a.radius + b.radius;
+        if (d <= 0 || d >= minD) {
+          continue;
+        }
+        a.speed *= COLLISION_SPEED_KEEP;
+        b.speed *= COLLISION_SPEED_KEEP;
+        const nx = dx / d;
+        const ny = dy / d;
+        const push = (minD - d) * 0.5;
+        a.x = this.clampX(a.x - nx * push, 8);
+        a.y = this.clampY(a.y - ny * push, 8);
+        b.x = this.clampX(b.x + nx * push, 8);
+        b.y = this.clampY(b.y + ny * push, 8);
+      }
+    }
+  }
+
   resolveScoutClashes() {
     for (const scoutA of this.teamA.scouts) {
       if (!scoutA.alive) {
@@ -6102,6 +6156,7 @@ export class MatchSimulation {
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
 
+    this.resolveShipCollisions();
     this.resolveBladeQueenContacts(safeDt);
     this.resolveScoutClashes();
     this.teamA.computeVisibility(this.teamB);
