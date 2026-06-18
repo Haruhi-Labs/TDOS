@@ -22,8 +22,8 @@ const STEPS = [
   {
     id: "route",
     title: "第一步 · 下航线",
-    body: (mobile) =>
-      mobile
+    body: (info) =>
+      info.mobile
         ? "点一下战场上的<b>空地</b>,给旗舰下一条航线——舰队会沿曲线自动航行,默认三舰跟随主舰。"
         : "在战场空地上<b>点右键</b>,给旗舰下一条航线——舰队会沿曲线自动航行,默认三舰跟随主舰。",
     advance: { action: "set_route" },
@@ -37,6 +37,17 @@ const STEPS = [
       "射程远大于视野——只有“看得见”的敌人才会自动开火,所以你可以吊在敌人视野外输出。",
     illustration: "visionRange",
     advance: "button",
+  },
+  {
+    id: "scout",
+    title: "机制 · 侦察与战区",
+    body: (info) =>
+      info.mobile
+        ? "看不见的地方派<b>侦察机</b>去开图:点右上<b>小地图选一个战区</b>,再点<b>「侦察」</b>放出侦察机——它会飞过去帮你开视野。"
+        : "看不见的地方派<b>侦察机</b>去开图:按 <b>W/A/S/D 选一个战区</b>,再点<b>「侦察」</b>(或按 X)放出侦察机——它会飞过去帮你开视野。",
+    advance: { action: "launch_scout" },
+    hint: "↳ 放出一架侦察机即可继续",
+    highlight: { desktop: "scoutBtn", mobile: "mobileScoutBtn" },
   },
   {
     id: "fireArc",
@@ -68,12 +79,17 @@ const STEPS = [
   {
     id: "skill",
     title: "第三步 · 释放技能",
-    body:
-      "选中一艘舰,点<b>「技能」</b>释放它的招牌技;有的技能需要在战场上点一个落点。" +
-      "能量回满即可再放——关键时机一个技能常常翻盘。",
+    // 旗舰技被动时,引导改用分舰技(选中分离出的副舰再放),避免高亮到禁用的旗舰技按钮造成冲突
+    body: (info) =>
+      info.flagshipPassive
+        ? "你的旗舰技是<b>被动技</b>(自动生效、无需手动)。改放分舰技——<b>选中分离出的副一</b>,点<b>「分舰技」</b>释放它的主动技。"
+        : "选中一艘舰,点<b>「旗舰技」</b>释放它的招牌技;有的技能需要在战场上点一个落点。能量回满即可再放——关键时机一个技能常常翻盘。",
     advance: { action: "cast_skill" },
     hint: "↳ 放出一个技能即可完成",
-    highlight: { desktop: "flagshipBtn", mobile: "mobileFlagshipBtn" },
+    highlight: (info) =>
+      info.flagshipPassive
+        ? { desktop: "subSkillBtn", mobile: "mobileSubSkillBtn" }
+        : { desktop: "flagshipBtn", mobile: "mobileFlagshipBtn" },
   },
 ];
 
@@ -95,6 +111,14 @@ function mobileMode() {
   return !!(ctx && typeof ctx.isMobile === "function" && ctx.isMobile());
 }
 
+// 当前步可用的运行态信息(端、旗舰技是否被动),供 body / highlight 按情况取用。
+function stepInfo() {
+  return {
+    mobile: mobileMode(),
+    flagshipPassive: !!(ctx && typeof ctx.flagshipPassive === "function" && ctx.flagshipPassive()),
+  };
+}
+
 function clearHighlight() {
   if (highlightedEl) {
     highlightedEl.classList.remove("tut-highlight");
@@ -102,10 +126,12 @@ function clearHighlight() {
   }
 }
 
-function applyHighlight(step) {
+function applyHighlight(step, info) {
   clearHighlight();
   if (!step.highlight) return;
-  const id = mobileMode() ? step.highlight.mobile : step.highlight.desktop;
+  const hl = typeof step.highlight === "function" ? step.highlight(info) : step.highlight;
+  if (!hl) return;
+  const id = info.mobile ? hl.mobile : hl.desktop;
   const el = id && document.getElementById(id);
   if (el) {
     el.classList.add("tut-highlight");
@@ -113,10 +139,10 @@ function applyHighlight(step) {
   }
 }
 
-function renderCard(step) {
+function renderCard(step, info) {
   const total = STEPS.length;
   const num = activeIndex + 1;
-  const bodyText = typeof step.body === "function" ? step.body(mobileMode()) : step.body;
+  const bodyText = typeof step.body === "function" ? step.body(info) : step.body;
   const isButton = step.advance === "button";
   const btnLabel = isButton ? (activeIndex === total - 1 ? "开始战斗" : "继续") : "";
   cardEl.innerHTML =
@@ -141,8 +167,10 @@ function goto(index) {
     return;
   }
   overlayEl.classList.toggle("tut-mobile", mobileMode());
-  renderCard(STEPS[activeIndex]);
-  applyHighlight(STEPS[activeIndex]);
+  const step = STEPS[activeIndex];
+  const info = stepInfo();
+  renderCard(step, info);
+  applyHighlight(step, info);
 }
 
 function start(context) {
@@ -170,6 +198,8 @@ function onAction(action) {
     match = type === "set_route";
   } else if (want === "split") {
     match = type === "split";
+  } else if (want === "launch_scout") {
+    match = type === "launch_scout";
   } else if (want === "cast_skill") {
     // 旗舰技/分舰技/侦察任一都算“用了一个能力”,避免被动技或无可放时卡死
     match = type === "cast_flagship_skill" || type === "cast_sub_skill" || type === "launch_scout";

@@ -2351,6 +2351,11 @@ function launchWithLoadout(loadout, color) {
       if (app && app.sim && !getTutorialSeen()) {
         tutorial.start({
           isMobile: () => app.mobileMode,
+          // 旗舰技是否被动:被动时「放技能」步改引导用分舰技,避免高亮到禁用的旗舰技按钮
+          flagshipPassive: () => {
+            const meta = currentFlagshipMeta(ownTeamState());
+            return !!meta && meta.type === "passive";
+          },
           onFinish: () => setTutorialSeen(true),
         });
       }
