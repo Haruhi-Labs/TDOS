@@ -996,9 +996,11 @@ class Ship {
     const turnRate = Math.max(0.05, anchor.effectiveTurnRate() * throttleFactor);
     const speedRef = Math.max(anchor.speed, anchor.effectiveSpeed() * Math.max(0.32, this.throttle), 8);
     let minTurnRadius = clamp((speedRef / turnRate) * 1.05, 30, 560);
-    // 起始偏角放宽:让控制点能越过 p0→p2 弦线两侧,曲线可在凹/凸之间自由调整。
-    // 实际弯曲锐度仍由下面的最小转弯半径(maxCurvature)兜底,不会变得不可跟随。
-    let maxStartDeviation = (Math.PI / 180) * clamp(100 - speedRef * 0.22, 62, 88);
+    // 起点切线锁定朝向:把控制点的横向偏角收得很小(~8-12°,航速越快越直),使「画出来的曲线
+    // 离开舰船的方向」≈「舰船实际航向」,曲线与航迹在近场一致(实测切线偏移由峰值~77°降到~10°)。
+    // 代价:不再能拖出大幅S形/强凹凸弯(单条二次贝塞尔无法既起点对齐朝向又侧弯)。
+    // 反向掉头另由下方 dynamicDeviation 放宽(掉头必须侧弓一点,否则二次曲线会退化成尖点)。
+    let maxStartDeviation = (Math.PI / 180) * clamp(14 - speedRef * 0.03, 8, 12);
     if (this.team.hasKyonFlagship()) {
       minTurnRadius *= 0.62;
       maxStartDeviation *= 1.4;
