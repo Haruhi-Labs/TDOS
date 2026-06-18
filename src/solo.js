@@ -29,7 +29,11 @@ import {
   getFaction,
   setFaction,
   getDifficulty,
+  getTutorialSeen,
+  setTutorialSeen,
 } from "./profile.js";
+
+import { tutorial } from "./tutorial.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
@@ -431,7 +435,11 @@ function applyAction(action) {
   if (!app.sim) {
     return false;
   }
-  return app.sim.applyActionForSeat("A", action);
+  const ok = app.sim.applyActionForSeat("A", action);
+  if (ok) {
+    tutorial.onAction(action); // 新手教程:实操步骤据玩家动作推进
+  }
+  return ok;
 }
 
 function bindPressButton(button, handler) {
@@ -1439,6 +1447,51 @@ function drawSelectedVisionCircle() {
   ctx.restore();
 }
 
+// 新手教程画布示意图。'fireArc' 复用已有 drawSelectedFireArc(每帧已为选中舰画扇形),无需重画;
+// 'visionRange' 在旗舰上额外画出真实「射程圈」(金)与加亮「视野圈」(青)+ 标注,直观呈现 视野 ≪ 射程。
+function drawTutorialIllustration(kind) {
+  if (kind !== "visionRange") {
+    return;
+  }
+  const own = ownTeamState();
+  if (!own || !own.ships) {
+    return;
+  }
+  const ship = own.ships.main;
+  if (!ship || !ship.alive) {
+    return;
+  }
+  ctx.save();
+  if (ship.range) {
+    ctx.strokeStyle = "#f0d488d6";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([9, 7]);
+    ctx.beginPath();
+    ctx.arc(ship.x, ship.y, ship.range, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+  if (ship.vision) {
+    ctx.strokeStyle = "#8adfffe6";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(ship.x, ship.y, ship.vision, 0, TAU);
+    ctx.stroke();
+  }
+  ctx.font = "bold 13px 'Noto Sans SC', 'PingFang SC', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  if (ship.vision) {
+    ctx.fillStyle = "#bde6ff";
+    ctx.fillText("视野", ship.x, ship.y - ship.vision - 4);
+  }
+  if (ship.range) {
+    ctx.fillStyle = "#ffe7a1";
+    ctx.fillText("射程", ship.x, ship.y - ship.range - 4);
+  }
+  ctx.restore();
+}
+
 function drawFireArcBand(ship, startDeg, endDeg, outerRadius, innerRadius, color, alpha = 0.2) {
   const start = ship.angle + (startDeg * Math.PI) / 180;
   const end = ship.angle + (endDeg * Math.PI) / 180;
@@ -1746,6 +1799,9 @@ function render() {
 
   drawSelectedFireArc();
   drawSelectedVisionCircle();
+  if (tutorial.isActive()) {
+    drawTutorialIllustration(tutorial.getIllustration());
+  }
   drawSubSkillAimHint();
   ctx.restore();
 
@@ -2289,6 +2345,17 @@ function launchWithLoadout(loadout, color) {
     app.lastTime = performance.now();
     rafId = requestAnimationFrame(tick);
   }
+  // 首次进战场:等选角翻书动画收尾、战场显出后再弹出新手教程
+  if (!getTutorialSeen()) {
+    setTimeout(() => {
+      if (app && app.sim && !getTutorialSeen()) {
+        tutorial.start({
+          isMobile: () => app.mobileMode,
+          onFinish: () => setTutorialSeen(true),
+        });
+      }
+    }, 450);
+  }
 }
 
 function showCharacterSelectScreen() {
@@ -2317,6 +2384,7 @@ function unmount() {
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
+  tutorial.stop(); // 静默拆掉教程 overlay(没走完不写已看过标记)
   if (ac) ac.abort();
   ac = null;
   // 选角覆盖层挂在 body 上：用 hide() 清掉它的 keydown 监听与背景 rAF，并移除节点

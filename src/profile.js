@@ -194,3 +194,20 @@ export function setDifficulty(level) {
   window.localStorage.setItem(DIFFICULTY_KEY, level);
   return level;
 }
+
+// ── 新手引导教程:是否已看过(首次进战场自动触发的判据)──
+const TUTORIAL_SEEN_KEY = "haruhi-tutorial-seen-v1";
+
+export function getTutorialSeen() {
+  if (!hasStorage()) return true; // 无存储则当作已看过,不打扰
+  return window.localStorage.getItem(TUTORIAL_SEEN_KEY) === "1";
+}
+
+export function setTutorialSeen(seen = true) {
+  if (!hasStorage()) return;
+  if (seen) {
+    window.localStorage.setItem(TUTORIAL_SEEN_KEY, "1");
+  } else {
+    window.localStorage.removeItem(TUTORIAL_SEEN_KEY);
+  }
+}

@@ -3418,3 +3418,139 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .debug-legacy-toggle input { accent-color: var(--gilt); width: 15px; height: 15px; cursor: pointer; }
 .debug-seat-tag { transition: color 0.2s; }
+
+/* ═══════════════ 引导式新手教程 ═══════════════ */
+/* overlay 为 fixed 全屏层但默认不吃事件(战场点击穿透),只有卡片本身可点 → 不挤压现有布局、不挡操作。
+   z-index 夹在移动战斗HUD(z4)之上、选角全屏页(z1000)之下。 */
+.tut-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  pointer-events: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;       /* 桌面:卡片落在战场底部居中,留出上方主战区 */
+  padding: 0 16px 22px;
+}
+.tut-overlay.tut-mobile {
+  align-items: flex-start;     /* 移动:卡片置顶左对齐,避开右上角小地图、不动底部HUD */
+  justify-content: flex-start;
+  padding: 8px 8px 0;
+}
+
+.tut-card {
+  pointer-events: auto;
+  width: min(440px, 92vw);
+  box-sizing: border-box;
+  padding: 14px 16px 13px;
+  border-radius: 7px;
+  border: 1px solid var(--brass);
+  background: var(--tex-leather), var(--leather-surface);
+  background-blend-mode: overlay, normal;
+  box-shadow:
+    inset 0 0 0 1px #160c05,
+    inset 0 1px 0 #6c4a2877,
+    0 10px 34px #02060ed8,
+    0 0 0 3px #160c05;
+  color: var(--text-soft);
+  animation: tut-rise 0.34s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.tut-overlay.tut-mobile .tut-card {
+  width: min(64%, 420px);
+  animation: tut-drop 0.34s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+@keyframes tut-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
+@keyframes tut-drop { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
+
+.tut-step {
+  margin: 0 0 3px;
+  font-family: var(--font-italic);
+  font-style: italic;
+  font-size: 0.74rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+.tut-title {
+  margin: 0 0 6px;
+  font-family: var(--font-engrave);
+  font-size: 1.12rem;
+  letter-spacing: 0.06em;
+  background: var(--gilt-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 1px 2px #050912);
+}
+.tut-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.62;
+  color: var(--ivory);
+}
+.tut-body b { color: var(--gilt-bright); font-weight: 600; }
+.tut-wait {
+  margin: 8px 0 0;
+  font-size: 0.8rem;
+  font-style: italic;
+  color: var(--gilt);
+}
+.tut-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+.tut-next {
+  flex: 0 0 auto;
+  padding: 7px 22px;
+  border-radius: 5px;
+  border: 1px solid var(--brass);
+  background: linear-gradient(175deg, #f0d488, #c8a24e 60%, #8a6a32);
+  color: #2a1808;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 #fff3c8aa, 0 3px 10px #00000066;
+}
+.tut-next:hover { filter: brightness(1.08); }
+.tut-skip {
+  margin-left: auto;
+  padding: 4px 2px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.tut-skip:hover { color: var(--text-soft); }
+
+/* 被引导控件的金色脉冲高亮 */
+.tut-highlight {
+  position: relative;
+  border-radius: 7px;
+  animation: tut-pulse 1.5s ease-in-out infinite;
+}
+@keyframes tut-pulse {
+  0%, 100% { box-shadow: 0 0 0 2px #f0d48866, 0 0 10px 2px #c8a24e55; }
+  50% { box-shadow: 0 0 0 2px #f0d488cc, 0 0 18px 5px #c8a24eaa; }
+}
+
+/* 玩法说明页:重看新手教程入口 */
+.guide-replay {
+  display: inline-block;
+  margin-top: 10px;
+  padding: 6px 16px;
+  border-radius: 5px;
+  border: 1px solid var(--brass);
+  background: linear-gradient(175deg, #4f3220, #271608);
+  color: var(--gilt-bright);
+  font-size: 0.86rem;
+  letter-spacing: 0.04em;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 #6c4a2877, 0 2px 8px #00000055;
+}
+.guide-replay:hover { filter: brightness(1.12); }

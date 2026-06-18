@@ -4,6 +4,7 @@
 
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
+import { setTutorialSeen } from "./profile.js";
 
 const QUICKSTART = [
   "<b>编队</b>：选 1 主舰 + 2 副舰，挑好阵营与难度即可出击。",
@@ -74,6 +75,7 @@ function template() {
             <div class="qs-head">四步开打</div>
             <ol class="qs-steps">${quickstart}</ol>
             <div class="qs-goal"><b>胜负</b>：${QUICKSTART_GOAL}</div>
+            <a class="guide-replay" href="/play" data-replay-tutorial>▶ 重看新手教程</a>
           </div>
 
           <h2 class="guide-subtitle">要点</h2>
@@ -102,6 +104,7 @@ function mobileTemplate() {
           <div class="qs-head">四步开打</div>
           <ol class="qs-steps">${quickstart}</ol>
           <div class="qs-goal"><b>胜负</b>：${QUICKSTART_GOAL}</div>
+          <a class="guide-replay" href="/play" data-replay-tutorial>▶ 重看新手教程</a>
         </div>
         ${sections}
         <h2 class="m-guide-sub">操作</h2>
@@ -115,5 +118,16 @@ export function mount(root) {
   root.innerHTML = isMobile() ? mobileTemplate() : template();
   const ac = new AbortController();
   startStarfield(root.querySelector(".page-stars"), ac.signal);
+  // 「重看新手教程」:清掉已看过标记,再让路由跳到 /play(下次进战场即重新触发引导)
+  const replay = root.querySelector("[data-replay-tutorial]");
+  if (replay) {
+    replay.addEventListener(
+      "click",
+      () => {
+        setTutorialSeen(false);
+      },
+      { signal: ac.signal },
+    );
+  }
   return () => ac.abort();
 }
