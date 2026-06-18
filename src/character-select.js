@@ -13,7 +13,7 @@ const DIFFICULTY_LEVELS = [
   { key: "easy", label: "简单", tip: "敌方数值 ×0.8,反应迟钝" },
   { key: "normal", label: "普通", tip: "敌方数值 ×1.0,反应一般" },
   { key: "hard", label: "困难", tip: "敌方数值 ×1.2,反应敏捷(更肉更痛)" },
-  { key: "master", label: "极限", tip: "敌方数值 ×1.1,反应最快,且会智能集火收掉你的残血舰" },
+  { key: "master", label: "极限", tip: "敌方数值 ×1.2,反应最快,且会智能集火收掉你的残血舰" },
 ];
 
 // 构建难度选择器(prefix: "cs" 桌面 / "csm" 移动),自动读写本地存储并高亮当前档
