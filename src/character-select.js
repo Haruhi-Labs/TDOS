@@ -7,12 +7,13 @@ import {
 import { isMobile } from "./mobile.js";
 import { getDifficulty, setDifficulty } from "./profile.js";
 
-// 单人难度档(仅在 solo 的选角页显示;只改AI反应时间,不削弱能力)
+// 单人难度档(仅在 solo 的选角页显示)。四档同时影响:敌方数值(血量+伤害)缩放 + AI反应快慢,
+// 极限额外开启"智能集火残血"(优先收掉你打残的舰)。tip 文案会作为按钮 title 提示。
 const DIFFICULTY_LEVELS = [
-  { key: "easy", label: "简单" },
-  { key: "normal", label: "普通" },
-  { key: "hard", label: "困难" },
-  { key: "master", label: "极限" },
+  { key: "easy", label: "简单", tip: "敌方数值 ×0.8,反应迟钝" },
+  { key: "normal", label: "普通", tip: "敌方数值 ×1.0,反应一般" },
+  { key: "hard", label: "困难", tip: "敌方数值 ×1.2,反应敏捷(更肉更痛)" },
+  { key: "master", label: "极限", tip: "敌方数值 ×1.0,反应最快,且会智能集火收掉你的残血舰" },
 ];
 
 // 构建难度选择器(prefix: "cs" 桌面 / "csm" 移动),自动读写本地存储并高亮当前档
@@ -24,7 +25,7 @@ function buildDifficultyEl(prefix) {
   wrap.innerHTML =
     `<span class="${prefix}-faction-label">难度</span>` +
     DIFFICULTY_LEVELS.map(
-      (d) => `<button type="button" class="${prefix}-diff-btn" data-diff="${d.key}">${d.label}</button>`,
+      (d) => `<button type="button" class="${prefix}-diff-btn" data-diff="${d.key}" title="${d.tip}">${d.label}</button>`,
     ).join("");
   const btns = Array.from(wrap.querySelectorAll(`.${prefix}-diff-btn`));
   const sync = () => {

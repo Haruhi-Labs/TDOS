@@ -557,7 +557,7 @@ function createSimulation() {
       A: app.playerLoadout,
       B: app.enemyLoadout,
     },
-    aiDifficulty: getDifficulty(), // 单人难度:只调AI反应时间(感知延迟/改航间隔),不削弱能力
+    aiDifficulty: getDifficulty(), // 单人难度:敌方数值(血量+伤害)缩放 + AI反应快慢,极限额外开启智能集火残血
   });
 }
 

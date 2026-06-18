@@ -952,7 +952,8 @@ class Ship {
   }
 
   effectiveDamage() {
-    return this.statWithBuffs("damage", this.base.damage);
+    // 末乘难度数值缩放(简单0.8/普通1.0/困难1.2/极限1.0);玩家队 statMult 恒为1,不受影响。
+    return this.statWithBuffs("damage", this.base.damage) * (this.team.statMult || 1);
   }
 
   effectiveFireRate() {
@@ -1681,6 +1682,15 @@ class Team {
     this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
+    // 单人难度对本队的影响(仅当本队由AI控制时,由 BotController.setDifficulty 写入):
+    //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
+    //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
+    // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
+    this.statMult = 1;
+    this.aiFocusLowHp = false;
+    // 极限集火只对"残血"目标生效(血量 ≤ 该值×自身上限才值得转火去收人头);
+    // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
+    this.focusHpFrac = 0.5;
     this.visibleEnemyIds = new Set();
     this.cooldowns = {
       scout: 0,
@@ -1774,6 +1784,22 @@ class Team {
 
   getAllShips() {
     return [...this.getPlayerShips(), ...this.extraShips];
+  }
+
+  // 难度数值缩放:按 mult 缩放本队所有舰船的最大/当前血量(伤害缩放在 effectiveDamage 中按 statMult 动态生效)。
+  // 幂等——以已生效的 statMult 为基准取比值,重复调用同一倍率不再叠加;在舰船构造(含半血旗舰)之后调用。
+  applyAiStatMult(mult) {
+    const m = Number(mult) > 0 ? Number(mult) : 1;
+    const prev = this.statMult || 1;
+    if (m !== prev) {
+      const ratio = m / prev;
+      for (const ship of this.getAllShips()) {
+        ship.maxHp = Math.max(1, Math.round(ship.maxHp * ratio));
+        ship.hp = Math.min(ship.maxHp, ship.hp * ratio);
+      }
+    }
+    this.statMult = m;
+    return this;
   }
 
   shipByKey(key) {
@@ -2596,34 +2622,140 @@ class Team {
     }
   }
 
-  pickTargetFor(attacker, enemyTeam) {
-    const candidates = enemyTeam.getEntities();
+  // 某攻击者当前可开火的候选目标:已过滤"可见(或春日盲射)+ 进射程",并带上距离与射界密度。
+  // 取最近/锁血/集火分配都基于这同一份候选,确保 AI 与玩家走完全一致的命中判定口径。
+  fireCandidates(attacker, enemyTeam) {
     const range = attacker.attackRange || attacker.effectiveRange();
-    let nearest = null;
-    let nearestDist = Infinity;
-    for (const target of candidates) {
+    const canArc = typeof attacker.broadsideMultiplier === "function";
+    const out = [];
+    for (const target of enemyTeam.getEntities()) {
       if (!target.alive) {
         continue;
       }
-      const inVision = this.visibleEnemyIds.has(target.id);
-      const blindfire = typeof attacker.broadsideMultiplier === "function"
-        && attacker.characterId === "haruhi"
-        && attacker.hasEffect("critUntil")
-        && distance(attacker.x, attacker.y, target.x, target.y) <= range
-        && attacker.broadsideMultiplier(target) > 0;
-      if (!inVision && !blindfire) {
+      const d = distance(attacker.x, attacker.y, target.x, target.y);
+      if (d > range) {
         continue;
       }
-      const d = distance(attacker.x, attacker.y, target.x, target.y);
-      if (d <= range && d < nearestDist) {
-        nearestDist = d;
-        nearest = target;
+      const arc = canArc ? attacker.broadsideMultiplier(target) : 1;
+      const blindfire = canArc
+        && attacker.characterId === "haruhi"
+        && attacker.hasEffect("critUntil")
+        && arc > 0;
+      if (!this.visibleEnemyIds.has(target.id) && !blindfire) {
+        continue;
+      }
+      out.push({ target, dist: d, arc });
+    }
+    return out;
+  }
+
+  // 估算某攻击者约 1.2 秒内可投射的伤害——集火分配里用它判断"某残血已被认领够",
+  // 让后续火力转向下一个最弱目标,从而既优先收残血又不全队过量集火同一个。
+  focusDamageBudget(attacker) {
+    const HORIZON = 1.2;
+    if (typeof attacker.effectiveDamage === "function" && typeof attacker.effectiveFireRate === "function") {
+      return Math.max(1, attacker.effectiveDamage() * attacker.effectiveFireRate() * HORIZON);
+    }
+    return Math.max(1, (attacker.damage || 10) * HORIZON); // 僚机:约 1 发/秒
+  }
+
+  // 极限难度专属:每个战斗步先做一次全队火力分配——按"每秒火力"从高到低,让每个攻击者
+  // 认领它打得到的、剩余血量最低的敌人;某目标被认领够(预估伤害≥其血量)后,其余火力顺延
+  // 到下一个最弱目标。结果存入 _focusTargets,供 pickTargetFor 取用。
+  // 某目标是否"值得集火去收掉":血量已掉到上限的 focusHpFrac 以下。
+  isFocusWorthy(target) {
+    const cap = target.maxHp || target.hp;
+    return cap > 0 && target.hp <= cap * this.focusHpFrac;
+  }
+
+  assignFocusTargets(enemyTeam) {
+    const assign = new Map();
+    const remaining = new Map(); // target.id → 尚未被认领的血量
+    const ranked = [...this.getAllShips(), ...this.wingmen]
+      .filter((a) => a.alive && a.cooldown <= 0)
+      .map((a) => ({ a, budget: this.focusDamageBudget(a) }))
+      .sort((x, y) => y.budget - x.budget);
+    for (const { a, budget } of ranked) {
+      // 只在"残血且打得到"的目标里分配集火;没有这类目标的攻击者不分配,留给 pickTargetFor 取最近。
+      const cands = this.fireCandidates(a, enemyTeam).filter((c) => c.arc > 0 && this.isFocusWorthy(c.target));
+      if (!cands.length) {
+        continue;
+      }
+      let pick = null;
+      let pickRem = Infinity;
+      let pickDist = Infinity;
+      let overflow = null;
+      let overflowHp = Infinity;
+      let overflowDist = Infinity;
+      for (const c of cands) {
+        const rem = remaining.has(c.target.id) ? remaining.get(c.target.id) : c.target.hp;
+        if (rem > 0 && (rem < pickRem || (rem === pickRem && c.dist < pickDist))) {
+          pick = c.target;
+          pickRem = rem;
+          pickDist = c.dist;
+        }
+        if (c.target.hp < overflowHp || (c.target.hp === overflowHp && c.dist < overflowDist)) {
+          overflow = c.target;
+          overflowHp = c.target.hp;
+          overflowDist = c.dist;
+        }
+      }
+      // 还有"没被认领够"的残血就压最弱的那个;都认领够了,溢出火力才压在总血量最低的残血上。
+      const chosen = pick || overflow;
+      if (!chosen) {
+        continue;
+      }
+      assign.set(a.id, chosen);
+      const rem = remaining.has(chosen.id) ? remaining.get(chosen.id) : chosen.hp;
+      remaining.set(chosen.id, rem - budget);
+    }
+    this._focusTargets = assign;
+  }
+
+  pickTargetFor(attacker, enemyTeam) {
+    const cands = this.fireCandidates(attacker, enemyTeam);
+    if (!cands.length) {
+      return null;
+    }
+    // 极限难度:优先采用本步全队火力分配的结果(避免过量集火);分配目标已死/打不到时再就近兜底。
+    if (this.aiFocusLowHp) {
+      const assigned = this._focusTargets && this._focusTargets.get(attacker.id);
+      if (assigned && assigned.alive && cands.some((c) => c.target === assigned)) {
+        return assigned;
+      }
+      let low = null;
+      let lowHp = Infinity;
+      let lowDist = Infinity;
+      for (const c of cands) {
+        if (c.arc <= 0 || !this.isFocusWorthy(c.target)) {
+          continue;
+        }
+        if (c.target.hp < lowHp || (c.target.hp === lowHp && c.dist < lowDist)) {
+          low = c.target;
+          lowHp = c.target.hp;
+          lowDist = c.dist;
+        }
+      }
+      if (low) {
+        return low;
+      }
+    }
+    // 取最近:全部玩家队 + 非极限AI + 极限兜底(当前无可开火目标时)
+    let nearest = null;
+    let nearestDist = Infinity;
+    for (const c of cands) {
+      if (c.dist < nearestDist) {
+        nearestDist = c.dist;
+        nearest = c.target;
       }
     }
     return nearest;
   }
 
   stepCombat(enemyTeam) {
+    if (this.aiFocusLowHp) {
+      this.assignFocusTargets(enemyTeam); // 极限:先做全队火力分配,再依分配开火
+    }
     for (const ship of this.getAllShips()) {
       ship.tryAttack(this.match, enemyTeam);
     }
@@ -2701,15 +2833,18 @@ const HARD_AI_PROFILE = Object.freeze({
   aggressiveScoutWindow: 0.45,
 });
 
-// 单人难度:不削弱AI任何能力(瞄准/伤害/航速/技能/视野全不变),只通过"反应时间"做平衡——
+// 单人难度:四档同时调三件事——
 //  reactionMult 放大感知延迟(perceptionDelayFor):AI 看到/响应玩家动作更慢;
-//  replanMult   放大改航间隔(moveReplan):AI 调整走位更不勤。
-// master = 当前满状态AI(乘子均为1,行为与既有基准完全不变)。
+//  replanMult   放大改航间隔(moveReplan):AI 调整走位更不勤;
+//  statMult     敌方舰队数值缩放(血量+伤害):简单0.8 / 普通1.0 / 困难1.2 / 极限1.0;
+//  focusLowHp   极限专属:开火锁定射程内血量最低的敌人(收残血)。其余三档与玩家同规则"取最近"。
+// 注:极限(=满状态AI,也是 benchmark/默认席位)的锁血是经用户明确要求开放的"最高难度"特性,
+//  与历史上被移除的"全AI默认偷偷锁血"作弊不同——此处仅在玩家主动选择极限档时生效。
 const AI_DIFFICULTY = Object.freeze({
-  easy: { reactionMult: 9.0, replanMult: 2.4 }, // 反应~0.75s/峰值~1.4s,改航~3.2-5.2s:走位明显迟钝,易被绕/被晃
-  normal: { reactionMult: 4.5, replanMult: 1.7 }, // 反应~0.37s,改航~2.3-3.7s
-  hard: { reactionMult: 2.2, replanMult: 1.25 }, // 反应~0.18s
-  master: { reactionMult: 1.0, replanMult: 1.0 }, // 满状态AI:乘子均1,行为与既有基准完全一致
+  easy: { reactionMult: 9.0, replanMult: 2.4, statMult: 0.8, focusLowHp: false }, // 反应~0.75s/峰值~1.4s,改航~3.2-5.2s + 数值×0.8:既迟钝又脆
+  normal: { reactionMult: 4.5, replanMult: 1.7, statMult: 1.0, focusLowHp: false }, // 反应~0.37s,改航~2.3-3.7s,数值×1.0
+  hard: { reactionMult: 2.2, replanMult: 1.25, statMult: 1.2, focusLowHp: false }, // 反应~0.18s + 数值×1.2:更肉更痛
+  master: { reactionMult: 1.0, replanMult: 1.0, statMult: 1.0, focusLowHp: true }, // 满状态AI:反应最快,数值×1.0,且锁血集火残血
 });
 
 export class BotController {
@@ -2720,10 +2855,12 @@ export class BotController {
     // 旧版AI开关：true 时关闭全部升级(集火/视野收尾/收尾压制)，行为回到升级前的基线AI。
     // 用于 AI推演里「对手用旧AI」对照展示，无需打包冻结副本。
     this.legacy = false;
-    // 单人难度(默认 master=满状态)。reactionMult/replanMult 仅放大反应延迟与改航间隔,不碰任何能力。
+    // 单人难度(默认 master=满状态)。reactionMult/replanMult 放大反应延迟与改航间隔;
+    // statMult/focusLowHp 在 setDifficulty 中写入本队(数值缩放 + 极限锁血)。
     this.difficulty = "master";
     this.reactionMult = 1;
     this.replanMult = 1;
+    this.focusLowHp = false;
 
     this.moveTimer = 0;
     this.scoutTimer = this.profile.initialScoutTimer;
@@ -3041,10 +3178,14 @@ export class BotController {
   }
 
   setDifficulty(level) {
-    const d = AI_DIFFICULTY[level];
-    this.difficulty = d ? level : "master";
-    this.reactionMult = (d || AI_DIFFICULTY.master).reactionMult;
-    this.replanMult = (d || AI_DIFFICULTY.master).replanMult;
+    const d = AI_DIFFICULTY[level] || AI_DIFFICULTY.master;
+    this.difficulty = AI_DIFFICULTY[level] ? level : "master";
+    this.reactionMult = d.reactionMult;
+    this.replanMult = d.replanMult;
+    this.focusLowHp = !!d.focusLowHp;
+    // 把"数值缩放"与"极限锁血"落到本AI所控舰队上(玩家队无 bot,不受影响)
+    this.team.aiFocusLowHp = this.focusLowHp;
+    this.team.applyAiStatMult(d.statMult);
     return this;
   }
 
