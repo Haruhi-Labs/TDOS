@@ -56,8 +56,10 @@ export function fireArcDensityMultiplier(relativeAngle, uniformOutput = false) {
 // 即来袭方向相对目标朝向的夹角 |θ| > 150°(正后 60° 锥)。
 const REAR_STRIKE_MIN_DEG = 150;
 const REAR_STRIKE_MULT = 1.2;
-// 撞击:两船船体重叠的瞬间,各自速度衰减到该比例(减速),并把彼此轻推开以解除重叠。
-const COLLISION_SPEED_KEEP = 0.6;
+// 撞击:两船「刚撞上」的那一下各自速度衰减到该比例(减速),并把彼此推开解除重叠。
+// 只在碰撞发生的那一帧减速——持续贴着不再反复减速(否则会被一路压到几乎停住、显得很"死")。
+const COLLISION_SPEED_KEEP = 0.7;
+const COLLISION_RELEASE_MARGIN = 8; // 迟滞:推到相切附近这点余量内仍算"接触中",避免在边界反复触发减速
 
 export const CHARACTER_ORDER = ["haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura"];
 
@@ -6030,9 +6032,12 @@ export class MatchSimulation {
     return false;
   }
 
-  // 撞击:任意两艘存活舰船的船体重叠时各自减速并轻推分开(同队编队跟随的舰之间不互撞,免抖动)。
+  // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
+  // (用上一帧的接触集做迟滞判定),持续贴着不再反复减速,避免被一路压停。同队编队跟随的舰不互撞。
   resolveShipCollisions() {
     const ships = [...this.teamA.getAllShips(), ...this.teamB.getAllShips()].filter((s) => s.alive);
+    const prevContacts = this._contactPairs || new Set();
+    const contacts = new Set();
     for (let i = 0; i < ships.length; i++) {
       for (let j = i + 1; j < ships.length; j++) {
         const a = ships[i];
@@ -6044,20 +6049,29 @@ export class MatchSimulation {
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy);
         const minD = a.radius + b.radius;
-        if (d <= 0 || d >= minD) {
-          continue;
+        const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+        if (d > 0 && d < minD) {
+          // 重叠:推到刚好相切
+          const nx = dx / d;
+          const ny = dy / d;
+          const push = (minD - d) * 0.5;
+          a.x = this.clampX(a.x - nx * push, 8);
+          a.y = this.clampY(a.y - ny * push, 8);
+          b.x = this.clampX(b.x + nx * push, 8);
+          b.y = this.clampY(b.y + ny * push, 8);
+          // 仅"刚发生碰撞"(上一帧还没接触)时减速一次
+          if (!prevContacts.has(key)) {
+            a.speed *= COLLISION_SPEED_KEEP;
+            b.speed *= COLLISION_SPEED_KEEP;
+          }
+          contacts.add(key);
+        } else if (prevContacts.has(key) && d < minD + COLLISION_RELEASE_MARGIN) {
+          // 迟滞带内仍视为接触中:不减速、不判脱离,避免在相切边界反复触发
+          contacts.add(key);
         }
-        a.speed *= COLLISION_SPEED_KEEP;
-        b.speed *= COLLISION_SPEED_KEEP;
-        const nx = dx / d;
-        const ny = dy / d;
-        const push = (minD - d) * 0.5;
-        a.x = this.clampX(a.x - nx * push, 8);
-        a.y = this.clampY(a.y - ny * push, 8);
-        b.x = this.clampX(b.x + nx * push, 8);
-        b.y = this.clampY(b.y + ny * push, 8);
       }
     }
+    this._contactPairs = contacts;
   }
 
   resolveScoutClashes() {
