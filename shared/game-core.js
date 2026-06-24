@@ -56,10 +56,11 @@ export function fireArcDensityMultiplier(relativeAngle, uniformOutput = false) {
 // 即来袭方向相对目标朝向的夹角 |θ| > 150°(正后 60° 锥)。
 const REAR_STRIKE_MIN_DEG = 150;
 const REAR_STRIKE_MULT = 1.2;
-// 撞击:两船「刚撞上」的那一下各自速度衰减到该比例(减速),并把彼此推开解除重叠。
-// 只在碰撞发生的那一帧减速——持续贴着不再反复减速(否则会被一路压到几乎停住、显得很"死")。
-const COLLISION_SPEED_KEEP = 0.7;
-const COLLISION_RELEASE_MARGIN = 8; // 迟滞:推到相切附近这点余量内仍算"接触中",避免在边界反复触发减速
+// 撞击:相撞瞬间把速度压到「地板」,之后给一段粘滞时间让速度线性慢慢恢复到正常(而非一撞就立刻回满)。
+const COLLISION_SLOW_DURATION = 3; // 粘滞时长(秒):速度在这段时间内从地板回升到正常
+const COLLISION_SLOW_FLOOR = 0.5; // 撞击瞬间速度上限压到正常速度的该比例,随时间回升至 1
+const COLLISION_RELEASE_MARGIN = 30; // 迟滞:两船分开超过相切+该余量才算"脱离",之内不重复触发减速——
+// 避免编队/集火时一堆船反复擦碰被永久压速(那会拖垮 AI 走位)。一次擦碰只减速一回,3 秒内恢复。
 
 export const CHARACTER_ORDER = ["haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura"];
 
@@ -819,6 +820,7 @@ class Ship {
     this.energy = this.maxEnergy;
     this.radius = this.base.radius;
     this.alive = true;
+    this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
 
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
@@ -947,6 +949,18 @@ class Ship {
 
   effectiveSpeed() {
     return this.team.fleetSpeedForShip(this);
+  }
+
+  // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
+  // 之后在 COLLISION_SLOW_DURATION 秒内线性回升到 1。
+  collisionSpeedFactor() {
+    const now = this.team.match.elapsed;
+    if (!this.collisionSlowUntil || now >= this.collisionSlowUntil) {
+      return 1;
+    }
+    const remain = this.collisionSlowUntil - now; // 0..DURATION
+    const progress = clamp(1 - remain / COLLISION_SLOW_DURATION, 0, 1); // 撞击瞬间0 → 结束1
+    return COLLISION_SLOW_FLOOR + (1 - COLLISION_SLOW_FLOOR) * progress;
   }
 
   effectiveTurnRate() {
@@ -1246,7 +1260,7 @@ class Ship {
     const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
     const braking = this.isEmergencyBraking();
-    const cruiseTargetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake;
+    const cruiseTargetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor();
     const targetSpeed = braking ? Math.min(cruiseTargetSpeed * 0.08, 4.2) : cruiseTargetSpeed;
 
     const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this) * (braking ? 4.4 : 1), 0.65, 9.6);
@@ -6059,10 +6073,14 @@ export class MatchSimulation {
           a.y = this.clampY(a.y - ny * push, 8);
           b.x = this.clampX(b.x + nx * push, 8);
           b.y = this.clampY(b.y + ny * push, 8);
-          // 仅"刚发生碰撞"(上一帧还没接触)时减速一次
+          // 仅"刚发生碰撞"(上一帧还没接触)时触发减速:把速度立即压到地板,并开启粘滞期,
+          // 之后由 collisionSpeedFactor 在 COLLISION_SLOW_DURATION 秒内让速度上限慢慢回升。
           if (!prevContacts.has(key)) {
-            a.speed *= COLLISION_SPEED_KEEP;
-            b.speed *= COLLISION_SPEED_KEEP;
+            const until = this.elapsed + COLLISION_SLOW_DURATION;
+            a.collisionSlowUntil = Math.max(a.collisionSlowUntil, until);
+            b.collisionSlowUntil = Math.max(b.collisionSlowUntil, until);
+            a.speed = Math.min(a.speed, a.effectiveSpeed() * COLLISION_SLOW_FLOOR);
+            b.speed = Math.min(b.speed, b.effectiveSpeed() * COLLISION_SLOW_FLOOR);
           }
           contacts.add(key);
         } else if (prevContacts.has(key) && d < minD + COLLISION_RELEASE_MARGIN) {
