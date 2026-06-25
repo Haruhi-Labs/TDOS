@@ -166,11 +166,35 @@ function goto(index) {
     finish();
     return;
   }
-  overlayEl.classList.toggle("tut-mobile", mobileMode());
   const step = STEPS[activeIndex];
   const info = stepInfo();
   renderCard(step, info);
   applyHighlight(step, info);
+  layoutMobile();
+}
+
+// 移动端:把教程卡压到底部操作面板上方、并按当前高亮按钮的位置自动偏到另一侧,尽量不挡视野/按钮。
+function layoutMobile() {
+  if (!overlayEl) return;
+  const mobile = mobileMode();
+  overlayEl.classList.toggle("tut-mobile", mobile);
+  overlayEl.classList.remove("tut-bias-left", "tut-bias-right");
+  if (!mobile) return;
+  // 卡片底边坐到底部 HUD 顶沿之上(测 HUD 实际高度);非底栏布局(横屏)退回小留白
+  const hud = document.getElementById("mobileBattleHud");
+  const vh = window.innerHeight || 800;
+  let clear = 12;
+  if (hud) {
+    const top = hud.getBoundingClientRect().top;
+    if (top > vh * 0.4) clear = Math.round(vh - top); // 确认是底栏才贴它上沿
+  }
+  overlayEl.style.setProperty("--tut-hud-clear", `${clear}px`);
+  // 自动避让:当前步高亮了某个按钮,就把卡片偏到按钮所在的另一半,留出按钮
+  if (highlightedEl) {
+    const r = highlightedEl.getBoundingClientRect();
+    const cx = r.left + r.width / 2;
+    overlayEl.classList.add(cx < (window.innerWidth || 400) / 2 ? "tut-bias-right" : "tut-bias-left");
+  }
 }
 
 function start(context) {

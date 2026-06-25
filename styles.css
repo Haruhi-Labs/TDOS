@@ -3432,11 +3432,15 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   align-items: flex-end;       /* 桌面:卡片落在战场底部居中,留出上方主战区 */
   padding: 0 16px 22px;
 }
+/* 移动:卡片压到底部操作面板上方(--tut-hud-clear 由 JS 测 HUD 高度写入),
+   并按当前高亮按钮自动偏到另一半(tut-bias-*),尽量不挡视野与按钮。 */
 .tut-overlay.tut-mobile {
-  align-items: flex-start;     /* 移动:卡片置顶左对齐,避开右上角小地图、不动底部HUD */
-  justify-content: flex-start;
-  padding: 8px 8px 0;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 8px calc(var(--tut-hud-clear, 200px) + 8px);
 }
+.tut-overlay.tut-mobile.tut-bias-left { justify-content: flex-start; }
+.tut-overlay.tut-mobile.tut-bias-right { justify-content: flex-end; }
 
 .tut-card {
   pointer-events: auto;
@@ -3455,10 +3459,20 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--text-soft);
   animation: tut-rise 0.34s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
+/* 移动端紧凑卡:更小的字号/内距,占屏更少 */
 .tut-overlay.tut-mobile .tut-card {
-  width: min(64%, 420px);
-  animation: tut-drop 0.34s cubic-bezier(0.2, 0.7, 0.3, 1);
+  width: min(82%, 360px);
+  padding: 8px 11px 9px;
+  border-radius: 6px;
+  animation: tut-rise 0.3s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
+.tut-overlay.tut-mobile .tut-step { font-size: 0.64rem; margin-bottom: 1px; }
+.tut-overlay.tut-mobile .tut-title { font-size: 0.94rem; margin-bottom: 3px; }
+.tut-overlay.tut-mobile .tut-body { font-size: 0.79rem; line-height: 1.46; }
+.tut-overlay.tut-mobile .tut-wait { font-size: 0.72rem; margin-top: 5px; }
+.tut-overlay.tut-mobile .tut-actions { margin-top: 8px; gap: 10px; }
+.tut-overlay.tut-mobile .tut-next { padding: 5px 16px; font-size: 0.82rem; }
+.tut-overlay.tut-mobile .tut-skip { font-size: 0.7rem; }
 @keyframes tut-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 @keyframes tut-drop { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
 
