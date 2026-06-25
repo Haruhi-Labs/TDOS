@@ -56,6 +56,10 @@ export function fireArcDensityMultiplier(relativeAngle, uniformOutput = false) {
 // 即来袭方向相对目标朝向的夹角 |θ| > 150°(正后 60° 锥)。
 const REAR_STRIKE_MIN_DEG = 150;
 const REAR_STRIKE_MULT = 1.2;
+// 小目标闪避:对体型小于参考半径的目标(侦察机/僚机等)炮弹有概率打空——半径越小概率越高,
+// 上限温和,避免过度压制(主舰等正常体型半径≥参考值,完全不受影响)。
+const SMALL_TARGET_REF_RADIUS = 8;
+const SMALL_TARGET_MAX_MISS = 0.3;
 // 撞击:相撞瞬间把速度压到「地板」,之后给一段粘滞时间让速度线性慢慢恢复到正常(而非一撞就立刻回满)。
 const COLLISION_SLOW_DURATION = 3; // 粘滞时长(秒):速度在这段时间内从地板回升到正常
 const COLLISION_SLOW_FLOOR = 0.5; // 撞击瞬间速度上限压到正常速度的该比例,随时间回升至 1
@@ -753,6 +757,12 @@ class Projectile {
     }
     if (!hitTarget) {
       match.spawnFloatingText(this.x, this.y, "未命中", "#92c5ff");
+      return;
+    }
+    // 小目标闪避:体型越小越容易被打空(侦察机/僚机),正常体型舰船不受影响
+    const evade = clamp((SMALL_TARGET_REF_RADIUS - hitTarget.radius) / SMALL_TARGET_REF_RADIUS, 0, 1) * SMALL_TARGET_MAX_MISS;
+    if (evade > 0 && Math.random() < evade) {
+      match.spawnFloatingText(hitTarget.x, hitTarget.y - 6, "未命中", "#92c5ff");
       return;
     }
     // 尾击:来袭方向(发射点相对目标)落在目标尾部射界(|θ|>150°)→ 伤害 ×1.2
