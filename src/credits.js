@@ -9,7 +9,7 @@ const CREDITS = [
   { role: "画师", name: "橙海" },
   { role: "设计 · 开发", name: "春日しゅぎ" },
   { role: "测试", name: "syd · 可能是寂寞" },
-  { role: "出品", name: "凉宫春日应援团超能力者组" },
+  { role: "出品", name: "凉宫春日应援团超能力者组 · 凉宫春日应援团开发组" },
 ];
 
 function rowsHTML() {
