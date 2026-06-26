@@ -9,14 +9,16 @@ const CREDITS = [
   { role: "画师", name: "橙海" },
   { role: "设计 · 开发", name: "春日しゅぎ" },
   { role: "测试", name: "syd · 可能是寂寞" },
-  { role: "出品", name: "凉宫春日应援团超能力者组 · 凉宫春日应援团开发组" },
+  { role: "出品", name: ["凉宫春日应援团超能力者组", "凉宫春日应援团开发组"] },
 ];
 
 function rowsHTML() {
-  return CREDITS.map(
-    (c) =>
-      `<div class="credit-row"><span class="credit-role">${c.role}</span><span class="credit-name">${c.name}</span></div>`,
-  ).join("");
+  return CREDITS.map((c) => {
+    // name 可为数组:每个占一行(.credit-row 本就是居中竖排),避免单行过长
+    const names = Array.isArray(c.name) ? c.name : [c.name];
+    const nameHTML = names.map((n) => `<span class="credit-name">${n}</span>`).join("");
+    return `<div class="credit-row"><span class="credit-role">${c.role}</span>${nameHTML}</div>`;
+  }).join("");
 }
 
 function template() {
