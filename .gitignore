@@ -7,3 +7,4 @@ dist/
 bench/
 shared/game-core.baseline.js
 shared/game-core.fair0.js
+dist-star/
