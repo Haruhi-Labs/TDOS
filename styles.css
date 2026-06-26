@@ -2715,7 +2715,17 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   background: #160c0588;
   color: var(--gilt-pale);
   text-decoration: none;
-  font-size: 1.4rem;
+  font-size: 0; /* 隐藏「‹」文本字形——其字形盒有不对称边距,flex 只能居中盒子不能居中墨迹;改用 CSS 画箭头 */
+}
+/* 用边框画的左尖角「‹」,几何居中,不受字体度量影响 */
+.mpage-back::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-left: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  border-radius: 1px;
+  transform: translateX(2px) rotate(45deg);
 }
 .mpage-title {
   margin: 0;
