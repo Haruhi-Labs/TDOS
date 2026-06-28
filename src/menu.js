@@ -46,12 +46,24 @@ const GROUP_VH = 940;
 const MOBILE_HERO_ZOOM = 1.06;
 
 const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";
+const GROUP_URL = "https://qm.qq.com/q/zg5Bl5Ugwg";
 const VERSION_LABEL = "公测版 v0.1";
 
 // 首页 GitHub 链接(内嵌 Octocat 标记,fill 跟随 currentColor 以适配主题色)
 function githubLinkHTML() {
   return `<a class="ts-github" href="${GITHUB_URL}" target="_blank" rel="noopener noreferrer" aria-label="${t("GitHub 源码仓库")}" title="GitHub · TDOS">` +
     `<svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>` +
+    `</a>`;
+}
+
+// 首页加群链接(内嵌群组标记,fill 跟随 currentColor 以适配主题色)
+function groupLinkHTML() {
+  const label = t("加入游戏交流群");
+  return `<a class="ts-github ts-group" href="${GROUP_URL}" target="_blank" rel="noopener noreferrer" aria-label="${label}" title="${label}">` +
+    `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="M16 18a4 4 0 0 0-8 0"/><circle cx="12" cy="9" r="3"/>` +
+    `<path d="M5.5 17a3 3 0 0 1 3-3.5M18.5 17a3 3 0 0 0-3-3.5"/>` +
+    `<circle cx="5.5" cy="10.5" r="2"/><circle cx="18.5" cy="10.5" r="2"/></svg>` +
     `</a>`;
 }
 
@@ -82,7 +94,7 @@ function mobileTemplate(faction) {
         </header>
         <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
         <nav class="ts-menu mmenu-list" aria-label="${t("主菜单")}">${menuItemsHTML()}</nav>
-        <footer class="mmenu-foot"><span class="ts-ver">${t(VERSION_LABEL)}</span>${githubLinkHTML()}${languageSelectorHTML("ts-language")}</footer>
+        <footer class="mmenu-foot"><span class="ts-ver">${t(VERSION_LABEL)}</span>${githubLinkHTML()}${groupLinkHTML()}${languageSelectorHTML("ts-language")}</footer>
       </div>
     </section>
   `;
@@ -113,7 +125,7 @@ function template(faction) {
         </nav>
 
         <footer class="ts-foot">
-          <span class="ts-foot-meta"><span class="ts-ver">${t(VERSION_LABEL)}</span>${githubLinkHTML()}${languageSelectorHTML("ts-language")}</span>
+          <span class="ts-foot-meta"><span class="ts-ver">${t(VERSION_LABEL)}</span>${githubLinkHTML()}${groupLinkHTML()}${languageSelectorHTML("ts-language")}</span>
           <span class="ts-hint">${t("↑ ↓ 选择　Enter 进入")}</span>
         </footer>
       </div>
