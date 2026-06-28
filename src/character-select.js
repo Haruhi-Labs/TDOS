@@ -510,6 +510,7 @@ function renderRightPageHTML(charId, loadout) {
   const backLabel = canBack ? `‹ 退回 · 重选 ${SLOT_INFO[filledCount - 1].label}` : `‹ 退回`;
 
   return `
+    <div class="cs-page-fit">
     <div class="cs-page-chapter">
       <span>Chapter ${ROMAN[idx + 1]} · Service Record</span>
       <span class="cs-page-chapter-zh">履历 № ${pad2(idx + 1)}</span>
@@ -548,6 +549,7 @@ function renderRightPageHTML(charId, loadout) {
       </div>
     </div>
     <div class="cs-page-foot">SOS 团战术档案 · <span>仅供出击参考</span></div>
+    </div>
     <div class="cs-flip-shade"></div>
   `;
 }
@@ -792,6 +794,25 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   }
 
   // ── 渲染 ──
+  // 矮视口自适应:把右页档案(.cs-page-fit)整体等比缩放到正好铺满书页,内容免滚完整显示;
+  // 内容本就放得下(正常/高视口)时不缩放(transform 清空),显示与原来完全一致。
+  let _fitRaf = 0;
+  function fitRight(el) {
+    const fit = el && el.querySelector(".cs-page-fit");
+    if (!fit) return;
+    fit.style.transform = "";
+    const cs = getComputedStyle(el);
+    const avail = el.clientHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    const natural = fit.scrollHeight;
+    if (avail > 40 && natural > avail + 1) {
+      fit.style.transform = `scale(${Math.max(0.5, avail / natural)})`;
+    }
+  }
+  function scheduleFit() {
+    if (_fitRaf) cancelAnimationFrame(_fitRaf);
+    _fitRaf = requestAnimationFrame(() => fitRight(pageRight));
+  }
+
   function renderLeftInto(el, charId) {
     el.innerHTML = renderLeftPageHTML(charId, state.loadout);
     applyPortrait(el, charId);
@@ -799,6 +820,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
 
   function renderRightInto(el, charId) {
     el.innerHTML = renderRightPageHTML(charId, state.loadout);
+    fitRight(el);
     const selectBtn = el.querySelector(".cs-enlist-cta[data-action='select']");
     if (selectBtn) {
       selectBtn.addEventListener("click", (e) => {
@@ -1261,6 +1283,10 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     updateLaunch();
     bgAnimId = requestAnimationFrame(animateBg);
     document.addEventListener("keydown", onKey);
+    window.addEventListener("resize", scheduleFit);
+    // 字体加载完成后行高变化会改变内容高度,需重新测量缩放
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(scheduleFit);
+    scheduleFit();
     // 等当前角色立绘解码就绪再淡入，避免直接进入时闪现占位图（最多等 300ms 兜底）
     let shown = false;
     const reveal = () => {
@@ -1279,6 +1305,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
 
   function hide(callback) {
     document.removeEventListener("keydown", onKey);
+    window.removeEventListener("resize", scheduleFit);
     if (state.flipTimer) {
       clearTimeout(state.flipTimer);
       state.flipTimer = null;
