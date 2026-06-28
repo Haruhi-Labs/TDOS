@@ -56,15 +56,10 @@ function githubLinkHTML() {
     `</a>`;
 }
 
-// 首页加群链接(内嵌群组标记,fill 跟随 currentColor 以适配主题色)
+// 首页加群文字按钮(铜框小药丸,风格随主题)
 function groupLinkHTML() {
-  const label = t("加入游戏交流群");
-  return `<a class="ts-github ts-group" href="${GROUP_URL}" target="_blank" rel="noopener noreferrer" aria-label="${label}" title="${label}">` +
-    `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">` +
-    `<path d="M16 18a4 4 0 0 0-8 0"/><circle cx="12" cy="9" r="3"/>` +
-    `<path d="M5.5 17a3 3 0 0 1 3-3.5M18.5 17a3 3 0 0 0-3-3.5"/>` +
-    `<circle cx="5.5" cy="10.5" r="2"/><circle cx="18.5" cy="10.5" r="2"/></svg>` +
-    `</a>`;
+  const label = t("加入交流群");
+  return `<a class="ts-group" href="${GROUP_URL}" target="_blank" rel="noopener noreferrer" aria-label="${t("加入游戏交流群")}" title="${t("加入游戏交流群")}">${label}</a>`;
 }
 
 function menuItemsHTML() {
