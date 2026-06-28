@@ -4,20 +4,50 @@
 
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
+import { getLocale, t } from "./i18n.js";
 
-const CREDITS = [
+const CREDITS_ZH = [
   { role: "画师", name: "橙海" },
   { role: "设计 · 开发", name: "春日しゅぎ" },
   { role: "测试", name: "syd · 可能是寂寞" },
   { role: "出品", name: ["凉宫春日应援团超能力者组", "凉宫春日应援团开发组"] },
 ];
 
+const CREDITS_EN = [
+  { role: "Artist", name: "cheng hai" },
+  { role: "Design · Development", name: { label: "Haruhiyuki", href: "https://github.com/Haruhiyuki" } },
+  { role: "Testing", name: "syd · Maybe Lonely" },
+  {
+    role: "Production",
+    name: [
+      { label: "Haruhi-Labs", href: "https://github.com/Haruhi-Labs" },
+      { label: "Haruhifanclub", href: "https://space.bilibili.com/201296348" },
+    ],
+  },
+];
+
+function creditsData() {
+  return getLocale() === "zh" ? CREDITS_ZH : CREDITS_EN;
+}
+
+function pageTitle() {
+  return getLocale() === "zh" ? t("制作人员") : "Credits";
+}
+
+function creditNameHTML(item) {
+  const entry = typeof item === "string" ? { label: getLocale() === "zh" ? t(item) : item } : item;
+  const label = entry.label || "";
+  if (!entry.href) return `<span class="credit-name">${label}</span>`;
+  return `<a class="credit-name credit-link" href="${entry.href}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+}
+
 function rowsHTML() {
-  return CREDITS.map((c) => {
+  return creditsData().map((c) => {
     // name 可为数组:每个占一行(.credit-row 本就是居中竖排),避免单行过长
     const names = Array.isArray(c.name) ? c.name : [c.name];
-    const nameHTML = names.map((n) => `<span class="credit-name">${n}</span>`).join("");
-    return `<div class="credit-row"><span class="credit-role">${c.role}</span>${nameHTML}</div>`;
+    const role = getLocale() === "zh" ? t(c.role) : c.role;
+    const nameHTML = names.map(creditNameHTML).join("");
+    return `<div class="credit-row"><span class="credit-role">${role}</span>${nameHTML}</div>`;
   }).join("");
 }
 
@@ -27,8 +57,8 @@ function template() {
       <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="page-bg" aria-hidden="true"></div>
       <div class="page-frame">
-        <a class="page-back" href="/">‹ 返回主菜单</a>
-        <h1 class="page-title">制作人员</h1>
+        <a class="page-back" href="/">${t("‹ 返回主菜单")}</a>
+        <h1 class="page-title">${pageTitle()}</h1>
         <div class="page-scroll">
           <div class="credits-list">${rowsHTML()}</div>
         </div>
@@ -44,7 +74,7 @@ function mobileTemplate() {
       <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="mpage-top">
         <a class="mpage-back" href="/">‹</a>
-        <h1 class="mpage-title">制作人员</h1>
+        <h1 class="mpage-title">${pageTitle()}</h1>
       </div>
       <div class="mpage-body">
         <div class="credits-list">${rowsHTML()}</div>

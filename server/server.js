@@ -23,6 +23,34 @@ const LOOP_IDLE_MS = 2;
 const players = new Map();
 const rooms = new Map();
 
+const MESSAGE_CODES = {
+  "房间已关闭": "room_closed",
+  "对手离开房间": "opponent_left",
+  "对手断开连接，房间已解散": "opponent_disconnected",
+  "对局结束，已返回大厅": "match_ended_draw",
+  "你已经在房间中": "already_in_room",
+  "房间不存在": "room_not_found",
+  "该房间不接受玩家加入": "room_not_joinable",
+  "房间不在等待状态": "room_not_waiting",
+  "房间已满或不可加入": "room_full",
+  "消息格式错误": "invalid_message_format",
+  "未知消息类型": "unknown_message_type",
+};
+
+function messageCode(message, fallback = "unknown") {
+  const raw = String(message || "");
+  if (MESSAGE_CODES[raw]) {
+    return MESSAGE_CODES[raw];
+  }
+  if (raw.includes("左翼舰队获胜")) {
+    return "match_ended_left_win";
+  }
+  if (raw.includes("右翼舰队获胜")) {
+    return "match_ended_right_win";
+  }
+  return fallback;
+}
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -61,6 +89,14 @@ function sendToPlayer(player, payload) {
     return;
   }
   send(player.ws, payload);
+}
+
+function sendError(player, message) {
+  sendToPlayer(player, {
+    type: "error",
+    code: messageCode(message, "unknown_error"),
+    message,
+  });
 }
 
 function getPlayerById(playerId) {
@@ -247,6 +283,7 @@ function closeRoom(roomId, reason = "房间已关闭") {
     p.lastProcessedSeq = 0;
     sendToPlayer(p, {
       type: "room_closed",
+      reasonCode: messageCode(reason, "room_closed"),
       reason,
     });
   }
@@ -293,6 +330,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
       remaining.lastProcessedSeq = 0;
       sendToPlayer(remaining, {
         type: "room_closed",
+        reasonCode: messageCode(reasonForOthers, "opponent_left"),
         reason: reasonForOthers,
       });
     }
@@ -507,10 +545,7 @@ wss.on("connection", (ws) => {
     try {
       data = JSON.parse(String(raw));
     } catch (_error) {
-      sendToPlayer(player, {
-        type: "error",
-        message: "消息格式错误",
-      });
+      sendError(player, "消息格式错误");
       return;
     }
 
@@ -554,10 +589,7 @@ wss.on("connection", (ws) => {
       const mode = data.mode === "ai" ? "ai" : "pvp";
       const result = createRoom(player, visibility, mode);
       if (!result.ok) {
-        sendToPlayer(player, {
-          type: "error",
-          message: result.message,
-        });
+        sendError(player, result.message);
       }
       return;
     }
@@ -567,10 +599,7 @@ wss.on("connection", (ws) => {
       const room = rooms.get(roomId);
       const result = joinRoom(player, room);
       if (!result.ok) {
-        sendToPlayer(player, {
-          type: "error",
-          message: result.message,
-        });
+        sendError(player, result.message);
       }
       return;
     }
@@ -580,10 +609,7 @@ wss.on("connection", (ws) => {
       const room = [...rooms.values()].find((item) => item.visibility === "private" && item.code === code) || null;
       const result = joinRoom(player, room);
       if (!result.ok) {
-        sendToPlayer(player, {
-          type: "error",
-          message: result.message,
-        });
+        sendError(player, result.message);
       }
       return;
     }
@@ -613,10 +639,7 @@ wss.on("connection", (ws) => {
       return;
     }
 
-    sendToPlayer(player, {
-      type: "error",
-      message: "未知消息类型",
-    });
+    sendError(player, "未知消息类型");
   });
 
   ws.on("close", () => {

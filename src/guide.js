@@ -5,6 +5,7 @@
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { setTutorialSeen } from "./profile.js";
+import { t } from "./i18n.js";
 
 const QUICKSTART = [
   "<b>编队</b>：选 1 名角色担任<b>主舰</b>、2 名担任<b>副舰</b>；同一角色在主舰与副舰位置上技能不同。",
@@ -52,10 +53,10 @@ const KEYS_MOBILE = [
 ];
 
 function buildHTML(itemClass, keyClass) {
-  const quickstart = QUICKSTART.map((s, i) => `<li><span class="qs-no">${i + 1}</span><span>${s}</span></li>`).join("");
-  const sections = SECTIONS.map((s) => `<div class="${itemClass}"><h3>${s.title}</h3><p>${s.body}</p></div>`).join("");
+  const quickstart = QUICKSTART.map((s, i) => `<li><span class="qs-no">${i + 1}</span><span>${t(s)}</span></li>`).join("");
+  const sections = SECTIONS.map((s) => `<div class="${itemClass}"><h3>${t(s.title)}</h3><p>${t(s.body)}</p></div>`).join("");
   const keys = (isMobile() ? KEYS_MOBILE : KEYS_DESKTOP)
-    .map(([k, v]) => `<div class="${keyClass}"><kbd>${k}</kbd><span>${v}</span></div>`)
+    .map(([k, v]) => `<div class="${keyClass}"><kbd>${t(k)}</kbd><span>${t(v)}</span></div>`)
     .join("");
   return { quickstart, sections, keys };
 }
@@ -67,21 +68,21 @@ function template() {
       <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="page-bg" aria-hidden="true"></div>
       <div class="page-frame page-frame-wide">
-        <a class="page-back" href="/">‹ 返回主菜单</a>
-        <h1 class="page-title">玩法说明</h1>
+        <a class="page-back" href="/">${t("‹ 返回主菜单")}</a>
+        <h1 class="page-title">${t("玩法说明")}</h1>
 
         <div class="page-scroll">
           <div class="guide-quickstart">
-            <div class="qs-head">快速开始</div>
+            <div class="qs-head">${t("快速开始")}</div>
             <ol class="qs-steps">${quickstart}</ol>
-            <div class="qs-goal"><b>胜负</b>：${QUICKSTART_GOAL}</div>
-            <a class="guide-replay" href="/play" data-replay-tutorial>▶ 重看新手教程</a>
+            <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
+            <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
           </div>
 
-          <h2 class="guide-subtitle">要点</h2>
+          <h2 class="guide-subtitle">${t("要点")}</h2>
           <div class="guide-grid">${sections}</div>
 
-          <h2 class="guide-subtitle">操作</h2>
+          <h2 class="guide-subtitle">${t("操作")}</h2>
           <div class="guide-keys">${keys}</div>
         </div>
       </div>
@@ -97,17 +98,17 @@ function mobileTemplate() {
       <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="mpage-top">
         <a class="mpage-back" href="/">‹</a>
-        <h1 class="mpage-title">玩法说明</h1>
+        <h1 class="mpage-title">${t("玩法说明")}</h1>
       </div>
       <div class="mpage-body">
         <div class="guide-quickstart">
-          <div class="qs-head">快速开始</div>
+          <div class="qs-head">${t("快速开始")}</div>
           <ol class="qs-steps">${quickstart}</ol>
-          <div class="qs-goal"><b>胜负</b>：${QUICKSTART_GOAL}</div>
-          <a class="guide-replay" href="/play" data-replay-tutorial>▶ 重看新手教程</a>
+          <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
+          <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
         </div>
         ${sections}
-        <h2 class="m-guide-sub">操作</h2>
+        <h2 class="m-guide-sub">${t("操作")}</h2>
         ${keys}
       </div>
     </section>

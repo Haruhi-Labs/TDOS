@@ -13,6 +13,15 @@ import {
 } from "../shared/game-core.js";
 
 import { getLoadout } from "./profile.js";
+import {
+  characterShortName,
+  localizeFloatingText,
+  seatLabel as localizedSeatLabel,
+  shipCharacterName,
+  slotLabel as localizedSlotLabel,
+  splitLabel as localizedSplitLabel,
+  t,
+} from "./i18n.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, loadoutUi, app;
@@ -145,10 +154,7 @@ function botState(seat) {
 }
 
 function splitLabel(level) {
-  if (level <= 0) {
-    return "编队";
-  }
-  return level === 1 ? "一级分离" : "二级分离";
+  return localizedSplitLabel(level);
 }
 
 function shipCollection(team) {
@@ -190,66 +196,54 @@ function selectedShipSim() {
 }
 
 function slotLabel(slotKey) {
-  if (slotKey === "main") {
-    return "主舰";
-  }
-  if (slotKey === "sub1") {
-    return "副舰一";
-  }
-  if (slotKey === "sub2") {
-    return "副舰二";
-  }
-  if (slotKey === "twin") {
-    return "1096僚舰";
-  }
-  return slotKey || "舰船";
+  return localizedSlotLabel(slotKey);
 }
 
 function seatLabel(seat) {
-  return seat === "A" ? "A队" : "B队";
+  return localizedSeatLabel(seat);
 }
 
 function modeLabel(mode) {
   const labels = {
-    press: "压进",
-    search: "搜索",
-    recover: "脱边",
-    harvest: "回能",
-    regroup: "收拢",
-    kite: "拉扯",
-    collapse: "合围",
-    broadside: "抢侧舷",
-    cutoff: "截击",
-    support: "支援",
-    fire: "火力位",
-    rear: "后撤点",
-    front: "前探",
-    flank: "绕后",
-    intel: "侦察",
-    escape: "脱困",
+    press: t("压进"),
+    search: t("搜索"),
+    recover: t("脱边"),
+    harvest: t("回能"),
+    regroup: t("收拢"),
+    kite: t("拉扯"),
+    collapse: t("合围"),
+    broadside: t("抢侧舷"),
+    cutoff: t("截击"),
+    support: t("支援"),
+    fire: t("火力位"),
+    rear: t("后撤点"),
+    front: t("前探"),
+    flank: t("绕后"),
+    intel: t("侦察"),
+    escape: t("脱困"),
   };
-  return labels[mode] || mode || "待机";
+  return labels[mode] || mode || t("待机");
 }
 
 function decisionLabel(action) {
   const labels = {
-    idle: "待命",
-    hold: "暂缓",
-    launch: "已发侦察",
-    retry: "再次尝试",
-    cast: "已释放",
-    unavailable: "不可用",
+    idle: t("待命"),
+    hold: t("暂缓"),
+    launch: t("已发侦察"),
+    retry: t("再次尝试"),
+    cast: t("已释放"),
+    unavailable: t("不可用"),
   };
-  return labels[action] || action || "待命";
+  return labels[action] || action || t("待命");
 }
 
 function intelSourceLabel(source) {
   const labels = {
-    visible: "可见",
-    memory: "记忆",
-    spawn: "出生点",
+    visible: t("可见"),
+    memory: t("记忆"),
+    spawn: t("出生点"),
   };
-  return labels[source] || source || "未知";
+  return labels[source] || source || t("未知");
 }
 
 function shortPercent(value) {
@@ -270,23 +264,23 @@ function pointText(point) {
 
 function botContactLabel(contact) {
   if (!contact) {
-    return "无";
+    return t("无");
   }
-  const def = contact.characterId ? CHARACTER_DEFS[contact.characterId] : null;
+  const shortName = contact.characterId ? characterShortName(contact.characterId) : "";
   const role = contact.kind === "ship"
     ? slotLabel(contact.slotKey)
     : contact.kind === "wingman"
-      ? "僚机"
+      ? t("僚机")
       : contact.kind === "scout"
-        ? "侦察机"
+        ? t("侦察机")
         : contact.kind;
-  return `${role}${def ? ` ${def.shortName}` : ""}`.trim();
+  return `${role}${shortName ? ` ${shortName}` : ""}`.trim();
 }
 
 function roleSummaryLine(slotKey, characterId) {
   const def = CHARACTER_DEFS[characterId];
   const stat = def.stats;
-  return `${slotLabel(slotKey)} ${def.shortName} | 舰体${stat.hp} | 能量${stat.energy} | 航速${stat.speed} | 机动${stat.turnRate.toFixed(2)}`;
+  return `${slotLabel(slotKey)} ${characterShortName(characterId, def.shortName)} | ${t("舰体")}${stat.hp} | ${t("能量")}${stat.energy} | ${t("航速")}${stat.speed} | ${t("机动")}${stat.turnRate.toFixed(2)}`;
 }
 
 function renderLoadoutPreview(loadout, target) {
@@ -305,7 +299,7 @@ function createRoleOption(characterId) {
   const def = CHARACTER_DEFS[characterId];
   const option = document.createElement("option");
   option.value = characterId;
-  option.textContent = `${def.shortName} · ${def.title}`;
+  option.textContent = `${characterShortName(characterId, def.shortName)} · ${def.title}`;
   return option;
 }
 
@@ -352,9 +346,9 @@ function updateFocusButtonLabels() {
     const shipKey = button.dataset.ship;
     const loadout = loadouts[seat];
     const characterId = loadout ? loadout[shipKey] : null;
-    const shortName = characterId && CHARACTER_DEFS[characterId] ? CHARACTER_DEFS[characterId].shortName : shipKey;
+    const shortName = characterId && CHARACTER_DEFS[characterId] ? characterShortName(characterId) : shipKey;
     const prefix = seat === "A" ? "A" : "B";
-    const slot = shipKey === "main" ? "主" : shipKey === "sub1" ? "一" : "二";
+    const slot = localizedSlotLabel(shipKey, "tiny");
     button.textContent = `${prefix}${slot} ${shortName}`;
   }
 }
@@ -498,7 +492,7 @@ function zoneFromPoint(x, y) {
 function log(message) {
   const row = document.createElement("div");
   const elapsed = app.state ? app.state.elapsed : 0;
-  row.textContent = `[${elapsed.toFixed(1)}秒] ${message}`;
+  row.textContent = `[${t("{value}秒", { value: elapsed.toFixed(1) })}] ${message}`;
   ui.log.prepend(row);
   while (ui.log.children.length > 28) {
     ui.log.removeChild(ui.log.lastChild);
@@ -517,8 +511,8 @@ function createSimulation() {
     legacyAiSeats: legacyB ? ["B"] : [], // B 队用旧版AI做对照
     worldSize: LOGICAL,
     teamNames: {
-      A: legacyB ? "新版AI · A队" : "调试舰队A",
-      B: legacyB ? "旧版AI · B队" : "调试舰队B",
+      A: legacyB ? t("新版AI · A队") : t("调试舰队A"),
+      B: legacyB ? t("旧版AI · B队") : t("调试舰队B"),
     },
     teamLoadouts: {
       A: app.teamALoadout,
@@ -529,8 +523,8 @@ function createSimulation() {
 
 function refreshLegacyLabels() {
   const on = app.opponentLegacy;
-  if (ui.seatTagA) ui.seatTagA.textContent = on ? "新AI" : "AI";
-  if (ui.seatTagB) ui.seatTagB.textContent = on ? "旧AI" : "AI";
+  if (ui.seatTagA) ui.seatTagA.textContent = on ? t("新AI") : "AI";
+  if (ui.seatTagB) ui.seatTagB.textContent = on ? t("旧AI") : "AI";
 }
 
 function setSelectedShip(seat, shipId) {
@@ -633,7 +627,7 @@ function resetMatch(logMessage = true) {
   app.cameraCenterY = mainShip.y;
   if (logMessage) {
     clearLog();
-    log("调试战开始。双方均由 AI 控制，可暂停、倍速和切换观察目标。");
+    log(t("调试战开始。双方均由 AI 控制，可暂停、倍速和切换观察目标。"));
   }
   updateUi();
 }
@@ -666,7 +660,7 @@ function setSpeedScale(value, silent = false) {
   const next = SPEED_PRESETS.includes(value) ? value : 1;
   app.speedScale = next;
   if (!silent) {
-    log(`调试倍速切换为 ${next}x`);
+    log(t("调试倍速切换为 {speed}x", { speed: next }));
   }
   updateUi();
 }
@@ -678,7 +672,7 @@ function renderAiCard(seat) {
     return;
   }
   if (!bot) {
-    target.textContent = "该席当前未启用 AI。";
+    target.textContent = t("该席当前未启用 AI。");
     return;
   }
 
@@ -690,22 +684,22 @@ function renderAiCard(seat) {
   const split = bot.splitDecision || {};
   const detachedPlan = bot.detachedPlan || {};
   const tags = [
-    context.searchRequired ? "需搜索" : null,
-    context.trackableIntel ? "可追踪" : null,
-    context.emergencyCommit ? "紧急投入" : null,
-    context.conserveEnergy ? "保能" : null,
-    context.killWindow ? "斩杀窗" : null,
-    context.enemyBroadsideRisk ? "避侧舷" : null,
-    context.safeExchange ? "交换有利" : null,
+    context.searchRequired ? { label: "需搜索" } : null,
+    context.trackableIntel ? { label: "可追踪" } : null,
+    context.emergencyCommit ? { label: "紧急投入", className: " alert" } : null,
+    context.conserveEnergy ? { label: "保能" } : null,
+    context.killWindow ? { label: "斩杀窗" } : null,
+    context.enemyBroadsideRisk ? { label: "避侧舷" } : null,
+    context.safeExchange ? { label: "交换有利", className: " good" } : null,
   ].filter(Boolean);
   const tagHtml = tags.length
-    ? tags.map((label) => `<span class="debug-ai-tag${label === "紧急投入" ? " alert" : label === "交换有利" ? " good" : ""}">${label}</span>`).join("")
-    : '<span class="debug-ai-tag">常规态势</span>';
+    ? tags.map((tag) => `<span class="debug-ai-tag${tag.className || ""}">${t(tag.label)}</span>`).join("")
+    : `<span class="debug-ai-tag">${t("常规态势")}</span>`;
 
   const orderLines = ["main", "sub1", "sub2"].map((shipKey) => {
     const order = bot.orders?.[shipKey];
     if (!order) {
-      return `<div><strong>${slotLabel(shipKey)}</strong> 暂无新命令</div>`;
+      return `<div><strong>${slotLabel(shipKey)}</strong> ${t("暂无新命令")}</div>`;
     }
     return `<div><strong>${slotLabel(shipKey)}</strong> ${modeLabel(order.role)} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%</div>`;
   }).join("");
@@ -713,48 +707,48 @@ function renderAiCard(seat) {
   const threatLines = ["main", "sub1", "sub2"].map((shipKey) => {
     const threat = context.shipThreats?.[shipKey];
     if (!threat) {
-      return `<div><strong>${slotLabel(shipKey)}</strong> 威胁 -</div>`;
+      return `<div><strong>${slotLabel(shipKey)}</strong> ${t("威胁")} -</div>`;
     }
-    return `<div><strong>${slotLabel(shipKey)}</strong> 威胁 ${shortNumber(threat.danger)} | 火源 ${threat.sources}${threat.overwhelmed ? " | 被围" : ""}</div>`;
+    return `<div><strong>${slotLabel(shipKey)}</strong> ${t("威胁")} ${shortNumber(threat.danger)} | ${t("火源")} ${threat.sources}${threat.overwhelmed ? ` | ${t("被围")}` : ""}</div>`;
   }).join("");
 
   const splitText = split.acted && split.acted.length
-    ? `已执行 ${split.acted.join("、")} 级分离`
+    ? t("已执行 {levels} 级分离", { levels: split.acted.join("/") })
     : split.attempt1 || split.attempt2
-      ? `评估分离 ${[split.attempt1 ? "1" : null, split.attempt2 ? "2" : null].filter(Boolean).join("/")}`
-      : `分离层级 ${split.level || 0}`;
+      ? t("评估分离 {levels}", { levels: [split.attempt1 ? "1" : null, split.attempt2 ? "2" : null].filter(Boolean).join("/") })
+      : t("分离层级 {level}", { level: split.level || 0 });
   const detachedText = ["sub1", "sub2"].map((shipKey) => {
     const role = detachedPlan.roles?.[shipKey];
     if (!role) {
-      return `${slotLabel(shipKey)} 未独立`;
+      return `${slotLabel(shipKey)} ${t("未独立")}`;
     }
-    const suffix = detachedPlan.intelLeadKey === shipKey ? "侦察主力" : detachedPlan.retreatKey === shipKey ? "后撤保命" : "执行中";
+    const suffix = detachedPlan.intelLeadKey === shipKey ? t("侦察主力") : detachedPlan.retreatKey === shipKey ? t("后撤保命") : t("执行中");
     return `${slotLabel(shipKey)} ${modeLabel(role)}·${suffix}`;
   }).join(" | ");
 
   target.innerHTML = [
-    `<div class="debug-ai-headline"><strong>${modeLabel(bot.mode)}</strong><span>模式锁定 ${shortNumber(bot.modeTimer, 1)}秒</span></div>`,
+    `<div class="debug-ai-headline"><strong>${modeLabel(bot.mode)}</strong><span>${t("模式锁定 {seconds}", { seconds: t("{value}秒", { value: shortNumber(bot.modeTimer, 1) }) })}</span></div>`,
     `<div class="debug-ai-tags">${tagHtml}</div>`,
     `<div class="debug-ai-grid">`,
-    `<div><strong>焦点</strong>${botContactLabel(focus)} | ${focus ? `${intelSourceLabel(focus.source)} ${shortNumber(focus.age, 1)}秒` : "无"}</div>`,
-    `<div><strong>焦点坐标</strong>${pointText(focus)}</div>`,
-    `<div><strong>局部优势</strong>${shortNumber(context.localAdvantage)}</div>`,
-    `<div><strong>最大威胁</strong>${shortNumber(context.maxShipThreat)}</div>`,
-    `<div><strong>舰队能量</strong>${shortPercent(context.energyRatio)}</div>`,
-    `<div><strong>回能需求</strong>${shortPercent(context.energyRecoveryNeed)}</div>`,
-    `<div><strong>压制意愿</strong>${shortNumber(context.pressureDrive)}</div>`,
-    `<div><strong>围堵压力</strong>${shortNumber(context.encirclePressure)}</div>`,
-    `<div><strong>射界交换</strong>${shortNumber(context.arcAdvantage)}</div>`,
-    `<div><strong>搜索中心</strong>${pointText(bot.searchCenter)}</div>`,
+    `<div><strong>${t("焦点")}</strong>${botContactLabel(focus)} | ${focus ? `${intelSourceLabel(focus.source)} ${t("{value}秒", { value: shortNumber(focus.age, 1) })}` : t("无")}</div>`,
+    `<div><strong>${t("焦点坐标")}</strong>${pointText(focus)}</div>`,
+    `<div><strong>${t("局部优势")}</strong>${shortNumber(context.localAdvantage)}</div>`,
+    `<div><strong>${t("最大威胁")}</strong>${shortNumber(context.maxShipThreat)}</div>`,
+    `<div><strong>${t("舰队能量")}</strong>${shortPercent(context.energyRatio)}</div>`,
+    `<div><strong>${t("回能需求")}</strong>${shortPercent(context.energyRecoveryNeed)}</div>`,
+    `<div><strong>${t("压制意愿")}</strong>${shortNumber(context.pressureDrive)}</div>`,
+    `<div><strong>${t("围堵压力")}</strong>${shortNumber(context.encirclePressure)}</div>`,
+    `<div><strong>${t("射界交换")}</strong>${shortNumber(context.arcAdvantage)}</div>`,
+    `<div><strong>${t("搜索中心")}</strong>${pointText(bot.searchCenter)}</div>`,
     `</div>`,
     `<div class="debug-ai-orders">${orderLines}</div>`,
     `<div class="debug-ai-orders">${threatLines}</div>`,
     `<div class="debug-ai-orders">`,
-    `<div><strong>副舰分工</strong> ${detachedText}</div>`,
-    `<div><strong>侦察</strong> ${decisionLabel(scout.action)}${Number.isFinite(scout.zoneId) ? ` -> 战区${scout.zoneId}` : ""} | CD ${shortNumber(scout.nextIn, 1)}秒</div>`,
-    `<div><strong>旗舰技</strong> ${decisionLabel(flagship.action)} | CD ${shortNumber(bot.flagshipTimer, 1)}秒</div>`,
-    `<div><strong>副舰技</strong> 一 ${decisionLabel(subSkills.sub1?.action)} ${shortNumber(subSkills.sub1?.nextIn, 1)}秒 / 二 ${decisionLabel(subSkills.sub2?.action)} ${shortNumber(subSkills.sub2?.nextIn, 1)}秒</div>`,
-    `<div><strong>分离判断</strong> ${splitText}</div>`,
+    `<div><strong>${t("副舰分工")}</strong> ${detachedText}</div>`,
+    `<div><strong>${t("侦察")}</strong> ${decisionLabel(scout.action)}${Number.isFinite(scout.zoneId) ? ` -> ${t("战区{zone}", { zone: scout.zoneId })}` : ""} | CD ${t("{value}秒", { value: shortNumber(scout.nextIn, 1) })}</div>`,
+    `<div><strong>${t("旗舰技")}</strong> ${decisionLabel(flagship.action)} | CD ${t("{value}秒", { value: shortNumber(bot.flagshipTimer, 1) })}</div>`,
+    `<div><strong>${t("副舰技")}</strong> ${slotLabel("sub1")} ${decisionLabel(subSkills.sub1?.action)} ${t("{value}秒", { value: shortNumber(subSkills.sub1?.nextIn, 1) })} / ${slotLabel("sub2")} ${decisionLabel(subSkills.sub2?.action)} ${t("{value}秒", { value: shortNumber(subSkills.sub2?.nextIn, 1) })}</div>`,
+    `<div><strong>${t("分离判断")}</strong> ${splitText}</div>`,
     `</div>`,
   ].join("");
 }
@@ -768,22 +762,46 @@ function updateSelectedCard() {
   const ship = selectedShipState();
   const shipSim = selectedShipSim();
   if (!ship || !ship.alive) {
-    ui.selectedCard.textContent = "当前没有可观察舰船。";
+    ui.selectedCard.textContent = t("当前没有可观察舰船。");
     return;
   }
   const minRadius = shipSim ? Math.round(shipSim.routeConstraintProfile().minTurnRadius) : 0;
   const zone = zoneFromPoint(ship.x, ship.y);
-  const zoneText = zone ? `战区${zone.id}` : "无战区";
+  const zoneText = zone ? t("战区{zone}", { zone: zone.id }) : t("无战区");
   const bot = botState(app.selected.seat);
   const order = bot?.orders?.[ship.key];
   const shipThreat = bot?.context?.shipThreats?.[ship.key];
   ui.selectedCard.innerHTML = [
-    `<strong>${seatLabel(app.selected.seat)} ${slotLabel(ship.key)} · ${ship.characterName}</strong>`,
-    `舰体 ${Math.round(ship.hp)}/${Math.round(ship.maxHp)}（${hullPercent(ship)}%） | 能量 ${Math.round(Number(ship.fleetEnergy) || 0)}/${Math.round(Number(ship.fleetMaxEnergy) || 1)}（${energyPercent(ship)}%）`,
-    `推进 ${Math.round((ship.throttle || 1) * 100)}% | 航速 ${(ship.speed || 0).toFixed(1)} | 最小转弯半径 ${minRadius}`,
-    `视野 ${Math.round(ship.vision || 0)} | 射程 ${Math.round(ship.range || 0)} | ${zoneText} | ${ship.attached ? "附着中" : "独立编队"}`,
-    order ? `AI命令 ${modeLabel(order.role)} -> ${pointText(order.target)} @${Math.round((order.throttle || 0) * 100)}%` : "AI命令 暂无",
-    shipThreat ? `承压 ${shortNumber(shipThreat.danger)} | 火源 ${shipThreat.sources}${shipThreat.overwhelmed ? " | 被围攻" : ""}` : "承压 -",
+    `<strong>${seatLabel(app.selected.seat)} ${slotLabel(ship.key)} · ${shipCharacterName(ship)}</strong>`,
+    t("舰体 {hp}/{maxHp}（{hullPercent}%） | 能量 {energy}/{maxEnergy}（{energyPercent}%）", {
+      hp: Math.round(ship.hp),
+      maxHp: Math.round(ship.maxHp),
+      hullPercent: hullPercent(ship),
+      energy: Math.round(Number(ship.fleetEnergy) || 0),
+      maxEnergy: Math.round(Number(ship.fleetMaxEnergy) || 1),
+      energyPercent: energyPercent(ship),
+    }),
+    t("推进 {throttle}% | 航速 {speed} | 最小转弯半径 {radius}", {
+      throttle: Math.round((ship.throttle || 1) * 100),
+      speed: (ship.speed || 0).toFixed(1),
+      radius: minRadius,
+    }),
+    t("视野 {vision} | 射程 {range} | {zone} | {state}", {
+      vision: Math.round(ship.vision || 0),
+      range: Math.round(ship.range || 0),
+      zone: zoneText,
+      state: ship.attached ? t("附着中") : t("独立编队"),
+    }),
+    order ? t("AI命令 {mode} -> {target} @{throttle}%", {
+      mode: modeLabel(order.role),
+      target: pointText(order.target),
+      throttle: Math.round((order.throttle || 0) * 100),
+    }) : t("AI命令 暂无"),
+    shipThreat ? t("承压 {danger} | 火源 {sources}{suffix}", {
+      danger: shortNumber(shipThreat.danger),
+      sources: shipThreat.sources,
+      suffix: shipThreat.overwhelmed ? t(" | 被围攻") : "",
+    }) : t("承压 -"),
   ].join("<br />");
 }
 
@@ -801,20 +819,20 @@ function updateUi() {
   const teamB = teamState("B");
   const selected = selectedShipState();
 
-  ui.timeValue.textContent = `${app.state.elapsed.toFixed(1)}秒`;
-  ui.phaseValue.textContent = app.state.phase === "finished" ? "战斗结束" : app.paused ? "已暂停" : "运行中";
+  ui.timeValue.textContent = t("{value}秒", { value: app.state.elapsed.toFixed(1) });
+  ui.phaseValue.textContent = app.state.phase === "finished" ? t("战斗结束") : app.paused ? t("已暂停") : t("运行中");
   ui.speedValue.textContent = `${app.speedScale}x`;
-  ui.selectedValue.textContent = selected ? `${seatLabel(app.selected.seat)} ${selected.characterName}` : "无";
+  ui.selectedValue.textContent = selected ? `${seatLabel(app.selected.seat)} ${shipCharacterName(selected)}` : t("无");
 
   ui.teamAHullValue.textContent = `${Math.round((teamA?.hullRatio || 0) * 100)}%`;
   ui.teamASplitValue.textContent = splitLabel(teamA?.splitLevel || 0);
-  ui.teamAVisionValue.textContent = `${(teamA?.visibleEnemyIds || []).length}个目标`;
+  ui.teamAVisionValue.textContent = t("{count}个目标", { count: (teamA?.visibleEnemyIds || []).length });
 
   ui.teamBHullValue.textContent = `${Math.round((teamB?.hullRatio || 0) * 100)}%`;
   ui.teamBSplitValue.textContent = splitLabel(teamB?.splitLevel || 0);
-  ui.teamBVisionValue.textContent = `${(teamB?.visibleEnemyIds || []).length}个目标`;
+  ui.teamBVisionValue.textContent = t("{count}个目标", { count: (teamB?.visibleEnemyIds || []).length });
 
-  ui.pauseBtn.textContent = app.paused ? "继续" : "暂停";
+  ui.pauseBtn.textContent = app.paused ? t("继续") : t("暂停");
   ui.stepBtn.disabled = !app.sim || app.state.phase === "finished";
 
   for (const button of ui.speedButtons) {
@@ -824,19 +842,19 @@ function updateUi() {
   if (app.state.phase === "finished") {
     ui.overlay.classList.remove("hidden");
     if (app.state.winnerSeat === "A") {
-      ui.overlayTitle.textContent = "调试战结束：A队获胜";
+      ui.overlayTitle.textContent = t("调试战结束：A队获胜");
       if (!app.gameOverLogged) {
-        log("调试战结束：A队获胜");
+        log(t("调试战结束：A队获胜"));
       }
     } else if (app.state.winnerSeat === "B") {
-      ui.overlayTitle.textContent = "调试战结束：B队获胜";
+      ui.overlayTitle.textContent = t("调试战结束：B队获胜");
       if (!app.gameOverLogged) {
-        log("调试战结束：B队获胜");
+        log(t("调试战结束：B队获胜"));
       }
     } else {
-      ui.overlayTitle.textContent = "调试战结束：平局";
+      ui.overlayTitle.textContent = t("调试战结束：平局");
       if (!app.gameOverLogged) {
-        log("调试战结束：平局");
+        log(t("调试战结束：平局"));
       }
     }
     app.gameOverLogged = true;
@@ -876,7 +894,7 @@ function drawZones() {
 
     ctx.fillStyle = "#5f8ab8";
     ctx.font = "bold 14px 'Noto Sans SC', 'PingFang SC', sans-serif";
-    ctx.fillText(`战区 ${zone.id}`, zone.x + 10, zone.y + 20);
+    ctx.fillText(t("战区 {zone}", { zone: zone.id }), zone.x + 10, zone.y + 20);
   }
 }
 
@@ -1246,7 +1264,7 @@ function drawFloatingText(label) {
   ctx.globalAlpha = alpha;
   ctx.fillStyle = label.color || "#ffd178";
   ctx.font = "bold 12px 'Noto Sans SC', 'PingFang SC', sans-serif";
-  ctx.fillText(label.text || "", label.x, label.y);
+  ctx.fillText(localizeFloatingText(label), label.x, label.y);
   ctx.restore();
 }
 
@@ -1304,7 +1322,7 @@ function drawSelectedFireArc() {
 
   if (team.loadout && team.loadout.main === "kyon") {
     drawFireArcBand(ship, -180, 180, outerRadius, innerRadius, "#7de4ff", 0.14);
-    drawFireArcLabel(ship, 0, labelRadius, "均匀", "#b9f4ff");
+    drawFireArcLabel(ship, 0, labelRadius, t("均匀"), "#b9f4ff");
     return;
   }
 
@@ -1400,7 +1418,7 @@ function drawMinimap() {
 
   ctx.fillStyle = "#d2ecff";
   ctx.font = "bold 11px 'Noto Sans SC', 'PingFang SC', sans-serif";
-  ctx.fillText("观察镜头", rect.x + 8, rect.y + 14);
+  ctx.fillText(t("观察镜头"), rect.x + 8, rect.y + 14);
   ctx.restore();
 }
 
@@ -1500,8 +1518,8 @@ function drawBotOverlay(seat) {
     drawPlanPolygon([bot.sectorPlan.main, bot.sectorPlan.sub1, bot.sectorPlan.sub2], palette);
   }
 
-  drawPlanMarker(bot.focus, palette, `${seat}焦点`, "cross");
-  drawPlanMarker(bot.searchCenter, palette, `${seat}搜`, "square");
+  drawPlanMarker(bot.focus, palette, t("{seat}焦点", { seat }), "cross");
+  drawPlanMarker(bot.searchCenter, palette, t("{seat}搜", { seat }), "square");
 
   for (const shipKey of ["main", "sub1", "sub2"]) {
     const order = bot.orders?.[shipKey];
@@ -1681,13 +1699,13 @@ function bindUiEvents() {
     storeLoadout("A", app.teamALoadout);
     storeLoadout("B", app.teamBLoadout);
     resetMatch(true);
-    log("已应用双方新阵容");
+    log(t("已应用双方新阵容"));
   });
 
   ui.pauseBtn.addEventListener("click", () => {
     app.paused = !app.paused;
     updateUi();
-    log(app.paused ? "调试战已暂停" : "调试战继续运行");
+    log(app.paused ? t("调试战已暂停") : t("调试战继续运行"));
   });
 
   ui.stepBtn.addEventListener("click", () => {
@@ -1699,7 +1717,7 @@ function bindUiEvents() {
     app.state = app.sim.serializeState();
     updateUi();
     render();
-    log("已单步推进 1.0 秒");
+    log(t("已单步推进 1.0 秒"));
   });
 
   for (const button of ui.speedButtons) {
@@ -1726,7 +1744,7 @@ function bindUiEvents() {
       window.localStorage.setItem("haruhi-debug-legacy-b", app.opponentLegacy ? "1" : "0");
       refreshLegacyLabels();
       resetMatch(true);
-      log(app.opponentLegacy ? "对照模式开启：B队改用旧版AI" : "对照模式关闭：双方均为新AI");
+      log(app.opponentLegacy ? t("对照模式开启：B队改用旧版AI") : t("对照模式关闭：双方均为新AI"));
     });
   }
 
@@ -1841,35 +1859,35 @@ function debugTemplate() {
   return `
     <div class="app-shell debug-shell">
       <aside class="panel compact-panel debug-panel">
-        <h1>射手座之日</h1>
+        <h1>${t("射手座之日")}</h1>
 
         <section class="controls slim-controls">
           <div class="btn-col">
-            <a class="btn-link btn-link-home" href="/">← 主菜单</a>
+            <a class="btn-link btn-link-home" href="/">${t("← 主菜单")}</a>
           </div>
         </section>
 
         <section class="status debug-status">
-          <div><span>时间</span><strong id="debugTimeValue">0.0秒</strong></div>
-          <div><span>状态</span><strong id="debugPhaseValue">运行中</strong></div>
-          <div><span>倍速</span><strong id="debugSpeedValue">1x</strong></div>
-          <div><span>选中</span><strong id="debugSelectedValue">A队 主舰</strong></div>
-          <div><span>A舰体</span><strong id="debugTeamAHullValue">100%</strong></div>
-          <div><span>A分离</span><strong id="debugTeamASplitValue">编队</strong></div>
-          <div><span>A侦获</span><strong id="debugTeamAVisionValue">0个目标</strong></div>
-          <div><span>B舰体</span><strong id="debugTeamBHullValue">100%</strong></div>
-          <div><span>B分离</span><strong id="debugTeamBSplitValue">编队</strong></div>
-          <div><span>B侦获</span><strong id="debugTeamBVisionValue">0个目标</strong></div>
+          <div><span>${t("时间")}</span><strong id="debugTimeValue">${t("{value}秒", { value: "0.0" })}</strong></div>
+          <div><span>${t("状态")}</span><strong id="debugPhaseValue">${t("运行中")}</strong></div>
+          <div><span>${t("倍速")}</span><strong id="debugSpeedValue">1x</strong></div>
+          <div><span>${t("选中")}</span><strong id="debugSelectedValue">${t("A队 主舰")}</strong></div>
+          <div><span>${t("A舰体")}</span><strong id="debugTeamAHullValue">100%</strong></div>
+          <div><span>${t("A分离")}</span><strong id="debugTeamASplitValue">${t("编队")}</strong></div>
+          <div><span>${t("A侦获")}</span><strong id="debugTeamAVisionValue">${t("{count}个目标", { count: 0 })}</strong></div>
+          <div><span>${t("B舰体")}</span><strong id="debugTeamBHullValue">100%</strong></div>
+          <div><span>${t("B分离")}</span><strong id="debugTeamBSplitValue">${t("编队")}</strong></div>
+          <div><span>${t("B侦获")}</span><strong id="debugTeamBVisionValue">${t("{count}个目标", { count: 0 })}</strong></div>
         </section>
 
         <section class="controls slim-controls">
-          <h2>调试控制</h2>
+          <h2>${t("调试控制")}</h2>
           <div class="btn-col">
-            <button id="applyDebugSetupBtn">应用双方阵容并开战</button>
+            <button id="applyDebugSetupBtn">${t("应用双方阵容并开战")}</button>
           </div>
           <div class="btn-row">
-            <button id="pauseDebugBtn">暂停</button>
-            <button id="stepDebugBtn">单步1秒</button>
+            <button id="pauseDebugBtn">${t("暂停")}</button>
+            <button id="stepDebugBtn">${t("单步1秒")}</button>
           </div>
           <div id="debugSpeedRow" class="debug-speed-row">
             <button type="button" class="debug-speed-btn" data-speed="0.5">0.5x</button>
@@ -1879,29 +1897,29 @@ function debugTemplate() {
           </div>
           <label class="debug-legacy-toggle" for="debugLegacyToggle">
             <input type="checkbox" id="debugLegacyToggle" />
-            <span>对手(B队)用旧版AI · 对照新AI压制力</span>
+            <span>${t("对手(B队)用旧版AI · 对照新AI压制力")}</span>
           </label>
-          <p class="hint">双方均由 AI 接管。观察者可切换任意舰船，查看射界、视野与航线；手机上点空白区域可挪动镜头。</p>
+          <p class="hint">${t("双方均由 AI 接管。观察者可切换任意舰船，查看射界、视野与航线；手机上点空白区域可挪动镜头。")}</p>
         </section>
 
         <section class="controls slim-controls">
-          <h2>阵容设置</h2>
+          <h2>${t("阵容设置")}</h2>
           <div class="debug-team-stack">
             <section class="debug-team-block">
-              <div class="debug-team-head"><h3>A队</h3><strong class="debug-seat-tag seat-a" id="debugSeatTagA">AI</strong></div>
+              <div class="debug-team-head"><h3>${t("A队")}</h3><strong class="debug-seat-tag seat-a" id="debugSeatTagA">AI</strong></div>
               <div class="loadout-grid">
-                <label class="loadout-field" for="debugTeamAMainRole"><span>主舰</span><select id="debugTeamAMainRole"></select></label>
-                <label class="loadout-field" for="debugTeamASub1Role"><span>副舰一</span><select id="debugTeamASub1Role"></select></label>
-                <label class="loadout-field" for="debugTeamASub2Role"><span>副舰二</span><select id="debugTeamASub2Role"></select></label>
+                <label class="loadout-field" for="debugTeamAMainRole"><span>${t("主舰")}</span><select id="debugTeamAMainRole"></select></label>
+                <label class="loadout-field" for="debugTeamASub1Role"><span>${t("副舰一")}</span><select id="debugTeamASub1Role"></select></label>
+                <label class="loadout-field" for="debugTeamASub2Role"><span>${t("副舰二")}</span><select id="debugTeamASub2Role"></select></label>
               </div>
               <div id="debugTeamAPreview" class="loadout-preview"></div>
             </section>
             <section class="debug-team-block">
-              <div class="debug-team-head"><h3>B队</h3><strong class="debug-seat-tag seat-b" id="debugSeatTagB">AI</strong></div>
+              <div class="debug-team-head"><h3>${t("B队")}</h3><strong class="debug-seat-tag seat-b" id="debugSeatTagB">AI</strong></div>
               <div class="loadout-grid">
-                <label class="loadout-field" for="debugTeamBMainRole"><span>主舰</span><select id="debugTeamBMainRole"></select></label>
-                <label class="loadout-field" for="debugTeamBSub1Role"><span>副舰一</span><select id="debugTeamBSub1Role"></select></label>
-                <label class="loadout-field" for="debugTeamBSub2Role"><span>副舰二</span><select id="debugTeamBSub2Role"></select></label>
+                <label class="loadout-field" for="debugTeamBMainRole"><span>${t("主舰")}</span><select id="debugTeamBMainRole"></select></label>
+                <label class="loadout-field" for="debugTeamBSub1Role"><span>${t("副舰一")}</span><select id="debugTeamBSub1Role"></select></label>
+                <label class="loadout-field" for="debugTeamBSub2Role"><span>${t("副舰二")}</span><select id="debugTeamBSub2Role"></select></label>
               </div>
               <div id="debugTeamBPreview" class="loadout-preview"></div>
             </section>
@@ -1909,7 +1927,7 @@ function debugTemplate() {
         </section>
 
         <section class="controls slim-controls">
-          <h2>快速观察</h2>
+          <h2>${t("快速观察")}</h2>
           <div id="debugFocusGrid" class="debug-focus-grid">
             <button type="button" class="debug-focus-btn" data-seat="A" data-ship="main">A主</button>
             <button type="button" class="debug-focus-btn" data-seat="B" data-ship="main">B主</button>
@@ -1922,21 +1940,21 @@ function debugTemplate() {
         </section>
 
         <section class="controls slim-controls">
-          <h2>AI态势</h2>
+          <h2>${t("AI态势")}</h2>
           <div class="debug-team-stack">
             <section class="debug-team-block">
-              <div class="debug-team-head"><h3>A队判断</h3><strong class="debug-seat-tag seat-a">AI</strong></div>
+              <div class="debug-team-head"><h3>${t("A队判断")}</h3><strong class="debug-seat-tag seat-a">AI</strong></div>
               <div id="debugTeamAAiCard" class="loadout-preview debug-ai-card"></div>
             </section>
             <section class="debug-team-block">
-              <div class="debug-team-head"><h3>B队判断</h3><strong class="debug-seat-tag seat-b">AI</strong></div>
+              <div class="debug-team-head"><h3>${t("B队判断")}</h3><strong class="debug-seat-tag seat-b">AI</strong></div>
               <div id="debugTeamBAiCard" class="loadout-preview debug-ai-card"></div>
             </section>
           </div>
         </section>
 
         <section class="controls slim-controls">
-          <h2>日志</h2>
+          <h2>${t("日志")}</h2>
           <div id="debugLog" class="log"></div>
         </section>
       </aside>
@@ -1946,8 +1964,8 @@ function debugTemplate() {
         <div id="debugOverlay" class="overlay hidden">
           <h2 id="debugOverlayTitle"></h2>
           <div class="overlay-actions">
-            <button id="debugRestartBtn">重新推演</button>
-            <a class="btn-link overlay-home-link" href="/">返回主菜单</a>
+            <button id="debugRestartBtn">${t("重新推演")}</button>
+            <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>
           </div>
         </div>
       </main>

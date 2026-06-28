@@ -277,7 +277,9 @@ h1::after {
 .status div {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
   border: 1px solid var(--brass-dark);
   border-radius: 3px;
   padding: 6px 10px 6px 12px;
@@ -308,11 +310,14 @@ h1::after {
   color: var(--gilt-bright);
   font-family: var(--font-engrave);
   font-weight: 600;
-  max-width: 66%;
+  max-width: 72%;
+  min-width: 0;
   text-align: right;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.18;
   font-size: 0.9rem;
   text-shadow: 0 1px 1px #160c05;
 }
@@ -578,7 +583,8 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   flex-direction: column;
   height: calc(100vh - 28px);
   max-height: calc(100vh - 28px);
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   padding: 11px 13px 12px;
   gap: 7px;
 }
@@ -651,7 +657,7 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 }
 .fleet-row {
   flex: 1 1 0;
-  min-height: 34px;
+  min-height: 50px;
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -852,9 +858,11 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   color: var(--gilt-bright);
   font-family: var(--font-cn);
   font-size: 0.84rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.22;
   letter-spacing: 0.03em;
 }
 
@@ -1356,9 +1364,10 @@ button.toggle-active {
   .battle-shell .mobile-battle-hint {
     font-size: 0.72rem;
     line-height: 1.35;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: anywhere;
   }
 }
 
@@ -2514,7 +2523,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 
 .csm-stage {
   position: relative;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   min-height: 0;
   overflow: hidden;
   touch-action: pan-y;
@@ -2589,7 +2598,12 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   border-radius: 999px;
 }
 
-.csm-info { flex: 0 0 auto; padding: 8px 12px 0; }
+.csm-info {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px 0;
+}
 .csm-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 8px; }
 .csm-dot { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; background: #6c4a2877; }
 .csm-dot.active { background: var(--gilt-bright); box-shadow: 0 0 8px var(--gilt); }
@@ -2616,9 +2630,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   background: #160c0566;
   color: var(--gilt-pale);
 }
-.csm-skill-head { display: flex; align-items: flex-start; gap: 6px; overflow: hidden; }
+.csm-skill-head { display: flex; align-items: flex-start; gap: 6px; }
 .csm-skill-tag { flex: 0 0 auto; margin-top: 1px; font-size: 0.6rem; color: var(--oxblood-bright); letter-spacing: 0.06em; }
-/* 技能名最多两行(长名如阿虚旗舰技完整显示),并固定两行高度——长短名卡片等高,切角色不顶动 */
+/* 技能名随翻译长度完整换行，不用省略号截断。 */
 .csm-skill-name {
   flex: 1;
   min-width: 0;
@@ -2626,22 +2640,16 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   font-size: 0.84rem;
   line-height: 1.2;
   color: var(--gilt-pale);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-  min-height: 2.4em;
+  overflow-wrap: anywhere;
 }
-/* 固定 4 行高：不同角色技能说明长短不一，但卡片高度恒定 —— 切换不顶动版面、也不出现滚动条 */
+/* 技能说明随翻译长度自然换行；信息区空间不足时由 .csm-info 滚动承接。 */
 .csm-skill-desc {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  overflow: hidden;
-  min-height: 5.8em;
+  display: block;
+  overflow: visible;
+  min-height: 0;
   margin: 5px 0 0;
-  font-size: 0.72rem;
-  line-height: 1.45;
+  font-size: 0.7rem;
+  line-height: 1.36;
   color: var(--text-soft);
 }
 
@@ -2700,7 +2708,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 
 /* 横屏 / 矮窗：左立绘、右信息(滚)、右下操作 */
-@media (max-height: 560px) {
+@media (max-height: 560px) and (min-width: 700px) {
   .csm {
     display: grid;
     grid-template-columns: 1.05fr 1fr;
@@ -2842,7 +2850,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .mmenu-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .mmenu-list { gap: 9px; }
-.mmenu-foot { display: flex; justify-content: center; align-items: center; gap: 9px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
+.mmenu-foot { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 9px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
 .mmenu .ts-item {
   padding: 11px 18px;
   border: 1px solid var(--brass-dark);
@@ -2932,11 +2940,14 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   /* 纵向留白随视口高度收缩,避免在 Windows 缩放/浏览器缩放导致的矮视口里把页脚顶出屏幕 */
   gap: clamp(14px, 3vh, 34px);
   width: min(560px, 94%);
-  padding: clamp(16px, 3.4vh, 48px) clamp(24px, 6vw, 82px);
+  padding: clamp(16px, 3.4vh, 48px) clamp(24px, 4vw, 64px);
 }
 /* 矮视口(系统/浏览器缩放后常见):进一步压缩菜单,保证标题+菜单+页脚全部可见不被遮挡 */
 @media (max-height: 820px) {
   .ts-content { gap: clamp(10px, 2.2vh, 22px); }
+  .ts-stage:not(.mmenu) .ts-seal { width: 52px; height: 63px; margin-bottom: 2px; }
+  .ts-stage:not(.mmenu) .ts-subtitle { margin-top: 6px; font-size: 0.96rem; }
+  .ts-stage:not(.mmenu) .ts-rule { margin-top: 10px; }
   .ts-item { padding-top: 9px; padding-bottom: 9px; }
   .ts-title { font-size: clamp(2.3rem, 5.4vw, 3.4rem); }
 }
@@ -2945,6 +2956,17 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   .ts-content { gap: clamp(8px, 1.6vh, 16px); padding-top: 14px; padding-bottom: 14px; }
   .ts-item { padding-top: 7px; padding-bottom: 7px; }
   .ts-item-sub { display: none; }
+}
+@media (min-width: 981px) and (max-height: 700px) {
+  .ts-content { gap: 8px; padding-top: 10px; padding-bottom: 10px; }
+  .ts-stage:not(.mmenu) .ts-seal,
+  .ts-stage:not(.mmenu) .ts-subtitle,
+  .ts-stage:not(.mmenu) .ts-rule { display: none; }
+  .ts-stage:not(.mmenu) .ts-title { font-size: clamp(2rem, 4.2vw, 2.8rem); }
+  .ts-stage:not(.mmenu) .ts-menu { gap: 2px; }
+  .ts-stage:not(.mmenu) .ts-item { padding-top: 6px; padding-bottom: 6px; }
+  .ts-stage:not(.mmenu) .ts-item-label { font-size: 1.28rem; }
+  .ts-stage:not(.mmenu) .ts-foot { gap: 10px; font-size: 0.68rem; }
 }
 /* SOS团 徽记（黄铜双色版，替换原 SOS 文字占位） */
 .ts-seal {
@@ -3049,6 +3071,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;
   gap: 16px;
   font-family: var(--font-cn);
   font-size: 0.76rem;
@@ -3056,7 +3079,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--text-muted);
 }
 .ts-ver { font-family: var(--font-italic); font-style: italic; }
-.ts-foot-meta { display: inline-flex; align-items: center; gap: 11px; }
+.ts-foot-meta { display: inline-flex; align-items: center; gap: 11px; flex-wrap: wrap; justify-content: flex-end; }
 .ts-github {
   display: inline-flex;
   align-items: center;
@@ -3066,6 +3089,64 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .ts-github:hover { color: var(--gilt-bright); transform: translateY(-1px); }
 .ts-github svg { display: block; filter: drop-shadow(0 1px 2px #02060e88); }
 .mmenu-foot .ts-github { margin-left: 2px; }
+.ts-language {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ts-language span {
+  font-family: var(--font-cn);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
+.ts-language select {
+  min-width: 92px;
+  max-width: 128px;
+  padding: 5px 24px 5px 8px;
+  border-color: #6f5428;
+  background-position:
+    calc(100% - 13px) 11px,
+    calc(100% - 8px) 11px,
+    0 0;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+.mmenu-foot .ts-language select { min-width: 86px; }
+
+/* 英文标题更长：保持主标题单行，通过字号和字距收缩避免换行。 */
+:root:lang(en) .ts-title {
+  white-space: nowrap;
+  font-size: clamp(1.35rem, 7vw, 2.45rem);
+  letter-spacing: 0.03em;
+}
+:root:lang(en) .cs-title {
+  white-space: nowrap;
+  font-size: 1.5rem;
+  letter-spacing: 0.06em;
+}
+:root:lang(en) .page-title {
+  white-space: nowrap;
+  font-size: clamp(1.7rem, 4vw, 2.3rem);
+  letter-spacing: 0.04em;
+}
+:root:lang(en) .mpage-title {
+  white-space: nowrap;
+  font-size: clamp(1.15rem, 6vw, 1.5rem);
+  letter-spacing: 0.03em;
+}
+:root:lang(en) .lobby-title {
+  white-space: nowrap;
+  font-size: clamp(1.35rem, 5.4vw, 2.2rem);
+  letter-spacing: 0.04em;
+}
+:root:lang(en) .debug-panel > h1 {
+  white-space: nowrap;
+  font-size: clamp(1rem, 4.8vw, 1.18rem);
+  letter-spacing: 0.04em;
+}
 
 /* ═══════════════════════════════════════════════════
    二级页面（档案 / 玩法）通用框架
@@ -3192,6 +3273,8 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .credit-row { display: flex; flex-direction: column; align-items: center; gap: 9px; }
 .credit-role { font-family: var(--font-engrave); font-size: 0.82rem; letter-spacing: 0.34em; color: var(--gilt-bright); }
 .credit-name { font-family: var(--font-cn); font-size: 1.5rem; letter-spacing: 0.1em; color: var(--gilt-pale); text-shadow: 0 1px 10px #02060e80; }
+.credit-link { text-decoration: none; border-bottom: 1px solid #c8a24e66; transition: color 0.16s ease, border-color 0.16s ease; }
+.credit-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt-bright); }
 .guide-subtitle { margin: 8px 0 0; font-family: var(--font-engrave); font-size: 1.2rem; letter-spacing: 0.14em; color: var(--gilt-bright); }
 .guide-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
 .guide-key { display: flex; align-items: center; gap: 10px; }

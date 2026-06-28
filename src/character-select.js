@@ -6,6 +6,7 @@ import {
 } from "../shared/game-core.js";
 import { isMobile } from "./mobile.js";
 import { getDifficulty, setDifficulty } from "./profile.js";
+import { t } from "./i18n.js";
 
 // 单人难度档(仅在 solo 的选角页显示)。四档同时影响:敌方数值(血量+伤害)缩放 + AI反应快慢,
 // 极限额外开启"智能集火残血"(优先收掉你打残的舰)。tip 文案会作为按钮 title 提示。
@@ -21,11 +22,11 @@ function buildDifficultyEl(prefix) {
   const wrap = document.createElement("div");
   wrap.className = `${prefix}-difficulty`;
   wrap.setAttribute("role", "group");
-  wrap.setAttribute("aria-label", "选择难度");
+  wrap.setAttribute("aria-label", t("选择难度"));
   wrap.innerHTML =
-    `<span class="${prefix}-faction-label">难度</span>` +
+    `<span class="${prefix}-faction-label">${t("难度")}</span>` +
     DIFFICULTY_LEVELS.map(
-      (d) => `<button type="button" class="${prefix}-diff-btn" data-diff="${d.key}" title="${d.tip}">${d.label}</button>`,
+      (d) => `<button type="button" class="${prefix}-diff-btn" data-diff="${d.key}" title="${t(d.tip)}">${t(d.label)}</button>`,
     ).join("");
   const btns = Array.from(wrap.querySelectorAll(`.${prefix}-diff-btn`));
   const sync = () => {
@@ -397,7 +398,7 @@ function drawElegantPlaceholder(ctx, w, h, theme, def) {
   ctx.globalAlpha = 0.9;
   ctx.font = `600 ${Math.floor(h * 0.022)}px "Cinzel", "Noto Serif SC", serif`;
   ctx.textBaseline = "middle";
-  ctx.fillText("PORTRAIT TBA", w * 0.5, tbaY + tbaH / 2);
+  ctx.fillText(t("立绘待补"), w * 0.5, tbaY + tbaH / 2);
   ctx.restore();
 }
 
@@ -430,8 +431,8 @@ function renderLeftPageHTML(charId, loadout) {
 
   return `
     <div class="cs-page-num">
-      <span>第 ${ROMAN[idx + 1]} 卷</span>
-      <span class="cs-page-num-folio">Folio № ${pad2(idx + 1)} / ${pad2(CHARACTER_ORDER.length)}</span>
+      <span>${t("第 {chapter} 卷", { chapter: ROMAN[idx + 1] })}</span>
+      <span class="cs-page-num-folio">${t("Folio № {current} / {total}", { current: pad2(idx + 1), total: pad2(CHARACTER_ORDER.length) })}</span>
     </div>
     <div class="cs-portrait-frame">
       <div class="cs-portrait-glow"></div>
@@ -455,8 +456,8 @@ function renderSealHTML(charId, loadout) {
   const assignedSlot = SLOT_INFO.find((s) => loadout[s.key] === charId);
   const sealClass = assignedSlot ? "cs-page-seal shown" : "cs-page-seal";
   const sealHTML = assignedSlot
-    ? `已编入<br>${assignedSlot.label}<small>ASSIGNED</small>`
-    : `候补<small>RESERVE</small>`;
+    ? `${t("已编入")}<br>${t(assignedSlot.label)}<small>${t("ASSIGNED")}</small>`
+    : `${t("候补")}<small>${t("RESERVE")}</small>`;
   return `<div class="${sealClass}">${sealHTML}</div>`;
 }
 
@@ -494,48 +495,48 @@ function renderRightPageHTML(charId, loadout) {
 
   let promptHTML, ctaLabel, ctaState;
   if (mySlot) {
-    promptHTML = `本舰已编入 <strong>${mySlot.label}</strong>`;
-    ctaLabel = `已选为 ${mySlot.label}`;
+    promptHTML = t("本舰已编入 {slot}", { slot: `<strong>${t(mySlot.label)}</strong>` });
+    ctaLabel = t("已选为 {slot}", { slot: t(mySlot.label) });
     ctaState = "chosen";
   } else if (target) {
-    promptHTML = `请选择第 <strong>${step + 1}</strong> 位 · <strong>${target.label}</strong>`;
-    ctaLabel = `选为 ${target.label}`;
+    promptHTML = t("请选择第 {step} 位 · {slot}", { step: `<strong>${step + 1}</strong>`, slot: `<strong>${t(target.label)}</strong>` });
+    ctaLabel = t("选为 {slot}", { slot: t(target.label) });
     ctaState = "select";
   } else {
-    promptHTML = `舰队已就绪 · 可出击或退回修改`;
-    ctaLabel = `舰队已就绪`;
+    promptHTML = t("舰队已就绪 · 可出击或退回修改");
+    ctaLabel = t("舰队已就绪");
     ctaState = "ready";
   }
   const canBack = filledCount > 0;
-  const backLabel = canBack ? `‹ 退回 · 重选 ${SLOT_INFO[filledCount - 1].label}` : `‹ 退回`;
+  const backLabel = canBack ? t("‹ 退回 · 重选 {slot}", { slot: t(SLOT_INFO[filledCount - 1].label) }) : t("‹ 退回");
 
   return `
     <div class="cs-page-fit">
     <div class="cs-page-chapter">
-      <span>Chapter ${ROMAN[idx + 1]} · Service Record</span>
-      <span class="cs-page-chapter-zh">履历 № ${pad2(idx + 1)}</span>
+      <span>${t("Chapter {chapter} · Service Record", { chapter: ROMAN[idx + 1] })}</span>
+      <span class="cs-page-chapter-zh">${t("履历 № {num}", { num: pad2(idx + 1) })}</span>
     </div>
     <p class="cs-page-flavor">${def.flavor}</p>
     <div class="cs-page-section-title">
-      <span>Ship Particulars</span>
-      <span class="cs-page-section-title-zh">舰艇参数</span>
+      <span>${t("Ship Particulars")}</span>
+      <span class="cs-page-section-title-zh">${t("舰艇参数")}</span>
     </div>
     <div class="cs-page-stats">${statsHTML}</div>
     <div class="cs-page-section-title">
-      <span>Special Faculties</span>
-      <span class="cs-page-section-title-zh">特殊技能</span>
+      <span>${t("Special Faculties")}</span>
+      <span class="cs-page-section-title-zh">${t("特殊技能")}</span>
     </div>
     <div class="cs-page-skills">
       <div class="cs-page-skill">
         <div class="cs-page-skill-header">
-          <span class="cs-page-skill-type">旗舰技</span>
+          <span class="cs-page-skill-type">${t("旗舰技")}</span>
           <span class="cs-page-skill-name">${def.flagshipSkill.name}</span>
         </div>
         <p class="cs-page-skill-desc">${def.flagshipSkill.description}</p>
       </div>
       <div class="cs-page-skill">
         <div class="cs-page-skill-header">
-          <span class="cs-page-skill-type">分舰技</span>
+          <span class="cs-page-skill-type">${t("分舰技")}</span>
           <span class="cs-page-skill-name">${def.subSkill.name}</span>
         </div>
         <p class="cs-page-skill-desc">${def.subSkill.description}</p>
@@ -548,7 +549,7 @@ function renderRightPageHTML(charId, loadout) {
         <button type="button" class="cs-enlist-cta cs-enlist-${ctaState}" data-action="select"${ctaState === "select" ? "" : " disabled"}>${ctaLabel}</button>
       </div>
     </div>
-    <div class="cs-page-foot">SOS 团战术档案 · <span>仅供出击参考</span></div>
+    <div class="cs-page-foot">${t("SOS 团战术档案 ·")} <span>${t("仅供出击参考")}</span></div>
     </div>
     <div class="cs-flip-shade"></div>
   `;
@@ -588,15 +589,15 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   const header = document.createElement("header");
   header.className = "cs-header";
   header.innerHTML = `
-    <div class="cs-folio left">SOS团 舰员档案</div>
+    <div class="cs-folio left">${t("SOS团 舰员档案")}</div>
     <div class="cs-header-center">
-      <div class="cs-sos-badge" role="img" aria-label="SOS团"></div>
-      <h1 class="cs-title">射手座之日</h1>
+      <div class="cs-sos-badge" role="img" aria-label="${t("SOS团")}"></div>
+      <h1 class="cs-title">${t("射手座之日")}</h1>
       <p class="cs-subtitle">The Day of Sagittarius</p>
-      <div class="cs-faction" role="group" aria-label="选择阵营">
-        <span class="cs-faction-label">阵营</span>
-        <button type="button" class="cs-faction-btn blue active" data-color="blue">蓝队</button>
-        <button type="button" class="cs-faction-btn red" data-color="red">红队</button>
+      <div class="cs-faction" role="group" aria-label="${t("选择阵营")}">
+        <span class="cs-faction-label">${t("阵营")}</span>
+        <button type="button" class="cs-faction-btn blue active" data-color="blue">${t("蓝队")}</button>
+        <button type="button" class="cs-faction-btn red" data-color="red">${t("红队")}</button>
       </div>
     </div>
     <div class="cs-folio right"></div>
@@ -649,14 +650,14 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   const navPrev = document.createElement("button");
   navPrev.type = "button";
   navPrev.className = "cs-nav-btn cs-nav-prev";
-  navPrev.setAttribute("aria-label", "上一位成员");
+  navPrev.setAttribute("aria-label", t("上一位成员"));
   navPrev.textContent = "‹";
   stage.appendChild(navPrev);
 
   const navNext = document.createElement("button");
   navNext.type = "button";
   navNext.className = "cs-nav-btn cs-nav-next";
-  navNext.setAttribute("aria-label", "下一位成员");
+  navNext.setAttribute("aria-label", t("下一位成员"));
   navNext.textContent = "›";
   stage.appendChild(navNext);
 
@@ -700,7 +701,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     slotEl.innerHTML = `
       <span class="cs-fleet-slot-icon"></span>
       <span class="cs-fleet-slot-meta">
-        <span class="cs-fleet-slot-label">${slot.label}</span>
+        <span class="cs-fleet-slot-label">${t(slot.label)}</span>
         <span class="cs-fleet-slot-name">— —</span>
       </span>
     `;
@@ -716,15 +717,15 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   launchBtn.type = "button";
   launchBtn.className = "cs-launch";
   launchBtn.disabled = true;
-  launchBtn.innerHTML = `<span class="cs-launch-text">出 击</span><span class="cs-launch-glow"></span>`;
+  launchBtn.innerHTML = `<span class="cs-launch-text">${t("出 击")}</span><span class="cs-launch-glow"></span>`;
   launchBtn.addEventListener("click", launch);
   fleetBar.appendChild(launchBtn);
 
   const modeLinks = document.createElement("div");
   modeLinks.className = "cs-mode-links";
   modeLinks.innerHTML = `
-    <button type="button" class="cs-mode-link" data-action="random">随机编队</button>
-    <a href="/" class="cs-mode-link">主菜单</a>
+    <button type="button" class="cs-mode-link" data-action="random">${t("随机编队")}</button>
+    <a href="/" class="cs-mode-link">${t("主菜单")}</a>
   `;
   modeLinks.querySelector('[data-action="random"]').addEventListener("click", randomFill);
   content.appendChild(modeLinks);
@@ -1027,7 +1028,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
       const targeting = i === curStep;
       fleetSlots[s.key].el.classList.toggle("targeting", targeting);
       if (targeting && !state.loadout[s.key]) {
-        fleetSlots[s.key].name.textContent = "选择中";
+        fleetSlots[s.key].name.textContent = t("选择中");
       }
     });
   }
@@ -1354,17 +1355,17 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   screen.className = "cs-screen csm";
   screen.innerHTML = `
     <div class="csm-top">
-      <a class="csm-back" href="/">‹ 主菜单</a>
-      <button type="button" class="csm-random" data-action="random">随机编队</button>
-      <div class="csm-faction" role="group" aria-label="选择阵营">
-        <button type="button" class="csm-faction-btn blue active" data-color="blue">蓝队</button>
-        <button type="button" class="csm-faction-btn red" data-color="red">红队</button>
+      <a class="csm-back" href="/">${t("‹ 主菜单")}</a>
+      <button type="button" class="csm-random" data-action="random">${t("随机编队")}</button>
+      <div class="csm-faction" role="group" aria-label="${t("选择阵营")}">
+        <button type="button" class="csm-faction-btn blue active" data-color="blue">${t("蓝队")}</button>
+        <button type="button" class="csm-faction-btn red" data-color="red">${t("红队")}</button>
       </div>
     </div>
     <div class="csm-stage">
       <div class="csm-track"></div>
-      <button type="button" class="csm-arrow csm-prev" aria-label="上一位">‹</button>
-      <button type="button" class="csm-arrow csm-next" aria-label="下一位">›</button>
+      <button type="button" class="csm-arrow csm-prev" aria-label="${t("上一位")}">‹</button>
+      <button type="button" class="csm-arrow csm-next" aria-label="${t("下一位")}">›</button>
     </div>
     <div class="csm-info">
       <div class="csm-dots"></div>
@@ -1454,7 +1455,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     s.type = "button";
     s.className = "csm-slot";
     s.dataset.slot = slot.key;
-    s.innerHTML = `<span class="csm-slot-icon"></span><span class="csm-slot-label">${slot.short}</span>`;
+    s.innerHTML = `<span class="csm-slot-icon"></span><span class="csm-slot-label">${t(slot.short)}</span>`;
     s.addEventListener("click", () => {
       if (state.loadout[slot.key]) {
         state.loadout[slot.key] = null; // 点已填舰位 = 移出，便于重选
@@ -1620,18 +1621,18 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   function renderCta() {
     const id = curId();
     if (isReady()) {
-      els.cta.textContent = "出 击";
+      els.cta.textContent = t("出 击");
       els.cta.className = "csm-cta ready";
       els.cta.disabled = false;
       return;
     }
     if (assignedSlot(id)) {
-      els.cta.textContent = "移出编队";
+      els.cta.textContent = t("移出编队");
       els.cta.className = "csm-cta remove";
       els.cta.disabled = false;
       return;
     }
-    els.cta.textContent = `编入 · ${SLOT_INFO[nextStep()].label}`;
+    els.cta.textContent = t("编入 · {slot}", { slot: t(SLOT_INFO[nextStep()].label) });
     els.cta.className = "csm-cta select";
     els.cta.disabled = false;
   }
@@ -1642,11 +1643,11 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     els.stats.innerHTML = MOBILE_STATS.map(([label, key]) => {
       let v = def.stats[key];
       if (key === "turnRate" || key === "fireRate") v = Number(v).toFixed(2);
-      return `<div class="csm-chip"><span>${label}</span><strong>${v}</strong></div>`;
+      return `<div class="csm-chip"><span>${t(label)}</span><strong>${v}</strong></div>`;
     }).join("");
     els.skills.innerHTML = `
-      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">旗舰技</span><span class="csm-skill-name">${def.flagshipSkill.name}</span></div><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
-      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">分舰技</span><span class="csm-skill-name">${def.subSkill.name}</span></div><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
+      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("旗舰技")}</span><span class="csm-skill-name">${def.flagshipSkill.name}</span></div><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
+      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("分舰技")}</span><span class="csm-skill-name">${def.subSkill.name}</span></div><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
     for (const d of els.dots.children) d.classList.toggle("active", Number(d.dataset.idx) === state.idx);
     renderCta();
   }

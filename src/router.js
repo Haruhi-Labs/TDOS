@@ -1,4 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
+
+import { t } from "./i18n.js";
 // 极简 History 路由器
 // · 干净 URL（/play、/online …），无 .html 后缀。
 // · 每个路由是一个「可挂载模块」：导出 mount(root, ctx) → 可选 unmount()。
@@ -60,7 +62,7 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
       mod = await loadModule(entry);
     } catch (error) {
       console.error("[router] failed to load route", path, error);
-      outlet.innerHTML = `<div class="boot-splash">页面加载失败</div>`;
+      outlet.innerHTML = `<div class="boot-splash">${t("页面加载失败")}</div>`;
       return;
     }
     if (myToken !== token) return; // 期间又导航了，放弃
@@ -104,5 +106,9 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
     render(toAppPath(location.pathname));
   }
 
-  return { start, navigate };
+  function refresh() {
+    render(toAppPath(location.pathname));
+  }
+
+  return { start, navigate, refresh };
 }

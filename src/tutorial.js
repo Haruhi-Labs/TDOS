@@ -1,4 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
+
+import { t } from "./i18n.js";
 // 引导式新手教程 —— 玩家第一次进战场时自动触发的分步引导。
 // 设计:全程实时不暂停;对话卡是非阻挡 overlay(战场点击穿透,只有卡片本身吃事件),
 //       逐步引导真实操作(下航线/分离/放技能),并配合画布示意图讲机制(射界/射程·视野)。
@@ -146,17 +148,18 @@ function applyHighlight(step, info) {
 function renderCard(step, info) {
   const total = STEPS.length;
   const num = activeIndex + 1;
-  const bodyText = typeof step.body === "function" ? step.body(info) : step.body;
+  const rawBody = typeof step.body === "function" ? step.body(info) : step.body;
+  const bodyText = t(rawBody);
   const isButton = step.advance === "button";
-  const btnLabel = isButton ? (activeIndex === total - 1 ? "开始战斗" : "继续") : "";
+  const btnLabel = isButton ? (activeIndex === total - 1 ? t("开始战斗") : t("继续")) : "";
   cardEl.innerHTML =
-    `<div class="tut-step">第 ${num} / ${total} 步</div>` +
-    `<h3 class="tut-title">${step.title}</h3>` +
+    `<div class="tut-step">${t("第 {num} / {total} 步", { num, total })}</div>` +
+    `<h3 class="tut-title">${t(step.title)}</h3>` +
     `<p class="tut-body">${bodyText}</p>` +
-    (step.hint ? `<p class="tut-wait">${step.hint}</p>` : "") +
+    (step.hint ? `<p class="tut-wait">${t(step.hint)}</p>` : "") +
     `<div class="tut-actions">` +
     (btnLabel ? `<button type="button" class="tut-next">${btnLabel}</button>` : "") +
-    `<button type="button" class="tut-skip">跳过教程</button>` +
+    `<button type="button" class="tut-skip">${t("跳过教程")}</button>` +
     `</div>`;
   const nextBtn = cardEl.querySelector(".tut-next");
   if (nextBtn) nextBtn.addEventListener("click", () => goto(activeIndex + 1));

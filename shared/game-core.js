@@ -430,6 +430,13 @@ const SOS_BUFFS = [
   },
 ];
 
+const SOS_BUFF_TEXT_KEYS = {
+  alien: "宇宙人",
+  esper: "超能力者",
+  future: "未来人",
+  otherworlder: "异世界人",
+};
+
 function getCharacterDef(characterId) {
   return CHARACTER_DEFS[characterId] || CHARACTER_DEFS[DEFAULT_TEAM_LOADOUT.main];
 }
@@ -647,13 +654,19 @@ export function buildZones(worldSize = DEFAULT_WORLD_SIZE) {
 }
 
 class FloatingText {
-  constructor(x, y, text, color = "#ffd178") {
+  constructor(x, y, text, color = "#ffd178", meta = {}) {
+    const payload = text && typeof text === "object" ? text : null;
+    const textKey = meta.textKey || payload?.textKey || payload?.key || null;
+    const textArgs = meta.textArgs || payload?.textArgs || payload?.args || null;
+    const fallback = payload ? payload.text || payload.fallback || textKey : text;
     this.id = nextEntityId();
     this.kind = "floating_text";
     this.x = x;
     this.y = y;
-    this.text = String(text || "");
-    this.color = color;
+    this.text = String(fallback || "");
+    this.textKey = textKey ? String(textKey) : null;
+    this.textArgs = textArgs && typeof textArgs === "object" ? { ...textArgs } : null;
+    this.color = payload?.color || color;
     this.life = 0.8;
   }
 
@@ -669,6 +682,8 @@ class FloatingText {
       x: this.x,
       y: this.y,
       text: this.text,
+      textKey: this.textKey,
+      textArgs: this.textArgs,
       color: this.color,
       life: this.life,
     };
@@ -760,13 +775,13 @@ class Projectile {
       }
     }
     if (!hitTarget) {
-      match.spawnFloatingText(this.x, this.y, "未命中", "#92c5ff");
+      match.spawnFloatingTextKey(this.x, this.y, "未命中", {}, "#92c5ff");
       return;
     }
     // 小目标闪避:体型越小越容易被打空(侦察机/僚机),正常体型舰船不受影响
     const evade = clamp((SMALL_TARGET_REF_RADIUS - hitTarget.radius) / SMALL_TARGET_REF_RADIUS, 0, 1) * SMALL_TARGET_MAX_MISS;
     if (evade > 0 && Math.random() < evade) {
-      match.spawnFloatingText(hitTarget.x, hitTarget.y - 6, "未命中", "#92c5ff");
+      match.spawnFloatingTextKey(hitTarget.x, hitTarget.y - 6, "未命中", {}, "#92c5ff");
       return;
     }
     // 尾击:来袭方向(发射点相对目标)落在目标尾部射界(|θ|>150°)→ 伤害 ×1.2
@@ -783,7 +798,7 @@ class Projectile {
     hitTarget.takeDamage(damage, null, match);
     match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(damage)}`, rear ? "#ffb066" : "#ffd178");
     if (rear) {
-      match.spawnFloatingText(hitTarget.x + 12, hitTarget.y - 22, "尾击", "#ff9d5a");
+      match.spawnFloatingTextKey(hitTarget.x + 12, hitTarget.y - 22, "尾击", {}, "#ff9d5a");
     }
     match.spawnBurst(hitTarget.x, hitTarget.y, "#ffdb9b", 7);
   }
@@ -1369,13 +1384,13 @@ class Ship {
     let damage = this.effectiveDamage();
     if (this.effects.nextShotDamageMultiplier > 1) {
       damage *= this.effects.nextShotDamageMultiplier;
-      match.spawnFloatingText(this.x + 12, this.y - 12, "超能力", "#9be0ff");
+      match.spawnFloatingTextKey(this.x + 12, this.y - 12, "超能力", {}, "#9be0ff");
       this.effects.nextShotDamageMultiplier = 1;
     }
 
     if (this.hasEffect("critUntil") && Math.random() < 0.5) {
       damage *= 3;
-      match.spawnFloatingText(this.x + 12, this.y - 12, "暴击", "#ffdd73");
+      match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
 
     match.projectiles.push(
@@ -1404,7 +1419,7 @@ class Ship {
     this.energy = Math.max(this.energy, this.maxEnergy * 0.4);
     this.alive = true;
     match.spawnBurst(this.x, this.y, "#8cf7ff", 13);
-    match.spawnFloatingText(this.x + 6, this.y - 14, "再起动", "#9bf7ff");
+    match.spawnFloatingTextKey(this.x + 6, this.y - 14, "再起动", {}, "#9bf7ff");
     return true;
   }
 
@@ -2148,7 +2163,7 @@ class Team {
     ship.route = null;
     this.match.spawnBurst(fromX, fromY, "#d8f7ff", 8);
     this.match.spawnBurst(ship.x, ship.y, "#9be0ff", 9);
-    this.match.spawnFloatingText(ship.x + 10, ship.y - 12, "闪现", "#9be0ff");
+    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "闪现", {}, "#9be0ff");
     return true;
   }
 
@@ -2193,7 +2208,7 @@ class Team {
     twin.formationOffset = { x: 0, y: 0 };
     this.ships.main = twin;
     if (match) {
-      match.spawnFloatingText(twin.x + 8, twin.y - 12, "主舰接管", "#8ef8ff");
+      match.spawnFloatingTextKey(twin.x + 8, twin.y - 12, "主舰接管", {}, "#8ef8ff");
     }
     return true;
   }
@@ -2242,7 +2257,7 @@ class Team {
       id: buff.id,
       until: this.match.elapsed + 16,
     };
-    this.match.spawnFloatingText(ship.x + 10, ship.y - 12, buff.name, buff.color);
+    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, SOS_BUFF_TEXT_KEYS[buff.id] || buff.name, {}, buff.color, buff.name);
   }
 
   split(level) {
@@ -2366,7 +2381,7 @@ class Team {
     ship.effects.brakeUntil = this.match.elapsed + EMERGENCY_BRAKE_DURATION;
     ship.effects.brakeCooldownUntil = this.match.elapsed + EMERGENCY_BRAKE_COOLDOWN;
     this.match.spawnBurst(ship.x, ship.y, "#98e9ff", 7);
-    this.match.spawnFloatingText(ship.x + 10, ship.y - 12, "急刹", "#9eefff");
+    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "急刹", {}, "#9eefff");
     return true;
   }
 
@@ -2448,7 +2463,7 @@ class Team {
       this.effects.taxiUntil = this.match.elapsed + (meta.duration || 12);
       this.effects.taxiInvulnUntil = this.match.elapsed + (meta.invulnerableDuration || 3);
       for (const ship of this.fleetMembersByKey("main")) {
-        this.match.spawnFloatingText(ship.x + 10, ship.y - 10, "加速", "#9be0ff");
+        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "加速", {}, "#9be0ff");
       }
       ok = true;
     } else if (characterId === "tsuruya") {
@@ -2460,7 +2475,7 @@ class Team {
         if (!ship.alive) {
           continue;
         }
-        this.match.spawnFloatingText(ship.x + 10, ship.y - 10, "赞助", "#ffd27e");
+        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "赞助", {}, "#ffd27e");
       }
       ok = true;
     } else if (characterId === "asakura") {
@@ -2474,7 +2489,7 @@ class Team {
         if (!ship.alive) {
           continue;
         }
-        this.match.spawnFloatingText(ship.x + 10, ship.y - 10, "净化", "#ff9db5");
+        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, "#ff9db5");
       }
       ok = true;
     }
@@ -2608,7 +2623,7 @@ class Team {
     enemyTeam.wingmen = enemyTeam.wingmen.filter((wingman) => wingman.team === enemyTeam);
 
     if (converted > 0) {
-      this.match.spawnFloatingText(ship.x + 10, ship.y - 14, `钞能力 x${converted}`, "#ffd27e");
+      this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "钞能力 x{count}", { count: converted }, "#ffd27e", `钞能力 x${converted}`);
     }
     return converted > 0;
   }
@@ -6177,8 +6192,15 @@ export class MatchSimulation {
     this.winnerSeat = aAlive ? "A" : bAlive ? "B" : null;
   }
 
-  spawnFloatingText(x, y, text, color = "#ffd178") {
-    this.floatingTexts.push(new FloatingText(x, y, text, color));
+  spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {
+    this.floatingTexts.push(new FloatingText(x, y, text, color, meta));
+  }
+
+  spawnFloatingTextKey(x, y, textKey, args = {}, color = "#ffd178", fallback = textKey) {
+    this.spawnFloatingText(x, y, fallback, color, {
+      textKey,
+      textArgs: args,
+    });
   }
 
   spawnBurst(x, y, color = "#ffdb9b", radius = 7) {

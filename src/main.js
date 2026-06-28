@@ -11,11 +11,14 @@
 // ═══════════════════════════════════════════════════════════════
 
 import "../styles.css";
+import { initI18n } from "./i18n.js";
 import { createRouter } from "./router.js";
 import * as menu from "./menu.js";
 import * as profileView from "./profile-view.js";
 import * as guide from "./guide.js";
 import * as credits from "./credits.js";
+
+initI18n();
 
 const outlet = document.getElementById("app");
 
@@ -37,5 +40,9 @@ const router = createRouter({
 
 // 让各路由模块在需要时也能编程式导航
 window.__navigate = router.navigate;
+
+window.addEventListener("haruhi:locale-change", () => {
+  router.refresh();
+});
 
 router.start();
