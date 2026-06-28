@@ -77,7 +77,7 @@ export const CHARACTER_DEFS = {
     id: "haruhi",
     name: "凉宫春日",
     shortName: "春日",
-    title: "团长型火力旗舰",
+    title: "可靠的领导者与突击手",
     flavor: "高压制、高爆发，适合主动开团。",
     stats: {
       hp: 880,
@@ -118,7 +118,7 @@ export const CHARACTER_DEFS = {
     id: "koizumi",
     name: "古泉一树",
     shortName: "古泉",
-    title: "均衡型机动指挥舰",
+    title: "能够出现在他应该出现的任何地方",
     flavor: "转向和加速优秀，兼顾持续作战。",
     stats: {
       hp: 760,
@@ -160,7 +160,7 @@ export const CHARACTER_DEFS = {
     id: "yuki",
     name: "长门有希",
     shortName: "有希",
-    title: "高感知统合支援舰",
+    title: "资讯统合思念体级别的情报能力",
     flavor: "探测和能量优秀，但推进偏慢。",
     stats: {
       hp: 720,
@@ -196,7 +196,7 @@ export const CHARACTER_DEFS = {
     id: "future1096",
     name: "朝比奈1096",
     shortName: "1096",
-    title: "高速光束突击舰",
+    title: "mikuru bea----m!!!",
     flavor: "机动极高，舰体偏脆，适合侧翼切入。",
     stats: {
       hp: 640,
@@ -232,7 +232,7 @@ export const CHARACTER_DEFS = {
     id: "kyon",
     name: "阿虚",
     shortName: "阿虚",
-    title: "稳定型近战指挥舰",
+    title: "普普通通的普通人",
     flavor: "转向稳定、容错更高，火力方向限制低。",
     stats: {
       hp: 900,
@@ -269,7 +269,7 @@ export const CHARACTER_DEFS = {
     id: "tsuruya",
     name: "鹤屋学姐",
     shortName: "鹤屋",
-    title: "高周转支援舰",
+    title: "拥有钞能力的独特战局干扰者",
     flavor: "技能回转快，干扰敌方附属单位能力强。",
     stats: {
       hp: 700,
@@ -309,7 +309,7 @@ export const CHARACTER_DEFS = {
     id: "asakura",
     name: "朝仓凉子",
     shortName: "朝仓",
-    title: "高速猎杀渗透舰",
+    title: "情报与突进,一往无前的刀锋女王",
     flavor: "擅长净化增益、显形追猎和贴身绞杀。",
     stats: {
       hp: 760,
