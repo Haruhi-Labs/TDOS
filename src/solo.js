@@ -35,6 +35,7 @@ import {
 
 import { tutorial } from "./tutorial.js";
 import {
+  characterShortName,
   localizeFloatingText,
   shipCharacterName,
   shipDisplayName,
@@ -998,28 +999,100 @@ function updateUi() {
   syncMobileHud(own);
 
   if (app.state.phase === "finished") {
-    ui.overlay.classList.remove("hidden");
-    if (app.state.winnerSeat === "A") {
-      ui.overlayTitle.textContent = t("胜利：敌方舰队已被击溃");
-      if (!app.gameOverLogged) {
+    if (!app.gameOverLogged) {
+      showResultScreen(app.state.winnerSeat);
+      if (app.state.winnerSeat === "A") {
         log(t("战斗结束：SOS先遣舰队获胜"));
-      }
-    } else if (app.state.winnerSeat === "B") {
-      ui.overlayTitle.textContent = t("失败：SOS先遣舰队被歼灭");
-      if (!app.gameOverLogged) {
+      } else if (app.state.winnerSeat === "B") {
         log(t("战斗结束：SOS先遣舰队战败"));
-      }
-    } else {
-      ui.overlayTitle.textContent = t("战斗结束");
-      if (!app.gameOverLogged) {
+      } else {
         log(t("战斗结束：平局"));
       }
+      app.gameOverLogged = true;
     }
-    app.gameOverLogged = true;
+    ui.overlay.classList.remove("hidden");
   } else {
     ui.overlay.classList.add("hidden");
     app.gameOverLogged = false;
   }
+}
+
+// 单人难度 → 展示用 { 文案, 配色类 }(与选角页四档一致)
+function difficultyMeta() {
+  const map = {
+    easy: { label: "简单", cls: "easy" },
+    normal: { label: "普通", cls: "normal" },
+    hard: { label: "困难", cls: "hard" },
+    master: { label: "极限", cls: "master" },
+  };
+  return map[getDifficulty()] || map.normal;
+}
+
+// 一侧阵容(主舰高亮 + 两副舰):头像取该阵营立绘,头部偏上裁切
+function resultSideHTML(loadout, faction, sideLabel, sideClass) {
+  const base = import.meta.env.BASE_URL;
+  const cards = ["main", "sub1", "sub2"]
+    .map((slot, i) => {
+      const id = loadout[slot];
+      const src = `${base}assets/portraits/${faction}/${id}.webp`;
+      const role = localizedSlotLabel(slot, "short");
+      const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
+      return (
+        `<div class="rl-card${slot === "main" ? " rl-main" : ""}" style="--i:${i}">` +
+        `<span class="rl-portrait"><img src="${src}" alt="" loading="lazy" draggable="false"></span>` +
+        `<span class="rl-role">${role}</span>` +
+        `<span class="rl-name">${name}</span>` +
+        `</div>`
+      );
+    })
+    .join("");
+  return (
+    `<div class="result-side ${sideClass}">` +
+    `<div class="result-side-label">${sideLabel}</div>` +
+    `<div class="rl-cards">${cards}</div>` +
+    `</div>`
+  );
+}
+
+// 结算画面:只在进入 finished 时渲染一次(避免每帧重置动画)
+function showResultScreen(winnerSeat) {
+  const card = document.getElementById("resultCard");
+  if (!card) return;
+  const eyebrowEl = document.getElementById("resultEyebrow");
+  const subEl = document.getElementById("resultSub");
+  const diffEl = document.getElementById("resultDiff");
+  const versusEl = document.getElementById("resultVersus");
+
+  let cls, eyebrow, title, sub;
+  if (winnerSeat === "A") {
+    cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t("敌方舰队已被击溃");
+  } else if (winnerSeat === "B") {
+    cls = "result-lose"; eyebrow = "DEFEAT"; title = t("失败"); sub = t("SOS先遣舰队被歼灭");
+  } else {
+    cls = "result-draw"; eyebrow = "STALEMATE"; title = t("战斗结束"); sub = t("双方同归于尽");
+  }
+  card.classList.remove("result-win", "result-lose", "result-draw");
+  card.classList.add(cls);
+  eyebrowEl.textContent = eyebrow;
+  ui.overlayTitle.textContent = title;
+  subEl.textContent = sub;
+
+  const dm = difficultyMeta();
+  diffEl.innerHTML =
+    `<span class="result-diff-label">${t("难度")}</span>` +
+    `<span class="result-diff-val rd-${dm.cls}">${t(dm.label)}</span>`;
+
+  const playerFaction = getFaction();
+  const enemyFaction = playerFaction === "blue" ? "red" : "blue";
+  versusEl.innerHTML =
+    resultSideHTML(app.playerLoadout, playerFaction, t("SOS先遣舰队"), "result-side-player") +
+    `<div class="result-vs"><span>VS</span></div>` +
+    resultSideHTML(app.enemyLoadout, enemyFaction, t("统合思念体舰队"), "result-side-enemy");
+
+  // 重新触发入场动画
+  card.classList.remove("result-in");
+  void card.offsetWidth;
+  card.classList.add("result-in");
 }
 
 function drawBackground(elapsed) {
@@ -2519,11 +2592,20 @@ function soloTemplate() {
           </div>
           <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
         </section>
-        <div id="overlay" class="overlay hidden">
-          <h2 id="overlayTitle"></h2>
-          <div class="overlay-actions">
-            <button id="restartBtn">${t("再来一局")}</button>
-            <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>
+        <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
+          <div id="resultCard" class="result-card">
+            <div class="result-glow" aria-hidden="true"></div>
+            <div class="result-head">
+              <span id="resultEyebrow" class="result-eyebrow"></span>
+              <h2 id="overlayTitle" class="result-title"></h2>
+              <p id="resultSub" class="result-sub"></p>
+              <div id="resultDiff" class="result-diff"></div>
+            </div>
+            <div id="resultVersus" class="result-versus"></div>
+            <div class="overlay-actions">
+              <button id="restartBtn">${t("再来一局")}</button>
+              <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>
+            </div>
           </div>
         </div>
       </main>
