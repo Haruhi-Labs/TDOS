@@ -2899,12 +2899,26 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   position: relative;
   z-index: 2;
   min-height: 100vh;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 34px;
+  /* 纵向留白随视口高度收缩,避免在 Windows 缩放/浏览器缩放导致的矮视口里把页脚顶出屏幕 */
+  gap: clamp(14px, 3vh, 34px);
   width: min(560px, 94%);
-  padding: 48px clamp(24px, 6vw, 82px);
+  padding: clamp(16px, 3.4vh, 48px) clamp(24px, 6vw, 82px);
+}
+/* 矮视口(系统/浏览器缩放后常见):进一步压缩菜单,保证标题+菜单+页脚全部可见不被遮挡 */
+@media (max-height: 820px) {
+  .ts-content { gap: clamp(10px, 2.2vh, 22px); }
+  .ts-item { padding-top: 9px; padding-bottom: 9px; }
+  .ts-title { font-size: clamp(2.3rem, 5.4vw, 3.4rem); }
+}
+/* 极矮视口(≤720,如 1080p@150% 缩放):再压一档并隐藏菜单项副标题,确保标题/菜单/页脚全在屏内 */
+@media (max-height: 720px) {
+  .ts-content { gap: clamp(8px, 1.6vh, 16px); padding-top: 14px; padding-bottom: 14px; }
+  .ts-item { padding-top: 7px; padding-bottom: 7px; }
+  .ts-item-sub { display: none; }
 }
 /* SOS团 徽记（黄铜双色版，替换原 SOS 文字占位） */
 .ts-seal {
@@ -3339,10 +3353,11 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   z-index: 1;
   width: min(920px, 92%);
   margin: 0 auto;
-  padding: 40px 0 48px;
+  /* 纵向留白随视口高度收缩,矮视口(系统/浏览器缩放)下不溢出 */
+  padding: clamp(16px, 3.4vh, 40px) 0 clamp(20px, 4vh, 48px);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: clamp(12px, 2.4vh, 22px);
 }
 .lobby-head {
   display: grid;
