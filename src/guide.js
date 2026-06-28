@@ -7,29 +7,29 @@ import { isMobile } from "./mobile.js";
 import { setTutorialSeen } from "./profile.js";
 
 const QUICKSTART = [
-  "<b>编队</b>：选 1 主舰 + 2 副舰，挑好阵营与难度即可出击。",
-  "<b>下航线</b>：选中舰船下一条航线，舰队自动航行；默认三舰<b>跟随主舰</b>一起走。",
-  "<b>分离副舰</b>：点「分离」才能让副舰单独走位 / 下航线——一级放副一、二级再放副二；<b>不分离，副舰只能跟着主舰</b>。",
-  "<b>自动交火</b>：敌人进射程、且被你看见时<b>自动开火</b>，你专心走位、放技能。",
+  "<b>编队</b>：选 1 名角色担任<b>主舰</b>、2 名担任<b>副舰</b>；同一角色在主舰与副舰位置上技能不同。",
+  "<b>移动与开火</b>：<b>右键</b>创建航线目标，可拖拽<b>控制点</b>微调。舰队会自动攻击<b>视野内距离最近</b>的敌人——利用这一点来集火与分担伤害。",
+  "<b>分离副舰</b>：副舰的技能<b>分离后才能释放</b>；分离后每个舰队拥有独立视野、<b>总计更强的火力</b>、更灵活的战术安排，但也更<b>脆弱、无法共同承伤</b>，更容易被各个击破。",
+  "<b>战区与侦察</b>：<b>左键</b>在 3×3 地图中选择战区并释放<b>侦察机</b>；侦察机可获取敌方动向并吸引火力。",
 ];
-const QUICKSTART_GOAL = "歼灭对方<b>全部</b>舰船（含分离出去的副舰）即获胜。";
+const QUICKSTART_GOAL = "歼灭对方<b>全部</b>舰船（包括主舰与副舰）即获胜。";
 
 const SECTIONS = [
   {
-    title: "视野 ≪ 射程",
-    body: "看不见的敌人打不到。派<b>侦察机</b>开图、主力吊在远处打，对方看不见你就还不了手。",
+    title: "视野远小于射程",
+    body: "<b>情报是获胜的关键</b>——看不见的敌人打不到，也可吊在敌人视野外输出。",
   },
   {
-    title: "火力看朝向",
-    body: "左右<b>侧舷火力 ×1.5</b> 最猛、<b>舰尾不开火</b>；炮弹会被舰船挡——让主舰顶前面替副舰挡弹。",
+    title: "火力与朝向有关",
+    body: "<b>侧舷火力 ×1.5</b>、<b>船尾不开火</b>；从敌方船尾命中造成 <b>×1.2 尾击</b>伤害。",
   },
   {
-    title: "技能与能量",
-    body: "每人有旗舰技 + 分舰技，耗能、有冷却，关键时机一个技能常常翻盘；能量会自动回复。",
+    title: "技能、推进与能量",
+    body: "<b>提高推进功率</b>与<b>释放技能</b>都会消耗能量；能量会自动回复。",
   },
   {
-    title: "推进功率",
-    body: "功率越高跑得越快，但转弯半径越大；转不过弯就调低功率。",
+    title: "碰撞与阻挡",
+    body: "舰船拥有<b>碰撞体积</b>，相撞时会<b>减速</b>；舰船会挡住中途的子弹，转而替后方承受伤害。",
   },
 ];
 
@@ -72,7 +72,7 @@ function template() {
 
         <div class="page-scroll">
           <div class="guide-quickstart">
-            <div class="qs-head">四步开打</div>
+            <div class="qs-head">快速开始</div>
             <ol class="qs-steps">${quickstart}</ol>
             <div class="qs-goal"><b>胜负</b>：${QUICKSTART_GOAL}</div>
             <a class="guide-replay" href="/play" data-replay-tutorial>▶ 重看新手教程</a>
@@ -101,7 +101,7 @@ function mobileTemplate() {
       </div>
       <div class="mpage-body">
         <div class="guide-quickstart">
-          <div class="qs-head">四步开打</div>
+          <div class="qs-head">快速开始</div>
           <ol class="qs-steps">${quickstart}</ol>
           <div class="qs-goal"><b>胜负</b>：${QUICKSTART_GOAL}</div>
           <a class="guide-replay" href="/play" data-replay-tutorial>▶ 重看新手教程</a>
