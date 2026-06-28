@@ -2590,9 +2590,22 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   background: #160c0566;
   color: var(--gilt-pale);
 }
-.csm-skill-head { display: flex; align-items: baseline; gap: 6px; white-space: nowrap; overflow: hidden; }
-.csm-skill-tag { flex: 0 0 auto; font-size: 0.6rem; color: var(--oxblood-bright); letter-spacing: 0.06em; }
-.csm-skill-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-family: var(--font-kai); font-size: 0.84rem; color: var(--gilt-pale); }
+.csm-skill-head { display: flex; align-items: flex-start; gap: 6px; overflow: hidden; }
+.csm-skill-tag { flex: 0 0 auto; margin-top: 1px; font-size: 0.6rem; color: var(--oxblood-bright); letter-spacing: 0.06em; }
+/* 技能名最多两行(长名如阿虚旗舰技完整显示),并固定两行高度——长短名卡片等高,切角色不顶动 */
+.csm-skill-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-kai);
+  font-size: 0.84rem;
+  line-height: 1.2;
+  color: var(--gilt-pale);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  min-height: 2.4em;
+}
 /* 固定 4 行高：不同角色技能说明长短不一，但卡片高度恒定 —— 切换不顶动版面、也不出现滚动条 */
 .csm-skill-desc {
   display: -webkit-box;
