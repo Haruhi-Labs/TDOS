@@ -44,7 +44,7 @@ const GROUP_VH = 940;
 // 移动端 hero：在 contain 基础上轻微放大并居中；幅度小以免裁到头部，下半身没入菜单羽化
 const MOBILE_HERO_ZOOM = 1.06;
 
-const GITHUB_URL = "https://github.com/Haruhiyuki/TDOS";
+const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";
 const VERSION_LABEL = "公测版 v0.1";
 
 // 首页 GitHub 链接(内嵌 Octocat 标记,fill 跟随 currentColor 以适配主题色)
