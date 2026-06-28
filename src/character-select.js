@@ -1341,6 +1341,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     </div>
     <div class="csm-info">
       <div class="csm-dots"></div>
+      <div class="csm-flavor"></div>
       <div class="csm-stats"></div>
       <div class="csm-skills"></div>
     </div>
@@ -1365,6 +1366,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     stage: screen.querySelector(".csm-stage"),
     track: screen.querySelector(".csm-track"),
     dots: screen.querySelector(".csm-dots"),
+    flavor: screen.querySelector(".csm-flavor"),
     stats: screen.querySelector(".csm-stats"),
     skills: screen.querySelector(".csm-skills"),
     fleet: screen.querySelector(".csm-fleet"),
@@ -1609,6 +1611,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
 
   function renderInfo() {
     const def = CHARACTER_DEFS[curId()];
+    if (els.flavor) els.flavor.textContent = def.flavor;
     els.stats.innerHTML = MOBILE_STATS.map(([label, key]) => {
       let v = def.stats[key];
       if (key === "turnRate" || key === "fireRate") v = Number(v).toFixed(2);

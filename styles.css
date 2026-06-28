@@ -2567,6 +2567,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .csm-dots { display: flex; justify-content: center; gap: 7px; margin-bottom: 8px; }
 .csm-dot { width: 8px; height: 8px; padding: 0; border: none; border-radius: 50%; background: #6c4a2877; }
 .csm-dot.active { background: var(--gilt-bright); box-shadow: 0 0 8px var(--gilt); }
+.csm-flavor { text-align: center; font-family: var(--font-cn); font-size: 0.92rem; line-height: 1.5; letter-spacing: 0.04em; color: var(--gilt-bright); margin: 0 4px 9px; padding: 0 6px; }
 .csm-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .csm-chip {
   display: flex;
