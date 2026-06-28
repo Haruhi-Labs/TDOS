@@ -2802,7 +2802,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .mmenu-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .mmenu-list { gap: 9px; }
-.mmenu-foot { text-align: center; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
+.mmenu-foot { display: flex; justify-content: center; align-items: center; gap: 9px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
 .mmenu .ts-item {
   padding: 11px 18px;
   border: 1px solid var(--brass-dark);
@@ -3002,6 +3002,16 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--text-muted);
 }
 .ts-ver { font-family: var(--font-italic); font-style: italic; }
+.ts-foot-meta { display: inline-flex; align-items: center; gap: 11px; }
+.ts-github {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  transition: color 0.18s ease, transform 0.18s ease;
+}
+.ts-github:hover { color: var(--gilt-bright); transform: translateY(-1px); }
+.ts-github svg { display: block; filter: drop-shadow(0 1px 2px #02060e88); }
+.mmenu-foot .ts-github { margin-left: 2px; }
 
 /* ═══════════════════════════════════════════════════
    二级页面（档案 / 玩法）通用框架

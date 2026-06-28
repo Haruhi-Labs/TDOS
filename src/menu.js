@@ -44,6 +44,16 @@ const GROUP_VH = 940;
 // 移动端 hero：在 contain 基础上轻微放大并居中；幅度小以免裁到头部，下半身没入菜单羽化
 const MOBILE_HERO_ZOOM = 1.06;
 
+const GITHUB_URL = "https://github.com/Haruhiyuki/TDOS";
+const VERSION_LABEL = "公测版 v0.1";
+
+// 首页 GitHub 链接(内嵌 Octocat 标记,fill 跟随 currentColor 以适配主题色)
+function githubLinkHTML() {
+  return `<a class="ts-github" href="${GITHUB_URL}" target="_blank" rel="noopener noreferrer" aria-label="GitHub 源码仓库" title="GitHub · TDOS">` +
+    `<svg viewBox="0 0 16 16" width="17" height="17" aria-hidden="true"><path fill="currentColor" fill-rule="evenodd" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.6 7.6 0 0 1 2-.27c.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>` +
+    `</a>`;
+}
+
 function menuItemsHTML() {
   return ITEMS.map(
     (it, i) => `
@@ -71,7 +81,7 @@ function mobileTemplate(faction) {
         </header>
         <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
         <nav class="ts-menu mmenu-list" aria-label="主菜单">${menuItemsHTML()}</nav>
-        <footer class="mmenu-foot">原型版 v1.0</footer>
+        <footer class="mmenu-foot"><span class="ts-ver">${VERSION_LABEL}</span>${githubLinkHTML()}</footer>
       </div>
     </section>
   `;
@@ -102,7 +112,7 @@ function template(faction) {
         </nav>
 
         <footer class="ts-foot">
-          <span class="ts-ver">原型版 v1.0</span>
+          <span class="ts-foot-meta"><span class="ts-ver">${VERSION_LABEL}</span>${githubLinkHTML()}</span>
           <span class="ts-hint">↑ ↓ 选择　Enter 进入</span>
         </footer>
       </div>
