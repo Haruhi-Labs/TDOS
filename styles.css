@@ -3160,10 +3160,13 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   .ts-language-corner select { min-width: 76px; font-size: 0.7rem; }
 }
 
-/* 英文标题更长：保持主标题单行，通过字号和字距收缩避免换行。 */
+/* 英文标题更长：单行不换行，盒子按内容宽度撑开向右延伸——
+   否则 background-clip:text 的金箔只填充定宽盒子，溢出的字母会变透明像被裁掉。 */
 :root:lang(en) .ts-title {
   white-space: nowrap;
-  font-size: clamp(1.35rem, 7vw, 2.45rem);
+  width: max-content;
+  max-width: none;
+  font-size: clamp(1.35rem, 6vw, 2.6rem);
   letter-spacing: 0.03em;
 }
 :root:lang(en) .cs-title {
