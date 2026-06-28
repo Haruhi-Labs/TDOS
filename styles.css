@@ -1682,6 +1682,59 @@ button.toggle-active {
   border-radius: 0 3px 3px 0;
   display: flex;
   flex-direction: column;
+  /* 兜底:右页档案在极端矮视口可滚,技能(尤其底部分舰技)永不被永久裁掉 */
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: #8a6020aa transparent;
+}
+.cs-page-right::-webkit-scrollbar { width: 5px; }
+.cs-page-right::-webkit-scrollbar-thumb { background: #8a602099; border-radius: 3px; }
+
+/* 矮视口(系统/浏览器缩放后,如 1080p@150%、带书签栏的窗口):压缩顶栏与右页档案,
+   让整本书的内容(含底部「分舰技」)在屏内完整显示,不被书页裁掉。 */
+@media (max-height: 800px) {
+  .cs-content { padding: 8px 26px 10px; gap: 8px; }
+  .cs-header-center { gap: 3px; }
+  .cs-sos-badge { width: 36px; height: 44px; }
+  .cs-title { font-size: 1.5rem; }
+  .cs-subtitle { font-size: 0.58rem; letter-spacing: 0.32em; }
+  .cs-faction, .cs-setup-row { margin-top: 4px; }
+  .cs-page-half { padding: 12px 26px 10px; }
+  .cs-page-chapter { margin-bottom: 6px; padding-bottom: 4px; }
+  .cs-page-flavor { margin: 0 0 5px; padding: 2px 16px 3px; font-size: 0.92rem; line-height: 1.4; }
+  .cs-page-section-title { margin: 5px 0 3px; }
+  .cs-page-stat { padding: 3px 4px; }
+  .cs-page-stat-val { font-size: 0.94rem; }
+  .cs-page-skills { gap: 5px; }
+  .cs-page-skill { padding: 4px 10px 4px 13px; }
+  .cs-page-skill-name { font-size: 0.9rem; }
+  .cs-page-skill-desc { font-size: 0.73rem; line-height: 1.38; }
+}
+/* 更矮(常见带书签栏/任务栏的窗口、重缩放):进一步压数据区与技能描述,确保分舰技完整不裁 */
+@media (max-height: 700px) {
+  .cs-content { padding: 6px 24px 8px; gap: 6px; }
+  .cs-sos-badge { width: 30px; height: 37px; }
+  .cs-title { font-size: 1.3rem; }
+  .cs-page-half { padding: 10px 24px 8px; }
+  .cs-page-flavor { margin: 0 0 4px; font-size: 0.88rem; }
+  .cs-page-stat { padding: 2px 4px; }
+  .cs-page-stat-val { font-size: 0.9rem; }
+  .cs-page-skill { padding: 3px 9px 3px 12px; }
+  .cs-page-skill-desc { font-size: 0.72rem; line-height: 1.34; }
+  /* 底部编队栏也压一点,把高度让给书本 */
+  .cs-launch { padding: 8px 22px; font-size: 1rem; }
+  .cs-fleet-slot-icon { width: 30px; height: 30px; }
+  .cs-fleet-slot { padding: 4px 9px 4px 5px; }
+}
+/* 极矮窗口(≤650):再收数据区与章节间距,保证最长技能描述也完整显示 */
+@media (max-height: 650px) {
+  .cs-page-chapter { margin-bottom: 4px; padding-bottom: 3px; }
+  .cs-page-section-title { margin: 4px 0 3px; }
+  .cs-page-stat { padding: 1px 4px; }
+  .cs-page-stat-val { font-size: 0.86rem; }
+  .cs-page-flavor { margin: 0 0 3px; font-size: 0.85rem; line-height: 1.3; }
+  .cs-page-skill-desc { font-size: 0.7rem; line-height: 1.3; }
 }
 
 /* 纸纤维 + 棕斑 */
