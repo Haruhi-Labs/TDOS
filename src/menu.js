@@ -62,6 +62,14 @@ function groupLinkHTML() {
   return `<a class="ts-group" href="${GROUP_URL}" target="_blank" rel="noopener noreferrer" aria-label="${t("加入游戏交流群")}" title="${t("加入游戏交流群")}">${label}</a>`;
 }
 
+// 右上角语言切换:地球图标 + 原生语言下拉(隐藏「语言」字样,图标表意),与左上角印章标题对称
+function languageCornerHTML() {
+  return `<div class="ts-lang-corner">` +
+    `<svg class="ts-globe" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>` +
+    languageSelectorHTML("ts-language ts-language-corner") +
+    `</div>`;
+}
+
 function menuItemsHTML() {
   return ITEMS.map(
     (it, i) => `
@@ -82,6 +90,7 @@ function mobileTemplate(faction) {
   return `
     <section class="ts-stage mmenu ts-faction-${faction}">
       <canvas class="ts-bg" aria-hidden="true"></canvas>
+      ${languageCornerHTML()}
       <div class="mmenu-shell">
         <header class="mmenu-head">
           <div class="ts-seal" role="img" aria-label="${t("SOS团")}"></div>
@@ -89,7 +98,10 @@ function mobileTemplate(faction) {
         </header>
         <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
         <nav class="ts-menu mmenu-list" aria-label="${t("主菜单")}">${menuItemsHTML()}</nav>
-        <footer class="mmenu-foot"><span class="ts-ver">${t(VERSION_LABEL)}</span>${githubLinkHTML()}${groupLinkHTML()}${languageSelectorHTML("ts-language")}</footer>
+        <footer class="mmenu-foot">
+          <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}</span>
+          <span class="ts-ver">${t(VERSION_LABEL)}</span>
+        </footer>
       </div>
     </section>
   `;
@@ -102,6 +114,7 @@ function template(faction) {
     <section class="ts-stage ts-faction-${faction}">
       <canvas class="ts-bg" aria-hidden="true"></canvas>
       <div class="ts-vignette" aria-hidden="true"></div>
+      ${languageCornerHTML()}
 
       <div class="ts-hero" aria-hidden="true">
         <canvas class="ts-hero-img"></canvas>
@@ -120,8 +133,8 @@ function template(faction) {
         </nav>
 
         <footer class="ts-foot">
-          <span class="ts-foot-meta"><span class="ts-ver">${t(VERSION_LABEL)}</span>${githubLinkHTML()}${groupLinkHTML()}${languageSelectorHTML("ts-language")}</span>
-          <span class="ts-hint">${t("↑ ↓ 选择　Enter 进入")}</span>
+          <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}</span>
+          <span class="ts-foot-info"><span class="ts-ver">${t(VERSION_LABEL)}</span><span class="ts-foot-dot">·</span><span class="ts-hint">${t("↑ ↓ 选择　Enter 进入")}</span></span>
         </footer>
       </div>
     </section>

@@ -2850,7 +2850,8 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .mmenu-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .mmenu-list { gap: 9px; }
-.mmenu-foot { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 9px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
+.mmenu-foot { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
+.mmenu-foot .ts-foot-actions { gap: 16px; }
 .mmenu .ts-item {
   padding: 11px 18px;
   border: 1px solid var(--brass-dark);
@@ -3069,17 +3070,18 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 
 .ts-foot {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 9px;
   font-family: var(--font-cn);
   font-size: 0.76rem;
   letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 .ts-ver { font-family: var(--font-italic); font-style: italic; }
-.ts-foot-meta { display: inline-flex; align-items: center; gap: 11px; flex-wrap: wrap; justify-content: flex-end; }
+.ts-foot-actions { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ts-foot-info { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ts-foot-dot { opacity: 0.42; }
 .ts-github {
   display: inline-flex;
   align-items: center;
@@ -3131,7 +3133,32 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   font-size: 0.72rem;
   line-height: 1;
 }
-.mmenu-foot .ts-language select { min-width: 86px; }
+
+/* 右上角语言切换:地球图标 + 语言下拉,半透明药丸托底保证压在立绘上也清晰可读 */
+.ts-lang-corner {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 14px);
+  right: calc(env(safe-area-inset-right, 0px) + 16px);
+  z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px 4px 11px;
+  border: 1px solid rgba(111, 84, 40, 0.72);
+  border-radius: 999px;
+  background: rgba(6, 10, 24, 0.46);
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  color: var(--text-muted);
+}
+.ts-globe { display: block; opacity: 0.82; }
+.ts-language-corner { gap: 0; min-width: 0; }
+.ts-language-corner > span { display: none; } /* 隐藏「语言」字样,地球图标已表意 */
+.ts-language-corner select { min-width: 80px; max-width: 132px; }
+@media (max-width: 980px) {
+  .ts-lang-corner { padding: 3px 7px 3px 10px; gap: 6px; }
+  .ts-language-corner select { min-width: 76px; font-size: 0.7rem; }
+}
 
 /* 英文标题更长：保持主标题单行，通过字号和字距收缩避免换行。 */
 :root:lang(en) .ts-title {
