@@ -52,9 +52,12 @@ const STEPS = [
   {
     id: "fireArc",
     title: "机制 · 火力与朝向",
-    body:
-      "看旗舰周围的扇形:<b>侧舷火力最猛(×1.5)</b>,正前 ×1,<b>船尾不开火(×0)</b>。" +
-      "而且从<b>敌方船尾</b>命中会打出 <b>×1.2 尾击</b>——侧面对敌、绕到敌后最划算。",
+    body: (info) =>
+      info.uniformFire
+        ? "你的旗舰(<b>阿虚</b>)火力<b>均匀</b>——各方向一致,没有侧舷加成、船尾也照常开火(看周围的均匀光环)。" +
+          "但<b>尾击</b>对谁都通用:从<b>敌方船尾</b>命中仍打 <b>×1.2</b>,绕到敌后更划算。"
+        : "看旗舰周围的扇形:<b>侧舷火力最猛(×1.5)</b>,正前 ×1,<b>船尾不开火(×0)</b>。" +
+          "而且从<b>敌方船尾</b>命中会打出 <b>×1.2 尾击</b>——侧面对敌、绕到敌后最划算。",
     illustration: "fireArc",
     advance: "button",
   },
@@ -116,6 +119,7 @@ function stepInfo() {
   return {
     mobile: mobileMode(),
     flagshipPassive: !!(ctx && typeof ctx.flagshipPassive === "function" && ctx.flagshipPassive()),
+    uniformFire: !!(ctx && typeof ctx.uniformFire === "function" && ctx.uniformFire()),
   };
 }
 

@@ -2356,6 +2356,8 @@ function launchWithLoadout(loadout, color) {
             const meta = currentFlagshipMeta(ownTeamState());
             return !!meta && meta.type === "passive";
           },
+          // 阿虚旗舰:火力各方向均匀(无侧舷加成/船尾也开火),火力讲解需换说法
+          uniformFire: () => !!(app.playerLoadout && app.playerLoadout.main === "kyon"),
           onFinish: () => setTutorialSeen(true),
         });
       }
