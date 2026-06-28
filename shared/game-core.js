@@ -60,6 +60,10 @@ const REAR_STRIKE_MULT = 1.2;
 // 上限温和,避免过度压制(主舰等正常体型半径≥参考值,完全不受影响)。
 const SMALL_TARGET_REF_RADIUS = 8;
 const SMALL_TARGET_MAX_MISS = 0.3;
+// 编队取舍:不分离(同队 ≥2 艘)时,受到的伤害有该比例改由同队其它船平摊(集体抗压);
+// 分离/单飞(同队仅 1 艘)时开火频率 ×该倍率(火力更猛)。二者由「同队成员数」互斥切换。
+const FORMATION_DAMAGE_SHARE = 0.3;
+const SOLO_FIRE_RATE_BONUS = 1.2;
 // 撞击:相撞瞬间把速度压到「地板」,之后给一段粘滞时间让速度线性慢慢恢复到正常(而非一撞就立刻回满)。
 const COLLISION_SLOW_DURATION = 3; // 粘滞时长(秒):速度在这段时间内从地板回升到正常
 const COLLISION_SLOW_FLOOR = 0.5; // 撞击瞬间速度上限压到正常速度的该比例,随时间回升至 1
@@ -1007,7 +1011,12 @@ class Ship {
   }
 
   effectiveFireRate() {
-    return this.statWithBuffs("fireRate", this.base.fireRate);
+    let value = this.statWithBuffs("fireRate", this.base.fireRate);
+    // 分离/单飞(本船所在编队仅 1 艘):开火频率加成
+    if (this.team.fleetMemberCountForShip(this) <= 1) {
+      value *= SOLO_FIRE_RATE_BONUS;
+    }
+    return value;
   }
 
   damageTakenMultiplier() {
@@ -1399,12 +1408,25 @@ class Ship {
     return true;
   }
 
-  takeDamage(amount, _source = null, match = null) {
+  takeDamage(amount, _source = null, match = null, share = true) {
     if (!this.alive) {
       return;
     }
     if (this.team.effects.taxiInvulnUntil > this.team.match.elapsed) {
       return;
+    }
+    // 不分离(本船所在编队还有其它存活船):本次伤害的 FORMATION_DAMAGE_SHARE 比例平摊给其它船,
+    // 本船只承担其余部分。平摊出去的份额以 share=false 再投递,不会二次平摊(避免连锁/递归)。
+    if (share) {
+      const others = this.team.fleetMembersForShip(this).filter((m) => m !== this && m.alive);
+      if (others.length > 0) {
+        const shared = amount * FORMATION_DAMAGE_SHARE;
+        amount -= shared;
+        const per = shared / others.length;
+        for (const m of others) {
+          m.takeDamage(per, _source, match, false);
+        }
+      }
     }
     const finalAmount = amount * this.damageTakenMultiplier();
     this.hp = Math.max(0, this.hp - finalAmount);

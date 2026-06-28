@@ -583,14 +583,17 @@ function asakuraBladeQueenCheck() {
   enemyMain.route = null;
   enemyMain.cooldown = 999;
 
-  const beforeHp = enemyMain.hp;
+  // 敌方未分离(3 艘同队),受到的伤害有 30% 平摊给同队其它船,故按「敌方编队总血量损失」判定
+  // 才稳健(技能总伤害不变、只是被重新分配)。否则接触主舰只承担 70%,会假性低于阈值。
+  const enemyFleetHp = () => sim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+  const beforeFleetHp = enemyFleetHp();
   const castOk = teamA.castSubSkill("sub1");
   assert(castOk, "朝仓分舰技能释放失败");
   assert(sub1.baseSpeed() > baseSpeed * 1.3, "朝仓分舰技能未显著提升速度");
 
   runSteps(sim, 1);
 
-  assert(enemyMain.hp < beforeHp - enemyMain.maxHp * 0.015, "朝仓分舰技能未对接触敌舰造成持续伤害");
+  assert(beforeFleetHp - enemyFleetHp() > enemyMain.maxHp * 0.015, "朝仓分舰技能未对接触敌舰造成持续伤害");
 }
 
 function aiEngageCheck() {
