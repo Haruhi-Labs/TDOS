@@ -938,63 +938,6 @@ button.toggle-active {
 }
 
 /* ═══════════════════════════════════════════════════
-   战斗双方铭牌 — 黄铜对战牌
-   ═══════════════════════════════════════════════════ */
-.battle-nameplate {
-  position: absolute;
-  top: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  width: min(640px, 70%);
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
-  align-items: center;
-  gap: 10px;
-  padding: 8px 16px;
-  border: 1px solid var(--brass);
-  border-radius: 4px;
-  background:
-    var(--tex-leather),
-    var(--leather-surface);
-  background-size: 220px 220px, cover;
-  background-blend-mode: overlay, normal;
-  box-shadow: inset 0 0 0 1px #160c05, 0 6px 18px #02060ec0;
-  pointer-events: none;
-}
-.battle-nameplate.hidden-inactive { display: none; }
-
-.battle-name-side {
-  min-width: 0;
-  border: 1px solid var(--brass-dark);
-  border-radius: 3px;
-  padding: 5px 12px;
-  color: var(--gilt-pale);
-  background: #1a1006aa;
-  font-family: var(--font-cn);
-  font-size: 0.84rem;
-  letter-spacing: 0.04em;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.battle-name-side.self {
-  border-color: var(--gilt-bright);
-  box-shadow: inset 0 0 0 1px #c8a24e55, 0 0 10px #c8a24e44;
-  color: var(--gilt-bright);
-}
-.battle-name-a { text-align: right; }
-.battle-name-b { text-align: left; }
-.battle-name-vs {
-  font-family: var(--font-engrave);
-  font-weight: 700;
-  color: var(--gilt-bright);
-  font-size: 0.8rem;
-  letter-spacing: 0.22em;
-  padding: 0 4px;
-}
-
-/* ═══════════════════════════════════════════════════
    结束遮罩
    ═══════════════════════════════════════════════════ */
 /* ── 胜负结算:全屏固定模态(z200 压过移动操作面板 z4),皮面卡片 + 双方阵容 VS ── */
@@ -1508,9 +1451,6 @@ button.toggle-active {
   .game-wrap { order: 1; padding-bottom: 198px; }
   .join-code-wrap { grid-template-columns: 1fr; }
   .room-hud { position: static; width: 100%; max-height: none; margin-top: 0; }
-  .battle-nameplate { width: min(94%, 640px); top: 10px; padding: 6px 10px; }
-  .battle-name-side { font-size: 0.78rem; padding: 4px 8px; }
-  .battle-name-vs { font-size: 0.7rem; letter-spacing: 0.16em; }
   .mobile-battle-hud { display: grid; }
   h1 { font-size: 1.25rem; letter-spacing: 0.1em; }
 
@@ -1563,6 +1503,19 @@ button.toggle-active {
     overflow: visible;
     text-overflow: clip;
     overflow-wrap: anywhere;
+  }
+  /* 在线版专属(单人不受影响):地图占满宽度尽量大,操作台拿剩余空间、必要时内部滚动,
+     修复在线移动端地图被压成小块。用 .online-shell.battle-shell 提高特异性,只命中在线战斗页。 */
+  .online-shell.battle-shell .game-wrap { justify-content: flex-start; }
+  .online-shell.battle-shell #onlineCanvas {
+    flex: 0 0 auto;
+    width: 100%;
+    max-width: calc(100dvh - 196px);
+  }
+  .online-shell.battle-shell .mobile-battle-hud {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
   }
 }
 

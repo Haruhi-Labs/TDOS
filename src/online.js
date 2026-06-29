@@ -109,9 +109,6 @@ function cacheDom() {
   onlineOverlayActionBtn: document.getElementById("onlineOverlayActionBtn"),
   lobbyView: document.getElementById("lobbyView"),
   battleView: document.getElementById("battleView"),
-  battleNameplate: document.getElementById("battleNameplate"),
-  battleNameA: document.getElementById("battleNameA"),
-  battleNameB: document.getElementById("battleNameB"),
   onlineMobileBattleHud: document.getElementById("onlineMobileBattleHud"),
   onlineMobileBattleSummary: document.getElementById("onlineMobileBattleSummary"),
   onlineMobileBattleHint: document.getElementById("onlineMobileBattleHint"),
@@ -479,39 +476,6 @@ function localizedServerName(name, isBot = false) {
   return raw;
 }
 
-function seatDisplayName(seat) {
-  const fallback = fleetSideLabel(seat);
-  if (!app.room || !Array.isArray(app.room.players)) {
-    return fallback;
-  }
-  const row = app.room.players.find((item) => item && item.seat === seat);
-  if (!row) {
-    return fallback;
-  }
-  const name = localizedServerName(row.name, row.isBot) || fallback;
-  return row.isBot ? `${name}${t("（AI）")}` : name;
-}
-
-function updateBattleNameplate() {
-  if (!ui.battleNameplate || !ui.battleNameA || !ui.battleNameB) {
-    return;
-  }
-
-  const active = Boolean(app.room && app.room.status === "running");
-  ui.battleNameplate.classList.toggle("hidden-inactive", !active);
-
-  if (!active) {
-    ui.battleNameA.classList.remove("self");
-    ui.battleNameB.classList.remove("self");
-    return;
-  }
-
-  ui.battleNameA.textContent = seatDisplayName("A");
-  ui.battleNameB.textContent = seatDisplayName("B");
-  ui.battleNameA.classList.toggle("self", app.seat === "A");
-  ui.battleNameB.classList.toggle("self", app.seat === "B");
-}
-
 function socketSend(payload) {
   if (!app.ws || app.ws.readyState !== WebSocket.OPEN) {
     return false;
@@ -798,7 +762,6 @@ function connectServer() {
       updateRoomSummary();
       setBattleControlsEnabled(false);
       setRoomHudVisible(true);
-      updateBattleNameplate();
       stopPingLoop();
       clearMatchRuntime();
       resetConnectionSyncState();
@@ -1026,7 +989,8 @@ function applyRoomState(message) {
   setBattleControlsEnabled(Boolean(canBattle));
   setRoomHudVisible(!canBattle);
   syncResponsiveMode();
-  updateBattleNameplate();
+  // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
+  if (canBattle) requestAnimationFrame(resizeCanvas);
   updateShipSwitchLabels(app.playerLoadout);
   const loadoutLocked = Boolean(app.room && app.room.status === "running");
   for (const element of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role, ui.applyLoadoutOnlineBtn]) {
@@ -1080,7 +1044,6 @@ function handleRoomClosed(message) {
   updateRoomSummary();
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
-  updateBattleNameplate();
   clearMatchRuntime();
   closeOverlay();
   ui.zoneValue.textContent = t("战区 -");
@@ -3868,7 +3831,6 @@ export function mount(root) {
   startStarfield(root.querySelector(".page-stars"), ac.signal);
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
-  updateBattleNameplate();
   updateConnectionUi();
   syncResponsiveMode();
   bindUiEvents();
@@ -4050,7 +4012,7 @@ function onlineTemplate() {
         </aside>
 
         <main class="game-wrap">
-          <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
+          <canvas id="onlineCanvas" width="1440" height="1440"></canvas>
           <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
             <div class="mobile-battle-head">
               <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>
@@ -4082,12 +4044,6 @@ function onlineTemplate() {
               <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
             </div>
             <div id="onlineMobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
-          </section>
-
-          <section id="battleNameplate" class="battle-nameplate hidden-inactive" aria-live="polite">
-            <div id="battleNameA" class="battle-name-side battle-name-a">${t("左翼舰队")}</div>
-            <div class="battle-name-vs">VS</div>
-            <div id="battleNameB" class="battle-name-side battle-name-b">${t("右翼舰队")}</div>
           </section>
 
           <div id="onlineOverlay" class="overlay hidden">
