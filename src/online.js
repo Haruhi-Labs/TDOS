@@ -2,6 +2,7 @@ import {
   CHARACTER_ORDER,
   CHARACTER_DEFS,
   DEFAULT_TEAM_LOADOUT,
+  DEFAULT_WORLD_SIZE,
   EMERGENCY_BRAKE_COST,
   FIRE_ARC_BANDS,
   SCOUT_LAUNCH_COST,
@@ -130,9 +131,10 @@ function cacheDom() {
 }
 
 const TAU = Math.PI * 2;
-// 逻辑世界尺寸(固定 1440):游戏/坐标运算都在此空间,与画布物理像素解耦。
-// 画布 backing store 按设备像素铺满显示区,渲染时整体放大 → Retina/大屏像素级清晰、无放大模糊。
-const LOGICAL = 1440;
+// 逻辑世界尺寸:必须与服务端 MatchSimulation 的 worldSize(DEFAULT_WORLD_SIZE)一致,
+// 否则客户端视野只覆盖世界的左上一角、地图右/下被裁(在线服务端用 1800,曾误设 1440)。
+// 坐标运算都在此空间,与画布物理像素解耦;backing store 按设备像素铺满显示区,渲染时整体放大保清晰。
+const LOGICAL = DEFAULT_WORLD_SIZE;
 const ROUTE_HANDLE_RADIUS = 11;
 const DEFAULT_INTERP_MS = 120;
 const MIN_INTERP_MS = 75;
@@ -4012,7 +4014,7 @@ function onlineTemplate() {
         </aside>
 
         <main class="game-wrap">
-          <canvas id="onlineCanvas" width="1440" height="1440"></canvas>
+          <canvas id="onlineCanvas" width="1800" height="1800"></canvas>
           <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
             <div class="mobile-battle-head">
               <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>
