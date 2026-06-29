@@ -22,6 +22,7 @@ import {
 import { createCharacterSelect } from "./character-select.js";
 import { startStarfield } from "./starfield.js";
 import {
+  characterShortName,
   formatClockTime,
   localizeFloatingText,
   shipCharacterName,
@@ -667,28 +668,91 @@ function closeOverlay() {
   app.gameOverLogged = false;
 }
 
+// 一侧阵容(主舰高亮 + 两副舰):头像取阵营立绘;在线 own=蓝队、enemy=红队,与战场着色一致
+function onlineResultSideHTML(loadout, faction, sideLabel, sideClass) {
+  const base = import.meta.env.BASE_URL;
+  const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
+  const cards = ["main", "sub1", "sub2"]
+    .map((slot, i) => {
+      const id = safe[slot];
+      const src = `${base}assets/portraits/${faction}/${id}.webp`;
+      const role = localizedSlotLabel(slot, "short");
+      const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
+      return (
+        `<div class="rl-card${slot === "main" ? " rl-main" : ""}" style="--i:${i}">` +
+        `<span class="rl-portrait"><img src="${src}" alt="" loading="lazy" draggable="false"></span>` +
+        `<span class="rl-role">${role}</span>` +
+        `<span class="rl-name">${name}</span>` +
+        `</div>`
+      );
+    })
+    .join("");
+  return (
+    `<div class="result-side ${sideClass}">` +
+    `<div class="result-side-label">${sideLabel}</div>` +
+    `<div class="rl-cards">${cards}</div>` +
+    `</div>`
+  );
+}
+
+// 胜负结算:皮面富卡片(标题 + 双方阵容 VS),与单人同款;磨砂层只作卡片背景,不再裸罩地图/面板。
+// 每条 finished 房态消息都会调用,故首次渲染后用 gameOverLogged 锁住,避免反复重建与重放入场动画。
 function showMatchResultOverlay(winnerSeat) {
   app.lastWinnerSeat = winnerSeat || null;
+  ui.onlineOverlay.classList.remove("hidden");
+  if (app.gameOverLogged) {
+    return;
+  }
+  app.gameOverLogged = true;
 
+  const card = document.getElementById("onlineResultCard");
+  const eyebrowEl = document.getElementById("onlineResultEyebrow");
+  const subEl = document.getElementById("onlineResultSub");
+  const versusEl = document.getElementById("onlineResultVersus");
+
+  let cls, eyebrow, title, sub, logLine;
   if (winnerSeat && winnerSeat === app.seat) {
-    ui.onlineOverlayTitle.textContent = t("胜利：敌方舰队已被击溃");
-    if (!app.gameOverLogged) {
-      log(t("战斗结束：我方舰队获胜"));
-    }
+    cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t("敌方舰队已被击溃");
+    logLine = t("战斗结束：我方舰队获胜");
   } else if (winnerSeat) {
-    ui.onlineOverlayTitle.textContent = t("失败：我方舰队被歼灭");
-    if (!app.gameOverLogged) {
-      log(t("战斗结束：我方舰队战败"));
-    }
+    cls = "result-lose"; eyebrow = "DEFEAT"; title = t("失败"); sub = t("我方舰队被歼灭");
+    logLine = t("战斗结束：我方舰队战败");
   } else {
-    ui.onlineOverlayTitle.textContent = t("战斗结束");
-    if (!app.gameOverLogged) {
-      log(t("战斗结束：平局"));
-    }
+    cls = "result-draw"; eyebrow = "STALEMATE"; title = t("战斗结束"); sub = t("双方同归于尽");
+    logLine = t("战斗结束：平局");
   }
 
-  app.gameOverLogged = true;
-  ui.onlineOverlay.classList.remove("hidden");
+  if (card) {
+    card.classList.remove("result-win", "result-lose", "result-draw");
+    card.classList.add(cls);
+  }
+  if (eyebrowEl) eyebrowEl.textContent = eyebrow;
+  ui.onlineOverlayTitle.textContent = title;
+  if (subEl) subEl.textContent = sub;
+
+  // 双方阵容:昵称取房间席位(AI 显示为机器人名);own=蓝队立绘、enemy=红队立绘
+  if (versusEl) {
+    const players = (app.room && app.room.players) || [];
+    const ownRow = players.find((p) => p.seat === app.seat);
+    const enemyRow = players.find((p) => p.seat && p.seat !== app.seat);
+    const ownLoadout = (ownRow && ownRow.loadout) || app.playerLoadout;
+    const enemyLoadout = enemyRow && enemyRow.loadout;
+    const ownName = (ownRow && localizedServerName(ownRow.name, ownRow.isBot)) || t("我方");
+    const enemyName = (enemyRow && localizedServerName(enemyRow.name, enemyRow.isBot)) || t("对方");
+    versusEl.innerHTML =
+      onlineResultSideHTML(ownLoadout, "blue", ownName, "result-side-player") +
+      `<div class="result-vs"><span>VS</span></div>` +
+      onlineResultSideHTML(enemyLoadout, "red", enemyName, "result-side-enemy");
+  }
+
+  // 重新触发入场动画
+  if (card) {
+    card.classList.remove("result-in");
+    void card.offsetWidth;
+    card.classList.add("result-in");
+  }
+
+  log(logLine);
 }
 
 function connectServer() {
@@ -4048,9 +4112,20 @@ function onlineTemplate() {
             <div id="onlineMobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
           </section>
 
-          <div id="onlineOverlay" class="overlay hidden">
-            <h2 id="onlineOverlayTitle"></h2>
-            <button id="onlineOverlayActionBtn" type="button">${t("返回大厅")}</button>
+          <div id="onlineOverlay" class="overlay hidden" role="dialog" aria-modal="true">
+            <div id="onlineResultCard" class="result-card">
+              <div class="result-glow" aria-hidden="true"></div>
+              <div class="result-head">
+                <span id="onlineResultEyebrow" class="result-eyebrow"></span>
+                <h2 id="onlineOverlayTitle" class="result-title"></h2>
+                <p id="onlineResultSub" class="result-sub"></p>
+              </div>
+              <div id="onlineResultVersus" class="result-versus"></div>
+              <div class="overlay-actions">
+                <button id="onlineOverlayActionBtn" type="button">${t("返回大厅")}</button>
+                <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>
+              </div>
+            </div>
           </div>
         </main>
       </div>
