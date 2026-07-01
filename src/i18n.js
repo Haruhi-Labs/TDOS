@@ -64,7 +64,7 @@ const CHARACTER_TEXT = Object.freeze({
       title: "高速猎杀渗透舰",
       flavor: "情报与突进,一往无前的刀锋女王",
       flagshipSkill: { name: "我不会绕过你哦", description: "涤除敌方全部主动技能增益，并揭示敌方全体位置2秒。" },
-      subSkill: { name: "刀锋女王", description: "10秒内大幅提速，接触本舰的敌舰每秒受到最大生命值2%的伤害。" },
+      subSkill: { name: "刀锋女王", description: "10秒内大幅提速，并无视碰撞体积（可径直穿过敌舰）；与敌舰体积重叠时，每秒造成其最大生命值15%的伤害。" },
     },
   },
   ja: {
@@ -122,7 +122,7 @@ const CHARACTER_TEXT = Object.freeze({
       title: "高速狩猟浸透艦",
       flavor: "情報と突進で切り込むブレードクイーン",
       flagshipSkill: { name: "回り道はしないわよ", description: "敵の全アクティブ強化を解除し、敵全体の位置を2秒間明らかにする。" },
-      subSkill: { name: "ブレードクイーン", description: "10秒間、大幅に加速する。接触した敵艦に毎秒最大耐久2%のダメージを与える。" },
+      subSkill: { name: "ブレードクイーン", description: "10秒間、大幅に加速し当たり判定を無視する（敵艦をすり抜けられる）。敵艦と重なっている間、毎秒その最大耐久の15%のダメージを与える。" },
     },
   },
   en: {
@@ -180,7 +180,7 @@ const CHARACTER_TEXT = Object.freeze({
       title: "High-Speed Hunter Infiltrator",
       flavor: "Information and momentum, the Blade Queen pressing forward",
       flagshipSkill: { name: "I Won't Go Around You", description: "Purges all enemy active-skill buffs and reveals all enemy positions for 2 seconds." },
-      subSkill: { name: "Blade Queen", description: "Greatly accelerates for 10 seconds. Enemy ships touching this ship take 2% max hull damage per second." },
+      subSkill: { name: "Blade Queen", description: "Greatly accelerates for 10 seconds and ignores collision, phasing through enemy ships. While overlapping an enemy ship, deals 15% of its max hull as damage per second." },
     },
   },
 });

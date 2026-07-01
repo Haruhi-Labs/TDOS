@@ -1307,9 +1307,41 @@ function shipHullDrawScale(ship) {
   return baseScale * ((ship.radius || baseRadius) / baseRadius);
 }
 
+// 刀锋女王光环:四段旋转猩红刀弧 + 脉动内圈柔光,标示朝仓进入无视碰撞的切割态
+function drawBladeQueenAura(ship) {
+  const now = performance.now();
+  const spin = now * 0.0065;
+  const pulse = 0.6 + Math.sin(now * 0.012 + (ship.id || 0)) * 0.4;
+  const r = ship.radius + 7 + pulse * 3;
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+  ctx.rotate(spin);
+  ctx.lineCap = "round";
+  ctx.strokeStyle = "#ff2d55";
+  ctx.globalAlpha = 0.55 + pulse * 0.35;
+  ctx.lineWidth = 2.2;
+  for (let k = 0; k < 4; k += 1) {
+    const a0 = (k / 4) * TAU;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, a0, a0 + TAU * 0.16);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 0.16 * pulse;
+  ctx.lineWidth = 3.4;
+  ctx.strokeStyle = "#ff8aa0";
+  ctx.beginPath();
+  ctx.arc(0, 0, r - 2, 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawShip(ship, color, selected, attached) {
   if (!ship || !ship.alive) {
     return;
+  }
+
+  if (ship.bladeQueen) {
+    drawBladeQueenAura(ship);
   }
 
   ctx.save();

@@ -343,7 +343,7 @@ export const CHARACTER_DEFS = {
       cost: 52,
       duration: 10,
       target: "none",
-      description: "10秒内大幅提速，接触本舰的敌舰每秒受到最大生命值2%的伤害。",
+      description: "10秒内大幅提速，并无视碰撞体积（可径直穿过敌舰）；与敌舰体积重叠时，每秒造成其最大生命值15%的伤害。",
     },
   },
 };
@@ -1490,6 +1490,7 @@ class Ship {
       reviveCharges: this.reviveCharges,
       braking: this.isEmergencyBraking(),
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
+      bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       buffs: this.team.listShipBuffs(this),
       route: this.route
         ? {
@@ -6106,6 +6107,11 @@ export class MatchSimulation {
         if (a.team === b.team && (a.isAttached() || b.isAttached())) {
           continue;
         }
+        // 刀锋女王:激活期间无视碰撞体积,可径直穿过/重叠任何舰船(不推挤、不减速),
+        // 以持续维持体积重叠 → 由 resolveBladeQueenContacts 每秒造成大额切割伤害。
+        if (a.hasEffect("bladeQueenUntil") || b.hasEffect("bladeQueenUntil")) {
+          continue;
+        }
         const dx = b.x - a.x;
         const dy = b.y - a.y;
         const d = Math.hypot(dx, dy);
@@ -6166,6 +6172,12 @@ export class MatchSimulation {
         if (!ship.alive || !ship.hasEffect("bladeQueenUntil")) {
           continue;
         }
+        // 切割火花节流:每 ~0.14s 迸一次,避免逐帧刷爆粒子
+        ship._bladeSlashTimer = (ship._bladeSlashTimer || 0) - dt;
+        const slash = ship._bladeSlashTimer <= 0;
+        if (slash) {
+          ship._bladeSlashTimer = 0.14;
+        }
         for (const target of enemyTeam.getAllShips()) {
           if (!target.alive) {
             continue;
@@ -6173,7 +6185,11 @@ export class MatchSimulation {
           if (distance(ship.x, ship.y, target.x, target.y) > ship.radius + target.radius + 4) {
             continue;
           }
-          target.takeDamage(target.maxHp * 0.02 * dt, ship, this);
+          // 体积重叠:每秒造成目标最大生命值 15% 的切割伤害
+          target.takeDamage(target.maxHp * 0.15 * dt, ship, this);
+          if (slash) {
+            this.spawnBurst(target.x, target.y, "#ff2d55", randomInRange(6, 10)); // 猩红刀锋切割
+          }
         }
       }
     }
