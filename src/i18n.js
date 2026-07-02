@@ -16,7 +16,7 @@ const CHARACTER_TEXT = Object.freeze({
       title: "团长型火力旗舰",
       flavor: "可靠的领导者与突击手",
       flagshipSkill: { name: "SOS团长", description: "为每个分舰随机赋予一种强化。" },
-      subSkill: { name: "神说会赢的", description: "8秒内自身攻击50%概率暴击，造成1.5倍伤害，并可盲射射界与射程内最近敌人。" },
+      subSkill: { name: "神说会赢的", description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。" },
     },
     koizumi: {
       name: "古泉一树",
@@ -74,7 +74,7 @@ const CHARACTER_TEXT = Object.freeze({
       title: "団長型火力旗艦",
       flavor: "頼れる指揮官であり突撃手",
       flagshipSkill: { name: "SOS団長", description: "各分艦にランダムな強化を1つ付与する。" },
-      subSkill: { name: "神様が勝つと言っている", description: "8秒間、自身の攻撃が50%でクリティカルになり、1.5倍ダメージを与える。射界と射程内の最寄り敵へ盲射できる。" },
+      subSkill: { name: "神様が勝つと言っている", description: "8秒間、自身の攻撃が50%でクリティカルになり、3倍ダメージを与える。射界と射程内の最寄り敵へ盲射できる。" },
     },
     koizumi: {
       name: "古泉一樹",
@@ -132,7 +132,7 @@ const CHARACTER_TEXT = Object.freeze({
       title: "Firepower Flagship Commander",
       flavor: "A reliable leader and shock attacker",
       flagshipSkill: { name: "SOS Brigade Chief", description: "Grants each detached ship a random enhancement." },
-      subSkill: { name: "God Says We Win", description: "For 8 seconds, attacks have a 50% critical chance for 1.5× damage and can blind-fire at the nearest enemy within firing arc and range." },
+      subSkill: { name: "God Says We Win", description: "For 8 seconds, attacks have a 50% critical chance for triple damage and can blind-fire at the nearest enemy within firing arc and range." },
     },
     koizumi: {
       name: "Itsuki Koizumi",

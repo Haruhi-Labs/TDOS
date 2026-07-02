@@ -114,7 +114,7 @@ export const CHARACTER_DEFS = {
       cost: 60,
       duration: 8,
       target: "none",
-      description: "8秒内自身攻击50%概率暴击，造成1.5倍伤害，并可盲射射界与射程内最近敌人。",
+      description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。",
     },
   },
   koizumi: {
@@ -373,6 +373,7 @@ const TEAM_PROJECTILE_COLORS = {
   B: "#ffc0bd",
 };
 
+// SOS团长(春日旗舰技)随机赋予的四种强化。正向增益统一 ×1.5(+50%);异世界人的减伤(受伤 ×0.82)保持不变。
 const SOS_BUFFS = [
   {
     id: "alien",
@@ -380,10 +381,10 @@ const SOS_BUFFS = [
     color: "#6de7ff",
     apply(ship, stat, value) {
       if (stat === "vision") {
-        return value * 1.22;
+        return value * 1.5;
       }
       if (stat === "range") {
-        return value * 1.18;
+        return value * 1.5;
       }
       return value;
     },
@@ -394,10 +395,10 @@ const SOS_BUFFS = [
     color: "#a996ff",
     apply(ship, stat, value) {
       if (stat === "turnRate") {
-        return value * 1.15;
+        return value * 1.5;
       }
       if (stat === "damage") {
-        return value * 1.16;
+        return value * 1.5;
       }
       return value;
     },
@@ -408,13 +409,13 @@ const SOS_BUFFS = [
     color: "#ffd58e",
     apply(ship, stat, value) {
       if (stat === "speed") {
-        return value * 1.16;
+        return value * 1.5;
       }
       if (stat === "regen") {
-        return value * 1.22;
+        return value * 1.5;
       }
       if (stat === "accel") {
-        return value * 1.14;
+        return value * 1.5;
       }
       return value;
     },
@@ -425,7 +426,7 @@ const SOS_BUFFS = [
     color: "#8cf0b0",
     apply(ship, stat, value) {
       if (stat === "fireRate") {
-        return value * 1.18;
+        return value * 1.5;
       }
       return value;
     },
@@ -1392,7 +1393,7 @@ class Ship {
     }
 
     if (this.hasEffect("critUntil") && Math.random() < 0.5) {
-      damage *= 1.5;
+      damage *= 3;
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
 
