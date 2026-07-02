@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import {
   cloneLoadout,
   DEFAULT_AI_LOADOUT,
+  randomAiLoadout,
   DEFAULT_TEAM_LOADOUT,
   MatchSimulation,
   DEFAULT_WORLD_SIZE,
@@ -132,7 +133,7 @@ function seatPlayerRows(room) {
       seat: "B",
       name: "统合思念体AI",
       playerId: null,
-      loadout: cloneLoadout(DEFAULT_AI_LOADOUT),
+      loadout: cloneLoadout(room.aiLoadout || DEFAULT_AI_LOADOUT),
       isBot: true,
     });
   } else {
@@ -245,7 +246,7 @@ function startMatch(room) {
     teamNames,
     teamLoadouts: {
       A: playerA ? playerA.loadout : DEFAULT_TEAM_LOADOUT,
-      B: room.mode === "ai" ? DEFAULT_AI_LOADOUT : playerB ? playerB.loadout : DEFAULT_TEAM_LOADOUT,
+      B: room.mode === "ai" ? (room.aiLoadout || DEFAULT_AI_LOADOUT) : playerB ? playerB.loadout : DEFAULT_TEAM_LOADOUT,
     },
   });
   room.snapshotAccumulator = 0;
@@ -381,6 +382,8 @@ function createRoom(player, visibility, mode) {
     snapshotAccumulator: 0,
     snapshotSeq: 0,
     finishedAt: null,
+    // AI 房:每房生成一次随机阵容(主舰不含长门/鹤屋),房间展示与开局共用同一份
+    aiLoadout: safeMode === "ai" ? randomAiLoadout() : null,
   };
 
   rooms.set(room.id, room);

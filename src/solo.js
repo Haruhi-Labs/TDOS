@@ -5,6 +5,7 @@ import {
   CHARACTER_DEFS,
   DEFAULT_AI_LOADOUT,
   DEFAULT_TEAM_LOADOUT,
+  randomAiLoadout,
   EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
   clamp,
@@ -578,6 +579,7 @@ function createSimulation() {
 }
 
 function resetMatch(logMessage = true) {
+  app.enemyLoadout = randomAiLoadout(); // 每局随机 AI 阵容(主舰不含长门/鹤屋),结算画面据此展示敌方
   app.sim = createSimulation();
   app.state = app.sim.serializeState();
   app.selectedShipKey = "main";

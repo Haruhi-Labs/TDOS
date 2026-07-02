@@ -363,6 +363,23 @@ export const DEFAULT_AI_LOADOUT = Object.freeze({
   sub2: "yuki",
 });
 
+// 主舰不可用的角色:长门有希(旗舰被动「消失的世界」会封印全队技能,当主舰=AI 全程无技能)、
+// 鹤屋(支援定位,不适合当旗舰)。副舰位不受限。
+const AI_MAIN_EXCLUDE = new Set(["yuki", "tsuruya"]);
+
+// 生成随机 AI 阵容:从全部角色中不重复地抽 3 名,主舰排除 AI_MAIN_EXCLUDE。
+export function randomAiLoadout() {
+  const pool = [...CHARACTER_ORDER];
+  const mainPool = pool.filter((id) => !AI_MAIN_EXCLUDE.has(id));
+  const main = mainPool[Math.floor(Math.random() * mainPool.length)];
+  const rest = pool.filter((id) => id !== main);
+  for (let i = rest.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [rest[i], rest[j]] = [rest[j], rest[i]];
+  }
+  return { main, sub1: rest[0], sub2: rest[1] };
+}
+
 const TEAM_COLORS = {
   A: "#65d9ff",
   B: "#ff8692",
@@ -5226,6 +5243,9 @@ export class BotController {
       return false;
     }
     const meta = skillMetaForCharacter(characterId, "flagship");
+    if (!meta || meta.type !== "active") {
+      return false; // 被动旗舰(阿虚/有希/1096):没有可主动释放的技能,别空试
+    }
     if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.05, normalFloor: 0.14, conserveFloor: 0.26 })) {
       return false;
     }
