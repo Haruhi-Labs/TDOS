@@ -21,6 +21,7 @@ import {
 // 联机选角与单机共用同一套「翻书选角」覆盖层
 import { createCharacterSelect } from "./character-select.js";
 import { startStarfield } from "./starfield.js";
+import { showConfirm } from "./confirm-dialog.js";
 import {
   characterShortName,
   formatClockTime,
@@ -3612,6 +3613,8 @@ function bindUiEvents() {
   bindPressButton(ui.subSkillBtn, useSubSkillOnline);
   bindPressButton(ui.onlineMobileSubSkillBtn, useSubSkillOnline);
 
+  bindBattleExitGuard();
+
   // 桌面右键用于设航线:窗口级屏蔽右键菜单——含「右键拖动后在画布外松开」的情况,
   // 避免 Windows 右键拖动触发浏览器手势/右键菜单。随 ac 在卸载时自动移除。
   addWin("contextmenu", (event) => {
@@ -3978,6 +3981,45 @@ function bindUiEvents() {
     syncResponsiveMode();
     updateBattleStatus(currentBattleState());
   });
+}
+
+// 房间处于对战中(running)才算「战斗中」——大厅/等待/结算时返回主菜单不拦
+function isBattleInProgress() {
+  return Boolean(app && app.room && app.room.status === "running");
+}
+
+// 战斗中误触「返回主菜单」保护:进行中先弹二次确认,确认后才 SPA 跳转。
+// 链接在冒泡阶段先于 router 的 document 级监听触发,preventDefault 即可拦住路由跳转。
+function bindBattleExitGuard() {
+  const links = document.querySelectorAll("#battleView .btn-link-home, #battleView .mobile-menu-btn");
+  for (const link of links) {
+    link.addEventListener(
+      "click",
+      async (event) => {
+        if (!isBattleInProgress()) {
+          return; // 非战斗中:放行,交给 router 正常跳转
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const ok = await showConfirm({
+          title: t("返回主菜单？"),
+          body: t("当前对战尚未结束，返回后本局进度将丢失。"),
+          confirmText: t("返回主菜单"),
+          cancelText: t("继续战斗"),
+          danger: true,
+        });
+        if (ok) {
+          const href = link.getAttribute("href") || "/";
+          if (typeof window.__navigate === "function") {
+            window.__navigate(href);
+          } else {
+            window.location.assign(href);
+          }
+        }
+      },
+      ac ? { signal: ac.signal } : undefined,
+    );
+  }
 }
 
 // ── 可挂载入口 ──

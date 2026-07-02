@@ -34,6 +34,7 @@ import {
 } from "./profile.js";
 
 import { tutorial } from "./tutorial.js";
+import { showConfirm } from "./confirm-dialog.js";
 import {
   characterShortName,
   localizeFloatingText,
@@ -2168,6 +2169,8 @@ function bindUiEvents() {
   bindPressButton(ui.subSkillBtn, useSubSkill);
   bindPressButton(ui.mobileSubSkillBtn, useSubSkill);
 
+  bindBattleExitGuard();
+
   ui.restartBtn.addEventListener("click", () => {
     showCharacterSelectScreen();
   });
@@ -2543,6 +2546,45 @@ function showCharacterSelectScreen() {
 }
 
 // ── 可挂载入口 ──
+// 对局进行中(未结算)才算「战斗中」——结算/未开局时返回主菜单不拦
+function isBattleInProgress() {
+  return Boolean(running && app && app.state && app.state.phase === "running");
+}
+
+// 战斗中误触「返回主菜单」保护:进行中先弹二次确认,确认后才 SPA 跳转。
+// 链接在冒泡阶段先于 router 的 document 级监听触发,preventDefault 即可拦住路由跳转。
+function bindBattleExitGuard() {
+  const links = document.querySelectorAll(".btn-link-home, .mobile-menu-btn");
+  for (const link of links) {
+    link.addEventListener(
+      "click",
+      async (event) => {
+        if (!isBattleInProgress()) {
+          return; // 非战斗中:放行,交给 router 正常跳转
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const ok = await showConfirm({
+          title: t("返回主菜单？"),
+          body: t("当前对战尚未结束，返回后本局进度将丢失。"),
+          confirmText: t("返回主菜单"),
+          cancelText: t("继续战斗"),
+          danger: true,
+        });
+        if (ok) {
+          const href = link.getAttribute("href") || "/";
+          if (typeof window.__navigate === "function") {
+            window.__navigate(href);
+          } else {
+            window.location.assign(href);
+          }
+        }
+      },
+      ac ? { signal: ac.signal } : undefined,
+    );
+  }
+}
+
 export function mount(root) {
   root.innerHTML = soloTemplate();
   cacheDom();

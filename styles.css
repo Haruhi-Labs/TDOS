@@ -959,6 +959,75 @@ button.toggle-active {
 .overlay.hidden { display: none; }
 @keyframes result-backdrop { from { opacity: 0; } to { opacity: 1; } }
 
+/* ── 通用二次确认弹窗(战斗中误触返回主菜单等)── */
+.ts-confirm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400; /* 压过结算 overlay(z200)与移动 HUD(z4) */
+  display: grid;
+  place-items: center;
+  padding: clamp(16px, 5vw, 32px);
+  background: radial-gradient(ellipse at 50% 42%, #05070fdd 0%, #02040acc 100%);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: result-backdrop 0.2s ease both;
+}
+.ts-confirm-card {
+  width: min(400px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  padding: clamp(20px, 5vw, 30px);
+  border-radius: 12px;
+  border: 1px solid var(--brass);
+  background: var(--tex-leather), var(--leather-surface);
+  background-size: 200px 200px, cover;
+  background-blend-mode: overlay, normal;
+  box-shadow: inset 0 0 0 1px #160c05, inset 0 1px 0 #6c4a2855, 0 24px 60px #02060ee6;
+  animation: result-pop 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+  text-align: center;
+}
+.ts-confirm-title {
+  margin: 0;
+  font-family: var(--font-cn);
+  font-size: 1.2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f3e4bf;
+}
+.ts-confirm-body {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.65;
+  color: var(--text-soft);
+}
+.ts-confirm-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 4px;
+}
+.ts-confirm-actions button {
+  flex: 1;
+  padding: 11px 12px;
+  border-radius: 8px;
+  font-family: var(--font-cn);
+  font-size: 0.92rem;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: filter 0.15s ease;
+}
+.ts-confirm-actions button:hover { filter: brightness(1.12); }
+.ts-confirm-cancel {
+  border: 1px solid var(--brass);
+  background: linear-gradient(180deg, #6a4e22 0%, #4a3514 100%);
+  color: #f3e4bf;
+}
+.ts-confirm-ok {
+  border: 1px solid #8a4038;
+  background: linear-gradient(180deg, #7a2f2a 0%, #521c18 100%);
+  color: #ffe0d6;
+}
+
 .result-card {
   --accent-line: var(--gilt-foil);
   --title-foil: var(--gilt-foil);
