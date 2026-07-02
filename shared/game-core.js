@@ -64,6 +64,9 @@ const SMALL_TARGET_MAX_MISS = 0.3;
 // 分离/单飞(同队仅 1 艘)时开火频率 ×该倍率(火力更猛)。二者由「同队成员数」互斥切换。
 const FORMATION_DAMAGE_SHARE = 0.3;
 const SOLO_FIRE_RATE_BONUS = 1.2;
+// 朝仓「刀锋女王」:接触敌舰瞬间即打满一跳,之后每持续重叠 INTERVAL 秒再打一跳,每跳 = 目标最大生命值 FRACTION。
+const BLADE_QUEEN_HIT_INTERVAL = 1; // 斩击间隔(秒)
+const BLADE_QUEEN_HIT_FRACTION = 0.15; // 单跳伤害占目标最大生命值比例
 // 撞击:相撞瞬间把速度压到「地板」,之后给一段粘滞时间让速度线性慢慢恢复到正常(而非一撞就立刻回满)。
 const COLLISION_SLOW_DURATION = 3; // 粘滞时长(秒):速度在这段时间内从地板回升到正常
 const COLLISION_SLOW_FLOOR = 0.5; // 撞击瞬间速度上限压到正常速度的该比例,随时间回升至 1
@@ -343,7 +346,7 @@ export const CHARACTER_DEFS = {
       cost: 52,
       duration: 10,
       target: "none",
-      description: "10秒内大幅提速，并无视碰撞体积（可径直穿过敌舰）；与敌舰体积重叠时，每秒造成其最大生命值15%的伤害。",
+      description: "10秒内大幅提速，并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。",
     },
   },
 };
@@ -6162,33 +6165,47 @@ export class MatchSimulation {
     }
   }
 
-  resolveBladeQueenContacts(dt) {
+  resolveBladeQueenContacts() {
     const pairs = [
       [this.teamA, this.teamB],
       [this.teamB, this.teamA],
     ];
+    const now = this.elapsed;
     for (const [team, enemyTeam] of pairs) {
       for (const ship of team.getAllShips()) {
         if (!ship.alive || !ship.hasEffect("bladeQueenUntil")) {
           continue;
         }
-        // 切割火花节流:每 ~0.14s 迸一次,避免逐帧刷爆粒子
-        ship._bladeSlashTimer = (ship._bladeSlashTimer || 0) - dt;
-        const slash = ship._bladeSlashTimer <= 0;
-        if (slash) {
-          ship._bladeSlashTimer = 0.14;
+        // 每个朝仓维护「对各目标上次斩击时刻」,实现:接触瞬间即打满一跳,之后每 BLADE_QUEEN_HIT_INTERVAL 秒再打一跳。
+        // 离开重叠后不清计时 → 再贴上也须距上次满一个间隔才会再触发,避免反复蹭进蹭出刷伤害。
+        let hitLog = ship._bladeHitAt;
+        if (!hitLog) {
+          hitLog = ship._bladeHitAt = new Map();
         }
         for (const target of enemyTeam.getAllShips()) {
           if (!target.alive) {
             continue;
           }
           if (distance(ship.x, ship.y, target.x, target.y) > ship.radius + target.radius + 4) {
-            continue;
+            continue; // 未重叠:保留计时,不结算
           }
-          // 体积重叠:每秒造成目标最大生命值 15% 的切割伤害
-          target.takeDamage(target.maxHp * 0.15 * dt, ship, this);
-          if (slash) {
-            this.spawnBurst(target.x, target.y, "#ff2d55", randomInRange(6, 10)); // 猩红刀锋切割
+          const last = hitLog.get(target.id);
+          if (last !== undefined && now - last < BLADE_QUEEN_HIT_INTERVAL) {
+            continue; // 距上次斩击不足一个间隔,尚未到下一跳
+          }
+          hitLog.set(target.id, now);
+          // 单跳爆发:目标最大生命值 15%
+          target.takeDamage(target.maxHp * BLADE_QUEEN_HIT_FRACTION, ship, this);
+          // 醒目的猩红斩击闪:每跳迸数簇火花,读作一记决定性「斩」
+          for (let s = 0; s < 3; s += 1) {
+            const off = randomInRange(0, target.radius + 6);
+            const ang = randomInRange(0, TAU);
+            this.spawnBurst(
+              this.clampX(target.x + Math.cos(ang) * off, 0),
+              this.clampY(target.y + Math.sin(ang) * off, 0),
+              s % 2 === 0 ? "#ff2d55" : "#ff8aa0",
+              randomInRange(7, 12),
+            );
           }
         }
       }
@@ -6259,7 +6276,7 @@ export class MatchSimulation {
     this.teamB.update(safeDt);
 
     this.resolveShipCollisions();
-    this.resolveBladeQueenContacts(safeDt);
+    this.resolveBladeQueenContacts();
     this.resolveScoutClashes();
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
