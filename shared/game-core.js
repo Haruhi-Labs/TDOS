@@ -114,7 +114,7 @@ export const CHARACTER_DEFS = {
       cost: 60,
       duration: 8,
       target: "none",
-      description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。",
+      description: "8秒内自身攻击50%概率暴击，造成1.5倍伤害，并可盲射射界与射程内最近敌人。",
     },
   },
   koizumi: {
@@ -1392,7 +1392,7 @@ class Ship {
     }
 
     if (this.hasEffect("critUntil") && Math.random() < 0.5) {
-      damage *= 3;
+      damage *= 1.5;
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
 
