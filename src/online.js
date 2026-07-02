@@ -2752,6 +2752,58 @@ function drawBladeQueenAura(ship) {
   ctx.restore();
 }
 
+// 选中舰船下方的科技感角色名牌:半透明深色托底 + 青色 HUD 顶边线 + 青辉光亮字 + 字距,大写更硬朗
+function drawShipNameLabel(ship) {
+  const name = characterShortName(ship.characterId, ship.characterName || ship.name || "");
+  if (!name) {
+    return;
+  }
+  const label = String(name).toUpperCase();
+  const cx = ship.x;
+  const topY = ship.y + ship.radius + 9; // 舰体正下方,避开上方血条/能量条
+  const fontSize = 12;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.font = `600 ${fontSize}px 'Noto Sans SC','PingFang SC',sans-serif`;
+  if ("letterSpacing" in ctx) {
+    ctx.letterSpacing = "1px";
+  }
+  const padX = 7;
+  const padY = 3;
+  const textW = ctx.measureText(label).width;
+  const boxW = textW + padX * 2;
+  const boxH = fontSize + padY * 2;
+  const boxX = cx - boxW / 2;
+  const r = 3;
+  // 圆角托底
+  ctx.beginPath();
+  ctx.moveTo(boxX + r, topY);
+  ctx.arcTo(boxX + boxW, topY, boxX + boxW, topY + boxH, r);
+  ctx.arcTo(boxX + boxW, topY + boxH, boxX, topY + boxH, r);
+  ctx.arcTo(boxX, topY + boxH, boxX, topY, r);
+  ctx.arcTo(boxX, topY, boxX + boxW, topY, r);
+  ctx.closePath();
+  ctx.fillStyle = "rgba(6,14,26,0.62)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(127,224,255,0.55)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // 顶边高光线,强化 HUD 质感
+  ctx.beginPath();
+  ctx.moveTo(boxX + 3, topY + 0.5);
+  ctx.lineTo(boxX + boxW - 3, topY + 0.5);
+  ctx.strokeStyle = "rgba(150,236,255,0.9)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // 名字:亮青白 + 青辉光
+  ctx.shadowColor = "rgba(95,216,255,0.85)";
+  ctx.shadowBlur = 5;
+  ctx.fillStyle = "#eafcff";
+  ctx.fillText(label, cx, topY + padY);
+  ctx.restore();
+}
+
 function drawShip(ship, color, selected, attached) {
   if (!ship || !ship.alive) {
     return;
@@ -2802,6 +2854,10 @@ function drawShip(ship, color, selected, attached) {
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth, 3);
   ctx.fillStyle = "#6ad8ff";
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
+
+  if (selected) {
+    drawShipNameLabel(ship);
+  }
 }
 
 function drawScout(scout, isOwnTeam) {
