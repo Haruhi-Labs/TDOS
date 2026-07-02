@@ -104,7 +104,7 @@ export const CHARACTER_DEFS = {
       cost: 68,
       duration: 16,
       target: "none",
-      description: "为每个分舰随机赋予一种强化。",
+      description: "16秒内为每艘已分离的副舰随机赋予一种强化（增益均+50%）：宇宙人 视野/射程×1.5；超能力者 转向/伤害×1.5；未来人 航速/回能/加速×1.5；异世界人 射速×1.5、受伤×0.82。",
     },
     subSkill: {
       id: "god_says_win",
@@ -146,7 +146,7 @@ export const CHARACTER_DEFS = {
       duration: 12,
       target: "none",
       invulnerableDuration: 3,
-      description: "全舰队加速度显著提升12秒，并在前3秒获得无敌。",
+      description: "全舰队加速度×1.75，持续12秒；前3秒全队无敌。",
     },
     subSkill: {
       id: "esper",
@@ -156,7 +156,7 @@ export const CHARACTER_DEFS = {
       cost: 50,
       blinkRange: 240,
       target: "optional_point",
-      description: "闪现到目标位置，并使下一次攻击伤害提升至4倍。",
+      description: "闪现到240范围内的目标位置，并使下一次攻击伤害×4。",
     },
   },
   yuki: {
@@ -183,7 +183,7 @@ export const CHARACTER_DEFS = {
       id: "vanishing_world",
       name: "消失的世界",
       type: "passive",
-      description: "本舰队角色技能与通用技能封印，但每艘船各自拥有一次复活。",
+      description: "全舰队封印所有旗舰技与通用技能；作为代价，每艘船各拥有1次复活（原地以52%最大生命复活）。",
     },
     subSkill: {
       id: "apm_overdrive",
@@ -192,7 +192,7 @@ export const CHARACTER_DEFS = {
       cooldown: 24,
       cost: 60,
       target: "none",
-      description: "向八方向各放出一对高速侦察机。",
+      description: "向8个方向各射出一对（共16架）高速侦察机。",
     },
   },
   future1096: {
@@ -219,7 +219,7 @@ export const CHARACTER_DEFS = {
       id: "past_future_me",
       name: "过去与未来的我",
       type: "passive",
-      description: "旗舰位额外生成一艘1096僚舰，两舰舰体各为常规旗舰的一半。",
+      description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的一半（50%）。",
     },
     subSkill: {
       id: "beam_1096",
@@ -228,7 +228,7 @@ export const CHARACTER_DEFS = {
       cooldown: 12,
       cost: 74,
       target: "point",
-      description: "蓄力后向指定方向发射高伤害光线。",
+      description: "蓄力1.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。",
     },
   },
   kyon: {
@@ -255,7 +255,7 @@ export const CHARACTER_DEFS = {
       id: "reality_seeker",
       name: "在虚构世界里寻求现实感的人才有问题",
       type: "passive",
-      description: "全舰队转向阻力大幅降低，任意朝向输出效率接近一致。",
+      description: "全舰队转向×1.28、加速×1.16、最小转弯半径×0.62，且各朝向火力密度趋于一致（削弱侧舷强·船尾弱的差异）。",
     },
     subSkill: {
       id: "reliable_normal",
@@ -265,7 +265,7 @@ export const CHARACTER_DEFS = {
       cost: 42,
       duration: 14,
       target: "none",
-      description: "短时间提升转向与耐久，并立即回复部分舰体。",
+      description: "14秒内转向×1.28、航速×1.08、伤害×1.08、加速×1.12，并立即回复18%最大生命。",
     },
   },
   tsuruya: {
@@ -296,7 +296,7 @@ export const CHARACTER_DEFS = {
       cost: 60,
       duration: 8,
       target: "none",
-      description: "8秒内全队技能冷却流逝速度翻倍，并持续恢复生命。",
+      description: "8秒内全队技能冷却流逝速度×2，并每秒回复全队1%最大生命。",
     },
     subSkill: {
       id: "money_power",
@@ -346,7 +346,7 @@ export const CHARACTER_DEFS = {
       cost: 52,
       duration: 10,
       target: "none",
-      description: "10秒内大幅提速，并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。",
+      description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。",
     },
   },
 };
