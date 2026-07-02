@@ -457,30 +457,32 @@ function bindPressButton(button, handler) {
   if (!button) {
     return;
   }
-  let suppressClickUntil = 0;
+  // 指针按下即响应;紧随其后的合成 click 用「标志位」可靠吞掉——触摸设备上该 click 可能延迟到达
+  // (尤其按住略久),不能只靠时间窗,否则 handler 会被触发两次。对「瞄准/原地释放」这类切换技尤其致命:
+  // 一次点按会先进瞄准态又立刻原地释放(如古泉闪现在移动端无法正常瞄准即源于此)。
+  let swallowClick = false;
+  let swallowTimer = 0;
   button.addEventListener("pointerdown", (event) => {
     if (event.button !== 0 || button.disabled) {
       return;
     }
-    suppressClickUntil = performance.now() + 320;
+    swallowClick = true;
+    clearTimeout(swallowTimer);
+    swallowTimer = setTimeout(() => { swallowClick = false; }, 700); // 兜底:合成 click 始终没来也不永久吞
     event.preventDefault();
     handler();
   });
   button.addEventListener("click", (event) => {
-    if (performance.now() < suppressClickUntil) {
+    if (swallowClick) {
+      swallowClick = false;
+      clearTimeout(swallowTimer);
       event.preventDefault();
       return;
     }
     if (button.disabled) {
       return;
     }
-    handler();
-  });
-  button.addEventListener("keydown", (event) => {
-    if ((event.key === "Enter" || event.key === " ") && !button.disabled) {
-      event.preventDefault();
-      handler();
-    }
+    handler(); // 无前置 pointerdown 的原生 click(如键盘 Enter/Space 激活按钮)
   });
 }
 
