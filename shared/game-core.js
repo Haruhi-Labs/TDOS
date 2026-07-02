@@ -875,6 +875,8 @@ class Ship {
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
     this.reviveCharges = 0;
+    // 名字暴露:敌方舰船默认隐藏名字,一旦其在敌方视野中施放技能即永久暴露(供渲染层判断是否显示名牌)
+    this.nameRevealed = false;
 
     this.effects = {
       critUntil: 0,
@@ -1512,6 +1514,7 @@ class Ship {
       braking: this.isEmergencyBraking(),
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
+      nameRevealed: this.nameRevealed, // 名字是否已永久暴露(敌方施放技能被看见后置真)
       buffs: this.team.listShipBuffs(this),
       route: this.route
         ? {
@@ -2520,7 +2523,19 @@ class Team {
       return false;
     }
     this.cooldowns.flagship = meta.cooldown || 0;
+    this.revealCasterIfSeen(this.ships.main); // 旗舰技由主舰施放:若此刻正被敌方看见,永久暴露其名字
     return true;
+  }
+
+  // 施放技能的舰船若此刻正处于敌方视野内,则永久暴露它的名字(仅用于名牌显示)
+  revealCasterIfSeen(ship) {
+    if (!ship || ship.nameRevealed) {
+      return;
+    }
+    const enemyTeam = this.match.enemyTeamBySeat(this.seat);
+    if (enemyTeam && enemyTeam.visibleEnemyIds && enemyTeam.visibleEnemyIds.has(ship.id)) {
+      ship.nameRevealed = true;
+    }
   }
 
   castSubSkill(shipKey, options = {}) {
@@ -2577,6 +2592,7 @@ class Team {
       return false;
     }
     this.cooldowns[shipKey] = meta.cooldown || 0;
+    this.revealCasterIfSeen(ship); // 分舰技由该舰施放:若此刻正被敌方看见,永久暴露其名字
     return true;
   }
 

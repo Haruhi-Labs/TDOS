@@ -1394,7 +1394,7 @@ function drawShipNameLabel(ship, accent) {
   ctx.restore();
 }
 
-function drawShip(ship, color, selected, attached) {
+function drawShip(ship, color, selected, attached, isEnemy = false) {
   if (!ship || !ship.alive) {
     return;
   }
@@ -1445,8 +1445,9 @@ function drawShip(ship, color, selected, attached) {
   ctx.fillStyle = "#6ad8ff";
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
 
-  // 名牌:两队所有「已出列/独立」舰船常驻显示;未分离(附着编队内)的副舰不显示,避免编队时挤成一团
-  if (!attached) {
+  // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
+  // 敌方默认隐藏名字,仅当其名字已永久暴露(曾在我方视野中施放技能)时才显示。
+  if (!attached && (!isEnemy || ship.nameRevealed)) {
     drawShipNameLabel(ship, color);
   }
 }
@@ -1847,7 +1848,8 @@ function drawShipGroup(shipGroup, color, visibleEnemyIds = null) {
     if (visibleEnemyIds && !visibleEnemyIds.has(ship.id) && app.state.phase !== "finished") {
       continue;
     }
-    drawShip(ship, color, ship.key === app.selectedShipKey, ship.attached);
+    // 敌方组会传入 visibleEnemyIds(用于视野裁剪),据此判定是否敌方
+    drawShip(ship, color, ship.key === app.selectedShipKey, ship.attached, visibleEnemyIds !== null);
   }
 }
 
