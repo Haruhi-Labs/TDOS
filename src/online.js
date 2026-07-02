@@ -2752,8 +2752,9 @@ function drawBladeQueenAura(ship) {
   ctx.restore();
 }
 
-// 选中舰船下方的科技感角色名牌:半透明深色托底 + 青色 HUD 顶边线 + 青辉光亮字 + 字距,大写更硬朗
-function drawShipNameLabel(ship) {
+// 舰船下方的科技感角色名牌:半透明深色托底 + 队伍色 HUD 顶边线 + 辉光亮字 + 字距,大写更硬朗
+// accent = 该舰队伍色(己方青/敌方红),用于边框与辉光,区分敌我
+function drawShipNameLabel(ship, accent) {
   const name = characterShortName(ship.characterId, ship.characterName || ship.name || "");
   if (!name) {
     return;
@@ -2786,20 +2787,21 @@ function drawShipNameLabel(ship) {
   ctx.closePath();
   ctx.fillStyle = "rgba(6,14,26,0.62)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(127,224,255,0.55)";
+  // 边框 + 顶边高光,取队伍色
+  ctx.strokeStyle = accent;
   ctx.lineWidth = 1;
+  ctx.globalAlpha = 0.5;
   ctx.stroke();
-  // 顶边高光线,强化 HUD 质感
+  ctx.globalAlpha = 0.9;
   ctx.beginPath();
   ctx.moveTo(boxX + 3, topY + 0.5);
   ctx.lineTo(boxX + boxW - 3, topY + 0.5);
-  ctx.strokeStyle = "rgba(150,236,255,0.9)";
-  ctx.lineWidth = 1;
   ctx.stroke();
-  // 名字:亮青白 + 青辉光
-  ctx.shadowColor = "rgba(95,216,255,0.85)";
+  // 名字:近白 + 队伍色辉光
+  ctx.globalAlpha = 1;
+  ctx.shadowColor = accent;
   ctx.shadowBlur = 5;
-  ctx.fillStyle = "#eafcff";
+  ctx.fillStyle = "#eef6ff";
   ctx.fillText(label, cx, topY + padY);
   ctx.restore();
 }
@@ -2855,8 +2857,9 @@ function drawShip(ship, color, selected, attached) {
   ctx.fillStyle = "#6ad8ff";
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
 
-  if (selected) {
-    drawShipNameLabel(ship);
+  // 名牌:两队所有「已出列/独立」舰船常驻显示;未分离(附着编队内)的副舰不显示,避免编队时挤成一团
+  if (!attached) {
+    drawShipNameLabel(ship, color);
   }
 }
 
