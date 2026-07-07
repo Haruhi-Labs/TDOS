@@ -165,6 +165,7 @@ function initApp() {
   playerId: null,
   room: null,
   seat: null,
+  spectating: false,
   seq: 0,
   ackSeq: 0,
   selectedShipKey: "main",
@@ -488,6 +489,33 @@ function socketSend(payload) {
   return true;
 }
 
+function isSpectatorMode() {
+  return Boolean(app && app.spectating);
+}
+
+function canControlBattle() {
+  return Boolean(app && app.connected && app.room && app.room.status === "running" && app.seat && !app.spectating);
+}
+
+function validShipKey(shipKey) {
+  return shipKey === "main" || shipKey === "sub1" || shipKey === "sub2" ? shipKey : "main";
+}
+
+function selectedShipKeyForSeat(state, seat) {
+  const selectedShips = state && state.selectedShips ? state.selectedShips : null;
+  return validShipKey(selectedShips && selectedShips[seat] ? selectedShips[seat] : "main");
+}
+
+function sendSelectedShipUpdate() {
+  if (!canControlBattle()) {
+    return;
+  }
+  socketSend({
+    type: "select_ship",
+    shipKey: app.selectedShipKey,
+  });
+}
+
 function bindPressButton(button, handler) {
   if (!button) {
     return;
@@ -714,7 +742,14 @@ function showMatchResultOverlay(winnerSeat) {
   const versusEl = document.getElementById("onlineResultVersus");
 
   let cls, eyebrow, title, sub, logLine;
-  if (winnerSeat && winnerSeat === app.seat) {
+  if (app.spectating) {
+    const winnerName = winnerSeat ? fleetSideLabel(winnerSeat) : "";
+    cls = "result-draw";
+    eyebrow = "SPECTATE";
+    title = winnerName ? t("{seat}获胜", { seat: winnerName }) : t("战斗结束");
+    sub = t("观战结束");
+    logLine = winnerName ? t("战斗结束：{seat}获胜", { seat: winnerName }) : t("战斗结束：平局");
+  } else if (winnerSeat && winnerSeat === app.seat) {
     cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t("敌方舰队已被击溃");
     logLine = t("战斗结束：我方舰队获胜");
   } else if (winnerSeat) {
@@ -736,12 +771,16 @@ function showMatchResultOverlay(winnerSeat) {
   // 双方阵容:昵称取房间席位(AI 显示为机器人名);own=蓝队立绘、enemy=红队立绘
   if (versusEl) {
     const players = (app.room && app.room.players) || [];
-    const ownRow = players.find((p) => p.seat === app.seat);
-    const enemyRow = players.find((p) => p.seat && p.seat !== app.seat);
+    const ownRow = app.spectating ? players.find((p) => p.seat === "A") : players.find((p) => p.seat === app.seat);
+    const enemyRow = app.spectating ? players.find((p) => p.seat === "B") : players.find((p) => p.seat && p.seat !== app.seat);
     const ownLoadout = (ownRow && ownRow.loadout) || app.playerLoadout;
     const enemyLoadout = enemyRow && enemyRow.loadout;
-    const ownName = (ownRow && localizedServerName(ownRow.name, ownRow.isBot)) || t("我方");
-    const enemyName = (enemyRow && localizedServerName(enemyRow.name, enemyRow.isBot)) || t("对方");
+    const ownName = app.spectating
+      ? (ownRow && localizedServerName(ownRow.name, ownRow.isBot)) || fleetSideLabel("A")
+      : (ownRow && localizedServerName(ownRow.name, ownRow.isBot)) || t("我方");
+    const enemyName = app.spectating
+      ? (enemyRow && localizedServerName(enemyRow.name, enemyRow.isBot)) || fleetSideLabel("B")
+      : (enemyRow && localizedServerName(enemyRow.name, enemyRow.isBot)) || t("对方");
     versusEl.innerHTML =
       onlineResultSideHTML(ownLoadout, "blue", ownName, "result-side-player") +
       `<div class="result-vs"><span>VS</span></div>` +
@@ -828,6 +867,7 @@ function connectServer() {
       app.playerId = null;
       app.room = null;
       app.seat = null;
+      app.spectating = false;
       updateRoomSummary();
       setBattleControlsEnabled(false);
       setRoomHudVisible(true);
@@ -882,6 +922,9 @@ function updateRoomSummary() {
     rows.push(t("房间号：{code}", { code: app.room.code }));
   }
   rows.push(t("状态：{status}", { status: roomStatusText(app.room.status) }));
+  if (Number(app.room.spectatorCount) > 0 || app.spectating) {
+    rows.push(t("观战：{count}", { count: Number(app.room.spectatorCount) || 0 }));
+  }
   for (const playerRow of app.room.players || []) {
     const seatText = playerRow.seat === "A" ? t("A位") : t("B位");
     const suffix = playerRow.isBot ? t("（AI）") : "";
@@ -1022,12 +1065,13 @@ function renderLobbyRooms(rooms) {
 
     const meta = document.createElement("div");
     meta.className = "room-item-meta";
-    meta.textContent = t("房主：{host} | 人数：{count}/{capacity} | 状态：{status}", {
+    meta.textContent =
+      t("房主：{host} | 人数：{count}/{capacity} | 状态：{status}", {
       host: room.hostName === "未知" ? t("未知") : room.hostName,
       count: room.count,
       capacity: room.capacity,
       status: roomStatusText(room.status),
-    });
+      }) + ` | ${t("观战：{count}", { count: Number(room.spectatorCount) || 0 })}`;
 
     const joinBtn = document.createElement("button");
     joinBtn.textContent = t("加入");
@@ -1037,14 +1081,31 @@ function renderLobbyRooms(rooms) {
       socketSend({ type: "join_room", roomId: room.roomId });
     });
 
-    item.append(title, meta, joinBtn);
+    const spectateBtn = document.createElement("button");
+    spectateBtn.textContent = t("观战");
+    spectateBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "running";
+    spectateBtn.addEventListener("click", () => {
+      socketSend({ type: "spectate_room", roomId: room.roomId });
+    });
+
+    const actions = document.createElement("div");
+    actions.className = "room-item-actions";
+    actions.append(joinBtn, spectateBtn);
+
+    item.append(title, meta, actions);
     ui.roomList.append(item);
   }
 }
 
 function applyRoomState(message) {
+  const previousRoomId = app.room ? app.room.roomId : null;
+  const previousSpectating = app.spectating;
   app.room = message.room || null;
-  app.seat = message.self ? message.self.seat : null;
+  app.spectating = Boolean(message.self && message.self.spectating);
+  app.seat = app.spectating ? null : message.self ? message.self.seat : null;
+  if (app.room && (app.room.roomId !== previousRoomId || app.spectating !== previousSpectating)) {
+    clearMatchRuntime();
+  }
   if (message.self && message.self.loadout) {
     app.playerLoadout = normalizeLoadout(message.self.loadout, DEFAULT_TEAM_LOADOUT);
     syncLoadoutControls(app.playerLoadout);
@@ -1055,7 +1116,7 @@ function applyRoomState(message) {
   const roomStatus = app.room ? app.room.status : null;
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
-  setBattleControlsEnabled(Boolean(canBattle));
+  setBattleControlsEnabled(Boolean(canBattle && !app.spectating));
   setRoomHudVisible(!canBattle);
   syncResponsiveMode();
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
@@ -1072,6 +1133,8 @@ function applyRoomState(message) {
     ui.seatValue.textContent = t("A位（左翼舰队）");
   } else if (app.seat === "B") {
     ui.seatValue.textContent = t("B位（右翼舰队）");
+  } else if (app.spectating) {
+    ui.seatValue.textContent = t("观战");
   } else {
     ui.seatValue.textContent = "-";
   }
@@ -1100,7 +1163,7 @@ function applyRoomState(message) {
       }
     }
     if (app.room.status === "running") {
-      log(t("对战开始"));
+      log(app.spectating ? t("已进入观战") : t("对战开始"));
     }
   }
 }
@@ -1110,6 +1173,7 @@ function handleRoomClosed(message) {
   log(reason);
   app.room = null;
   app.seat = null;
+  app.spectating = false;
   updateRoomSummary();
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
@@ -1149,6 +1213,7 @@ function syncShipSelectOptions(team) {
     });
     if (fallback) {
       app.selectedShipKey = fallback;
+      sendSelectedShipUpdate();
     }
   }
 
@@ -1199,6 +1264,7 @@ function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.sta
     return false;
   }
   app.selectedShipKey = shipKey;
+  sendSelectedShipUpdate();
   syncShipSelectOptions(own);
   syncPowerFromSelectedShip(own);
   if (app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3) {
@@ -1334,7 +1400,7 @@ function syncMobileHud(own) {
   if (!ui.onlineMobileBattleHud) {
     return;
   }
-  ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running");
+  ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running") || app.spectating;
   if (!app.mobileMode || !own) {
     return;
   }
@@ -1373,7 +1439,32 @@ function syncMobileHud(own) {
   }
 }
 
+function updateSpectatorBattleStatus(state) {
+  const teamA = teamBySeat(state, "A");
+  const teamB = teamBySeat(state, "B");
+  const hullA = Math.round((teamA?.hullRatio || 0) * 100);
+  const hullB = Math.round((teamB?.hullRatio || 0) * 100);
+  const energyA = energyPercentForShip(teamA?.ships?.main);
+  const energyB = energyPercentForShip(teamB?.ships?.main);
+
+  ui.hullValue.textContent = `A ${hullA}% / B ${hullB}%`;
+  ui.energyValue.textContent = `A ${energyA}% / B ${energyB}%`;
+  ui.splitValue.textContent = `${localizedSplitLabel(teamA?.splitLevel || 0)} / ${localizedSplitLabel(teamB?.splitLevel || 0)}`;
+  ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
+  ui.selectedValue.textContent = t("观战");
+  ui.onlineZoomValue.textContent = `${Math.round(app.cameraZoom * 100)}%`;
+  ui.onlineZoomOutBtn.disabled = app.cameraZoom <= CAMERA_ZOOM_MIN + 1e-3;
+  ui.onlineZoomInBtn.disabled = app.cameraZoom >= CAMERA_ZOOM_MAX - 1e-3;
+  updateSkillButtons(null);
+  renderFleetRoster(teamA);
+  syncMobileHud(null);
+}
+
 function updateBattleStatus(state) {
+  if (isSpectatorMode()) {
+    updateSpectatorBattleStatus(state);
+    return;
+  }
   const own = teamBySeat(state, app.seat);
   if (!own) {
     ui.hullValue.textContent = "-";
@@ -1589,6 +1680,9 @@ function sendAction(action) {
     return null;
   }
   if (!app.connected) {
+    return null;
+  }
+  if (!app.seat || app.spectating) {
     return null;
   }
   app.seq += 1;
@@ -1814,7 +1908,7 @@ function screenPointFromEvent(event) {
 }
 
 function effectiveViewZoom(zoomRatio = app.cameraZoom) {
-  const baseZoom = app.mobileMode ? MOBILE_ZOOM : 1;
+  const baseZoom = app.mobileMode && !isSpectatorMode() ? MOBILE_ZOOM : 1;
   return baseZoom * clamp(zoomRatio, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
 }
 
@@ -1931,6 +2025,11 @@ function adjustCameraZoom(direction, focusScreen = null) {
 }
 
 function updateCamera() {
+  if (isSpectatorMode() && app.cameraZoom <= CAMERA_ZOOM_MIN + 1e-3) {
+    app.cameraCenterX = LOGICAL * 0.5;
+    app.cameraCenterY = LOGICAL * 0.5;
+    return;
+  }
   const shouldTrack = app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3;
   if (!shouldTrack) {
     app.cameraCenterX = LOGICAL * 0.5;
@@ -1973,7 +2072,7 @@ function syncResponsiveMode() {
     app.cameraManualUntil = 0;
   }
   if (ui.onlineMobileBattleHud) {
-    ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running");
+    ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running") || app.spectating;
   }
   resizeCanvas(); // 显示尺寸/方向变化时同步 backing store 到设备像素,保持清晰
 }
@@ -2809,7 +2908,7 @@ function drawShipNameLabel(ship, accent) {
   ctx.restore();
 }
 
-function drawShip(ship, color, selected, attached, isEnemy = false) {
+function drawShip(ship, color, selected, attached, isEnemy = false, forceName = false) {
   if (!ship || !ship.alive) {
     return;
   }
@@ -2862,7 +2961,7 @@ function drawShip(ship, color, selected, attached, isEnemy = false) {
 
   // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
   // 敌方默认隐藏名字,仅当其名字已永久暴露(曾在我方视野中施放技能)时才显示。
-  if (!attached && (!isEnemy || ship.nameRevealed)) {
+  if (forceName || (!attached && (!isEnemy || ship.nameRevealed))) {
     drawShipNameLabel(ship, color);
   }
 }
@@ -3018,11 +3117,11 @@ function drawFloatingText(label) {
   ctx.restore();
 }
 
-function drawSelectedVisionCircle(ownTeam) {
+function drawSelectedVisionCircle(ownTeam, shipKey = app.selectedShipKey) {
   if (!ownTeam || !ownTeam.ships) {
     return;
   }
-  const selected = ownTeam.ships[app.selectedShipKey];
+  const selected = ownTeam.ships[shipKey];
   if (!selected || !selected.alive || !selected.vision) {
     return;
   }
@@ -3032,6 +3131,24 @@ function drawSelectedVisionCircle(ownTeam) {
   ctx.beginPath();
   ctx.arc(selected.x, selected.y, selected.vision, 0, TAU);
   ctx.stroke();
+  ctx.restore();
+}
+
+function drawTeamVisionCircles(team, color) {
+  if (!team || !team.ships) {
+    return;
+  }
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  for (const ship of [...Object.values(team.ships), ...(team.extraShips || [])]) {
+    if (!ship || !ship.alive || !ship.vision) {
+      continue;
+    }
+    ctx.beginPath();
+    ctx.arc(ship.x, ship.y, ship.vision, 0, TAU);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
@@ -3062,11 +3179,11 @@ function drawFireArcLabel(ship, offsetDeg, radius, text, color) {
   ctx.restore();
 }
 
-function drawSelectedFireArc(ownTeam) {
+function drawSelectedFireArc(ownTeam, shipKey = app.selectedShipKey) {
   if (!ownTeam || !ownTeam.ships) {
     return;
   }
-  const ship = ownTeam.ships[app.selectedShipKey];
+  const ship = ownTeam.ships[shipKey];
   if (!ship || !ship.alive) {
     return;
   }
@@ -3174,17 +3291,28 @@ function drawMinimap(state, ownTeam, enemyTeam, visibleEnemyIds) {
     ctx.fill();
   };
 
+  const spectating = isSpectatorMode();
+  const revealAll = spectating || !visibleEnemyIds;
+  const selectedA = selectedShipKeyForSeat(state, "A");
+  const selectedB = selectedShipKeyForSeat(state, "B");
+
   if (ownTeam && ownTeam.ships) {
     for (const ship of [...Object.values(ownTeam.ships), ...(ownTeam.extraShips || [])]) {
-      plotShip(ship, ship.key === app.selectedShipKey ? "#ffe184" : "#79dcff");
+      const selected = spectating && ownTeam.seat === "A"
+        ? ship.key === selectedA
+        : spectating && ownTeam.seat === "B"
+          ? ship.key === selectedB
+          : ship.key === app.selectedShipKey;
+      plotShip(ship, selected ? "#ffe184" : "#79dcff");
     }
   }
   if (enemyTeam && enemyTeam.ships) {
     for (const ship of [...Object.values(enemyTeam.ships), ...(enemyTeam.extraShips || [])]) {
-      if (state.phase !== "finished" && !visibleEnemyIds.has(ship.id)) {
+      if (!revealAll && state.phase !== "finished" && !visibleEnemyIds.has(ship.id)) {
         continue;
       }
-      plotShip(ship, "#ff95a0");
+      const selected = spectating && enemyTeam.seat === "A" ? ship.key === selectedA : spectating && enemyTeam.seat === "B" ? ship.key === selectedB : false;
+      plotShip(ship, selected ? "#ffe184" : "#ff95a0");
     }
   }
 
@@ -3247,18 +3375,36 @@ function renderFrame() {
   const ownSeat = app.seat || "A";
   const ownTeam = teamBySeat(state, ownSeat);
   const enemyTeam = teamBySeat(state, enemySeat(ownSeat));
+  const spectating = isSpectatorMode();
+  const selectedA = selectedShipKeyForSeat(state, "A");
+  const selectedB = selectedShipKeyForSeat(state, "B");
   const visibleEnemyIds = new Set((ownTeam && ownTeam.visibleEnemyIds) || []);
 
-  if (ownTeam && ownTeam.ships) {
-    for (const ship of [...Object.values(ownTeam.ships), ...(ownTeam.extraShips || [])]) {
-      if (!ship || !ship.alive) {
-        continue;
+  if (spectating) {
+    drawTeamVisionCircles(state.teams?.A, "#79dcff26");
+    drawTeamVisionCircles(state.teams?.B, "#ff95a026");
+  }
+
+  const routeTeams = spectating
+    ? [
+        ["A", state.teams?.A],
+        ["B", state.teams?.B],
+      ]
+    : [[ownSeat, ownTeam]];
+
+  for (const [seat, team] of routeTeams) {
+    if (team && team.ships) {
+      const selectedKey = spectating ? selectedShipKeyForSeat(state, seat) : app.selectedShipKey;
+      for (const ship of [...Object.values(team.ships), ...(team.extraShips || [])]) {
+        if (!ship || !ship.alive) {
+          continue;
+        }
+        const route = getDisplayRouteForShip(team, ship);
+        if (!route) {
+          continue;
+        }
+        drawRoute(route, ship.key === selectedKey, elapsed);
       }
-      const route = getDisplayRouteForShip(ownTeam, ship);
-      if (!route) {
-        continue;
-      }
-      drawRoute(route, ship.key === app.selectedShipKey, elapsed);
     }
   }
 
@@ -3285,16 +3431,19 @@ function renderFrame() {
 
   if (ownTeam && ownTeam.ships) {
     for (const ship of [...Object.values(ownTeam.ships), ...(ownTeam.extraShips || [])]) {
-      drawShip(ship, ownTeam.color || "#65d9ff", ship.key === app.selectedShipKey, ship.attached, false);
+      const selected = spectating && ownSeat === "A" ? ship.key === selectedA : spectating && ownSeat === "B" ? ship.key === selectedB : ship.key === app.selectedShipKey;
+      drawShip(ship, ownTeam.color || "#65d9ff", selected, ship.attached, false, spectating);
     }
   }
 
   if (enemyTeam && enemyTeam.ships) {
     for (const ship of [...Object.values(enemyTeam.ships), ...(enemyTeam.extraShips || [])]) {
-      if (!visibleEnemyIds.has(ship.id) && state.phase !== "finished") {
+      if (!spectating && !visibleEnemyIds.has(ship.id) && state.phase !== "finished") {
         continue;
       }
-      drawShip(ship, enemyTeam.color || "#ff8692", false, ship.attached, true);
+      const enemySeatValue = enemySeat(ownSeat);
+      const selected = spectating && enemySeatValue === "A" ? ship.key === selectedA : spectating && enemySeatValue === "B" ? ship.key === selectedB : false;
+      drawShip(ship, enemyTeam.color || "#ff8692", selected, ship.attached, true, spectating);
     }
   }
 
@@ -3305,7 +3454,7 @@ function renderFrame() {
   }
   if (enemyTeam && Array.isArray(enemyTeam.scouts)) {
     for (const scout of enemyTeam.scouts) {
-      if (!visibleEnemyIds.has(scout.id) && state.phase !== "finished") {
+      if (!spectating && !visibleEnemyIds.has(scout.id) && state.phase !== "finished") {
         continue;
       }
       drawScout(scout, false);
@@ -3318,7 +3467,7 @@ function renderFrame() {
   }
   if (enemyTeam && Array.isArray(enemyTeam.wingmen)) {
     for (const wingman of enemyTeam.wingmen) {
-      if (!visibleEnemyIds.has(wingman.id) && state.phase !== "finished") {
+      if (!spectating && !visibleEnemyIds.has(wingman.id) && state.phase !== "finished") {
         continue;
       }
       drawWingman(wingman, false);
@@ -3336,11 +3485,18 @@ function renderFrame() {
     }
   }
 
-  drawSelectedFireArc(ownTeam);
-  drawSelectedVisionCircle(ownTeam);
-  drawSubSkillAimHint(ownTeam);
+  if (spectating) {
+    drawSelectedFireArc(state.teams?.A, selectedA);
+    drawSelectedFireArc(state.teams?.B, selectedB);
+    drawSelectedVisionCircle(state.teams?.A, selectedA);
+    drawSelectedVisionCircle(state.teams?.B, selectedB);
+  } else {
+    drawSelectedFireArc(ownTeam);
+    drawSelectedVisionCircle(ownTeam);
+    drawSubSkillAimHint(ownTeam);
+  }
   ctx.restore();
-  drawMinimap(state, ownTeam, enemyTeam, visibleEnemyIds);
+  drawMinimap(state, ownTeam, enemyTeam, spectating ? null : visibleEnemyIds);
 
   rafId = requestAnimationFrame(renderFrame);
 }
@@ -3500,6 +3656,11 @@ function bindUiEvents() {
 
   ui.leaveRoomBtn.addEventListener("click", () => {
     socketSend({ type: "leave_room" });
+    app.room = null;
+    app.seat = null;
+    app.spectating = false;
+    updateRoomSummary();
+    setBattleControlsEnabled(false);
     clearMatchRuntime();
     closeOverlay();
     setRoomHudVisible(true); // 立即切回大厅页
@@ -3510,6 +3671,11 @@ function bindUiEvents() {
       if (app.room) {
         socketSend({ type: "leave_room" });
       }
+      app.room = null;
+      app.seat = null;
+      app.spectating = false;
+      updateRoomSummary();
+      setBattleControlsEnabled(false);
       closeOverlay();
       setRoomHudVisible(true); // 立即切回大厅页
     });
@@ -3628,7 +3794,7 @@ function bindUiEvents() {
     if (app.mobileMode) {
       return;
     }
-    if (!app.room || app.room.status !== "running") {
+    if (!canControlBattle()) {
       return;
     }
     if (app.pendingSubSkillAim) {
@@ -3689,7 +3855,7 @@ function bindUiEvents() {
       return;
     }
     app.pointer = pointerFromEvent(event);
-    if (!app.drag || !app.room || app.room.status !== "running") {
+    if (!app.drag || !canControlBattle()) {
       return;
     }
 
@@ -3761,7 +3927,7 @@ function bindUiEvents() {
 
     const screenPos = screenPointFromEvent(event);
     const pos = pointerFromEvent(event);
-    if (app.mobileMode && app.pendingSubSkillAim && app.room && app.room.status === "running") {
+    if (app.mobileMode && app.pendingSubSkillAim && canControlBattle()) {
       if (handleMinimapTap(screenPos, state, { allowZoneLog: false })) {
         return;
       }
@@ -3780,7 +3946,7 @@ function bindUiEvents() {
       return;
     }
 
-    if (app.mobileMode && app.room && app.room.status === "running") {
+    if (app.mobileMode && canControlBattle()) {
       if (handleMinimapTap(screenPos, state)) {
         return;
       }
@@ -3807,7 +3973,7 @@ function bindUiEvents() {
       return;
     }
 
-    if (app.pendingSubSkillAim && app.room && app.room.status === "running") {
+    if (app.pendingSubSkillAim && canControlBattle()) {
       const ship = getLatestOwnShip(app.pendingSubSkillAim.shipKey);
       const meta = currentSubMeta(ship);
       const seq = sendAction({
@@ -3902,7 +4068,7 @@ function bindUiEvents() {
 
     if (event.code === "Enter") {
       event.preventDefault();
-      if (!state?.zones || !app.room || app.room.status !== "running") {
+      if (!canControlBattle() || !state?.zones) {
         return;
       }
       const zone = state.zones.find((item) => item.id === app.selectedZoneId);
@@ -3929,6 +4095,9 @@ function bindUiEvents() {
 
     if (event.code === "KeyX") {
       event.preventDefault();
+      if (!canControlBattle()) {
+        return;
+      }
       const seq = sendAction({
         type: "launch_scout",
         zoneId: app.selectedZoneId,
@@ -3941,24 +4110,36 @@ function bindUiEvents() {
 
     if (event.code === "KeyZ") {
       event.preventDefault();
+      if (!canControlBattle()) {
+        return;
+      }
       toggleAutoScoutOnline();
       return;
     }
 
     if (event.code === "KeyB") {
       event.preventDefault();
+      if (!canControlBattle()) {
+        return;
+      }
       useEmergencyBrakeOnline();
       return;
     }
 
     if (event.code === "KeyC") {
       event.preventDefault();
+      if (!canControlBattle()) {
+        return;
+      }
       useFlagshipSkillOnline();
       return;
     }
 
     if (event.code === "KeyV") {
       event.preventDefault();
+      if (!canControlBattle()) {
+        return;
+      }
       useSubSkillOnline();
       return;
     }
@@ -3986,7 +4167,7 @@ function bindUiEvents() {
 
 // 房间处于对战中(running)才算「战斗中」——大厅/等待/结算时返回主菜单不拦
 function isBattleInProgress() {
-  return Boolean(app && app.room && app.room.status === "running");
+  return Boolean(app && app.room && app.room.status === "running" && !app.spectating);
 }
 
 // 战斗中误触「返回主菜单」保护:进行中先弹二次确认,确认后才 SPA 跳转。

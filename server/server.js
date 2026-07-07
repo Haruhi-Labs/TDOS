@@ -32,7 +32,9 @@ const MESSAGE_CODES = {
   "你已经在房间中": "already_in_room",
   "房间不存在": "room_not_found",
   "该房间不接受玩家加入": "room_not_joinable",
+  "该房间不接受观战": "room_not_spectatable",
   "房间不在等待状态": "room_not_waiting",
+  "房间不在对战状态": "room_not_running",
   "房间已满或不可加入": "room_full",
   "消息格式错误": "invalid_message_format",
   "未知消息类型": "unknown_message_type",
@@ -115,6 +117,26 @@ function connectedCount(room) {
   return [room.seats.A, room.seats.B].filter(Boolean).length;
 }
 
+function roomSpectators(room) {
+  const list = [];
+  if (!room || !room.spectators) {
+    return list;
+  }
+  for (const playerId of [...room.spectators]) {
+    const player = getPlayerById(playerId);
+    if (player && player.roomId === room.id && player.spectating) {
+      list.push(player);
+    } else {
+      room.spectators.delete(playerId);
+    }
+  }
+  return list;
+}
+
+function spectatorCount(room) {
+  return roomSpectators(room).length;
+}
+
 function seatPlayerRows(room) {
   const rows = [];
   const pA = getPlayerById(room.seats.A);
@@ -151,7 +173,7 @@ function seatPlayerRows(room) {
 
 function buildRoomStatePayload(room, viewerId = null) {
   const viewer = viewerId ? getPlayerById(viewerId) : null;
-  const isMember = viewer && viewer.roomId === room.id;
+  const isMember = viewer && viewer.roomId === room.id && !viewer.spectating;
   return {
     type: "room_state",
     room: {
@@ -161,12 +183,14 @@ function buildRoomStatePayload(room, viewerId = null) {
       code: room.visibility === "private" && isMember ? room.code : null,
       status: room.status,
       players: seatPlayerRows(room),
+      spectatorCount: spectatorCount(room),
       createdAt: room.createdAt,
     },
     self: viewer
       ? {
           playerId: viewer.id,
           seat: viewer.seat,
+          spectating: Boolean(viewer.spectating),
           loadout: viewer.loadout,
         }
       : null,
@@ -187,6 +211,7 @@ function buildLobbyPayload() {
       status: room.status,
       count: connectedCount(room),
       capacity: ROOM_CAPACITY,
+      spectatorCount: spectatorCount(room),
       hostName: host ? host.name : "未知",
       createdAt: room.createdAt,
     });
@@ -209,21 +234,32 @@ function broadcastLobby() {
 }
 
 function sendRoomStateToMembers(room) {
+  const sent = new Set();
   const pA = getPlayerById(room.seats.A);
   const pB = getPlayerById(room.seats.B);
   if (pA) {
+    sent.add(pA.id);
     sendToPlayer(pA, buildRoomStatePayload(room, pA.id));
   }
   if (room.mode === "pvp" && pB) {
+    sent.add(pB.id);
     sendToPlayer(pB, buildRoomStatePayload(room, pB.id));
+  }
+  for (const spectator of roomSpectators(room)) {
+    if (sent.has(spectator.id)) {
+      continue;
+    }
+    sendToPlayer(spectator, buildRoomStatePayload(room, spectator.id));
   }
 }
 
 function assignPlayerToRoom(player, room, seat) {
   player.roomId = room.id;
   player.seat = seat;
+  player.spectating = false;
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
+  player.selectedShipKey = "main";
   room.seats[seat] = player.id;
 }
 
@@ -273,13 +309,22 @@ function closeRoom(roomId, reason = "房间已关闭") {
 
   const pA = getPlayerById(room.seats.A);
   const pB = getPlayerById(room.seats.B);
+  const recipients = new Map();
 
   for (const p of [pA, pB]) {
     if (!p) {
       continue;
     }
+    recipients.set(p.id, p);
+  }
+  for (const p of roomSpectators(room)) {
+    recipients.set(p.id, p);
+  }
+
+  for (const p of recipients.values()) {
     p.roomId = null;
     p.seat = null;
+    p.spectating = false;
     p.inputQueue = [];
     p.lastProcessedSeq = 0;
     sendToPlayer(p, {
@@ -303,14 +348,29 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
   if (!room) {
     player.roomId = null;
     player.seat = null;
+    player.spectating = false;
     player.inputQueue = [];
     player.lastProcessedSeq = 0;
     return;
   }
 
-  const leavingSeat = player.seat;
+  if (player.spectating) {
+    if (room.spectators) {
+      room.spectators.delete(player.id);
+    }
+    player.roomId = null;
+    player.seat = null;
+    player.spectating = false;
+    player.inputQueue = [];
+    player.lastProcessedSeq = 0;
+    sendRoomStateToMembers(room);
+    broadcastLobby();
+    return;
+  }
+
   player.roomId = null;
   player.seat = null;
+  player.spectating = false;
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
 
@@ -322,21 +382,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
   }
 
   if (room.status === "running") {
-    const remainingSeat = leavingSeat === "A" ? "B" : "A";
-    const remaining = getPlayerById(room.seats[remainingSeat]);
-    if (remaining) {
-      remaining.roomId = null;
-      remaining.seat = null;
-      remaining.inputQueue = [];
-      remaining.lastProcessedSeq = 0;
-      sendToPlayer(remaining, {
-        type: "room_closed",
-        reasonCode: messageCode(reasonForOthers, "opponent_left"),
-        reason: reasonForOthers,
-      });
-    }
-    rooms.delete(oldRoomId);
-    broadcastLobby();
+    closeRoom(oldRoomId, reasonForOthers);
     return;
   }
 
@@ -382,6 +428,7 @@ function createRoom(player, visibility, mode) {
     snapshotAccumulator: 0,
     snapshotSeq: 0,
     finishedAt: null,
+    spectators: new Set(),
     // AI 房:每房生成一次随机阵容(主舰不含长门/鹤屋),房间展示与开局共用同一份
     aiLoadout: safeMode === "ai" ? randomAiLoadout() : null,
   };
@@ -418,6 +465,36 @@ function joinRoom(player, room) {
 
   assignPlayerToRoom(player, room, "B");
   startMatch(room);
+  broadcastLobby();
+  return { ok: true };
+}
+
+function spectateRoom(player, room) {
+  if (!room) {
+    return { ok: false, message: "房间不存在" };
+  }
+  if (player.roomId) {
+    return { ok: false, message: "你已经在房间中" };
+  }
+  if (room.visibility !== "public") {
+    return { ok: false, message: "该房间不接受观战" };
+  }
+  if (room.status !== "running" || !room.match) {
+    return { ok: false, message: "房间不在对战状态" };
+  }
+
+  player.roomId = room.id;
+  player.seat = null;
+  player.spectating = true;
+  player.inputQueue = [];
+  player.lastProcessedSeq = 0;
+  player.selectedShipKey = "main";
+  if (!room.spectators) {
+    room.spectators = new Set();
+  }
+  room.spectators.add(player.id);
+
+  sendRoomStateToMembers(room);
   broadcastLobby();
   return { ok: true };
 }
@@ -479,23 +556,48 @@ function applyQueuedInputs(room) {
   }
 }
 
-function sendSnapshot(room) {
+function validShipKey(shipKey) {
+  return shipKey === "main" || shipKey === "sub1" || shipKey === "sub2" ? shipKey : "main";
+}
+
+function selectedShipsForRoom(room) {
+  const pA = getPlayerById(room.seats.A);
+  const pB = getPlayerById(room.seats.B);
+  return {
+    A: validShipKey(pA ? pA.selectedShipKey : "main"),
+    B: validShipKey(pB ? pB.selectedShipKey : "main"),
+  };
+}
+
+function buildSnapshotPayloadBase(room, advanceSeq = true) {
   if (!room.match) {
-    return;
+    return null;
   }
 
-  room.snapshotSeq = (room.snapshotSeq || 0) + 1;
+  if (advanceSeq) {
+    room.snapshotSeq = (room.snapshotSeq || 0) + 1;
+  }
   const serverTime = Date.now();
-  const state = room.match.serializeState();
-  const payloadBase = {
+  const state = {
+    ...room.match.serializeState(),
+    selectedShips: selectedShipsForRoom(room),
+  };
+  return {
     type: "snapshot",
     roomId: room.id,
-    snapshotSeq: room.snapshotSeq,
+    snapshotSeq: room.snapshotSeq || 0,
     tick: room.match.tick,
     simTime: room.match.elapsed,
     serverTime,
     state,
   };
+}
+
+function sendSnapshot(room) {
+  const payloadBase = buildSnapshotPayloadBase(room, true);
+  if (!payloadBase) {
+    return;
+  }
 
   const pA = getPlayerById(room.seats.A);
   const pB = getPlayerById(room.seats.B);
@@ -512,6 +614,13 @@ function sendSnapshot(room) {
       ackSeq: pB.lastProcessedSeq,
     });
   }
+  for (const spectator of roomSpectators(room)) {
+    sendToPlayer(spectator, {
+      ...payloadBase,
+      ackSeq: 0,
+      spectating: true,
+    });
+  }
 }
 
 const wss = new WebSocketServer({ port: PORT });
@@ -525,8 +634,10 @@ wss.on("connection", (ws) => {
     ws,
     roomId: null,
     seat: null,
+    spectating: false,
     inputQueue: [],
     lastProcessedSeq: 0,
+    selectedShipKey: "main",
   };
 
   players.set(playerId, player);
@@ -607,6 +718,16 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (type === "spectate_room") {
+      const roomId = String(data.roomId || "");
+      const room = rooms.get(roomId);
+      const result = spectateRoom(player, room);
+      if (!result.ok) {
+        sendError(player, result.message);
+      }
+      return;
+    }
+
     if (type === "join_private") {
       const code = String(data.code || "").replace(/\D/g, "").slice(0, 6);
       const room = [...rooms.values()].find((item) => item.visibility === "private" && item.code === code) || null;
@@ -620,6 +741,13 @@ wss.on("connection", (ws) => {
     if (type === "leave_room") {
       leaveRoom(player);
       sendToPlayer(player, buildLobbyPayload());
+      return;
+    }
+
+    if (type === "select_ship") {
+      if (player.roomId && player.seat && !player.spectating) {
+        player.selectedShipKey = validShipKey(data.shipKey);
+      }
       return;
     }
 

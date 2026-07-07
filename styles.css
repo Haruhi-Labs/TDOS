@@ -1277,6 +1277,11 @@ button.toggle-active {
   letter-spacing: 0.03em;
 }
 .room-item-meta { color: var(--text-soft); font-size: 0.82rem; line-height: 1.5; }
+.room-item-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
 .room-item-empty {
   color: var(--text-muted);
   font-family: var(--font-italic);
@@ -1519,6 +1524,7 @@ button.toggle-active {
   .battle-panel { height: auto; max-height: none; overflow: visible; }
   .game-wrap { order: 1; padding-bottom: 198px; }
   .join-code-wrap { grid-template-columns: 1fr; }
+  .room-item-actions { grid-template-columns: 1fr; }
   .room-hud { position: static; width: 100%; max-height: none; margin-top: 0; }
   .mobile-battle-hud { display: grid; }
   h1 { font-size: 1.25rem; letter-spacing: 0.1em; }
