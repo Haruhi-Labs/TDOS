@@ -60,7 +60,7 @@ function clamp(value, min, max) {
 function createRoomId() {
   let id = "";
   do {
-    id = Math.random().toString(36).slice(2, 8);
+    id = String(Math.floor(Math.random() * 900000 + 100000));
   } while (rooms.has(id));
   return id;
 }
