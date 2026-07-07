@@ -8,15 +8,15 @@ import { getLocale, t } from "./i18n.js";
 
 const CREDITS_ZH = [
   { role: "画师", name: "橙海" },
-  { role: "设计 · 开发", name: "春日しゅぎ" },
-  { role: "测试", name: "syd · 可能是寂寞" },
+  { role: "开发", name: "春日しゅぎ" },
+  { role: "设计", name: ["春日しゅぎ", "syd", "可能是寂寞"] },
   { role: "出品", name: ["凉宫春日应援团超能力者组", "凉宫春日应援团开发组"] },
 ];
 
 const CREDITS_EN = [
   { role: "Artist", name: "cheng hai" },
-  { role: "Design · Development", name: { label: "Haruhiyuki", href: "https://github.com/Haruhiyuki" } },
-  { role: "Testing", name: "syd · Maybe Lonely" },
+  { role: "Development", name: { label: "Haruhiyuki", href: "https://github.com/Haruhiyuki" } },
+  { role: "Design", name: [{ label: "Haruhiyuki", href: "https://github.com/Haruhiyuki" }, "syd", "Maybe Lonely"] },
   {
     role: "Production",
     name: [
