@@ -699,8 +699,33 @@ function closeOverlay() {
   app.gameOverLogged = false;
 }
 
+function escapeHtml(value) {
+  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    "\"": "&quot;",
+    "'": "&#39;",
+  })[ch]);
+}
+
+function resultPlayerId(row) {
+  if (!row) {
+    return "-";
+  }
+  if (row.isBot) {
+    return "AI";
+  }
+  const raw = String(row.playerId || "").trim();
+  return raw ? raw.slice(0, 8) : "-";
+}
+
+function resultWinnerText(winnerSeat) {
+  return winnerSeat ? fleetSideLabel(winnerSeat) : t("平局");
+}
+
 // 一侧阵容(主舰高亮 + 两副舰):头像取阵营立绘;在线 own=蓝队、enemy=红队,与战场着色一致
-function onlineResultSideHTML(loadout, faction, sideLabel, sideClass) {
+function onlineResultSideHTML(loadout, faction, sideLabel, sideClass, sideId = "") {
   const base = import.meta.env.BASE_URL;
   const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
   const cards = ["main", "sub1", "sub2"]
@@ -712,15 +737,16 @@ function onlineResultSideHTML(loadout, faction, sideLabel, sideClass) {
       return (
         `<div class="rl-card${slot === "main" ? " rl-main" : ""}" style="--i:${i}">` +
         `<span class="rl-portrait"><img src="${src}" alt="" loading="lazy" draggable="false"></span>` +
-        `<span class="rl-role">${role}</span>` +
-        `<span class="rl-name">${name}</span>` +
+        `<span class="rl-role">${escapeHtml(role)}</span>` +
+        `<span class="rl-name">${escapeHtml(name)}</span>` +
         `</div>`
       );
     })
     .join("");
   return (
     `<div class="result-side ${sideClass}">` +
-    `<div class="result-side-label">${sideLabel}</div>` +
+    `<div class="result-side-label">${escapeHtml(sideLabel)}</div>` +
+    `<div class="result-side-id">${t("ID：{id}", { id: escapeHtml(sideId || "-") })}</div>` +
     `<div class="rl-cards">${cards}</div>` +
     `</div>`
   );
@@ -739,6 +765,7 @@ function showMatchResultOverlay(winnerSeat) {
   const card = document.getElementById("onlineResultCard");
   const eyebrowEl = document.getElementById("onlineResultEyebrow");
   const subEl = document.getElementById("onlineResultSub");
+  const metaEl = document.getElementById("onlineResultMeta");
   const versusEl = document.getElementById("onlineResultVersus");
 
   let cls, eyebrow, title, sub, logLine;
@@ -767,24 +794,29 @@ function showMatchResultOverlay(winnerSeat) {
   if (eyebrowEl) eyebrowEl.textContent = eyebrow;
   ui.onlineOverlayTitle.textContent = title;
   if (subEl) subEl.textContent = sub;
+  if (metaEl) {
+    const roomId = app.room ? app.room.roomId : "-";
+    const winnerText = resultWinnerText(winnerSeat);
+    metaEl.innerHTML =
+      `<span class="result-diff-label">${t("房间ID")}</span>` +
+      `<span class="result-diff-val rd-normal">${escapeHtml(roomId)}</span>` +
+      `<span class="result-diff-label">${t("胜利方")}</span>` +
+      `<span class="result-diff-val ${winnerSeat ? "rd-normal" : "rd-hard"}">${escapeHtml(winnerText)}</span>`;
+  }
 
-  // 双方阵容:昵称取房间席位(AI 显示为机器人名);own=蓝队立绘、enemy=红队立绘
+  // 双方阵容固定按 A/B 展示，保证对战双方与观战者看到同一张结算卡。
   if (versusEl) {
     const players = (app.room && app.room.players) || [];
-    const ownRow = app.spectating ? players.find((p) => p.seat === "A") : players.find((p) => p.seat === app.seat);
-    const enemyRow = app.spectating ? players.find((p) => p.seat === "B") : players.find((p) => p.seat && p.seat !== app.seat);
-    const ownLoadout = (ownRow && ownRow.loadout) || app.playerLoadout;
-    const enemyLoadout = enemyRow && enemyRow.loadout;
-    const ownName = app.spectating
-      ? (ownRow && localizedServerName(ownRow.name, ownRow.isBot)) || fleetSideLabel("A")
-      : (ownRow && localizedServerName(ownRow.name, ownRow.isBot)) || t("我方");
-    const enemyName = app.spectating
-      ? (enemyRow && localizedServerName(enemyRow.name, enemyRow.isBot)) || fleetSideLabel("B")
-      : (enemyRow && localizedServerName(enemyRow.name, enemyRow.isBot)) || t("对方");
+    const rowA = players.find((p) => p.seat === "A");
+    const rowB = players.find((p) => p.seat === "B");
+    const loadoutA = (rowA && rowA.loadout) || app.playerLoadout;
+    const loadoutB = rowB && rowB.loadout;
+    const nameA = (rowA && localizedServerName(rowA.name, rowA.isBot)) || fleetSideLabel("A");
+    const nameB = (rowB && localizedServerName(rowB.name, rowB.isBot)) || fleetSideLabel("B");
     versusEl.innerHTML =
-      onlineResultSideHTML(ownLoadout, "blue", ownName, "result-side-player") +
+      onlineResultSideHTML(loadoutA, "blue", nameA, "result-side-player", resultPlayerId(rowA)) +
       `<div class="result-vs"><span>VS</span></div>` +
-      onlineResultSideHTML(enemyLoadout, "red", enemyName, "result-side-enemy");
+      onlineResultSideHTML(loadoutB, "red", nameB, "result-side-enemy", resultPlayerId(rowB));
   }
 
   // 重新触发入场动画
@@ -1116,11 +1148,12 @@ function applyRoomState(message) {
   const roomStatus = app.room ? app.room.status : null;
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
+  const showBattleView = canBattle || isFinished;
   setBattleControlsEnabled(Boolean(canBattle && !app.spectating));
-  setRoomHudVisible(!canBattle);
+  setRoomHudVisible(!showBattleView);
   syncResponsiveMode();
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
-  if (canBattle) requestAnimationFrame(resizeCanvas);
+  if (showBattleView) requestAnimationFrame(resizeCanvas);
   updateShipSwitchLabels(app.playerLoadout);
   const loadoutLocked = Boolean(app.room && app.room.status === "running");
   for (const element of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role, ui.applyLoadoutOnlineBtn]) {
@@ -1140,8 +1173,11 @@ function applyRoomState(message) {
   }
 
   if (isFinished) {
+    if (app.room && app.room.winnerSeat) {
+      app.lastWinnerSeat = app.room.winnerSeat;
+    }
     const latestWinner = app.latestSnapshot && app.latestSnapshot.state ? app.latestSnapshot.state.winnerSeat : null;
-    showMatchResultOverlay(latestWinner || app.lastWinnerSeat || null);
+    showMatchResultOverlay(latestWinner || app.lastWinnerSeat || (app.room ? app.room.winnerSeat : null) || null);
   } else if (!canBattle) {
     clearMatchRuntime();
     closeOverlay();
@@ -4436,11 +4472,11 @@ function onlineTemplate() {
                 <span id="onlineResultEyebrow" class="result-eyebrow"></span>
                 <h2 id="onlineOverlayTitle" class="result-title"></h2>
                 <p id="onlineResultSub" class="result-sub"></p>
+                <div id="onlineResultMeta" class="result-diff result-match-meta"></div>
               </div>
               <div id="onlineResultVersus" class="result-versus"></div>
               <div class="overlay-actions">
                 <button id="onlineOverlayActionBtn" type="button">${t("返回大厅")}</button>
-                <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>
               </div>
             </div>
           </div>

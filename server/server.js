@@ -17,7 +17,6 @@ const PORT = Number(process.env.PORT || 21246);
 const NETWORK_BUILD = "sync-migration-20260225-03";
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
-const MATCH_END_CLOSE_DELAY_MS = 6000;
 const MAX_CATCHUP_STEPS = 6;
 const LOOP_IDLE_MS = 2;
 
@@ -109,10 +108,6 @@ function getPlayerById(playerId) {
   return players.get(playerId) || null;
 }
 
-function seatLabel(seat) {
-  return seat === "A" ? "左翼舰队" : "右翼舰队";
-}
-
 function connectedCount(room) {
   return [room.seats.A, room.seats.B].filter(Boolean).length;
 }
@@ -171,9 +166,29 @@ function seatPlayerRows(room) {
   return rows;
 }
 
+function buildMatchResult(room) {
+  return {
+    roomId: room.id,
+    winnerSeat: room.match ? room.match.winnerSeat : null,
+    finishedAt: Date.now(),
+    players: seatPlayerRows(room).map((row) => ({
+      ...row,
+      loadout: row.loadout ? cloneLoadout(row.loadout) : null,
+    })),
+  };
+}
+
+function displayPlayerRows(room) {
+  if (room && room.result && Array.isArray(room.result.players)) {
+    return room.result.players;
+  }
+  return seatPlayerRows(room);
+}
+
 function buildRoomStatePayload(room, viewerId = null) {
   const viewer = viewerId ? getPlayerById(viewerId) : null;
   const isMember = viewer && viewer.roomId === room.id && !viewer.spectating;
+  const result = room.result || null;
   return {
     type: "room_state",
     room: {
@@ -182,8 +197,10 @@ function buildRoomStatePayload(room, viewerId = null) {
       visibility: room.visibility,
       code: room.visibility === "private" && isMember ? room.code : null,
       status: room.status,
-      players: seatPlayerRows(room),
+      players: displayPlayerRows(room),
       spectatorCount: spectatorCount(room),
+      winnerSeat: result ? result.winnerSeat : room.match ? room.match.winnerSeat : null,
+      finishedAt: result ? result.finishedAt : room.finishedAt,
       createdAt: room.createdAt,
     },
     self: viewer
@@ -204,6 +221,9 @@ function buildLobbyPayload() {
       continue;
     }
     const host = getPlayerById(room.seats.A);
+    const resultHost = room.result && Array.isArray(room.result.players)
+      ? room.result.players.find((row) => row.seat === "A")
+      : null;
     list.push({
       roomId: room.id,
       mode: room.mode,
@@ -212,7 +232,7 @@ function buildLobbyPayload() {
       count: connectedCount(room),
       capacity: ROOM_CAPACITY,
       spectatorCount: spectatorCount(room),
-      hostName: host ? host.name : "未知",
+      hostName: host ? host.name : resultHost ? resultHost.name : "未知",
       createdAt: room.createdAt,
     });
   }
@@ -288,6 +308,7 @@ function startMatch(room) {
   room.snapshotAccumulator = 0;
   room.snapshotSeq = 0;
   room.finishedAt = null;
+  room.result = null;
 
   for (const seat of ["A", "B"]) {
     const p = getPlayerById(room.seats[seat]);
@@ -363,6 +384,11 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
     player.spectating = false;
     player.inputQueue = [];
     player.lastProcessedSeq = 0;
+    if (room.status === "finished" && connectedCount(room) === 0 && spectatorCount(room) === 0) {
+      rooms.delete(oldRoomId);
+      broadcastLobby();
+      return;
+    }
     sendRoomStateToMembers(room);
     broadcastLobby();
     return;
@@ -383,6 +409,17 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
 
   if (room.status === "running") {
     closeRoom(oldRoomId, reasonForOthers);
+    return;
+  }
+
+  if (room.status === "finished") {
+    if (connectedCount(room) === 0 && spectatorCount(room) === 0) {
+      rooms.delete(oldRoomId);
+      broadcastLobby();
+      return;
+    }
+    sendRoomStateToMembers(room);
+    broadcastLobby();
     return;
   }
 
@@ -428,6 +465,7 @@ function createRoom(player, visibility, mode) {
     snapshotAccumulator: 0,
     snapshotSeq: 0,
     finishedAt: null,
+    result: null,
     spectators: new Set(),
     // AI 房:每房生成一次随机阵容(主舰不含长门/鹤屋),房间展示与开局共用同一份
     aiLoadout: safeMode === "ai" ? randomAiLoadout() : null,
@@ -799,15 +837,10 @@ function tickRooms() {
       if (room.match.phase === "finished" && room.status !== "finished") {
         room.status = "finished";
         room.finishedAt = Date.now();
+        room.result = buildMatchResult(room);
+        sendSnapshot(room);
         sendRoomStateToMembers(room);
-      }
-    }
-
-    if (room.status === "finished" && room.finishedAt) {
-      if (Date.now() - room.finishedAt >= MATCH_END_CLOSE_DELAY_MS) {
-        const winner = room.match ? room.match.winnerSeat : null;
-        const reason = winner ? `对局结束，${seatLabel(winner)}获胜，已返回大厅` : "对局结束，已返回大厅";
-        closeRoom(room.id, reason);
+        broadcastLobby();
       }
     }
   }
