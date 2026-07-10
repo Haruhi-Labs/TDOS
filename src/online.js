@@ -23,6 +23,12 @@ import { createCharacterSelect } from "./character-select.js";
 import { startStarfield } from "./starfield.js";
 import { showConfirm } from "./confirm-dialog.js";
 import {
+  createShipDestructionEffects,
+  drawShipDestructionEffects,
+  resetShipDestructionEffects,
+  syncShipDestructionEffects,
+} from "./ship-destruction-effects.js";
+import {
   characterShortName,
   formatClockTime,
   localizeFloatingText,
@@ -201,6 +207,7 @@ function initApp() {
   lastRenderState: null,
   lastMatchPhase: null,
   pendingSubSkillAim: null,
+  destructionEffects: createShipDestructionEffects(),
   lastWinnerSeat: null,
   gameOverLogged: false,
   connectAttemptId: 0,
@@ -685,6 +692,7 @@ function clearMatchRuntime() {
   app.cameraManualUntil = 0;
   app.ackSeq = 0;
   app.pendingSubSkillAim = null;
+  resetShipDestructionEffects(app.destructionEffects);
   app.lastWinnerSeat = null;
   app.gameOverLogged = false;
   if (app.throttleSendTimer) {
@@ -3416,6 +3424,20 @@ function renderFrame() {
   const selectedB = selectedShipKeyForSeat(state, "B");
   const visibleEnemyIds = new Set((ownTeam && ownTeam.visibleEnemyIds) || []);
 
+  syncShipDestructionEffects(app.destructionEffects, [
+    {
+      seat: ownSeat,
+      color: ownTeam?.color || "#65d9ff",
+      ships: ownTeam?.ships ? [...Object.values(ownTeam.ships), ...(ownTeam.extraShips || [])] : [],
+    },
+    {
+      seat: enemySeat(ownSeat),
+      color: enemyTeam?.color || "#ff8692",
+      ships: enemyTeam?.ships ? [...Object.values(enemyTeam.ships), ...(enemyTeam.extraShips || [])] : [],
+      isVisible: (ship) => spectating || state.phase === "finished" || visibleEnemyIds.has(ship.id),
+    },
+  ]);
+
   if (spectating) {
     drawTeamVisionCircles(state.teams?.A, "#79dcff26");
     drawTeamVisionCircles(state.teams?.B, "#ff95a026");
@@ -3520,6 +3542,8 @@ function renderFrame() {
       drawFloatingText(label);
     }
   }
+
+  drawShipDestructionEffects(ctx, app.destructionEffects);
 
   if (spectating) {
     drawSelectedFireArc(state.teams?.A, selectedA);

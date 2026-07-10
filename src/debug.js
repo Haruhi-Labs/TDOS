@@ -14,6 +14,12 @@ import {
 
 import { getLoadout } from "./profile.js";
 import {
+  createShipDestructionEffects,
+  drawShipDestructionEffects,
+  resetShipDestructionEffects,
+  syncShipDestructionEffects,
+} from "./ship-destruction-effects.js";
+import {
   characterShortName,
   localizeFloatingText,
   seatLabel as localizedSeatLabel,
@@ -107,6 +113,7 @@ function initApp() {
   paused: false,
   speedScale: 1,
   gameOverLogged: false,
+  destructionEffects: createShipDestructionEffects(),
   lastTime: performance.now(),
   mobileMode: false,
   cameraCenterX: LOGICAL * 0.5,
@@ -618,6 +625,7 @@ function resetMatch(logMessage = true) {
   app.state = app.sim.serializeState();
   app.paused = false;
   app.gameOverLogged = false;
+  resetShipDestructionEffects(app.destructionEffects);
   app.lastTime = performance.now();
   app.selected.seat = "A";
   app.selected.shipId = app.state.teams.A.ships.main.id;
@@ -1579,6 +1587,19 @@ function render() {
   drawBackground(app.state.elapsed || 0);
   drawZones();
 
+  syncShipDestructionEffects(app.destructionEffects, [
+    {
+      seat: "A",
+      color: teamState("A")?.color || "#65d9ff",
+      ships: shipCollection(teamState("A")),
+    },
+    {
+      seat: "B",
+      color: teamState("B")?.color || "#ff8692",
+      ships: shipCollection(teamState("B")),
+    },
+  ]);
+
   for (const seat of ["A", "B"]) {
     const team = teamState(seat);
     if (!team) {
@@ -1640,6 +1661,8 @@ function render() {
       drawFloatingText(label);
     }
   }
+
+  drawShipDestructionEffects(ctx, app.destructionEffects);
 
   drawSelectedFireArc();
   drawSelectedVisionCircle();

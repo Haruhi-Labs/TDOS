@@ -37,6 +37,12 @@ import {
 import { tutorial } from "./tutorial.js";
 import { showConfirm } from "./confirm-dialog.js";
 import {
+  createShipDestructionEffects,
+  drawShipDestructionEffects,
+  resetShipDestructionEffects,
+  syncShipDestructionEffects,
+} from "./ship-destruction-effects.js";
+import {
   characterShortName,
   localizeFloatingText,
   shipCharacterName,
@@ -143,6 +149,7 @@ function initApp() {
   drag: null,
   suppressMapClick: false,
   pendingSubSkillAim: null,
+  destructionEffects: createShipDestructionEffects(),
   lastTime: performance.now(),
   gameOverLogged: false,
   tickRunning: false,
@@ -587,6 +594,7 @@ function resetMatch(logMessage = true) {
   app.drag = null;
   app.suppressMapClick = false;
   app.pendingSubSkillAim = null;
+  resetShipDestructionEffects(app.destructionEffects);
   app.gameOverLogged = false;
   app.paused = false;
   app.lastTime = performance.now();
@@ -1896,6 +1904,20 @@ function render() {
   const enemy = enemyTeamState();
   const visibleEnemyIds = new Set((own && own.visibleEnemyIds) || []);
 
+  syncShipDestructionEffects(app.destructionEffects, [
+    {
+      seat: "A",
+      color: own?.color || "#65d9ff",
+      ships: own?.ships ? [...Object.values(own.ships), ...(own.extraShips || [])] : [],
+    },
+    {
+      seat: "B",
+      color: enemy?.color || "#ff8692",
+      ships: enemy?.ships ? [...Object.values(enemy.ships), ...(enemy.extraShips || [])] : [],
+      isVisible: (ship) => app.state.phase === "finished" || visibleEnemyIds.has(ship.id),
+    },
+  ]);
+
   if (own && own.ships) {
     for (const ship of Object.values(own.ships)) {
       if (!ship || !ship.alive || !ship.route) {
@@ -1971,6 +1993,8 @@ function render() {
       drawFloatingText(label);
     }
   }
+
+  drawShipDestructionEffects(ctx, app.destructionEffects);
 
   drawSelectedFireArc();
   drawSelectedVisionCircle();
