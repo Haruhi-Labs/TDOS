@@ -764,7 +764,6 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 }
 
 #gameCanvas,
-#onlineCanvas,
 #debugCanvas {
   width: min(100%, calc(100vh - 28px));
   height: auto;
@@ -1565,8 +1564,7 @@ button.toggle-active {
     gap: 8px;
   }
   /* 地图为正方形，按视口高度封顶，给底部操作台留出固定空间 */
-  .battle-shell #gameCanvas,
-  .battle-shell #onlineCanvas {
+  .battle-shell #gameCanvas {
     flex: 0 0 auto;
     width: min(100%, calc(100dvh - 352px));
   }
@@ -1595,7 +1593,7 @@ button.toggle-active {
   /* 在线版专属(单人不受影响):地图占满宽度尽量大,操作台拿剩余空间、必要时内部滚动,
      修复在线移动端地图被压成小块。用 .online-shell.battle-shell 提高特异性,只命中在线战斗页。 */
   .online-shell.battle-shell .game-wrap { justify-content: flex-start; }
-  .online-shell.battle-shell #onlineCanvas {
+  .online-shell.battle-shell #gameCanvas {
     flex: 0 0 auto;
     width: 100%;
     max-width: calc(100dvh - 196px);
@@ -1617,8 +1615,7 @@ button.toggle-active {
     justify-content: center;
     gap: 8px;
   }
-  .battle-shell #gameCanvas,
-  .battle-shell #onlineCanvas {
+  .battle-shell #gameCanvas {
     width: auto;
     height: auto;
     max-width: 100%;

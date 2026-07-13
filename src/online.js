@@ -34,6 +34,15 @@ import {
 } from "./battle/camera.js";
 import { routeHandleAtPoint, shipAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
+  currentFlagshipMeta,
+  currentSubMeta,
+  energyPercentForShip,
+  renderFleetRoster,
+  syncMobileHud,
+  updateSkillButtons,
+} from "./battle/hud.js";
+import { battleViewTemplate } from "./battle/template.js";
+import {
   drawBackground,
   drawBattleWorld,
   drawMinimap,
@@ -64,7 +73,7 @@ function addWin(type, handler) {
 }
 
 function cacheDom() {
-  canvas = document.getElementById("onlineCanvas");
+  canvas = document.getElementById("gameCanvas");
   ctx = canvas.getContext("2d");
   ui = {
   serverTargetValue: document.getElementById("serverTargetValue"),
@@ -87,25 +96,25 @@ function cacheDom() {
   leaveRoomBtn: document.getElementById("leaveRoomBtn"),
   battleControls: document.getElementById("battleControls"),
   seatValue: document.getElementById("seatValue"),
-  hullValue: document.getElementById("hullValueOnline"),
-  energyValue: document.getElementById("energyValueOnline"),
-  splitValue: document.getElementById("splitValueOnline"),
-  zoneValue: document.getElementById("zoneValueOnline"),
+  hullValue: document.getElementById("hullValue"),
+  energyValue: document.getElementById("energyValue"),
+  splitValue: document.getElementById("splitValue"),
+  zoneValue: document.getElementById("zoneValue"),
   selectedValue: document.getElementById("onlineSelectedValue"),
   shipSelect: document.getElementById("onlineShipSelect"),
-  shipSwitchButtons: Array.from(document.querySelectorAll("#onlineShipQuickSwitch .ship-switch-btn")),
-  powerSlider: document.getElementById("onlinePowerSlider"),
-  powerValue: document.getElementById("onlinePowerValue"),
-  onlineZoomOutBtn: document.getElementById("onlineZoomOutBtn"),
-  onlineZoomInBtn: document.getElementById("onlineZoomInBtn"),
-  onlineZoomValue: document.getElementById("onlineZoomValue"),
-  splitOneBtn: document.getElementById("onlineSplitOneBtn"),
-  splitTwoBtn: document.getElementById("onlineSplitTwoBtn"),
-  scoutBtn: document.getElementById("onlineScoutBtn"),
-  autoScoutBtn: document.getElementById("onlineAutoScoutBtn"),
-  brakeBtn: document.getElementById("onlineBrakeBtn"),
-  flagshipBtn: document.getElementById("onlineFlagshipBtn"),
-  subSkillBtn: document.getElementById("onlineSubSkillBtn"),
+  shipSwitchButtons: Array.from(document.querySelectorAll("#shipQuickSwitch .ship-switch-btn")),
+  powerSlider: document.getElementById("powerSlider"),
+  powerValue: document.getElementById("powerValue"),
+  zoomOutBtn: document.getElementById("zoomOutBtn"),
+  zoomInBtn: document.getElementById("zoomInBtn"),
+  zoomValue: document.getElementById("zoomValue"),
+  splitOneBtn: document.getElementById("splitOneBtn"),
+  splitTwoBtn: document.getElementById("splitTwoBtn"),
+  scoutBtn: document.getElementById("scoutBtn"),
+  autoScoutBtn: document.getElementById("autoScoutBtn"),
+  brakeBtn: document.getElementById("brakeBtn"),
+  flagshipBtn: document.getElementById("flagshipBtn"),
+  subSkillBtn: document.getElementById("subSkillBtn"),
   onlineMainRole: document.getElementById("onlineMainRole"),
   onlineSub1Role: document.getElementById("onlineSub1Role"),
   onlineSub2Role: document.getElementById("onlineSub2Role"),
@@ -124,26 +133,26 @@ function cacheDom() {
     enFill: row.querySelector(".fleet-fill-energy"),
     enPct: row.querySelector(".fleet-pct-energy"),
   })),
-  onlineOverlay: document.getElementById("onlineOverlay"),
-  onlineOverlayTitle: document.getElementById("onlineOverlayTitle"),
-  onlineOverlayActionBtn: document.getElementById("onlineOverlayActionBtn"),
+  overlay: document.getElementById("overlay"),
+  overlayTitle: document.getElementById("overlayTitle"),
+  overlayActionBtn: document.getElementById("overlayActionBtn"),
   lobbyView: document.getElementById("lobbyView"),
   battleView: document.getElementById("battleView"),
-  onlineMobileBattleHud: document.getElementById("onlineMobileBattleHud"),
-  onlineMobileBattleSummary: document.getElementById("onlineMobileBattleSummary"),
-  onlineMobileBattleHint: document.getElementById("onlineMobileBattleHint"),
-  onlineMobileCenterBtn: document.getElementById("onlineMobileCenterBtn"),
-  onlineMobileZoomOutBtn: document.getElementById("onlineMobileZoomOutBtn"),
-  onlineMobileZoomInBtn: document.getElementById("onlineMobileZoomInBtn"),
-  onlineMobileShipButtons: Array.from(document.querySelectorAll("#onlineMobileShipSwitch .mobile-ship-btn")),
-  onlineMobileSplitOneBtn: document.getElementById("onlineMobileSplitOneBtn"),
-  onlineMobileSplitTwoBtn: document.getElementById("onlineMobileSplitTwoBtn"),
-  onlineMobileScoutBtn: document.getElementById("onlineMobileScoutBtn"),
-  onlineMobileAutoScoutBtn: document.getElementById("onlineMobileAutoScoutBtn"),
-  onlineMobileBrakeBtn: document.getElementById("onlineMobileBrakeBtn"),
-  onlineMobileFlagshipBtn: document.getElementById("onlineMobileFlagshipBtn"),
-  onlineMobileSubSkillBtn: document.getElementById("onlineMobileSubSkillBtn"),
-  onlineMobileThrottleButtons: Array.from(document.querySelectorAll("#onlineMobileBattleHud .mobile-throttle-btn")),
+  mobileBattleHud: document.getElementById("mobileBattleHud"),
+  mobileBattleSummary: document.getElementById("mobileBattleSummary"),
+  mobileBattleHint: document.getElementById("mobileBattleHint"),
+  mobileCenterBtn: document.getElementById("mobileCenterBtn"),
+  mobileZoomOutBtn: document.getElementById("mobileZoomOutBtn"),
+  mobileZoomInBtn: document.getElementById("mobileZoomInBtn"),
+  mobileShipButtons: Array.from(document.querySelectorAll("#mobileShipSwitch .mobile-ship-btn")),
+  mobileSplitOneBtn: document.getElementById("mobileSplitOneBtn"),
+  mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
+  mobileScoutBtn: document.getElementById("mobileScoutBtn"),
+  mobileAutoScoutBtn: document.getElementById("mobileAutoScoutBtn"),
+  mobileBrakeBtn: document.getElementById("mobileBrakeBtn"),
+  mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
+  mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
+  mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
   };
   // 「选中」字段已从对战面板移除（信息与切舰按钮/滑块重复）；占位对象吞掉文本写入
   if (!ui.selectedValue) ui.selectedValue = {};
@@ -410,52 +419,6 @@ function log(message) {
   }
 }
 
-function fleetSlotLabel(slotKey) {
-  return localizedSlotLabel(slotKey, "short");
-}
-
-// 全队舰况：逐舰刷新血/能量条 + 状态，并高亮当前选中舰
-function renderFleetRoster(own) {
-  if (!ui.fleetRows) {
-    return;
-  }
-  for (const cell of ui.fleetRows) {
-    const ship = own && own.ships ? own.ships[cell.key] : null;
-    cell.row.classList.toggle("active", cell.key === app.selectedShipKey);
-    if (!ship) {
-      cell.row.classList.add("gone");
-      cell.name.textContent = fleetSlotLabel(cell.key);
-      cell.state.textContent = "—";
-      cell.state.classList.remove("danger");
-      cell.hullFill.style.width = "0%";
-      cell.enFill.style.width = "0%";
-      cell.hullPct.textContent = "—";
-      cell.enPct.textContent = "—";
-      continue;
-    }
-    const dead = !ship.alive;
-    const hull = dead ? 0 : Math.max(0, Math.round((Number(ship.hp) / Math.max(1, Number(ship.maxHp))) * 100));
-    const energy = energyPercentForShip(ship);
-    cell.row.classList.toggle("gone", dead);
-    cell.name.textContent = `${fleetSlotLabel(cell.key)} ${shipCharacterName(ship)}`;
-    let state = "";
-    if (dead) {
-      state = `✖ ${t("阵亡")}`;
-    } else if (ship.braking) {
-      state = t("急刹中");
-    } else if (cell.key !== "main" && ship.attached === false) {
-      state = t("分离中");
-    }
-    cell.state.textContent = state;
-    cell.state.classList.toggle("danger", dead);
-    cell.hullFill.style.width = `${hull}%`;
-    cell.hullFill.classList.toggle("low", !dead && hull <= 30);
-    cell.enFill.style.width = `${energy}%`;
-    cell.hullPct.textContent = `${hull}%`;
-    cell.enPct.textContent = `${energy}%`;
-  }
-}
-
 function updateConnectionUi() {
   ui.connectionValue.textContent = app.connected ? t("已连接") : t("未连接");
   ui.pingValue.textContent = app.connected ? `${Math.round(app.pingMs)}ms` : "-";
@@ -471,8 +434,8 @@ function setBattleControlsEnabled(enabled) {
   for (const element of ui.battleControls.querySelectorAll("button, select, input")) {
     element.disabled = !enabled;
   }
-  if (ui.onlineMobileBattleHud) {
-    ui.onlineMobileBattleHud.hidden = !app.mobileMode || !enabled;
+  if (ui.mobileBattleHud) {
+    ui.mobileBattleHud.hidden = !app.mobileMode || !enabled;
   }
 }
 
@@ -701,8 +664,8 @@ function clearMatchRuntime() {
 }
 
 function closeOverlay() {
-  ui.onlineOverlay.classList.add("hidden");
-  ui.onlineOverlayTitle.textContent = "";
+  ui.overlay.classList.add("hidden");
+  ui.overlayTitle.textContent = "";
   app.gameOverLogged = false;
 }
 
@@ -763,17 +726,17 @@ function onlineResultSideHTML(loadout, faction, sideLabel, sideClass, sideId = "
 // 每条 finished 房态消息都会调用,故首次渲染后用 gameOverLogged 锁住,避免反复重建与重放入场动画。
 function showMatchResultOverlay(winnerSeat) {
   app.lastWinnerSeat = winnerSeat || null;
-  ui.onlineOverlay.classList.remove("hidden");
+  ui.overlay.classList.remove("hidden");
   if (app.gameOverLogged) {
     return;
   }
   app.gameOverLogged = true;
 
-  const card = document.getElementById("onlineResultCard");
-  const eyebrowEl = document.getElementById("onlineResultEyebrow");
-  const subEl = document.getElementById("onlineResultSub");
-  const metaEl = document.getElementById("onlineResultMeta");
-  const versusEl = document.getElementById("onlineResultVersus");
+  const card = document.getElementById("resultCard");
+  const eyebrowEl = document.getElementById("resultEyebrow");
+  const subEl = document.getElementById("resultSub");
+  const metaEl = document.getElementById("resultDiff");
+  const versusEl = document.getElementById("resultVersus");
 
   let cls, eyebrow, title, sub, logLine;
   if (app.spectating) {
@@ -799,7 +762,7 @@ function showMatchResultOverlay(winnerSeat) {
     card.classList.add(cls);
   }
   if (eyebrowEl) eyebrowEl.textContent = eyebrow;
-  ui.onlineOverlayTitle.textContent = title;
+  ui.overlayTitle.textContent = title;
   if (subEl) subEl.textContent = sub;
   if (metaEl) {
     const roomId = app.room ? app.room.roomId : "-";
@@ -1194,7 +1157,7 @@ function applyRoomState(message) {
     ui.zoneValue.textContent = t("战区 -");
     ui.selectedValue.textContent = "-";
     app.pendingSubSkillAim = null;
-    updateSkillButtons(null);
+    refreshSkillButtons(null);
   }
 
   if (app.room) {
@@ -1223,7 +1186,7 @@ function handleRoomClosed(message) {
   clearMatchRuntime();
   closeOverlay();
   ui.zoneValue.textContent = t("战区 -");
-  updateSkillButtons(null);
+  refreshSkillButtons(null);
 }
 
 function teamBySeat(state, seat) {
@@ -1316,170 +1279,15 @@ function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.sta
   return true;
 }
 
-function energyPercentForShip(ship) {
-  const max = Math.max(1, Number(ship?.fleetMaxEnergy) || Number(ship?.maxEnergy) || 1);
-  const value = Number(ship?.fleetEnergy) || Number(ship?.energy) || 0;
-  return Math.round((value / max) * 100);
-}
-
-function currentFlagshipMeta(own) {
-  const loadout = own && own.loadout ? own.loadout : app.playerLoadout;
-  return skillMetaForCharacter(loadout.main, "flagship");
-}
-
-function currentSubMeta(ship) {
-  if (!ship || ship.key === "main") {
-    return null;
-  }
-  return skillMetaForCharacter(ship.characterId, "sub");
-}
-
-function updateSkillButtons(own) {
-  if (!own) {
-    ui.scoutBtn.disabled = true;
-    ui.autoScoutBtn.disabled = true;
-    ui.autoScoutBtn.classList.remove("toggle-active");
-    ui.brakeBtn.disabled = true;
-    ui.flagshipBtn.disabled = true;
-    ui.subSkillBtn.disabled = true;
-    return;
-  }
-  const cooldowns = own.cooldowns || {};
-  const selected = own.ships ? own.ships[app.selectedShipKey] : null;
-  const mainShip = own.ships ? own.ships.main : null;
-  const mainEnergy = Number(mainShip?.fleetEnergy) || 0;
-  // 侦察机从选中舰发出：按选中舰可用能量判定
-  const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
-
-  ui.scoutBtn.disabled = own.skillsDisabled || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
-  ui.scoutBtn.textContent = own.skillsDisabled
-    ? t("派出侦查机（已被封印）")
-    : (cooldowns.scout || 0) > 0
-      ? t("派出侦查机（冷却{seconds}秒）", { seconds: (cooldowns.scout || 0).toFixed(1) })
-      : t("派出侦查机");
-
-  const autoScoutEnabled = Boolean(own.autoScout?.enabled);
-  const autoScoutZoneId = Number(own.autoScout?.zoneId) || app.selectedZoneId;
-  const autoScoutDisabled = own.skillsDisabled && !autoScoutEnabled;
-  let autoScoutSuffix = autoScoutEnabled ? t("开·战区{zone}", { zone: autoScoutZoneId }) : t("关");
-  if (autoScoutEnabled) {
-    if ((cooldowns.scout || 0) > 0) {
-      autoScoutSuffix += `·${t("冷却{seconds}秒", { seconds: (cooldowns.scout || 0).toFixed(1) })}`;
-    } else if (mainEnergy < SCOUT_LAUNCH_COST) {
-      autoScoutSuffix += `·${t("等待能量")}`;
-    }
-  } else if (own.skillsDisabled) {
-    autoScoutSuffix = t("关·已封印");
-  }
-  ui.autoScoutBtn.disabled = autoScoutDisabled;
-  ui.autoScoutBtn.textContent = t("自动侦查：{state}", { state: autoScoutSuffix });
-  ui.autoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
-
-  const flagMeta = currentFlagshipMeta(own);
-  if (!flagMeta) {
-    ui.flagshipBtn.disabled = true;
-    ui.flagshipBtn.textContent = t("旗舰技能");
-  } else if (flagMeta.type === "passive") {
-    ui.flagshipBtn.disabled = true;
-    ui.flagshipBtn.textContent = t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") });
-  } else {
-    const disabled =
-      own.skillsDisabled ||
-      (cooldowns.flagship || 0) > 0 ||
-      mainEnergy < (flagMeta.cost || 0) ||
-      !(mainShip && mainShip.alive);
-    ui.flagshipBtn.disabled = disabled;
-    ui.flagshipBtn.textContent =
-      (cooldowns.flagship || 0) > 0
-        ? t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（冷却{seconds}秒）", { seconds: (cooldowns.flagship || 0).toFixed(1) }) })
-        : t("旗舰技能：{name}", { name: flagMeta.name });
-  }
-
-  const brakeCooldown = Number(selected?.brakeCooldown) || 0;
-  const brakeEnergy = Number(selected?.fleetEnergy) || 0;
-  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
-  let brakeSuffix = "";
-  if (!selected || !selected.alive || !selected.canControl) {
-    brakeSuffix = t("（切换到可控舰）");
-  } else if (selected.attached) {
-    brakeSuffix = t("（分离后可用）");
-  } else if (brakeCooldown > 0) {
-    brakeSuffix = t("（冷却{seconds}秒）", { seconds: brakeCooldown.toFixed(1) });
-  } else if (brakeEnergy < EMERGENCY_BRAKE_COST) {
-    brakeSuffix = t("（需{energy}能量）", { energy: EMERGENCY_BRAKE_COST });
-  } else if (selected.braking) {
-    brakeSuffix = t("（制动中）");
-  }
-  ui.brakeBtn.disabled = brakeDisabled;
-  ui.brakeBtn.textContent = t("急刹{suffix}", { suffix: brakeSuffix });
-
-  const subMeta = currentSubMeta(selected);
-  if (!selected || !subMeta) {
-    ui.subSkillBtn.disabled = true;
-    ui.subSkillBtn.textContent = t("分舰技能：切换到副舰后使用");
-    return;
-  }
-
-  const detached = !selected.attached && selected.canControl;
-  const energy = Number(selected.fleetEnergy) || 0;
-  const cooldown = Number(cooldowns[selected.key] || 0);
-  const disabled = own.skillsDisabled || !detached || cooldown > 0 || energy < (subMeta.cost || 0);
-
-  let suffix = "";
-  if (own.skillsDisabled) {
-    suffix = t("（已被封印）");
-  } else if (!detached) {
-    suffix = t("（分离后可用）");
-  } else if (cooldown > 0) {
-    suffix = t("（冷却{seconds}秒）", { seconds: cooldown.toFixed(1) });
-  } else if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey === selected.key) {
-    suffix = subMeta.target === "optional_point" ? t("（地图点击闪现，再点按钮原地释放）") : t("（地图点击瞄准）");
-  }
-  ui.subSkillBtn.disabled = disabled;
-  ui.subSkillBtn.textContent = t("分舰技能：{name}{suffix}", { name: subMeta.name, suffix });
-}
-
-function syncMobileHud(own) {
-  if (!ui.onlineMobileBattleHud) {
-    return;
-  }
-  ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running") || app.spectating;
-  if (!app.mobileMode || !own) {
-    return;
-  }
-
-  const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
-  const throttleValue = Math.round(clamp((selectedShip?.throttle || app.throttle || 1) * 100, 25, 140));
-  const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.onlineMobileBattleSummary.textContent = `${selectedShip ? shipCharacterName(selectedShip) : t("无")} · ${t("区")}${app.selectedZoneId} · ${t("体")}${hullPercent}%`;
-  ui.onlineMobileBattleHint.textContent = app.pendingSubSkillAim
-    ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
-    : t("点舰船切换 · 点战场下航线 · 点右上小地图选战区");
-
-  for (const button of ui.onlineMobileShipButtons) {
-    const ship = own.ships ? own.ships[button.dataset.ship] : null;
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
-    button.disabled = !enabled;
-    button.classList.toggle("active", button.dataset.ship === app.selectedShipKey);
-  }
-
-  ui.onlineMobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
-  ui.onlineMobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
-  ui.onlineMobileScoutBtn.disabled = ui.scoutBtn.disabled;
-  ui.onlineMobileAutoScoutBtn.disabled = ui.autoScoutBtn.disabled;
-  ui.onlineMobileBrakeBtn.disabled = ui.brakeBtn.disabled;
-  ui.onlineMobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
-  ui.onlineMobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
-  ui.onlineMobileAutoScoutBtn.textContent = own.autoScout?.enabled ? t("自侦开") : t("自侦关");
-  ui.onlineMobileAutoScoutBtn.classList.toggle("toggle-active", Boolean(own.autoScout?.enabled));
-  ui.onlineMobileBrakeBtn.textContent = t("急刹");
-  ui.onlineMobileFlagshipBtn.textContent = t("旗舰技");
-  ui.onlineMobileSubSkillBtn.textContent = selectedShip && currentSubMeta(selectedShip) ? currentSubMeta(selectedShip).name : t("分舰技");
-
-  for (const button of ui.onlineMobileThrottleButtons) {
-    const preset = Number(button.dataset.throttle);
-    button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
-  }
+// 共享 updateSkillButtons 需要选中舰等上下文,这里统一补齐
+function refreshSkillButtons(own) {
+  const selected = own && own.ships ? own.ships[app.selectedShipKey] : null;
+  updateSkillButtons(ui, own, {
+    selected,
+    selectedZoneId: app.selectedZoneId,
+    pendingSubSkillAim: app.pendingSubSkillAim,
+    fallbackLoadout: app.playerLoadout,
+  });
 }
 
 function updateSpectatorBattleStatus(state) {
@@ -1495,12 +1303,12 @@ function updateSpectatorBattleStatus(state) {
   ui.splitValue.textContent = `${localizedSplitLabel(teamA?.splitLevel || 0)} / ${localizedSplitLabel(teamB?.splitLevel || 0)}`;
   ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
   ui.selectedValue.textContent = t("观战");
-  ui.onlineZoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
-  ui.onlineZoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
-  ui.onlineZoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
-  updateSkillButtons(null);
-  renderFleetRoster(teamA);
-  syncMobileHud(null);
+  ui.zoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
+  ui.zoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
+  ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
+  refreshSkillButtons(null);
+  renderFleetRoster(ui, teamA, { selectedShipKey: app.selectedShipKey });
+  syncMobileHud(ui, null, { visible: false });
 }
 
 function updateBattleStatus(state) {
@@ -1515,20 +1323,20 @@ function updateBattleStatus(state) {
     ui.splitValue.textContent = "-";
     ui.zoneValue.textContent = t("战区 -");
     ui.selectedValue.textContent = "-";
-    ui.onlineZoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
-    ui.onlineZoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
-    ui.onlineZoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
-    updateSkillButtons(null);
-    renderFleetRoster(null);
+    ui.zoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
+    ui.zoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
+    ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
+    refreshSkillButtons(null);
+    renderFleetRoster(ui, null, {});
     return;
   }
 
   ui.hullValue.textContent = `${Math.round((own.hullRatio || 0) * 100)}%`;
   ui.splitValue.textContent = localizedSplitLabel(own.splitLevel);
   ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
-  ui.onlineZoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
-  ui.onlineZoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
-  ui.onlineZoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
+  ui.zoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
+  ui.zoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
+  ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
 
   syncShipSelectOptions(own);
   const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
@@ -1541,9 +1349,15 @@ function updateBattleStatus(state) {
       : t("无");
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
-  updateSkillButtons(own);
-  renderFleetRoster(own);
-  syncMobileHud(own);
+  refreshSkillButtons(own);
+  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey });
+  syncMobileHud(ui, own, {
+    visible: app.mobileMode && Boolean(app.room && app.room.status === "running") && !app.spectating,
+    selected: selectedShip,
+    selectedShipKey: app.selectedShipKey,
+    selectedZoneId: app.selectedZoneId,
+    pendingSubSkillAim: app.pendingSubSkillAim,
+  });
   if (app.pendingSubSkillAim && ui.subSkillBtn.disabled) {
     app.pendingSubSkillAim = null;
   }
@@ -1666,7 +1480,7 @@ function handleSnapshot(message) {
     } else {
       closeOverlay();
     }
-  } else if (phase === "finished" && ui.onlineOverlay.classList.contains("hidden")) {
+  } else if (phase === "finished" && ui.overlay.classList.contains("hidden")) {
     showMatchResultOverlay(winner || app.lastWinnerSeat || null);
   }
 }
@@ -1941,8 +1755,8 @@ function syncResponsiveMode() {
   if (!app.mobileMode) {
     camera.releaseManual();
   }
-  if (ui.onlineMobileBattleHud) {
-    ui.onlineMobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running") || app.spectating;
+  if (ui.mobileBattleHud) {
+    ui.mobileBattleHud.hidden = !app.mobileMode || !(app.room && app.room.status === "running") || app.spectating;
   }
   camera.resizeCanvas(); // 显示尺寸/方向变化时同步 backing store 到设备像素,保持清晰
 }
@@ -2552,7 +2366,7 @@ function openOnlineCharSelect() {
 
 function useFlagshipSkillOnline() {
   const own = teamBySeat(app.latestSnapshot ? app.latestSnapshot.state : null, app.seat);
-  const meta = currentFlagshipMeta(own);
+  const meta = currentFlagshipMeta(own, app.playerLoadout);
   if (!meta || meta.type !== "active") {
     return;
   }
@@ -2581,7 +2395,7 @@ function useSubSkillOnline() {
       if (seq !== null) {
         log(t("{ship} 使用 {name}", { ship: shipCharacterName(ship), name: meta.name }));
       }
-      updateSkillButtons(own);
+      refreshSkillButtons(own);
       return;
     }
     app.pendingSubSkillAim = { shipKey: ship.key };
@@ -2590,7 +2404,7 @@ function useSubSkillOnline() {
         ? t("{name} 瞄准模式：点击地图选择闪现位置，再次点击技能按钮可原地释放", { name: meta.name })
         : t("{name} 瞄准模式：在地图上左键点击方向开火", { name: meta.name }),
     );
-    updateSkillButtons(own);
+    refreshSkillButtons(own);
     return;
   }
   const seq = sendAction({
@@ -2695,8 +2509,8 @@ function bindUiEvents() {
     setRoomHudVisible(true); // 立即切回大厅页
   });
 
-  if (ui.onlineOverlayActionBtn) {
-    ui.onlineOverlayActionBtn.addEventListener("click", () => {
+  if (ui.overlayActionBtn) {
+    ui.overlayActionBtn.addEventListener("click", () => {
       if (app.room) {
         socketSend({ type: "leave_room" });
       }
@@ -2726,7 +2540,7 @@ function bindUiEvents() {
       selectShip(cell.key || "");
     });
   }
-  for (const button of ui.onlineMobileShipButtons) {
+  for (const button of ui.mobileShipButtons) {
     button.addEventListener("click", () => {
       selectShip(button.dataset.ship || "", currentBattleState());
     });
@@ -2735,32 +2549,32 @@ function bindUiEvents() {
   ui.powerSlider.addEventListener("input", () => {
     setThrottleFromSlider(true);
   });
-  ui.onlineZoomOutBtn.addEventListener("click", () => {
+  ui.zoomOutBtn.addEventListener("click", () => {
     camera.adjustCameraZoom(-1);
   });
-  ui.onlineZoomInBtn.addEventListener("click", () => {
+  ui.zoomInBtn.addEventListener("click", () => {
     camera.adjustCameraZoom(1);
   });
-  for (const button of ui.onlineMobileThrottleButtons) {
+  for (const button of ui.mobileThrottleButtons) {
     button.addEventListener("click", () => {
       setThrottleValue(button.dataset.throttle || 100, true);
     });
   }
-  if (ui.onlineMobileCenterBtn) {
-    ui.onlineMobileCenterBtn.addEventListener("click", () => {
+  if (ui.mobileCenterBtn) {
+    ui.mobileCenterBtn.addEventListener("click", () => {
       const ship = getLatestOwnShip(app.selectedShipKey);
       if (ship) {
         camera.centerCameraOn(ship.x, ship.y, false);
       }
     });
   }
-  if (ui.onlineMobileZoomOutBtn) {
-    ui.onlineMobileZoomOutBtn.addEventListener("click", () => {
+  if (ui.mobileZoomOutBtn) {
+    ui.mobileZoomOutBtn.addEventListener("click", () => {
       camera.adjustCameraZoom(-1);
     });
   }
-  if (ui.onlineMobileZoomInBtn) {
-    ui.onlineMobileZoomInBtn.addEventListener("click", () => {
+  if (ui.mobileZoomInBtn) {
+    ui.mobileZoomInBtn.addEventListener("click", () => {
       camera.adjustCameraZoom(1);
     });
   }
@@ -2768,14 +2582,14 @@ function bindUiEvents() {
   bindPressButton(ui.splitOneBtn, () => {
     sendAction({ type: "split", level: 1 });
   });
-  bindPressButton(ui.onlineMobileSplitOneBtn, () => {
+  bindPressButton(ui.mobileSplitOneBtn, () => {
     sendAction({ type: "split", level: 1 });
   });
 
   bindPressButton(ui.splitTwoBtn, () => {
     sendAction({ type: "split", level: 2 });
   });
-  bindPressButton(ui.onlineMobileSplitTwoBtn, () => {
+  bindPressButton(ui.mobileSplitTwoBtn, () => {
     sendAction({ type: "split", level: 2 });
   });
 
@@ -2789,7 +2603,7 @@ function bindUiEvents() {
       log(t("侦查机已派往战区 {zone}", { zone: app.selectedZoneId }));
     }
   });
-  bindPressButton(ui.onlineMobileScoutBtn, () => {
+  bindPressButton(ui.mobileScoutBtn, () => {
     const seq = sendAction({
       type: "launch_scout",
       zoneId: app.selectedZoneId,
@@ -2800,14 +2614,14 @@ function bindUiEvents() {
     }
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScoutOnline);
-  bindPressButton(ui.onlineMobileAutoScoutBtn, toggleAutoScoutOnline);
+  bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScoutOnline);
   bindPressButton(ui.brakeBtn, useEmergencyBrakeOnline);
-  bindPressButton(ui.onlineMobileBrakeBtn, useEmergencyBrakeOnline);
+  bindPressButton(ui.mobileBrakeBtn, useEmergencyBrakeOnline);
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkillOnline);
-  bindPressButton(ui.onlineMobileFlagshipBtn, useFlagshipSkillOnline);
+  bindPressButton(ui.mobileFlagshipBtn, useFlagshipSkillOnline);
   bindPressButton(ui.subSkillBtn, useSubSkillOnline);
-  bindPressButton(ui.onlineMobileSubSkillBtn, useSubSkillOnline);
+  bindPressButton(ui.mobileSubSkillBtn, useSubSkillOnline);
 
   bindBattleExitGuard();
 
@@ -3352,137 +3166,13 @@ function onlineTemplate() {
         </div>
       </section>
 
-      <!-- ── 战斗页 ── -->
-      <div id="battleView" class="app-shell online-shell battle-shell" hidden>
-        <aside class="panel compact-panel battle-panel">
-          <h1>${t("射手座之日")}</h1>
-
-          <div class="panel-actions">
-            <a class="btn-link btn-link-home" href="/">${t("← 主菜单")}</a>
-          </div>
-
-          <section class="status">
-            <div><span>${t("舰体")}</span><strong id="hullValueOnline">100%</strong></div>
-            <div><span>${t("能量")}</span><strong id="energyValueOnline">100%</strong></div>
-            <div><span>${t("分离")}</span><strong id="splitValueOnline">${t("编队")}</strong></div>
-            <div><span>${t("战区")}</span><strong id="zoneValueOnline">${t("战区 {zone}", { zone: 5 })}</strong></div>
-          </section>
-
-          <div id="battleControls" class="disabled-panel">
-            <section class="controls slim-controls">
-              <h2>${t("舰队控制")}</h2>
-              <div id="onlineShipQuickSwitch" class="ship-switch">
-                <button type="button" class="ship-switch-btn" data-ship="main">${t("主舰")}</button>
-                <button type="button" class="ship-switch-btn" data-ship="sub1">${t("副舰1")}</button>
-                <button type="button" class="ship-switch-btn" data-ship="sub2">${t("副舰2")}</button>
-              </div>
-              <div class="btn-row">
-                <button id="onlineSplitOneBtn">${t("一级分离")}</button>
-                <button id="onlineSplitTwoBtn">${t("二级分离")}</button>
-              </div>
-              <div class="slider-wrap">
-                <div class="slider-head"><label for="onlinePowerSlider">${t("推进功率")}</label><strong id="onlinePowerValue">100%</strong></div>
-                <input id="onlinePowerSlider" type="range" min="25" max="140" step="1" value="100" />
-              </div>
-              <div class="zoom-control-row">
-                <button id="onlineZoomOutBtn" type="button">${t("缩小")}</button>
-                <strong id="onlineZoomValue">100%</strong>
-                <button id="onlineZoomInBtn" type="button">${t("放大")}</button>
-              </div>
-            </section>
-
-            <section class="controls slim-controls">
-              <h2>${t("技能")}</h2>
-              <div class="btn-grid">
-                <button id="onlineFlagshipBtn">${t("旗舰技能")}</button>
-                <button id="onlineSubSkillBtn">${t("分舰技能")}</button>
-                <button id="onlineScoutBtn">${t("派出侦查机")}</button>
-                <button id="onlineAutoScoutBtn" type="button">${t("自动侦查：{state}", { state: t("关") })}</button>
-                <button id="onlineBrakeBtn" type="button" class="span-2">${t("急刹")}</button>
-              </div>
-            </section>
-          </div>
-
-          <section class="controls slim-controls fleet-section">
-            <h2>${t("全队舰况")}</h2>
-            <div id="fleetRoster" class="fleet-roster">
-              <button type="button" class="fleet-row" data-ship="main">
-                <div class="fleet-row-head"><span class="fleet-name">${t("主舰")}</span><span class="fleet-state"></span></div>
-                <div class="fleet-gauges">
-                  <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                  <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-                </div>
-              </button>
-              <button type="button" class="fleet-row" data-ship="sub1">
-                <div class="fleet-row-head"><span class="fleet-name">${t("副一")}</span><span class="fleet-state"></span></div>
-                <div class="fleet-gauges">
-                  <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                  <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-                </div>
-              </button>
-              <button type="button" class="fleet-row" data-ship="sub2">
-                <div class="fleet-row-head"><span class="fleet-name">${t("副二")}</span><span class="fleet-state"></span></div>
-                <div class="fleet-gauges">
-                  <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                  <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-                </div>
-              </button>
-            </div>
-          </section>
-        </aside>
-
-        <main class="game-wrap">
-          <canvas id="onlineCanvas" width="${LOGICAL}" height="${LOGICAL}"></canvas>
-          <section id="onlineMobileBattleHud" class="mobile-battle-hud" aria-live="polite">
-            <div class="mobile-battle-head">
-              <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>
-              <div id="onlineMobileBattleSummary" class="mobile-battle-summary">${t("主舰")} · ${t("区")}5 · ${t("推进")}100%</div>
-              <button id="onlineMobileCenterBtn" type="button" class="mobile-chip-btn">${t("跟随")}</button>
-            </div>
-            <div id="onlineMobileShipSwitch" class="mobile-ship-switch">
-              <button type="button" class="mobile-ship-btn" data-ship="main">${t("主舰")}</button>
-              <button type="button" class="mobile-ship-btn" data-ship="sub1">${t("副一")}</button>
-              <button type="button" class="mobile-ship-btn" data-ship="sub2">${t("副二")}</button>
-            </div>
-            <div class="mobile-action-grid">
-              <button id="onlineMobileSplitOneBtn" type="button">${t("分离1")}</button>
-              <button id="onlineMobileSplitTwoBtn" type="button">${t("分离2")}</button>
-              <button id="onlineMobileBrakeBtn" type="button">${t("急刹")}</button>
-              <button id="onlineMobileFlagshipBtn" type="button">${t("旗舰技")}</button>
-              <button id="onlineMobileSubSkillBtn" type="button">${t("分舰技")}</button>
-              <button id="onlineMobileScoutBtn" type="button">${t("侦察")}</button>
-              <button id="onlineMobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
-              <button id="onlineMobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
-              <button id="onlineMobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
-            </div>
-            <div class="mobile-throttle-wrap">
-              <span class="mobile-throttle-label">${t("推进")}</span>
-              <button type="button" class="mobile-throttle-btn" data-throttle="40">40</button>
-              <button type="button" class="mobile-throttle-btn" data-throttle="70">70</button>
-              <button type="button" class="mobile-throttle-btn" data-throttle="100">100</button>
-              <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
-              <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
-            </div>
-            <div id="onlineMobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
-          </section>
-
-          <div id="onlineOverlay" class="overlay hidden" role="dialog" aria-modal="true">
-            <div id="onlineResultCard" class="result-card">
-              <div class="result-glow" aria-hidden="true"></div>
-              <div class="result-head">
-                <span id="onlineResultEyebrow" class="result-eyebrow"></span>
-                <h2 id="onlineOverlayTitle" class="result-title"></h2>
-                <p id="onlineResultSub" class="result-sub"></p>
-                <div id="onlineResultMeta" class="result-diff result-match-meta"></div>
-              </div>
-              <div id="onlineResultVersus" class="result-versus"></div>
-              <div class="overlay-actions">
-                <button id="onlineOverlayActionBtn" type="button">${t("返回大厅")}</button>
-              </div>
-            </div>
-          </div>
-        </main>
-      </div>
+      <!-- ── 战斗页:DOM 完全来自共享模板(src/battle/template.js) ── -->
+      ${battleViewTemplate({
+        shellClass: "online-shell",
+        hidden: true,
+        resultMetaClass: " result-match-meta",
+        overlayActionsHTML: `<button id="overlayActionBtn" type="button">${t("返回大厅")}</button>`,
+      })}
     </div>
   `;
 }

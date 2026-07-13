@@ -52,6 +52,15 @@ import {
 } from "./battle/camera.js";
 import { routeHandleAtPoint, shipAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
+  currentFlagshipMeta,
+  currentSubMeta,
+  energyPercentForShip,
+  renderFleetRoster,
+  syncMobileHud,
+  updateSkillButtons,
+} from "./battle/hud.js";
+import { battleViewTemplate } from "./battle/template.js";
+import {
   characterShortName,
   shipCharacterName,
   shipDisplayName,
@@ -87,7 +96,7 @@ function cacheDom() {
   zoomOutBtn: document.getElementById("zoomOutBtn"),
   zoomInBtn: document.getElementById("zoomInBtn"),
   zoomValue: document.getElementById("zoomValue"),
-  zoneValue: document.getElementById("zoneValueLocal"),
+  zoneValue: document.getElementById("zoneValue"),
   shipSwitchButtons: Array.from(document.querySelectorAll("#shipQuickSwitch .ship-switch-btn")),
   scoutBtn: document.getElementById("scoutBtn"),
   autoScoutBtn: document.getElementById("autoScoutBtn"),
@@ -230,52 +239,6 @@ function log(message) {
 function clearLog() {
   if (ui.log) {
     ui.log.innerHTML = "";
-  }
-}
-
-function fleetSlotLabel(slotKey) {
-  return localizedSlotLabel(slotKey, "short");
-}
-
-// 全队舰况：逐舰刷新血/能量条 + 状态，并高亮当前选中舰
-function renderFleetRoster(own) {
-  if (!ui.fleetRows) {
-    return;
-  }
-  for (const cell of ui.fleetRows) {
-    const ship = own && own.ships ? own.ships[cell.key] : null;
-    cell.row.classList.toggle("active", cell.key === app.selectedShipKey);
-    if (!ship) {
-      cell.row.classList.add("gone");
-      cell.name.textContent = fleetSlotLabel(cell.key);
-      cell.state.textContent = "—";
-      cell.state.classList.remove("danger");
-      cell.hullFill.style.width = "0%";
-      cell.enFill.style.width = "0%";
-      cell.hullPct.textContent = "—";
-      cell.enPct.textContent = "—";
-      continue;
-    }
-    const dead = !ship.alive;
-    const hull = dead ? 0 : Math.max(0, Math.round((Number(ship.hp) / Math.max(1, Number(ship.maxHp))) * 100));
-    const energy = energyPercentForShip(ship);
-    cell.row.classList.toggle("gone", dead);
-    cell.name.textContent = `${fleetSlotLabel(cell.key)} ${shipCharacterName(ship)}`;
-    let state = "";
-    if (dead) {
-      state = `✖ ${t("阵亡")}`;
-    } else if (ship.braking) {
-      state = t("急刹中");
-    } else if (cell.key !== "main" && ship.attached === false) {
-      state = t("分离中");
-    }
-    cell.state.textContent = state;
-    cell.state.classList.toggle("danger", dead);
-    cell.hullFill.style.width = `${hull}%`;
-    cell.hullFill.classList.toggle("low", !dead && hull <= 30);
-    cell.enFill.style.width = `${energy}%`;
-    cell.hullPct.textContent = `${hull}%`;
-    cell.enPct.textContent = `${energy}%`;
   }
 }
 
@@ -497,24 +460,6 @@ function syncPowerSliderFromSelected() {
   ui.powerValue.textContent = `${value}%`;
 }
 
-function energyPercentForShip(ship) {
-  const max = Math.max(1, Number(ship?.fleetMaxEnergy) || Number(ship?.maxEnergy) || 1);
-  const value = Number(ship?.fleetEnergy) || Number(ship?.energy) || 0;
-  return Math.round((value / max) * 100);
-}
-
-function currentFlagshipMeta(own) {
-  const loadout = own && own.loadout ? own.loadout : app.playerLoadout;
-  return skillMetaForCharacter(loadout.main, "flagship");
-}
-
-function currentSubMeta(selected) {
-  if (!selected || selected.key === "main") {
-    return null;
-  }
-  return skillMetaForCharacter(selected.characterId, "sub");
-}
-
 function setThrottleValue(percent) {
   const value = clamp(Number(percent), 25, 140);
   ui.powerSlider.value = String(value);
@@ -623,164 +568,6 @@ function setRouteForSelectedShip(x, y, logRoute = false) {
   return ok;
 }
 
-function updateSkillButtons(own) {
-  if (!own) {
-    ui.scoutBtn.disabled = true;
-    ui.autoScoutBtn.disabled = true;
-    ui.autoScoutBtn.classList.remove("toggle-active");
-    ui.brakeBtn.disabled = true;
-    ui.flagshipBtn.disabled = true;
-    ui.subSkillBtn.disabled = true;
-    return;
-  }
-
-  const cooldowns = own.cooldowns || {};
-  const selected = selectedShipState();
-  const mainShip = own.ships ? own.ships.main : null;
-  const mainEnergy = mainShip ? Number(mainShip.fleetEnergy) || 0 : 0;
-  // 侦察机现从选中舰发出：按选中舰的可用能量判定是否可派
-  const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
-
-  const scoutLocked = own.skillsDisabled;
-  ui.scoutBtn.disabled = scoutLocked || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
-  ui.scoutBtn.textContent = scoutLocked
-    ? t("派出侦查机（已被封印）")
-    : (cooldowns.scout || 0) > 0
-      ? t("派出侦查机（冷却{seconds}秒）", { seconds: (cooldowns.scout || 0).toFixed(1) })
-      : t("派出侦查机");
-
-  const autoScoutEnabled = Boolean(own.autoScout?.enabled);
-  const autoScoutZoneId = Number(own.autoScout?.zoneId) || app.selectedZoneId;
-  const autoScoutDisabled = own.skillsDisabled && !autoScoutEnabled;
-  let autoScoutSuffix = autoScoutEnabled ? t("开·战区{zone}", { zone: autoScoutZoneId }) : t("关");
-  if (autoScoutEnabled) {
-    if ((cooldowns.scout || 0) > 0) {
-      autoScoutSuffix += `·${t("冷却{seconds}秒", { seconds: (cooldowns.scout || 0).toFixed(1) })}`;
-    } else if (mainEnergy < SCOUT_LAUNCH_COST) {
-      autoScoutSuffix += `·${t("等待能量")}`;
-    }
-  } else if (own.skillsDisabled) {
-    autoScoutSuffix = t("关·已封印");
-  }
-  ui.autoScoutBtn.disabled = autoScoutDisabled;
-  ui.autoScoutBtn.textContent = t("自动侦查：{state}", { state: autoScoutSuffix });
-  ui.autoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
-
-  const flagMeta = currentFlagshipMeta(own);
-  if (!flagMeta) {
-    ui.flagshipBtn.disabled = true;
-    ui.flagshipBtn.textContent = t("旗舰技能");
-  } else if (flagMeta.type === "passive") {
-    ui.flagshipBtn.disabled = true;
-    ui.flagshipBtn.textContent = t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") });
-  } else {
-    const disabled =
-      own.skillsDisabled ||
-      (cooldowns.flagship || 0) > 0 ||
-      mainEnergy < (flagMeta.cost || 0) ||
-      !(mainShip && mainShip.alive);
-    ui.flagshipBtn.disabled = disabled;
-    ui.flagshipBtn.textContent =
-      (cooldowns.flagship || 0) > 0
-        ? t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（冷却{seconds}秒）", { seconds: (cooldowns.flagship || 0).toFixed(1) }) })
-        : t("旗舰技能：{name}", { name: flagMeta.name });
-  }
-
-  const brakeCooldown = Number(selected?.brakeCooldown) || 0;
-  const brakeEnergy = Number(selected?.fleetEnergy) || 0;
-  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
-  let brakeSuffix = "";
-  if (!selected || !selected.alive || !selected.canControl) {
-    brakeSuffix = t("（切换到可控舰）");
-  } else if (selected.attached) {
-    brakeSuffix = t("（分离后可用）");
-  } else if (brakeCooldown > 0) {
-    brakeSuffix = t("（冷却{seconds}秒）", { seconds: brakeCooldown.toFixed(1) });
-  } else if (brakeEnergy < EMERGENCY_BRAKE_COST) {
-    brakeSuffix = t("（需{energy}能量）", { energy: EMERGENCY_BRAKE_COST });
-  } else if (selected.braking) {
-    brakeSuffix = t("（制动中）");
-  }
-  ui.brakeBtn.disabled = brakeDisabled;
-  ui.brakeBtn.textContent = t("急刹{suffix}", { suffix: brakeSuffix });
-
-  const subMeta = currentSubMeta(selected);
-  if (!selected || !subMeta) {
-    ui.subSkillBtn.disabled = true;
-    ui.subSkillBtn.textContent = t("分舰技能：切换到副舰后使用");
-    return;
-  }
-
-  const skillEnergy = Number(selected.fleetEnergy) || 0;
-  const cooldown = Number(cooldowns[selected.key] || 0);
-  const detached = !selected.attached && selected.canControl;
-  const disabled = own.skillsDisabled || !detached || cooldown > 0 || skillEnergy < (subMeta.cost || 0);
-
-  let suffix = "";
-  if (own.skillsDisabled) {
-    suffix = t("（已被封印）");
-  } else if (!detached) {
-    suffix = t("（分离后可用）");
-  } else if (cooldown > 0) {
-    suffix = t("（冷却{seconds}秒）", { seconds: cooldown.toFixed(1) });
-  } else if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey === selected.key) {
-    suffix = subMeta.target === "optional_point" ? t("（地图点击闪现，再点按钮原地释放）") : t("（地图点击瞄准）");
-  }
-  ui.subSkillBtn.disabled = disabled;
-  ui.subSkillBtn.textContent = t("分舰技能：{name}{suffix}", { name: subMeta.name, suffix });
-}
-
-function syncMobileHud(own) {
-  if (!ui.mobileBattleHud) {
-    return;
-  }
-  ui.mobileBattleHud.hidden = !app.mobileMode;
-  if (!app.mobileMode || !own) {
-    return;
-  }
-
-  const selected = selectedShipState();
-  const shipName = selected ? shipCharacterName(selected) : t("无");
-  const throttleValue = Math.round(clamp((selected?.throttle || 1) * 100, 25, 140));
-  const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${app.selectedZoneId} · ${t("体")}${hullPercent}%`;
-  ui.mobileBattleHint.textContent = app.pendingSubSkillAim
-    ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
-    : t("点舰船切换 · 点战场下航线 · 点右上小地图选战区");
-
-  const buttonStates = {
-    main: own.ships.main,
-    sub1: own.ships.sub1,
-    sub2: own.ships.sub2,
-  };
-  for (const button of ui.mobileShipButtons) {
-    const ship = buttonStates[button.dataset.ship];
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
-    button.disabled = !enabled;
-    button.classList.toggle("active", button.dataset.ship === app.selectedShipKey);
-  }
-
-  ui.mobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
-  ui.mobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
-  ui.mobileScoutBtn.disabled = ui.scoutBtn.disabled;
-  ui.mobileAutoScoutBtn.disabled = ui.autoScoutBtn.disabled;
-  ui.mobileBrakeBtn.disabled = ui.brakeBtn.disabled;
-  ui.mobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
-  ui.mobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
-
-  const autoScoutEnabled = Boolean(own.autoScout?.enabled);
-  ui.mobileAutoScoutBtn.textContent = autoScoutEnabled ? t("自侦开") : t("自侦关");
-  ui.mobileAutoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
-  ui.mobileBrakeBtn.textContent = t("急刹");
-  ui.mobileFlagshipBtn.textContent = t("旗舰技");
-  ui.mobileSubSkillBtn.textContent = selected && currentSubMeta(selected) ? currentSubMeta(selected).name : t("分舰技");
-
-  for (const button of ui.mobileThrottleButtons) {
-    const preset = Number(button.dataset.throttle);
-    button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
-  }
-}
-
 function updateUi() {
   const own = ownTeamState();
   if (!own) {
@@ -811,9 +598,20 @@ function updateUi() {
 
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
-  updateSkillButtons(own);
-  renderFleetRoster(own);
-  syncMobileHud(own);
+  updateSkillButtons(ui, own, {
+    selected: selectedState,
+    selectedZoneId: app.selectedZoneId,
+    pendingSubSkillAim: app.pendingSubSkillAim,
+    fallbackLoadout: app.playerLoadout,
+  });
+  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey });
+  syncMobileHud(ui, own, {
+    visible: app.mobileMode,
+    selected: selectedState,
+    selectedShipKey: app.selectedShipKey,
+    selectedZoneId: app.selectedZoneId,
+    pendingSubSkillAim: app.pendingSubSkillAim,
+  });
 
   if (app.state.phase === "finished") {
     if (!app.gameOverLogged) {
@@ -1030,7 +828,7 @@ function tick(timestamp) {
 
 function useFlagshipSkill() {
   const own = ownTeamState();
-  const meta = currentFlagshipMeta(own);
+  const meta = currentFlagshipMeta(own, app.playerLoadout);
   if (!meta || meta.type !== "active") {
     return;
   }
@@ -1537,7 +1335,7 @@ function launchWithLoadout(loadout, color) {
           isMobile: () => app.mobileMode,
           // 旗舰技是否被动:被动时「放技能」步改引导用分舰技,避免高亮到禁用的旗舰技按钮
           flagshipPassive: () => {
-            const meta = currentFlagshipMeta(ownTeamState());
+            const meta = currentFlagshipMeta(ownTeamState(), app.playerLoadout);
             return !!meta && meta.type === "passive";
           },
           // 阿虚旗舰:火力各方向均匀(无侧舷加成/船尾也开火),火力讲解需换说法
@@ -1632,135 +1430,11 @@ function unmount() {
 }
 
 function soloTemplate() {
-  return `
-    <div class="app-shell battle-shell">
-      <aside class="panel compact-panel battle-panel">
-        <h1>${t("射手座之日")}</h1>
-
-        <div class="panel-actions">
-          <a class="btn-link btn-link-home" href="/">${t("← 主菜单")}</a>
-          <button id="applyLoadoutBtn" type="button">${t("换阵容")}</button>
-        </div>
-
-        <section class="status">
-          <div><span>${t("舰体")}</span><strong id="hullValue">100%</strong></div>
-          <div><span>${t("能量")}</span><strong id="energyValue">100%</strong></div>
-          <div><span>${t("分离")}</span><strong id="splitValue">${t("编队")}</strong></div>
-          <div><span>${t("战区")}</span><strong id="zoneValueLocal">${t("战区{zone}", { zone: 5 })}</strong></div>
-        </section>
-
-        <section class="controls slim-controls">
-          <h2>${t("舰队控制")}</h2>
-          <div id="shipQuickSwitch" class="ship-switch">
-            <button type="button" class="ship-switch-btn" data-ship="main">${t("主舰")}</button>
-            <button type="button" class="ship-switch-btn" data-ship="sub1">${t("副舰1")}</button>
-            <button type="button" class="ship-switch-btn" data-ship="sub2">${t("副舰2")}</button>
-          </div>
-          <div class="btn-row">
-            <button id="splitOneBtn">${t("一级分离")}</button>
-            <button id="splitTwoBtn">${t("二级分离")}</button>
-          </div>
-          <div class="slider-wrap">
-            <div class="slider-head"><label for="powerSlider">${t("推进功率")}</label><strong id="powerValue">100%</strong></div>
-            <input id="powerSlider" type="range" min="25" max="140" step="1" value="100" />
-          </div>
-          <div class="zoom-control-row">
-            <button id="zoomOutBtn" type="button">${t("缩小")}</button>
-            <strong id="zoomValue">100%</strong>
-            <button id="zoomInBtn" type="button">${t("放大")}</button>
-          </div>
-        </section>
-
-        <section class="controls slim-controls">
-          <h2>${t("技能")}</h2>
-          <div class="btn-grid">
-            <button id="flagshipBtn">${t("旗舰技能")}</button>
-            <button id="subSkillBtn">${t("分舰技能")}</button>
-            <button id="scoutBtn">${t("派出侦查机")}</button>
-            <button id="autoScoutBtn" type="button">${t("自动侦查：{state}", { state: t("关") })}</button>
-            <button id="brakeBtn" type="button" class="span-2">${t("急刹")}</button>
-          </div>
-        </section>
-
-        <section class="controls slim-controls fleet-section">
-          <h2>${t("全队舰况")}</h2>
-          <div id="fleetRoster" class="fleet-roster">
-            <button type="button" class="fleet-row" data-ship="main">
-              <div class="fleet-row-head"><span class="fleet-name">${t("主舰")}</span><span class="fleet-state"></span></div>
-              <div class="fleet-gauges">
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-              </div>
-            </button>
-            <button type="button" class="fleet-row" data-ship="sub1">
-              <div class="fleet-row-head"><span class="fleet-name">${t("副一")}</span><span class="fleet-state"></span></div>
-              <div class="fleet-gauges">
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-              </div>
-            </button>
-            <button type="button" class="fleet-row" data-ship="sub2">
-              <div class="fleet-row-head"><span class="fleet-name">${t("副二")}</span><span class="fleet-state"></span></div>
-              <div class="fleet-gauges">
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-              </div>
-            </button>
-          </div>
-        </section>
-      </aside>
-
-      <main class="game-wrap">
-        <canvas id="gameCanvas" width="${LOGICAL}" height="${LOGICAL}"></canvas>
-        <section id="mobileBattleHud" class="mobile-battle-hud" aria-live="polite">
-          <div class="mobile-battle-head">
-            <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>
-            <div id="mobileBattleSummary" class="mobile-battle-summary">${t("主舰")} · ${t("区")}5 · ${t("推进")}100%</div>
-            <button id="mobileCenterBtn" type="button" class="mobile-chip-btn">${t("跟随")}</button>
-          </div>
-          <div id="mobileShipSwitch" class="mobile-ship-switch">
-            <button type="button" class="mobile-ship-btn" data-ship="main">${t("主舰")}</button>
-            <button type="button" class="mobile-ship-btn" data-ship="sub1">${t("副一")}</button>
-            <button type="button" class="mobile-ship-btn" data-ship="sub2">${t("副二")}</button>
-          </div>
-          <div class="mobile-action-grid">
-            <button id="mobileSplitOneBtn" type="button">${t("分离1")}</button>
-            <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
-            <button id="mobileBrakeBtn" type="button">${t("急刹")}</button>
-            <button id="mobileFlagshipBtn" type="button">${t("旗舰技")}</button>
-            <button id="mobileSubSkillBtn" type="button">${t("分舰技")}</button>
-            <button id="mobileScoutBtn" type="button">${t("侦察")}</button>
-            <button id="mobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
-            <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
-            <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
-          </div>
-          <div class="mobile-throttle-wrap">
-            <span class="mobile-throttle-label">${t("推进")}</span>
-            <button type="button" class="mobile-throttle-btn" data-throttle="40">40</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="70">70</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="100">100</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
-          </div>
-          <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
-        </section>
-        <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
-          <div id="resultCard" class="result-card">
-            <div class="result-glow" aria-hidden="true"></div>
-            <div class="result-head">
-              <span id="resultEyebrow" class="result-eyebrow"></span>
-              <h2 id="overlayTitle" class="result-title"></h2>
-              <p id="resultSub" class="result-sub"></p>
-              <div id="resultDiff" class="result-diff"></div>
-            </div>
-            <div id="resultVersus" class="result-versus"></div>
-            <div class="overlay-actions">
+  // 战斗视图 DOM 完全来自共享模板(src/battle/template.js);单人只注入「换阵容」与结算按钮
+  return battleViewTemplate({
+    panelActionsHTML: `<button id="applyLoadoutBtn" type="button">${t("换阵容")}</button>`,
+    overlayActionsHTML: `
               <button id="restartBtn">${t("再来一局")}</button>
-              <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>
-            </div>
-          </div>
-        </div>
-      </main>
-    </div>
-  `;
+              <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>`,
+  });
 }
