@@ -40,11 +40,17 @@ import {
   resetShipDestructionEffects,
 } from "./ship-destruction-effects.js";
 import {
-  ROUTE_HANDLE_RADIUS,
   drawBattleWorld,
   drawMinimap,
   drawPauseOverlay,
 } from "./battle/render.js";
+import {
+  CAMERA_ZOOM_MIN,
+  CAMERA_ZOOM_MAX,
+  createBattleCamera,
+  prefersMobileBattleMode,
+} from "./battle/camera.js";
+import { routeHandleAtPoint, shipAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
   characterShortName,
   shipCharacterName,
@@ -56,6 +62,7 @@ import {
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
+let camera = null; // 共享战场相机（src/battle/camera.js），mount 时创建
 let ac = null; // AbortController：统一移除 window 级监听
 let rafId = 0; // 渲染循环句柄
 let running = false; // 渲染循环开关
@@ -131,10 +138,6 @@ const TAU = Math.PI * 2;
 // 画布 backing store 改为按设备像素铺满显示区域,渲染时整体放大 LOGICAL→设备像素,
 // 从而在 Retina/大屏上像素级清晰、无放大模糊。
 const LOGICAL = DEFAULT_WORLD_SIZE; // 与在线/服务器共用同一权威尺寸,防止两种模式地图割裂
-const MOBILE_ZOOM = 1.78;
-const CAMERA_ZOOM_MIN = 1;
-const CAMERA_ZOOM_MAX = 2.6;
-const CAMERA_ZOOM_STEP = 0.2;
 
 function initApp() {
   app = {
@@ -156,10 +159,6 @@ function initApp() {
   tickRunning: false,
   paused: false,
   mobileMode: false,
-  cameraCenterX: LOGICAL * 0.5,
-  cameraCenterY: LOGICAL * 0.5,
-  cameraZoom: 1,
-  cameraManualUntil: 0,
   stars: Array.from({ length: 220 }, () => ({
     x: Math.random() * LOGICAL,
     y: Math.random() * LOGICAL,
@@ -203,187 +202,15 @@ function selectedShipSim() {
   return own ? own.ships[app.selectedShipKey] || null : null;
 }
 
-function prefersMobileBattleMode() {
-  return window.matchMedia("(max-width: 980px)").matches || window.matchMedia("(pointer: coarse)").matches;
-}
-
-function screenPointFromEvent(event) {
-  const rect = canvas.getBoundingClientRect();
-  const x = (event.clientX - rect.left) * (LOGICAL / rect.width);
-  const y = (event.clientY - rect.top) * (LOGICAL / rect.height);
-  return {
-    x: clamp(x, 0, LOGICAL),
-    y: clamp(y, 0, LOGICAL),
-  };
-}
-
-function effectiveViewZoom(zoomRatio = app.cameraZoom) {
-  const baseZoom = app.mobileMode ? MOBILE_ZOOM : 1;
-  return baseZoom * clamp(zoomRatio, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
-}
-
-function clampCameraCenter(centerX, centerY, zoom = effectiveViewZoom()) {
-  const width = LOGICAL / zoom;
-  const height = LOGICAL / zoom;
-  const halfW = width * 0.5;
-  const halfH = height * 0.5;
-  return {
-    x: clamp(centerX, halfW, LOGICAL - halfW),
-    y: clamp(centerY, halfH, LOGICAL - halfH),
-    width,
-    height,
-    zoom,
-  };
-}
-
-function currentViewState() {
-  const zoom = effectiveViewZoom();
-  const centered = clampCameraCenter(app.cameraCenterX, app.cameraCenterY, zoom);
-  return {
-    zoom: centered.zoom,
-    left: centered.x - centered.width * 0.5,
-    top: centered.y - centered.height * 0.5,
-    width: centered.width,
-    height: centered.height,
-  };
-}
-
-function worldPointFromScreenPoint(x, y) {
-  const view = currentViewState();
-  return {
-    x: clamp(view.left + x / view.zoom, 0, LOGICAL),
-    y: clamp(view.top + y / view.zoom, 0, LOGICAL),
-  };
-}
-
-function pointerFromEvent(event) {
-  const screen = screenPointFromEvent(event);
-  return worldPointFromScreenPoint(screen.x, screen.y);
-}
-
-function minimapRect() {
-  if (!app.mobileMode) {
-    return null;
-  }
-  const size = clamp(LOGICAL * 0.145, 180, 230);
-  return {
-    x: LOGICAL - size - 18,
-    y: 18,
-    width: size,
-    height: size,
-  };
-}
-
-function minimapWorldPointFromScreenPoint(screenX, screenY) {
-  const rect = minimapRect();
-  if (!rect) {
-    return null;
-  }
-  if (screenX < rect.x || screenX > rect.x + rect.width || screenY < rect.y || screenY > rect.y + rect.height) {
-    return null;
-  }
-  return {
-    x: clamp(((screenX - rect.x) / rect.width) * LOGICAL, 0, LOGICAL),
-    y: clamp(((screenY - rect.y) / rect.height) * LOGICAL, 0, LOGICAL),
-  };
-}
-
-function centerCameraOn(x, y, manual = true) {
-  const centered = clampCameraCenter(x, y);
-  app.cameraCenterX = centered.x;
-  app.cameraCenterY = centered.y;
-  if (manual) {
-    app.cameraManualUntil = performance.now() + 2600;
-  }
-}
-
-function setCameraZoom(nextZoom, focusScreen = null) {
-  const zoomRatio = clamp(nextZoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
-  if (Math.abs(zoomRatio - app.cameraZoom) < 1e-3) {
-    return false;
-  }
-
-  const prevView = currentViewState();
-  let centerX = prevView.left + prevView.width * 0.5;
-  let centerY = prevView.top + prevView.height * 0.5;
-
-  if (focusScreen) {
-    const worldX = clamp(prevView.left + focusScreen.x / prevView.zoom, 0, LOGICAL);
-    const worldY = clamp(prevView.top + focusScreen.y / prevView.zoom, 0, LOGICAL);
-    const zoom = effectiveViewZoom(zoomRatio);
-    const width = LOGICAL / zoom;
-    const height = LOGICAL / zoom;
-    centerX = worldX - focusScreen.x / zoom + width * 0.5;
-    centerY = worldY - focusScreen.y / zoom + height * 0.5;
-  }
-
-  app.cameraZoom = zoomRatio;
-  if (!app.mobileMode && zoomRatio <= CAMERA_ZOOM_MIN + 1e-3) {
-    app.cameraCenterX = LOGICAL * 0.5;
-    app.cameraCenterY = LOGICAL * 0.5;
-    app.cameraManualUntil = 0;
-  } else {
-    centerCameraOn(centerX, centerY, Boolean(focusScreen));
-  }
-  updateUi();
-  return true;
-}
-
-function adjustCameraZoom(direction, focusScreen = null) {
-  const step = direction > 0 ? CAMERA_ZOOM_STEP : -CAMERA_ZOOM_STEP;
-  return setCameraZoom(app.cameraZoom + step, focusScreen);
-}
-
-function updateCamera() {
-  const shouldTrack = app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3;
-  if (!shouldTrack) {
-    app.cameraCenterX = LOGICAL * 0.5;
-    app.cameraCenterY = LOGICAL * 0.5;
-    return;
-  }
-  const ship = selectedShipState();
-  if (!ship || !ship.alive) {
-    return;
-  }
-  if (performance.now() < app.cameraManualUntil) {
-    return;
-  }
-  const lead = clamp((ship.speed || 0) * 3.2, 34, 92);
-  const targetX = ship.x + Math.cos(ship.angle || 0) * lead;
-  const targetY = ship.y + Math.sin(ship.angle || 0) * lead;
-  app.cameraCenterX = clamp(app.cameraCenterX + (targetX - app.cameraCenterX) * 0.14, 0, LOGICAL);
-  app.cameraCenterY = clamp(app.cameraCenterY + (targetY - app.cameraCenterY) * 0.14, 0, LOGICAL);
-}
-
 function syncResponsiveMode() {
   app.mobileMode = prefersMobileBattleMode();
   if (!app.mobileMode) {
-    app.cameraManualUntil = 0;
+    camera.releaseManual();
   }
   if (ui.mobileBattleHud) {
     ui.mobileBattleHud.hidden = !app.mobileMode;
   }
-  resizeCanvas(); // 显示尺寸/方向变化时,同步 backing store 到设备像素,保持清晰
-}
-
-function zoneFromPoint(x, y) {
-  const zones = app.state ? app.state.zones : [];
-  return zones.find((zone) => x >= zone.x && x < zone.x + zone.width && y >= zone.y && y < zone.y + zone.height) || null;
-}
-
-function routeHandleAtPoint(route, x, y) {
-  if (!route) {
-    return null;
-  }
-  // 抓取半径明显大于绘制半径(11),让控制点/端点更好点中、减少"盲区"
-  const grab = ROUTE_HANDLE_RADIUS + 15;
-  if (distance(x, y, route.p1.x, route.p1.y) <= grab) {
-    return "control";
-  }
-  if (distance(x, y, route.p2.x, route.p2.y) <= grab) {
-    return "end";
-  }
-  return null;
+  camera.resizeCanvas(); // 显示尺寸/方向变化时,同步 backing store 到设备像素,保持清晰
 }
 
 function log(message) {
@@ -599,11 +426,8 @@ function resetMatch(logMessage = true) {
   app.gameOverLogged = false;
   app.paused = false;
   app.lastTime = performance.now();
-  app.cameraZoom = 1;
-  app.cameraManualUntil = 0;
   const mainShip = app.sim.teamA.ships.main;
-  app.cameraCenterX = mainShip.x;
-  app.cameraCenterY = mainShip.y;
+  camera.reset({ x: mainShip.x, y: mainShip.y });
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
     clearLog();
@@ -626,8 +450,8 @@ function setSelectedShip(shipKey) {
     app.pendingSubSkillAim = null;
   }
   const shipSim = selectedShipSim();
-  if ((app.mobileMode || app.cameraZoom > CAMERA_ZOOM_MIN + 1e-3) && shipSim) {
-    centerCameraOn(shipSim.x, shipSim.y, false);
+  if ((app.mobileMode || camera.zoom > CAMERA_ZOOM_MIN + 1e-3) && shipSim) {
+    camera.centerCameraOn(shipSim.x, shipSim.y, false);
   }
   syncPowerSliderFromSelected();
   updateUi();
@@ -658,27 +482,6 @@ function syncShipSelection() {
     button.disabled = !enabled;
     button.classList.toggle("active", key === app.selectedShipKey);
   }
-}
-
-function ownShipAtPoint(x, y) {
-  const own = ownTeamState();
-  if (!own || !own.ships) {
-    return null;
-  }
-  let best = null;
-  let bestDist = Infinity;
-  const hitPadding = app.mobileMode ? 28 : 14;
-  for (const ship of Object.values(own.ships)) {
-    if (!ship || !ship.alive || !ship.canControl) {
-      continue;
-    }
-    const d = distance(x, y, ship.x, ship.y);
-    if (d <= ship.radius + hitPadding && d < bestDist) {
-      best = ship;
-      bestDist = d;
-    }
-  }
-  return best;
 }
 
 function syncPowerSliderFromSelected() {
@@ -786,12 +589,12 @@ function handleMinimapTap(screenPos, { allowZoneLog = true } = {}) {
   if (!app.mobileMode) {
     return false;
   }
-  const world = minimapWorldPointFromScreenPoint(screenPos.x, screenPos.y);
+  const world = camera.minimapWorldPointFromScreenPoint(screenPos.x, screenPos.y);
   if (!world) {
     return false;
   }
-  centerCameraOn(world.x, world.y, true);
-  const zone = zoneFromPoint(world.x, world.y);
+  camera.centerCameraOn(world.x, world.y, true);
+  const zone = zoneFromPoint(app.state, world.x, world.y);
   if (zone) {
     setSelectedZoneId(zone.id, { allowLog: allowZoneLog });
   } else {
@@ -990,9 +793,9 @@ function updateUi() {
   ui.hullValue.textContent = `${Math.round((own.hullRatio || 0) * 100)}%`;
   ui.splitValue.textContent = localizedSplitLabel(own.splitLevel);
   ui.zoneValue.textContent = t("战区{zone}", { zone: app.selectedZoneId });
-  ui.zoomValue.textContent = `${Math.round(app.cameraZoom * 100)}%`;
-  ui.zoomOutBtn.disabled = app.cameraZoom <= CAMERA_ZOOM_MIN + 1e-3;
-  ui.zoomInBtn.disabled = app.cameraZoom >= CAMERA_ZOOM_MAX - 1e-3;
+  ui.zoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
+  ui.zoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
+  ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
 
   const selectedState = selectedShipState();
   const selectedSim = selectedShipSim();
@@ -1154,23 +957,6 @@ function drawTutorialIllustration(kind) {
   ctx.restore();
 }
 
-// 把 backing store(画布物理像素)对齐到显示区域的设备像素,告别 1440 固定缓冲被放大产生的模糊。
-function resizeCanvas() {
-  if (!canvas) {
-    return;
-  }
-  const rect = canvas.getBoundingClientRect();
-  const cssW = rect.width || canvas.clientWidth || LOGICAL;
-  // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [LOGICAL, 2880]:
-  // 不低于原始 1440(绝不劣化),不超 2880(控住超大屏/高 DPR 的内存与填充开销)。
-  const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-  const backing = Math.max(LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
-  if (canvas.width !== backing) {
-    canvas.width = backing;
-    canvas.height = backing;
-  }
-}
-
 function render() {
   if (!app.state) {
     return;
@@ -1178,8 +964,8 @@ function render() {
 
   // backing store(设备像素)对逻辑世界(LOGICAL)的比例:整幅画面放大到物理像素 → 矢量线条像素级清晰。
   const scale = canvas.width / LOGICAL;
-  updateCamera();
-  const view = currentViewState();
+  camera.updateCamera();
+  const view = camera.currentViewState();
   ctx.setTransform(scale, 0, 0, scale, 0, 0); // 基准变换:屏幕/UI 空间(逻辑坐标 → 物理像素)
   ctx.save();
   ctx.setTransform(
@@ -1219,7 +1005,7 @@ function render() {
     drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, app.playerColor);
   }
 
-  drawMinimap(ctx, frame, minimapRect(), view);
+  drawMinimap(ctx, frame, camera.minimapRect(), view);
 
   if (app.paused) {
     drawPauseOverlay(ctx);
@@ -1329,10 +1115,10 @@ function bindUiEvents() {
     setThrottleValue(ui.powerSlider.value);
   });
   ui.zoomOutBtn.addEventListener("click", () => {
-    adjustCameraZoom(-1);
+    camera.adjustCameraZoom(-1);
   });
   ui.zoomInBtn.addEventListener("click", () => {
-    adjustCameraZoom(1);
+    camera.adjustCameraZoom(1);
   });
   for (const button of ui.mobileThrottleButtons) {
     button.addEventListener("click", () => {
@@ -1343,18 +1129,18 @@ function bindUiEvents() {
     ui.mobileCenterBtn.addEventListener("click", () => {
       const ship = selectedShipState();
       if (ship) {
-        centerCameraOn(ship.x, ship.y, false);
+        camera.centerCameraOn(ship.x, ship.y, false);
       }
     });
   }
   if (ui.mobileZoomOutBtn) {
     ui.mobileZoomOutBtn.addEventListener("click", () => {
-      adjustCameraZoom(-1);
+      camera.adjustCameraZoom(-1);
     });
   }
   if (ui.mobileZoomInBtn) {
     ui.mobileZoomInBtn.addEventListener("click", () => {
-      adjustCameraZoom(1);
+      camera.adjustCameraZoom(1);
     });
   }
 
@@ -1423,7 +1209,7 @@ function bindUiEvents() {
       if (!ship || !ship.alive || !ship.canControl) {
         return;
       }
-      const pos = pointerFromEvent(event);
+      const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
       const handle = routeHandleAtPoint(ship.route, pos.x, pos.y);
       if (handle) {
@@ -1439,7 +1225,7 @@ function bindUiEvents() {
         log(t("当前没有可用舰船可设置目标点"));
         return;
       }
-      const pos = pointerFromEvent(event);
+      const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
       setRouteForSelectedShip(pos.x, pos.y);
       const shipSim = selectedShipSim();
@@ -1450,10 +1236,10 @@ function bindUiEvents() {
 
   canvas.addEventListener("mousemove", (event) => {
     if (app.mobileMode) {
-      app.pointer = pointerFromEvent(event);
+      app.pointer = camera.pointerFromEvent(event);
       return;
     }
-    const pos = pointerFromEvent(event);
+    const pos = camera.pointerFromEvent(event);
     app.pointer = pos;
 
     if (!app.drag || !app.state || app.state.phase === "finished") {
@@ -1493,8 +1279,8 @@ function bindUiEvents() {
       return;
     }
     event.preventDefault();
-    const focus = screenPointFromEvent(event);
-    adjustCameraZoom(event.deltaY < 0 ? 1 : -1, focus);
+    const focus = camera.screenPointFromEvent(event);
+    camera.adjustCameraZoom(event.deltaY < 0 ? 1 : -1, focus);
   }, { passive: false });
 
   canvas.addEventListener("click", (event) => {
@@ -1502,13 +1288,13 @@ function bindUiEvents() {
       return;
     }
 
-    const screenPos = screenPointFromEvent(event);
+    const screenPos = camera.screenPointFromEvent(event);
     if (app.suppressMapClick) {
       app.suppressMapClick = false;
       return;
     }
 
-    const pos = pointerFromEvent(event);
+    const pos = camera.pointerFromEvent(event);
     app.pointer = pos;
 
     if (app.mobileMode && app.pendingSubSkillAim) {
@@ -1536,7 +1322,7 @@ function bindUiEvents() {
       if (handleMinimapTap(screenPos)) {
         return;
       }
-      const tappedShip = ownShipAtPoint(pos.x, pos.y);
+      const tappedShip = shipAtPoint(ownTeamState(), pos.x, pos.y);
       if (tappedShip) {
         setSelectedShip(tappedShip.key);
         return;
@@ -1562,7 +1348,7 @@ function bindUiEvents() {
       return;
     }
 
-    const zone = zoneFromPoint(pos.x, pos.y);
+    const zone = zoneFromPoint(app.state, pos.x, pos.y);
     if (!zone) {
       return;
     }
@@ -1694,17 +1480,17 @@ function bindUiEvents() {
     // +/-/0 — camera zoom
     if (event.code === "Equal" || event.code === "NumpadAdd") {
       event.preventDefault();
-      adjustCameraZoom(1);
+      camera.adjustCameraZoom(1);
       return;
     }
     if (event.code === "Minus" || event.code === "NumpadSubtract") {
       event.preventDefault();
-      adjustCameraZoom(-1);
+      camera.adjustCameraZoom(-1);
       return;
     }
     if (event.code === "Digit0" || event.code === "Numpad0") {
       event.preventDefault();
-      setCameraZoom(CAMERA_ZOOM_MIN);
+      camera.setCameraZoom(CAMERA_ZOOM_MIN);
       return;
     }
 
@@ -1736,7 +1522,7 @@ function launchWithLoadout(loadout, color) {
   storeLoadout(loadout);
   syncLoadoutControls(loadout);
   resetMatch(true);
-  resizeCanvas(); // 战斗画布此刻可见且已布局,按设备像素定 backing,首帧即清晰
+  camera.resizeCanvas(); // 战斗画布此刻可见且已布局,按设备像素定 backing,首帧即清晰
   if (!running) {
     running = true;
     app.tickRunning = true;
@@ -1814,6 +1600,12 @@ export function mount(root) {
   root.innerHTML = soloTemplate();
   cacheDom();
   initApp();
+  camera = createBattleCamera({
+    canvas,
+    isMobile: () => app.mobileMode,
+    getTrackedShip: () => selectedShipState(),
+    onZoomChanged: () => updateUi(),
+  });
   ac = new AbortController();
   running = false;
   rafId = 0;
