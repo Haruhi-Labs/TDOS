@@ -3729,7 +3729,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
    在线大厅 — 独立页面（非覆盖层），与战斗页二选一
    ═══════════════════════════════════════════════════ */
 #lobbyView[hidden], #battleView[hidden] { display: none !important; }
-.online-root { min-height: 100vh; }
+/* 路由淡入动画使 #app 子节点各自成层叠上下文,online-root 必须与 .app-shell 一样抬到
+   body::after 的整屏颗粒/暗角层之上,否则战斗画面会蒙一层"毛玻璃"噪点(大厅自带 page-bg 质感,不受影响) */
+.online-root { min-height: 100vh; position: relative; z-index: 1; }
 
 .lobby-view {
   position: relative;
