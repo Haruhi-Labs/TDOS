@@ -1,5 +1,5 @@
 import {
-  FIRE_ARC_BANDS,
+  DEFAULT_WORLD_SIZE,
   MatchSimulation,
   CHARACTER_ORDER,
   CHARACTER_DEFS,
@@ -12,7 +12,6 @@ import {
   cloneLoadout,
   distance,
   normalizeLoadout,
-  quadraticPoint,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
 
@@ -38,13 +37,16 @@ import { tutorial } from "./tutorial.js";
 import { showConfirm } from "./confirm-dialog.js";
 import {
   createShipDestructionEffects,
-  drawShipDestructionEffects,
   resetShipDestructionEffects,
-  syncShipDestructionEffects,
 } from "./ship-destruction-effects.js";
 import {
+  ROUTE_HANDLE_RADIUS,
+  drawBattleWorld,
+  drawMinimap,
+  drawPauseOverlay,
+} from "./battle/render.js";
+import {
   characterShortName,
-  localizeFloatingText,
   shipCharacterName,
   shipDisplayName,
   slotLabel as localizedSlotLabel,
@@ -128,8 +130,7 @@ const TAU = Math.PI * 2;
 // 逻辑世界尺寸：所有游戏/坐标运算都在这个固定的 1440 空间里(与画布物理像素解耦)。
 // 画布 backing store 改为按设备像素铺满显示区域,渲染时整体放大 LOGICAL→设备像素,
 // 从而在 Retina/大屏上像素级清晰、无放大模糊。
-const LOGICAL = 1440;
-const ROUTE_HANDLE_RADIUS = 11;
+const LOGICAL = DEFAULT_WORLD_SIZE; // 与在线/服务器共用同一权威尺寸,防止两种模式地图割裂
 const MOBILE_ZOOM = 1.78;
 const CAMERA_ZOOM_MIN = 1;
 const CAMERA_ZOOM_MAX = 2.6;
@@ -1108,527 +1109,6 @@ function showResultScreen(winnerSeat) {
   card.classList.add("result-in");
 }
 
-function drawBackground(elapsed) {
-  const gradient = ctx.createLinearGradient(0, 0, LOGICAL, LOGICAL);
-  gradient.addColorStop(0, "#040d18");
-  gradient.addColorStop(0.5, "#071423");
-  gradient.addColorStop(1, "#050b14");
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, LOGICAL, LOGICAL);
-
-  for (const star of app.stars) {
-    const alpha = 0.24 + Math.sin(elapsed * 1.6 + star.p) * 0.24 + 0.34;
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#b7dbff";
-    ctx.beginPath();
-    ctx.arc(star.x, star.y, star.r, 0, TAU);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 1;
-}
-
-function drawZones() {
-  if (!app.state || !app.state.zones) {
-    return;
-  }
-  for (const zone of app.state.zones) {
-    const selected = zone.id === app.selectedZoneId;
-    ctx.strokeStyle = selected ? "#4ec9ff99" : "#2d5d884f";
-    ctx.lineWidth = selected ? 2 : 1;
-    ctx.strokeRect(zone.x, zone.y, zone.width, zone.height);
-
-    ctx.fillStyle = selected ? "#76d6ff" : "#5f8ab8";
-    ctx.font = "bold 14px 'Noto Sans SC', 'PingFang SC', sans-serif";
-    ctx.fillText(t("战区 {zone}", { zone: zone.id }), zone.x + 10, zone.y + 20);
-  }
-}
-
-function drawRoute(route, selected) {
-  if (!route) {
-    return;
-  }
-
-  const { p0, p1, p2 } = route;
-  const time = (app.state && app.state.elapsed) || 0;
-  // 末段切线(二次贝塞尔在 t=1 的方向 ∝ p2-p1)→ 航向,用于终点箭头朝向
-  let hx = p2.x - p1.x;
-  let hy = p2.y - p1.y;
-  if (Math.hypot(hx, hy) < 1e-3) {
-    hx = p2.x - p0.x;
-    hy = p2.y - p0.y;
-  }
-  const heading = Math.atan2(hy, hx);
-
-  // 沿航线描一条二次曲线路径(供多次不同样式描边复用)
-  const tracePath = () => {
-    ctx.beginPath();
-    ctx.moveTo(p0.x, p0.y);
-    ctx.quadraticCurveTo(p1.x, p1.y, p2.x, p2.y);
-  };
-
-  ctx.save();
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-
-  // 航线主体:渐变虚线 + 同步发光虚线,沿航向缓缓流动(轻盈好看,并传达方向)
-  const dash = [11, 9];
-  const dashOffset = -time * 28;
-
-  // ① 发光虚线:宽而透明,让航线在星空背景上"浮起来"
-  ctx.setLineDash(dash);
-  ctx.lineDashOffset = dashOffset;
-  ctx.lineWidth = selected ? 7.5 : 5;
-  ctx.strokeStyle = selected ? "#39d8ff33" : "#39d8ff1f";
-  tracePath();
-  ctx.stroke();
-
-  // ② 主虚线:从舰身青 → 目标薄荷的渐变
-  const grad = ctx.createLinearGradient(p0.x, p0.y, p2.x, p2.y);
-  grad.addColorStop(0, selected ? "#7ce6ff" : "#6fcdeecc");
-  grad.addColorStop(1, selected ? "#a9f7d2" : "#86dcc0cc");
-  ctx.lineWidth = selected ? 2.8 : 2.0;
-  ctx.strokeStyle = grad;
-  ctx.setLineDash(dash);
-  ctx.lineDashOffset = dashOffset;
-  tracePath();
-  ctx.stroke();
-
-  ctx.setLineDash([]);
-  ctx.lineDashOffset = 0;
-
-  if (selected) {
-    // ④ 终点:目标十字标记(环 + 四向刻度 + 心点 + 航向箭头),清楚地读作"到这里"
-    drawTargetMarker(p2, heading, time);
-
-    // ⑤ 进度点:沿曲线滑动的亮点,表示当前推进位置
-    const progressPoint = quadraticPoint(p0, p1, p2, clamp(route.t || 0, 0, 1));
-    ctx.fillStyle = "#39d8ff44";
-    ctx.beginPath();
-    ctx.arc(progressPoint.x, progressPoint.y, 6, 0, TAU);
-    ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.beginPath();
-    ctx.arc(progressPoint.x, progressPoint.y, 3, 0, TAU);
-    ctx.fill();
-
-    // ⑥ 控制点 + 控制多边形(仅桌面可拖拽):琥珀色"旋钮",一眼可抓
-    if (!app.mobileMode) {
-      ctx.lineWidth = 1.1;
-      ctx.strokeStyle = "#ffd9912e";
-      ctx.setLineDash([2, 6]);
-      ctx.beginPath();
-      ctx.moveTo(p0.x, p0.y);
-      ctx.lineTo(p1.x, p1.y);
-      ctx.lineTo(p2.x, p2.y);
-      ctx.stroke();
-      ctx.setLineDash([]);
-      drawCurveKnob(p1);
-    }
-  }
-
-  ctx.restore();
-}
-
-// 目标十字标记:柔光底 + 外环(带呼吸脉冲)+ 四向刻度 + 中心点 + 航向箭头
-function drawTargetMarker(p, heading, time) {
-  const r = ROUTE_HANDLE_RADIUS + 1;
-  const pulse = 0.5 + 0.5 * Math.sin(time * 3.0);
-
-  ctx.save();
-  ctx.lineCap = "round";
-
-  // 柔光底
-  ctx.fillStyle = "#7df7c024";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r + 5, 0, TAU);
-  ctx.fill();
-
-  // 外环(脉冲)
-  ctx.strokeStyle = "#8af7c0";
-  ctx.lineWidth = 2.2;
-  ctx.globalAlpha = 0.75 + pulse * 0.25;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, r + pulse * 2.2, 0, TAU);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-
-  // 四向刻度
-  ctx.strokeStyle = "#cfffe6";
-  ctx.lineWidth = 1.8;
-  for (let i = 0; i < 4; i++) {
-    const a = (i * Math.PI) / 2;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    ctx.beginPath();
-    ctx.moveTo(p.x + ca * (r + 3), p.y + sa * (r + 3));
-    ctx.lineTo(p.x + ca * (r + 7), p.y + sa * (r + 7));
-    ctx.stroke();
-  }
-
-  // 中心点
-  ctx.fillStyle = "#eafff5";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 2.6, 0, TAU);
-  ctx.fill();
-
-  // 航向箭头(指向行进方向,落在环外)
-  ctx.save();
-  ctx.translate(p.x + Math.cos(heading) * (r + 11), p.y + Math.sin(heading) * (r + 11));
-  ctx.rotate(heading);
-  ctx.fillStyle = "#8af7c0";
-  ctx.beginPath();
-  ctx.moveTo(6, 0);
-  ctx.lineTo(-4, -4.2);
-  ctx.lineTo(-1.6, 0);
-  ctx.lineTo(-4, 4.2);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-
-  ctx.restore();
-}
-
-// 曲度控制旋钮:柔光底 + 琥珀环 + 中心点,读作"可拖拽手柄"
-function drawCurveKnob(p) {
-  ctx.save();
-  ctx.fillStyle = "#ffd29120";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, ROUTE_HANDLE_RADIUS + 4, 0, TAU);
-  ctx.fill();
-
-  ctx.fillStyle = "#1b1305cc";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, ROUTE_HANDLE_RADIUS, 0, TAU);
-  ctx.fill();
-
-  ctx.strokeStyle = "#ffd27a";
-  ctx.lineWidth = 2.2;
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, ROUTE_HANDLE_RADIUS, 0, TAU);
-  ctx.stroke();
-
-  ctx.fillStyle = "#ffe6b0";
-  ctx.beginPath();
-  ctx.arc(p.x, p.y, 3.4, 0, TAU);
-  ctx.fill();
-  ctx.restore();
-}
-
-function shipHullDrawScale(ship) {
-  const baseScale = ship.key === "main" ? 0.72 : ship.key === "twin" ? 0.56 : 0.62;
-  const baseRadius = ship.key === "main" ? 10 : ship.key === "twin" ? 8 : 9;
-  return baseScale * ((ship.radius || baseRadius) / baseRadius);
-}
-
-// 刀锋女王光环:四段旋转猩红刀弧 + 脉动内圈柔光,标示朝仓进入无视碰撞的切割态
-function drawBladeQueenAura(ship) {
-  const now = performance.now();
-  const spin = now * 0.0065;
-  const pulse = 0.6 + Math.sin(now * 0.012 + (ship.id || 0)) * 0.4;
-  const r = ship.radius + 7 + pulse * 3;
-  ctx.save();
-  ctx.translate(ship.x, ship.y);
-  ctx.rotate(spin);
-  ctx.lineCap = "round";
-  ctx.strokeStyle = "#ff2d55";
-  ctx.globalAlpha = 0.55 + pulse * 0.35;
-  ctx.lineWidth = 2.2;
-  for (let k = 0; k < 4; k += 1) {
-    const a0 = (k / 4) * TAU;
-    ctx.beginPath();
-    ctx.arc(0, 0, r, a0, a0 + TAU * 0.16);
-    ctx.stroke();
-  }
-  ctx.globalAlpha = 0.16 * pulse;
-  ctx.lineWidth = 3.4;
-  ctx.strokeStyle = "#ff8aa0";
-  ctx.beginPath();
-  ctx.arc(0, 0, r - 2, 0, TAU);
-  ctx.stroke();
-  ctx.restore();
-}
-
-// 舰船下方的科技感角色名牌:半透明深色托底 + 队伍色 HUD 顶边线 + 辉光亮字 + 字距,大写更硬朗
-// accent = 该舰队伍色(己方青/敌方红),用于边框与辉光,区分敌我
-function drawShipNameLabel(ship, accent) {
-  const name = characterShortName(ship.characterId, ship.characterName || ship.name || "");
-  if (!name) {
-    return;
-  }
-  const label = String(name).toUpperCase();
-  const cx = ship.x;
-  const topY = ship.y + ship.radius + 9; // 舰体正下方,避开上方血条/能量条
-  const fontSize = 12;
-  ctx.save();
-  ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.font = `600 ${fontSize}px 'Noto Sans SC','PingFang SC',sans-serif`;
-  if ("letterSpacing" in ctx) {
-    ctx.letterSpacing = "1px";
-  }
-  const padX = 7;
-  const padY = 3;
-  const textW = ctx.measureText(label).width;
-  const boxW = textW + padX * 2;
-  const boxH = fontSize + padY * 2;
-  const boxX = cx - boxW / 2;
-  const r = 3;
-  // 圆角托底
-  ctx.beginPath();
-  ctx.moveTo(boxX + r, topY);
-  ctx.arcTo(boxX + boxW, topY, boxX + boxW, topY + boxH, r);
-  ctx.arcTo(boxX + boxW, topY + boxH, boxX, topY + boxH, r);
-  ctx.arcTo(boxX, topY + boxH, boxX, topY, r);
-  ctx.arcTo(boxX, topY, boxX + boxW, topY, r);
-  ctx.closePath();
-  ctx.fillStyle = "rgba(6,14,26,0.62)";
-  ctx.fill();
-  // 边框 + 顶边高光,取队伍色
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 1;
-  ctx.globalAlpha = 0.5;
-  ctx.stroke();
-  ctx.globalAlpha = 0.9;
-  ctx.beginPath();
-  ctx.moveTo(boxX + 3, topY + 0.5);
-  ctx.lineTo(boxX + boxW - 3, topY + 0.5);
-  ctx.stroke();
-  // 名字:近白 + 队伍色辉光
-  ctx.globalAlpha = 1;
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = 5;
-  ctx.fillStyle = "#eef6ff";
-  ctx.fillText(label, cx, topY + padY);
-  ctx.restore();
-}
-
-function drawShip(ship, color, selected, attached, isEnemy = false) {
-  if (!ship || !ship.alive) {
-    return;
-  }
-
-  if (ship.bladeQueen) {
-    drawBladeQueenAura(ship);
-  }
-
-  ctx.save();
-  ctx.translate(ship.x, ship.y);
-  ctx.rotate(ship.angle);
-
-  const hullScale = shipHullDrawScale(ship);
-  ctx.globalAlpha = attached ? 0.84 : 1;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(16 * hullScale, 0);
-  ctx.lineTo(-13 * hullScale, -10 * hullScale);
-  ctx.lineTo(-6 * hullScale, 0);
-  ctx.lineTo(-13 * hullScale, 10 * hullScale);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = "#ffffffaa";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  if (selected) {
-    ctx.strokeStyle = "#ffe084";
-    ctx.lineWidth = 1.9;
-    ctx.beginPath();
-    ctx.arc(0, 0, ship.radius + 4, 0, TAU);
-    ctx.stroke();
-  }
-
-  ctx.restore();
-
-  const hpRatio = clamp((ship.hp || 0) / Math.max(1, ship.maxHp || 1), 0, 1);
-  const energyRatio = clamp((ship.energy || 0) / Math.max(1, ship.maxEnergy || 1), 0, 1);
-  const barWidth = Math.max(26, ship.radius * 2.5);
-  const barLeft = ship.x - barWidth * 0.5;
-  ctx.fillStyle = "#0f1f31";
-  ctx.fillRect(barLeft, ship.y - ship.radius - 10, barWidth, 4);
-  ctx.fillStyle = hpRatio > 0.35 ? "#72f5a8" : "#ff8a8a";
-  ctx.fillRect(barLeft, ship.y - ship.radius - 10, barWidth * hpRatio, 4);
-  ctx.fillStyle = "#10263d";
-  ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth, 3);
-  ctx.fillStyle = "#6ad8ff";
-  ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
-
-  // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
-  // 敌方默认隐藏名字,仅当其名字已永久暴露(曾在我方视野中施放技能)时才显示。
-  if (!attached && (!isEnemy || ship.nameRevealed)) {
-    drawShipNameLabel(ship, color);
-  }
-}
-
-function drawScout(scout, isOwnTeam) {
-  if (!scout || !scout.alive) {
-    return;
-  }
-
-  if (Number.isFinite(scout.vision) && scout.vision > 0) {
-    ctx.save();
-    ctx.strokeStyle = isOwnTeam ? "#8adfff40" : "#ffb7c040";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.arc(scout.x, scout.y, scout.vision, 0, TAU);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  ctx.save();
-  ctx.translate(scout.x, scout.y);
-  ctx.rotate(scout.angle || 0);
-  ctx.fillStyle = isOwnTeam ? "#9de8ff" : "#ffb7c0";
-  ctx.beginPath();
-  ctx.moveTo(5, 0);
-  ctx.lineTo(0, -3);
-  ctx.lineTo(-5, 0);
-  ctx.lineTo(0, 3);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawWingman(wingman, isOwnTeam) {
-  if (!wingman || !wingman.alive) {
-    return;
-  }
-  ctx.save();
-  ctx.translate(wingman.x, wingman.y);
-  ctx.rotate(wingman.angle || 0);
-  ctx.fillStyle = isOwnTeam ? "#ffe7aa" : "#ffc6b3";
-  ctx.beginPath();
-  ctx.moveTo(6, 0);
-  ctx.lineTo(-4, -3);
-  ctx.lineTo(-2, 0);
-  ctx.lineTo(-4, 3);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBeam(beam) {
-  if (!beam) {
-    return;
-  }
-  const phase = beam.phase || "fire";
-  const maxLife = Math.max(0.001, Number(beam.maxLife) || (phase === "charge" ? 1.05 : 0.26));
-  const alpha = clamp((beam.life || 0) / maxLife, 0, 1);
-  if (alpha <= 0) {
-    return;
-  }
-
-  if (phase === "charge") {
-    const progress = Number.isFinite(beam.progress) ? clamp(beam.progress, 0, 1) : clamp(1 - alpha, 0, 1);
-    const pulse = 0.55 + Math.sin(performance.now() * 0.02 + (beam.id || 0)) * 0.45;
-    const glow = 9 + progress * 22 + pulse * 4;
-
-    ctx.save();
-    ctx.globalAlpha = 0.14 + progress * 0.28;
-    ctx.strokeStyle = beam.color || "#8ef8ff";
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([7, 6]);
-    ctx.beginPath();
-    ctx.moveTo(beam.x1, beam.y1);
-    ctx.lineTo(beam.x2, beam.y2);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    ctx.globalAlpha = 0.35 + progress * 0.4;
-    ctx.beginPath();
-    ctx.arc(beam.x1, beam.y1, glow, 0, TAU);
-    ctx.strokeStyle = "#8ef8ff";
-    ctx.lineWidth = 1.8;
-    ctx.stroke();
-
-    ctx.globalAlpha = 0.22 + progress * 0.45;
-    ctx.beginPath();
-    ctx.arc(beam.x1, beam.y1, 4.5 + pulse * 3.5, 0, TAU);
-    ctx.fillStyle = "#dfffff";
-    ctx.fill();
-    ctx.restore();
-    return;
-  }
-
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.strokeStyle = beam.color || "#8ef8ff";
-  ctx.lineWidth = 7;
-  ctx.beginPath();
-  ctx.moveTo(beam.x1, beam.y1);
-  ctx.lineTo(beam.x2, beam.y2);
-  ctx.stroke();
-  ctx.lineWidth = 2.2;
-  ctx.strokeStyle = "#ffffff";
-  ctx.globalAlpha = alpha * 0.7;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawProjectile(projectile, isOwnTeam) {
-  if (!projectile || !projectile.alive) {
-    return;
-  }
-  ctx.save();
-  ctx.fillStyle = projectile.color || (isOwnTeam ? "#9be8ff" : "#ffc0bd");
-  ctx.beginPath();
-  ctx.arc(projectile.x, projectile.y, projectile.radius || 2, 0, TAU);
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawBurst(burst) {
-  if (!burst) {
-    return;
-  }
-  const alpha = clamp((burst.life || 0) / 0.35, 0, 1);
-  if (alpha <= 0) {
-    return;
-  }
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.beginPath();
-  ctx.arc(burst.x, burst.y, burst.radius || 7, 0, TAU);
-  ctx.strokeStyle = burst.color || "#ffdb9b";
-  ctx.lineWidth = 2;
-  ctx.stroke();
-  ctx.restore();
-}
-
-function drawFloatingText(label) {
-  if (!label) {
-    return;
-  }
-  const alpha = clamp((label.life || 0) / 0.8, 0, 1);
-  if (alpha <= 0) {
-    return;
-  }
-  ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = label.color || "#ffd178";
-  ctx.font = "bold 12px 'Noto Sans SC', 'PingFang SC', sans-serif";
-  ctx.fillText(localizeFloatingText(label), label.x, label.y);
-  ctx.restore();
-}
-
-function drawSelectedVisionCircle() {
-  const own = ownTeamState();
-  if (!own || !own.ships) {
-    return;
-  }
-  const selected = own.ships[app.selectedShipKey];
-  if (!selected || !selected.alive || !selected.vision) {
-    return;
-  }
-  ctx.save();
-  ctx.strokeStyle = "#8adfff3a";
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.arc(selected.x, selected.y, selected.vision, 0, TAU);
-  ctx.stroke();
-  ctx.restore();
-}
-
 // 新手教程画布示意图。'fireArc' 复用已有 drawSelectedFireArc(每帧已为选中舰画扇形),无需重画;
 // 'visionRange' 在旗舰上额外画出真实「射程圈」(金)与加亮「视野圈」(青)+ 标注,直观呈现 视野 ≪ 射程。
 function drawTutorialIllustration(kind) {
@@ -1674,193 +1154,6 @@ function drawTutorialIllustration(kind) {
   ctx.restore();
 }
 
-function drawFireArcBand(ship, startDeg, endDeg, outerRadius, innerRadius, color, alpha = 0.2) {
-  const start = ship.angle + (startDeg * Math.PI) / 180;
-  const end = ship.angle + (endDeg * Math.PI) / 180;
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.globalAlpha = alpha;
-  ctx.beginPath();
-  ctx.arc(ship.x, ship.y, outerRadius, start, end);
-  ctx.arc(ship.x, ship.y, innerRadius, end, start, true);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawFireArcLabel(ship, offsetDeg, radius, text, color) {
-  const angle = ship.angle + (offsetDeg * Math.PI) / 180;
-  const x = ship.x + Math.cos(angle) * radius;
-  const y = ship.y + Math.sin(angle) * radius;
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.font = "bold 10px 'Noto Sans SC', 'PingFang SC', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(text, x, y);
-  ctx.restore();
-}
-
-function drawSelectedFireArc() {
-  const own = ownTeamState();
-  if (!own || !own.ships) {
-    return;
-  }
-  const ship = own.ships[app.selectedShipKey];
-  if (!ship || !ship.alive) {
-    return;
-  }
-
-  const outerRadius = clamp((ship.range || 0) * 0.22, 84, 124);
-  const innerRadius = ship.radius + 14;
-  const labelRadius = outerRadius - 12;
-
-  if (own.loadout && own.loadout.main === "kyon") {
-    drawFireArcBand(ship, -180, 180, outerRadius, innerRadius, "#7de4ff", 0.14);
-    drawFireArcLabel(ship, 0, labelRadius, t("均匀"), "#b9f4ff");
-    return;
-  }
-
-  for (const band of FIRE_ARC_BANDS) {
-    let color = "#7bd8ff";
-    let alpha = 0.14;
-    if (band.multiplier === 1.5) {
-      color = "#ffd56c";
-      alpha = 0.24;
-    } else if (band.multiplier === 0) {
-      color = "#ff6e6e";
-      alpha = 0.16;
-    }
-    drawFireArcBand(ship, band.startDeg, band.endDeg, outerRadius, innerRadius, color, alpha);
-  }
-
-  ctx.save();
-  ctx.strokeStyle = "#d2f3ff66";
-  ctx.lineWidth = 1;
-  for (const boundaryDeg of [-150, -120, -60, 60, 120, 150, 180]) {
-    const angle = ship.angle + (boundaryDeg * Math.PI) / 180;
-    ctx.beginPath();
-    ctx.moveTo(ship.x + Math.cos(angle) * innerRadius, ship.y + Math.sin(angle) * innerRadius);
-    ctx.lineTo(ship.x + Math.cos(angle) * outerRadius, ship.y + Math.sin(angle) * outerRadius);
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  drawFireArcLabel(ship, 0, labelRadius, "1x", "#bfefff");
-  drawFireArcLabel(ship, 90, labelRadius, "1.5x", "#ffe7a1");
-  drawFireArcLabel(ship, -90, labelRadius, "1.5x", "#ffe7a1");
-  drawFireArcLabel(ship, 135, labelRadius, "1x", "#bfefff");
-  drawFireArcLabel(ship, -135, labelRadius, "1x", "#bfefff");
-  drawFireArcLabel(ship, 180, labelRadius, "0x", "#ffb0b0");
-}
-
-function drawSubSkillAimHint() {
-  const own = ownTeamState();
-  if (!app.pendingSubSkillAim || !own || !own.ships) {
-    return;
-  }
-  const ship = own.ships[app.pendingSubSkillAim.shipKey];
-  if (!ship || !ship.alive || ship.attached) {
-    return;
-  }
-  ctx.save();
-  ctx.strokeStyle = "#7ff4ff";
-  ctx.lineWidth = 1.6;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(ship.x, ship.y);
-  ctx.lineTo(app.pointer.x, app.pointer.y);
-  ctx.stroke();
-  ctx.setLineDash([]);
-  ctx.restore();
-}
-
-function drawMinimap() {
-  if (!app.mobileMode || !app.state) {
-    return;
-  }
-  const rect = minimapRect();
-  if (!rect) {
-    return;
-  }
-
-  ctx.save();
-  ctx.fillStyle = "#06121fda";
-  ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
-  ctx.strokeStyle = "#285279";
-  ctx.lineWidth = 2;
-  ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
-
-  if (Array.isArray(app.state.zones)) {
-    for (const zone of app.state.zones) {
-      const zx = rect.x + (zone.x / LOGICAL) * rect.width;
-      const zy = rect.y + (zone.y / LOGICAL) * rect.height;
-      const zw = (zone.width / LOGICAL) * rect.width;
-      const zh = (zone.height / LOGICAL) * rect.height;
-      ctx.strokeStyle = zone.id === app.selectedZoneId ? "#6fd9ff" : "#2d5d884f";
-      ctx.lineWidth = zone.id === app.selectedZoneId ? 1.6 : 1;
-      ctx.strokeRect(zx, zy, zw, zh);
-    }
-  }
-
-  const plotShip = (ship, color) => {
-    if (!ship || !ship.alive) {
-      return;
-    }
-    const x = rect.x + (ship.x / LOGICAL) * rect.width;
-    const y = rect.y + (ship.y / LOGICAL) * rect.height;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.arc(x, y, 3.2, 0, TAU);
-    ctx.fill();
-  };
-
-  const own = ownTeamState();
-  const enemy = enemyTeamState();
-  const visibleEnemyIds = new Set((own && own.visibleEnemyIds) || []);
-  if (own && own.ships) {
-    for (const ship of [...Object.values(own.ships), ...(own.extraShips || [])]) {
-      plotShip(ship, ship.key === app.selectedShipKey ? "#ffe184" : "#79dcff");
-    }
-  }
-  if (enemy && enemy.ships) {
-    for (const ship of [...Object.values(enemy.ships), ...(enemy.extraShips || [])]) {
-      if (app.state.phase !== "finished" && !visibleEnemyIds.has(ship.id)) {
-        continue;
-      }
-      plotShip(ship, "#ff95a0");
-    }
-  }
-
-  const view = currentViewState();
-  ctx.strokeStyle = "#ffe08a";
-  ctx.lineWidth = 1.6;
-  ctx.strokeRect(
-    rect.x + (view.left / LOGICAL) * rect.width,
-    rect.y + (view.top / LOGICAL) * rect.height,
-    (view.width / LOGICAL) * rect.width,
-    (view.height / LOGICAL) * rect.height,
-  );
-
-  ctx.fillStyle = "#d2ecff";
-  ctx.font = "bold 11px 'Noto Sans SC', 'PingFang SC', sans-serif";
-  ctx.fillText(t("战区/镜头"), rect.x + 8, rect.y + 14);
-  ctx.restore();
-}
-
-function drawShipGroup(shipGroup, color, visibleEnemyIds = null) {
-  for (const ship of shipGroup) {
-    if (!ship || !ship.alive) {
-      continue;
-    }
-    if (visibleEnemyIds && !visibleEnemyIds.has(ship.id) && app.state.phase !== "finished") {
-      continue;
-    }
-    // 敌方组会传入 visibleEnemyIds(用于视野裁剪),据此判定是否敌方
-    drawShip(ship, color, ship.key === app.selectedShipKey, ship.attached, visibleEnemyIds !== null);
-  }
-}
-
 // 把 backing store(画布物理像素)对齐到显示区域的设备像素,告别 1440 固定缓冲被放大产生的模糊。
 function resizeCanvas() {
   if (!canvas) {
@@ -1897,135 +1190,39 @@ function render() {
     -view.left * view.zoom * scale,
     -view.top * view.zoom * scale
   ); // 世界/相机空间
-  drawBackground(app.state.elapsed || 0);
-  drawZones();
 
+  // 战场本体全部交给共享渲染层(src/battle/render.js),单人只负责喂本地仿真状态
   const own = ownTeamState();
-  const enemy = enemyTeamState();
-  const visibleEnemyIds = new Set((own && own.visibleEnemyIds) || []);
-
-  syncShipDestructionEffects(app.destructionEffects, [
-    {
-      seat: "A",
-      color: own?.color || "#65d9ff",
-      ships: own?.ships ? [...Object.values(own.ships), ...(own.extraShips || [])] : [],
-    },
-    {
-      seat: "B",
-      color: enemy?.color || "#ff8692",
-      ships: enemy?.ships ? [...Object.values(enemy.ships), ...(enemy.extraShips || [])] : [],
-      isVisible: (ship) => app.state.phase === "finished" || visibleEnemyIds.has(ship.id),
-    },
-  ]);
-
-  if (own && own.ships) {
-    for (const ship of Object.values(own.ships)) {
-      if (!ship || !ship.alive || !ship.route) {
-        continue;
-      }
-      drawRoute(ship.route, ship.key === app.selectedShipKey);
-    }
-  }
-
-  if (own && Array.isArray(own.beams)) {
-    for (const beam of own.beams) {
-      drawBeam(beam);
-    }
-  }
-  if (enemy && Array.isArray(enemy.beams)) {
-    for (const beam of enemy.beams) {
-      drawBeam(beam);
-    }
-  }
-
-  if (Array.isArray(app.state.projectiles)) {
-    for (const projectile of app.state.projectiles) {
-      if (!projectile || !projectile.alive) {
-        continue;
-      }
-      drawProjectile(projectile, projectile.teamSeat === "A");
-    }
-  }
-
-  if (own && own.ships) {
-    drawShipGroup([...Object.values(own.ships), ...(own.extraShips || [])], own.color || "#65d9ff");
-  }
-
-  if (enemy && enemy.ships) {
-    drawShipGroup([...Object.values(enemy.ships), ...(enemy.extraShips || [])], enemy.color || "#ff8692", visibleEnemyIds);
-  }
-
-  if (own && Array.isArray(own.scouts)) {
-    for (const scout of own.scouts) {
-      drawScout(scout, true);
-    }
-  }
-  if (enemy && Array.isArray(enemy.scouts)) {
-    for (const scout of enemy.scouts) {
-      if (!visibleEnemyIds.has(scout.id) && app.state.phase !== "finished") {
-        continue;
-      }
-      drawScout(scout, false);
-    }
-  }
-
-  if (own && Array.isArray(own.wingmen)) {
-    for (const wingman of own.wingmen) {
-      drawWingman(wingman, true);
-    }
-  }
-  if (enemy && Array.isArray(enemy.wingmen)) {
-    for (const wingman of enemy.wingmen) {
-      if (!visibleEnemyIds.has(wingman.id) && app.state.phase !== "finished") {
-        continue;
-      }
-      drawWingman(wingman, false);
-    }
-  }
-
-  if (Array.isArray(app.state.bursts)) {
-    for (const burst of app.state.bursts) {
-      drawBurst(burst);
-    }
-  }
-  if (Array.isArray(app.state.floatingTexts)) {
-    for (const label of app.state.floatingTexts) {
-      drawFloatingText(label);
-    }
-  }
-
-  drawShipDestructionEffects(ctx, app.destructionEffects);
-
-  drawSelectedFireArc();
-  drawSelectedVisionCircle();
+  const frame = {
+    state: app.state,
+    ownTeam: own,
+    enemyTeam: enemyTeamState(),
+    spectating: false,
+    visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
+    selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
+    mobileMode: app.mobileMode,
+    stars: app.stars,
+    destructionEffects: app.destructionEffects,
+    selectedZoneId: app.selectedZoneId,
+    pendingSubSkillAim: app.pendingSubSkillAim,
+    pointer: app.pointer,
+  };
+  drawBattleWorld(ctx, frame);
   if (tutorial.isActive()) {
     drawTutorialIllustration(tutorial.getIllustration());
   }
-  drawSubSkillAimHint();
   ctx.restore();
 
-  // In-game character portrait (drawn in screen space, after camera restore)
+  // 屏幕空间:角色立绘、移动端小地图、暂停遮罩
   const activeShip = selectedShipState();
   if (activeShip && activeShip.alive) {
     drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, app.playerColor);
   }
 
-  drawMinimap();
+  drawMinimap(ctx, frame, minimapRect(), view);
 
-  // Pause overlay
   if (app.paused) {
-    ctx.save();
-    ctx.fillStyle = "rgba(2,8,15,0.45)";
-    ctx.fillRect(0, 0, LOGICAL, LOGICAL);
-    ctx.fillStyle = "#e4f0ff";
-    ctx.font = 'bold 42px "Noto Sans SC", "PingFang SC", sans-serif';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(t("PAUSED"), LOGICAL * 0.5, LOGICAL * 0.5 - 20);
-    ctx.fillStyle = "#8ab8d8";
-    ctx.font = '16px "Noto Sans SC", "PingFang SC", sans-serif';
-    ctx.fillText(t("按空格键继续"), LOGICAL * 0.5, LOGICAL * 0.5 + 24);
-    ctx.restore();
+    drawPauseOverlay(ctx);
   }
 }
 
@@ -2722,7 +1919,7 @@ function soloTemplate() {
       </aside>
 
       <main class="game-wrap">
-        <canvas id="gameCanvas" width="1440" height="1440"></canvas>
+        <canvas id="gameCanvas" width="${LOGICAL}" height="${LOGICAL}"></canvas>
         <section id="mobileBattleHud" class="mobile-battle-hud" aria-live="polite">
           <div class="mobile-battle-head">
             <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>

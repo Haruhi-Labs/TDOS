@@ -1,4 +1,6 @@
-export const DEFAULT_WORLD_SIZE = 1800;
+// 全模式统一的世界尺寸,以单人版(1440)为权威;单人/在线/调试/服务器都必须引用此常量,
+// 任何一处硬编码尺寸都会造成两种模式地图、战区布局与节奏割裂(在线曾长期跑在 1800 上)。
+export const DEFAULT_WORLD_SIZE = 1440;
 export const DEFAULT_MAP_PADDING = 20;
 export const TICK_RATE = 30;
 export const SNAPSHOT_RATE = 20;

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_WORLD_SIZE,
   FIRE_ARC_BANDS,
   MatchSimulation,
   CHARACTER_ORDER,
@@ -87,8 +88,8 @@ function cacheDom() {
 }
 
 const TAU = Math.PI * 2;
-// 逻辑世界尺寸(固定 1440):坐标运算都在此空间,与画布物理像素解耦,渲染时放大到设备像素 → 清晰无模糊。
-const LOGICAL = 1440;
+// 逻辑世界尺寸:与单人/在线/服务器共用 DEFAULT_WORLD_SIZE,坐标运算都在此空间,与画布物理像素解耦。
+const LOGICAL = DEFAULT_WORLD_SIZE;
 const ROUTE_HANDLE_RADIUS = 11;
 const STORAGE_KEYS = {
   A: "haruhi-debug-loadout-a-v1",

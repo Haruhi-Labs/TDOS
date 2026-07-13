@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/check-battle-drift.mjs && vite build",
     "preview": "vite preview",
     "start:server": "node server/server.js",
     "test:core": "node scripts/verify-core.mjs"
