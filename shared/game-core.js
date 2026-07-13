@@ -836,6 +836,7 @@ class Projectile {
       y: this.y,
       targetX: this.targetX,
       targetY: this.targetY,
+      speed: this.speed,
       alive: this.alive,
       radius: this.radius,
       color: this.color,

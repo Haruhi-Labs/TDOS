@@ -25,11 +25,18 @@ function teamAllShips(team) {
   return [...Object.values(team.ships), ...(team.extraShips || [])];
 }
 
+// 背景渐变不随帧变化,按 ctx 缓存,省去每帧重建
+const backgroundGradientCache = new WeakMap();
+
 export function drawBackground(ctx, stars, elapsed) {
-  const gradient = ctx.createLinearGradient(0, 0, LOGICAL, LOGICAL);
-  gradient.addColorStop(0, "#040d18");
-  gradient.addColorStop(0.5, "#071423");
-  gradient.addColorStop(1, "#050b14");
+  let gradient = backgroundGradientCache.get(ctx);
+  if (!gradient) {
+    gradient = ctx.createLinearGradient(0, 0, LOGICAL, LOGICAL);
+    gradient.addColorStop(0, "#040d18");
+    gradient.addColorStop(0.5, "#071423");
+    gradient.addColorStop(1, "#050b14");
+    backgroundGradientCache.set(ctx, gradient);
+  }
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, LOGICAL, LOGICAL);
 
@@ -487,8 +494,33 @@ export function drawProjectile(ctx, projectile, isOwnTeam) {
   if (!projectile || !projectile.alive) {
     return;
   }
+  const color = projectile.color || (isOwnTeam ? "#9be8ff" : "#ffc0bd");
   ctx.save();
-  ctx.fillStyle = projectile.color || (isOwnTeam ? "#9be8ff" : "#ffc0bd");
+
+  // 弹道尾迹:沿飞行反方向拖一段渐隐短线,高速弹更长;让 20Hz 快照下的子弹运动读起来连贯
+  const speed = Number(projectile.speed) || 0;
+  const dx = (projectile.targetX ?? projectile.x) - projectile.x;
+  const dy = (projectile.targetY ?? projectile.y) - projectile.y;
+  const dist = Math.hypot(dx, dy);
+  if (speed > 0 && dist > 1e-3) {
+    const trailLen = clamp(speed * 0.05, 6, 16);
+    const tx = projectile.x - (dx / dist) * trailLen;
+    const ty = projectile.y - (dy / dist) * trailLen;
+    const grad = ctx.createLinearGradient(tx, ty, projectile.x, projectile.y);
+    grad.addColorStop(0, "transparent");
+    grad.addColorStop(1, color);
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = Math.max(1.4, (projectile.radius || 2) * 0.9);
+    ctx.lineCap = "round";
+    ctx.globalAlpha = 0.75;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(projectile.x, projectile.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.fillStyle = color;
   ctx.beginPath();
   ctx.arc(projectile.x, projectile.y, projectile.radius || 2, 0, TAU);
   ctx.fill();

@@ -620,6 +620,8 @@ function buildSnapshotPayloadBase(room, advanceSeq = true) {
     ...room.match.serializeState(),
     selectedShips: selectedShipsForRoom(room),
   };
+  // AI 调试状态只供本地 /debug 推演页使用,却占快照 JSON 约 40% 体积——不进网络快照
+  delete state.bots;
   return {
     type: "snapshot",
     roomId: room.id,

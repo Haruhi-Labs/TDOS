@@ -1462,7 +1462,11 @@ function handleSnapshot(message) {
 
   updateInterpolationDelay();
 
-  updateBattleStatus(snapshot.state);
+  // HUD 全量 DOM 刷新压到 ~10Hz:20Hz 快照逐条刷文本/进度条会与 rAF 抢主线程(移动端尤甚)
+  if (nowMs() - (app.lastHudRefreshMs || 0) >= 95) {
+    app.lastHudRefreshMs = nowMs();
+    updateBattleStatus(snapshot.state);
+  }
   const ownTeam = teamBySeat(snapshot.state, app.seat);
   if (ownTeam) {
     syncPowerFromSelectedShip(ownTeam);
@@ -2003,7 +2007,24 @@ function interpolateBeamList(previousList, nextList, t) {
   return result;
 }
 
-function interpolateProjectileList(previousList, nextList, t) {
+// 子弹是「恒速直线飞向 target」的确定性弹道,可做精确航位推算
+function advanceProjectile(projectile, dt) {
+  const speed = Number(projectile.speed) || 0;
+  const dx = projectile.targetX - projectile.x;
+  const dy = projectile.targetY - projectile.y;
+  const remaining = Math.hypot(dx, dy);
+  if (speed <= 0 || remaining < 1e-3) {
+    return projectile;
+  }
+  const step = clamp(speed * dt, -remaining * 4, remaining); // 向前不越过目标;向后(回退)限幅
+  return {
+    ...projectile,
+    x: projectile.x + (dx / remaining) * step,
+    y: projectile.y + (dy / remaining) * step,
+  };
+}
+
+function interpolateProjectileList(previousList, nextList, t, spanSeconds) {
   const prev = Array.isArray(previousList) ? previousList : [];
   const next = Array.isArray(nextList) ? nextList : [];
   const prevMap = new Map(prev.map((item) => [item.id, item]));
@@ -2018,7 +2039,9 @@ function interpolateProjectileList(previousList, nextList, t) {
         y: lerp(old.y, current.y, t),
       });
     } else {
-      result.push(current);
+      // 两帧之间新生的子弹:沿弹道回退 (1-t)*span,让它从炮口平滑飞出,
+      // 而不是整个插值区间冻结在快照位置(连发时表现为颗颗子弹出生即卡顿)
+      result.push(advanceProjectile(current, -(1 - t) * (spanSeconds || 0)));
     }
   }
   return result;
@@ -2097,6 +2120,14 @@ function extrapolateState(state, dt) {
   return {
     ...state,
     elapsed: state.elapsed + safeDt,
+    // 子弹弹道确定,外推期间继续飞;爆发/浮字寿命本地衰减,避免冻结后跳变
+    projectiles: Array.isArray(state.projectiles) ? state.projectiles.map((p) => advanceProjectile(p, safeDt)) : state.projectiles,
+    bursts: Array.isArray(state.bursts)
+      ? state.bursts.map((b) => ({ ...b, life: Math.max(0, (Number(b.life) || 0) - safeDt) }))
+      : state.bursts,
+    floatingTexts: Array.isArray(state.floatingTexts)
+      ? state.floatingTexts.map((f) => ({ ...f, life: Math.max(0, (Number(f.life) || 0) - safeDt) }))
+      : state.floatingTexts,
     teams: {
       A: {
         ...state.teams.A,
@@ -2226,7 +2257,12 @@ function interpolateSnapshotState(previousSnapshot, nextSnapshot, t) {
     elapsed: lerp(previousSnapshot.state.elapsed, nextSnapshot.state.elapsed, t),
     phase: nextSnapshot.state.phase,
     winnerSeat: nextSnapshot.state.winnerSeat,
-    projectiles: interpolateProjectileList(previousSnapshot.state.projectiles, nextSnapshot.state.projectiles, t),
+    projectiles: interpolateProjectileList(
+      previousSnapshot.state.projectiles,
+      nextSnapshot.state.projectiles,
+      t,
+      Math.max(1, nextSnapshot.tick - previousSnapshot.tick) / app.serverTickRate,
+    ),
     bursts: interpolateVisualList(previousSnapshot.state.bursts, nextSnapshot.state.bursts, t),
     floatingTexts: interpolateVisualList(previousSnapshot.state.floatingTexts, nextSnapshot.state.floatingTexts, t),
     teams: {
