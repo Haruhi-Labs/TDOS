@@ -2368,8 +2368,19 @@ function renderFrame() {
   drawBattleWorld(ctx, frame);
   ctx.restore();
 
-  // 屏幕空间:角色立绘(与单机一致;观战没有"己方"故不画)、移动端小地图
-  if (!spectating) {
+  // 屏幕空间:对战视角沿用玩家阵营立绘;观战按 A 蓝/B 红在地图两侧显示双方当前所选角色。
+  if (spectating) {
+    const teamA = teamBySeat(state, "A");
+    const teamB = teamBySeat(state, "B");
+    const selectedA = teamA?.ships?.[selectedShipKeyForSeat(state, "A")];
+    const selectedB = teamB?.ships?.[selectedShipKeyForSeat(state, "B")];
+    if (selectedA?.alive) {
+      drawInGamePortrait(ctx, selectedA.characterId, LOGICAL, LOGICAL, 0.16, "blue", "left");
+    }
+    if (selectedB?.alive) {
+      drawInGamePortrait(ctx, selectedB.characterId, LOGICAL, LOGICAL, 0.16, "red", "right");
+    }
+  } else {
     const activeShip = ownTeam && ownTeam.ships ? ownTeam.ships[app.selectedShipKey] : null;
     if (activeShip && activeShip.alive) {
       drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, getFaction());

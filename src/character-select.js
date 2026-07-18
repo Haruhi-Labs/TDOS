@@ -1786,7 +1786,7 @@ export function createCharacterSelect(onLaunch, opts = {}) {
 // ═══════════════════════════════════════════════════
 // In-game Portrait Drawing Utility
 // ═══════════════════════════════════════════════════
-export function drawInGamePortrait(ctx, charId, canvasWidth, canvasHeight, alpha = 0.18, color = "blue") {
+export function drawInGamePortrait(ctx, charId, canvasWidth, canvasHeight, alpha = 0.18, color = "blue", side = "right") {
   if (!charId || !CHARACTER_THEMES[charId]) return;
 
   // 只画原始立绘（带真实透明通道），不再合成底图、也不画边缘羽化矩形，
@@ -1799,7 +1799,7 @@ export function drawInGamePortrait(ctx, charId, canvasWidth, canvasHeight, alpha
 
   const drawH = canvasHeight * 0.55;
   const drawW = drawH * (img.width / img.height);
-  const x = canvasWidth - drawW - 10;
+  const x = side === "left" ? 10 : canvasWidth - drawW - 10;
   const y = canvasHeight - drawH + 20;
 
   ctx.save();
