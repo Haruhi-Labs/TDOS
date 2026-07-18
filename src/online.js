@@ -1959,6 +1959,17 @@ function interpolateShip(a, b, t) {
   };
 }
 
+// 1096 双子舰等额外舰船与编制舰使用同一套舰船插值，不能按普通单位直接跳快照。
+function interpolateShipList(previousList, nextList, t) {
+  const prev = Array.isArray(previousList) ? previousList : [];
+  const next = Array.isArray(nextList) ? nextList : [];
+  const prevMap = new Map(prev.map((ship) => [ship.id, ship]));
+  return next.map((ship) => {
+    const previous = prevMap.get(ship.id);
+    return previous ? interpolateShip(previous, ship, t) : ship;
+  });
+}
+
 function interpolateUnitList(previousList, nextList, t) {
   const prev = Array.isArray(previousList) ? previousList : [];
   const next = Array.isArray(nextList) ? nextList : [];
@@ -2102,6 +2113,7 @@ function interpolateTeam(a, b, t) {
       sub1: interpolateShip(a.ships.sub1, b.ships.sub1, t),
       sub2: interpolateShip(a.ships.sub2, b.ships.sub2, t),
     },
+    extraShips: interpolateShipList(a.extraShips, b.extraShips, t),
     scouts: interpolateUnitList(a.scouts, b.scouts, t),
     wingmen: interpolateUnitList(a.wingmen, b.wingmen, t),
     beams: interpolateBeamList(a.beams, b.beams, t),
@@ -2144,6 +2156,9 @@ function extrapolateState(state, dt) {
           sub1: extrapolateShip(state.teams.A.ships.sub1, safeDt),
           sub2: extrapolateShip(state.teams.A.ships.sub2, safeDt),
         },
+        extraShips: Array.isArray(state.teams.A.extraShips)
+          ? state.teams.A.extraShips.map((ship) => extrapolateShip(ship, safeDt))
+          : [],
       },
       B: {
         ...state.teams.B,
@@ -2152,6 +2167,9 @@ function extrapolateState(state, dt) {
           sub1: extrapolateShip(state.teams.B.ships.sub1, safeDt),
           sub2: extrapolateShip(state.teams.B.ships.sub2, safeDt),
         },
+        extraShips: Array.isArray(state.teams.B.extraShips)
+          ? state.teams.B.extraShips.map((ship) => extrapolateShip(ship, safeDt))
+          : [],
       },
     },
   };
@@ -2230,6 +2248,9 @@ function smoothTeamState(team, isOwnTeam, dt) {
       sub1: smoothEntity(team.ships.sub1, dt, followRate, teleportDistance),
       sub2: smoothEntity(team.ships.sub2, dt, followRate, teleportDistance),
     },
+    extraShips: Array.isArray(team.extraShips)
+      ? team.extraShips.map((ship) => smoothEntity(ship, dt, followRate, teleportDistance))
+      : [],
     scouts: Array.isArray(team.scouts) ? team.scouts.map((item) => smoothEntity(item, dt, followRate - 2, teleportDistance * 0.9)) : [],
     wingmen: Array.isArray(team.wingmen) ? team.wingmen.map((item) => smoothEntity(item, dt, followRate - 2, teleportDistance * 0.9)) : [],
   };
