@@ -14,11 +14,12 @@ import {
 } from "../shared/game-core.js";
 
 const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "sync-migration-20260225-03";
+const NETWORK_BUILD = "pvp-countdown-20260718-01";
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
 const MAX_CATCHUP_STEPS = 6;
 const LOOP_IDLE_MS = 2;
+const PVP_COUNTDOWN_MS = 3000;
 
 const players = new Map();
 const rooms = new Map();
@@ -197,6 +198,7 @@ function buildRoomStatePayload(room, viewerId = null) {
       visibility: room.visibility,
       code: room.visibility === "private" && isMember ? room.code : null,
       status: room.status,
+      countdownEndsAt: room.countdownEndsAt || null,
       players: displayPlayerRows(room),
       spectatorCount: spectatorCount(room),
       winnerSeat: result ? result.winnerSeat : room.match ? room.match.winnerSeat : null,
@@ -284,7 +286,7 @@ function assignPlayerToRoom(player, room, seat) {
 }
 
 function startMatch(room) {
-  if (room.status === "running") {
+  if (room.status === "countdown" || room.status === "running") {
     return;
   }
 
@@ -295,7 +297,9 @@ function startMatch(room) {
     B: room.mode === "ai" ? "统合思念体AI舰队" : playerB ? `${playerB.name}舰队` : "玩家B舰队",
   };
 
-  room.status = "running";
+  const needsCountdown = room.mode === "pvp";
+  room.status = needsCountdown ? "countdown" : "running";
+  room.countdownEndsAt = needsCountdown ? Date.now() + PVP_COUNTDOWN_MS : null;
   room.match = new MatchSimulation({
     mode: room.mode,
     worldSize: DEFAULT_WORLD_SIZE,
@@ -320,6 +324,10 @@ function startMatch(room) {
   }
 
   sendRoomStateToMembers(room);
+  if (needsCountdown) {
+    // 倒计时期间先下发静止的初始战场，客户端可展示双方阵容但不能操作。
+    sendSnapshot(room);
+  }
 }
 
 function closeRoom(roomId, reason = "房间已关闭") {
@@ -407,7 +415,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
     room.seats.B = null;
   }
 
-  if (room.status === "running") {
+  if (room.status === "countdown" || room.status === "running") {
     closeRoom(oldRoomId, reasonForOthers);
     return;
   }
@@ -456,6 +464,7 @@ function createRoom(player, visibility, mode) {
     visibility: safeVisibility,
     code: safeVisibility === "private" ? createPrivateCode() : null,
     status: "waiting",
+    countdownEndsAt: null,
     seats: {
       A: null,
       B: null,
@@ -826,6 +835,17 @@ wss.on("connection", (ws) => {
 
 function tickRooms() {
   for (const room of rooms.values()) {
+    if (room.status === "countdown" && room.match) {
+      if (Date.now() < Number(room.countdownEndsAt || 0)) {
+        continue;
+      }
+      room.status = "running";
+      room.countdownEndsAt = null;
+      sendRoomStateToMembers(room);
+      sendSnapshot(room);
+      broadcastLobby();
+    }
+
     if (room.status === "running" && room.match) {
       applyQueuedInputs(room);
       room.match.update(TICK_DT);

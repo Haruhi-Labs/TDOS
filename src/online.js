@@ -44,6 +44,7 @@ import {
 import { battleViewTemplate } from "./battle/template.js";
 import {
   drawBackground,
+  drawBattleCountdown,
   drawBattleWorld,
   drawMinimap,
   drawNoDataHint,
@@ -948,6 +949,9 @@ function roomStatusText(status) {
   if (status === "running") {
     return t("对战中");
   }
+  if (status === "countdown") {
+    return t("即将开战");
+  }
   if (status === "finished") {
     return t("已结束");
   }
@@ -1116,16 +1120,17 @@ function applyRoomState(message) {
   updateRoomSummary();
 
   const roomStatus = app.room ? app.room.status : null;
+  const isCountdown = roomStatus === "countdown";
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
-  const showBattleView = canBattle || isFinished;
+  const showBattleView = isCountdown || canBattle || isFinished;
   setBattleControlsEnabled(Boolean(canBattle && !app.spectating));
   setRoomHudVisible(!showBattleView);
   syncResponsiveMode();
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
   if (showBattleView) requestAnimationFrame(() => camera.resizeCanvas());
   updateShipSwitchLabels(app.playerLoadout);
-  const loadoutLocked = Boolean(app.room && app.room.status === "running");
+  const loadoutLocked = Boolean(app.room && (app.room.status === "countdown" || app.room.status === "running"));
   for (const element of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role, ui.applyLoadoutOnlineBtn]) {
     if (element) {
       element.disabled = loadoutLocked;
@@ -1148,7 +1153,7 @@ function applyRoomState(message) {
     }
     const latestWinner = app.latestSnapshot && app.latestSnapshot.state ? app.latestSnapshot.state.winnerSeat : null;
     showMatchResultOverlay(latestWinner || app.lastWinnerSeat || (app.room ? app.room.winnerSeat : null) || null);
-  } else if (!canBattle) {
+  } else if (!canBattle && !isCountdown) {
     clearMatchRuntime();
     closeOverlay();
     ui.hullValue.textContent = "-";
@@ -1170,6 +1175,9 @@ function applyRoomState(message) {
     }
     if (app.room.status === "running") {
       log(app.spectating ? t("已进入观战") : t("对战开始"));
+    }
+    if (app.room.status === "countdown") {
+      log(t("三秒后开战"));
     }
   }
 }
@@ -2333,6 +2341,9 @@ function renderFrame() {
     drawBackground(ctx, app.stars, elapsed || 0);
     ctx.restore();
     drawNoDataHint(ctx);
+    if (app.room?.status === "countdown") {
+      drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - estimateServerNowMs());
+    }
     rafId = requestAnimationFrame(renderFrame);
     return;
   }
@@ -2387,6 +2398,9 @@ function renderFrame() {
     }
   }
   drawMinimap(ctx, frame, camera.minimapRect(), view);
+  if (app.room?.status === "countdown") {
+    drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - estimateServerNowMs());
+  }
 
   rafId = requestAnimationFrame(renderFrame);
 }
@@ -3055,9 +3069,14 @@ function bindUiEvents() {
   });
 }
 
-// 房间处于对战中(running)才算「战斗中」——大厅/等待/结算时返回主菜单不拦
+// 倒计时与正式交战都属于本局进行中——大厅/等待/结算时返回主菜单不拦。
 function isBattleInProgress() {
-  return Boolean(app && app.room && app.room.status === "running" && !app.spectating);
+  return Boolean(
+    app &&
+    app.room &&
+    (app.room.status === "countdown" || app.room.status === "running") &&
+    !app.spectating,
+  );
 }
 
 // 战斗中误触「返回主菜单」保护:进行中先弹二次确认,确认后才 SPA 跳转。

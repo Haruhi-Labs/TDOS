@@ -790,6 +790,46 @@ export function drawNoDataHint(ctx) {
   ctx.restore();
 }
 
+// 联机 PvP 开局倒计时：服务端冻结模拟期间压暗战场，并以三拍圆环明确传达开战时点。
+export function drawBattleCountdown(ctx, remainingMs) {
+  const safeRemaining = clamp(Number(remainingMs) || 0, 0, 3000);
+  const count = Math.max(1, Math.ceil(safeRemaining / 1000));
+  const progress = 1 - safeRemaining / 3000;
+  const cx = LOGICAL * 0.5;
+  const cy = LOGICAL * 0.5;
+
+  ctx.save();
+  ctx.fillStyle = "rgba(2, 8, 18, 0.58)";
+  ctx.fillRect(0, 0, LOGICAL, LOGICAL);
+
+  ctx.fillStyle = "rgba(7, 22, 42, 0.9)";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 92, 0, TAU);
+  ctx.fill();
+
+  ctx.strokeStyle = "rgba(121, 220, 255, 0.24)";
+  ctx.lineWidth = 8;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 78, -Math.PI * 0.5, TAU - Math.PI * 0.5);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#79dcff";
+  ctx.lineCap = "round";
+  ctx.beginPath();
+  ctx.arc(cx, cy, 78, -Math.PI * 0.5, -Math.PI * 0.5 + TAU * progress);
+  ctx.stroke();
+
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#f4fbff";
+  ctx.font = '700 76px "Noto Sans SC", "PingFang SC", sans-serif';
+  ctx.fillText(String(count), cx, cy - 6);
+  ctx.fillStyle = "#9bc9e8";
+  ctx.font = '700 16px "Noto Sans SC", "PingFang SC", sans-serif';
+  ctx.fillText(t("准备开战"), cx, cy + 58);
+  ctx.restore();
+}
+
 // 单人模式:暂停遮罩(整屏压暗 + 提示文字)
 export function drawPauseOverlay(ctx) {
   ctx.save();
