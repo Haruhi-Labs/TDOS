@@ -14,6 +14,20 @@ import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-
 const TAU = Math.PI * 2;
 const LOGICAL = DEFAULT_WORLD_SIZE;
 
+// 观战者没有“己方”视角，固定用座位色建立稳定辨识：A 蓝、B 红。
+// 颜色刻意比普通战斗的浅青/浅粉更饱和，缩放到全图时仍能一眼分清双方。
+const SPECTATOR_TEAM_COLORS = Object.freeze({
+  A: "#4595ff",
+  B: "#ff4f61",
+});
+
+function battleTeamColor(team, fallback, spectating = false) {
+  if (spectating && team?.seat && SPECTATOR_TEAM_COLORS[team.seat]) {
+    return SPECTATOR_TEAM_COLORS[team.seat];
+  }
+  return team?.color || fallback;
+}
+
 // 航线终点/控制点把手的可视半径,画布命中检测(routeHandleAtPoint)也用它,保证「看见多大就能点多大」
 export const ROUTE_HANDLE_RADIUS = 11;
 
@@ -812,6 +826,8 @@ export function drawBattleWorld(ctx, frame) {
   const selectedKeyForTeam = frame.selectedKeyForTeam || (() => null);
   const routeForShip = frame.routeForShip || ((team, ship) => ship.route || null);
   const ownSeat = ownTeam?.seat || "A";
+  const ownColor = battleTeamColor(ownTeam, "#65d9ff", spectating);
+  const enemyColor = battleTeamColor(enemyTeam, "#ff8692", spectating);
 
   drawBackground(ctx, frame.stars, elapsed);
   drawZones(ctx, state, frame.selectedZoneId);
@@ -820,12 +836,12 @@ export function drawBattleWorld(ctx, frame) {
   syncShipDestructionEffects(frame.destructionEffects, [
     {
       seat: ownSeat,
-      color: ownTeam?.color || "#65d9ff",
+      color: ownColor,
       ships: teamAllShips(ownTeam),
     },
     {
       seat: enemyTeam?.seat || (ownSeat === "A" ? "B" : "A"),
-      color: enemyTeam?.color || "#ff8692",
+      color: enemyColor,
       ships: teamAllShips(enemyTeam),
       isVisible: (ship) => enemyVisible(ship.id),
     },
@@ -876,7 +892,7 @@ export function drawBattleWorld(ctx, frame) {
     if (!ship || !ship.alive) {
       continue;
     }
-    drawShip(ctx, ship, ownTeam.color || "#65d9ff", ship.key === ownSelectedKey, ship.attached, false, spectating);
+    drawShip(ctx, ship, ownColor, ship.key === ownSelectedKey, ship.attached, false, spectating);
   }
 
   const enemySelectedKey = selectedKeyForTeam(enemyTeam);
@@ -884,7 +900,7 @@ export function drawBattleWorld(ctx, frame) {
     if (!ship || !ship.alive || !enemyVisible(ship.id)) {
       continue;
     }
-    drawShip(ctx, ship, enemyTeam.color || "#ff8692", ship.key === enemySelectedKey, ship.attached, true, spectating);
+    drawShip(ctx, ship, enemyColor, ship.key === enemySelectedKey, ship.attached, true, spectating);
   }
 
   for (const scout of ownTeam?.scouts || []) {
