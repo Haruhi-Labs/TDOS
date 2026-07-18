@@ -852,7 +852,7 @@ export function drawBattleWorld(ctx, frame) {
     drawTeamVisionCircles(ctx, state.teams?.B, "#ff95a026");
   }
 
-  // 航线:非观战只画己方,观战画双方
+  // 航线:非观战画己方全部可控航线;观战只画双方玩家当前所选舰船的航线。
   const routeTeams = spectating ? [state.teams?.A, state.teams?.B] : [ownTeam];
   for (const team of routeTeams) {
     if (!team || !team.ships) {
@@ -861,6 +861,9 @@ export function drawBattleWorld(ctx, frame) {
     const selectedKey = selectedKeyForTeam(team);
     for (const ship of teamAllShips(team)) {
       if (!ship || !ship.alive) {
+        continue;
+      }
+      if (spectating && ship.key !== selectedKey) {
         continue;
       }
       const route = routeForShip(team, ship);
