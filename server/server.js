@@ -14,13 +14,14 @@ import {
 } from "../shared/game-core.js";
 
 const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "snapshot-backpressure-20260719-01";
+const NETWORK_BUILD = "spectator-throttle-20260719-01";
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
 const MAX_CATCHUP_STEPS = 6;
 const LOOP_IDLE_MS = 2;
 const PVP_COUNTDOWN_MS = 3000;
 const MAX_SNAPSHOT_BUFFERED_BYTES = 128 * 1024;
+const SPECTATOR_SNAPSHOT_DIVISOR = 2;
 
 const players = new Map();
 const rooms = new Map();
@@ -677,12 +678,18 @@ function sendSnapshot(room) {
       ackSeq: pB.lastProcessedSeq,
     });
   }
-  for (const spectator of roomSpectators(room)) {
-    sendSnapshotToPlayer(spectator, {
-      ...payloadBase,
-      ackSeq: 0,
-      spectating: true,
-    });
+  // 观战者不参与操作，使用交错的7.5Hz权威快照即可由客户端插值到60fps。
+  // 玩家仍保持15Hz；观战人数增加时不再按完整玩家带宽线性放大出口压力。
+  if (payloadBase.snapshotSeq % SPECTATOR_SNAPSHOT_DIVISOR === 0) {
+    for (const spectator of roomSpectators(room)) {
+      sendSnapshotToPlayer(spectator, {
+        ...payloadBase,
+        // 对观战端使用连续序号，避免把服务器主动限频误判为丢包。
+        snapshotSeq: payloadBase.snapshotSeq / SPECTATOR_SNAPSHOT_DIVISOR,
+        ackSeq: 0,
+        spectating: true,
+      });
+    }
   }
 }
 
@@ -690,10 +697,9 @@ const wss = new WebSocketServer({
   port: PORT,
   maxPayload: 64 * 1024,
   perMessageDeflate: {
-    // 快照JSON重复字段多，单帧压缩后实测约为原体积的31%。禁用上下文复用可限制每连接内存，
-    // 服务器当前CPU余量充足，使用低压缩级别换取显著的出口带宽下降。
+    // 保留服务端跨帧压缩上下文：相邻快照结构高度重复，可进一步压缩多人和观战的持续流量。
+    // 客户端上行消息很小，无需保留其压缩上下文；服务器当前CPU与内存余量足够。
     clientNoContextTakeover: true,
-    serverNoContextTakeover: true,
     concurrencyLimit: 4,
     threshold: 1024,
     zlibDeflateOptions: {
