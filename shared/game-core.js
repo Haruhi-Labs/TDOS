@@ -40,7 +40,7 @@ export const FIRE_ARC_BANDS = Object.freeze([
 
 export function fireArcDensityMultiplier(relativeAngle, uniformOutput = false) {
   if (uniformOutput) {
-    return 1.02;
+    return 1.5;
   }
   const absAngle = Math.abs(relativeAngle);
   if (absAngle <= 60 * DEG_TO_RAD) {
@@ -258,7 +258,7 @@ export const CHARACTER_DEFS = {
       id: "reality_seeker",
       name: "在虚构世界里寻求现实感的人才有问题",
       type: "passive",
-      description: "全舰队转向×1.28、加速×1.16、最小转弯半径×0.62，且各朝向火力密度趋于一致（削弱侧舷强·船尾弱的差异）。",
+      description: "全舰队转向×1.28、加速×1.16、最小转弯半径×0.62，且各朝向火力密度趋于一致（削弱侧舷强·船尾弱的差异）。各方向射速均×1.5。",
     },
     subSkill: {
       id: "reliable_normal",

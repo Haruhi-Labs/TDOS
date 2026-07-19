@@ -639,7 +639,7 @@ export function drawSelectedFireArc(ctx, team, shipKey) {
 
   if (team.loadout && team.loadout.main === "kyon") {
     drawFireArcBand(ctx, ship, -180, 180, outerRadius, innerRadius, "#7de4ff", 0.14);
-    drawFireArcLabel(ctx, ship, 0, labelRadius, t("均匀"), "#b9f4ff");
+    drawFireArcLabel(ctx, ship, 0, labelRadius, "×1.5", "#b9f4ff");
     return;
   }
 

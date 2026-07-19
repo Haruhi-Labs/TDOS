@@ -1331,7 +1331,7 @@ function drawSelectedFireArc() {
 
   if (team.loadout && team.loadout.main === "kyon") {
     drawFireArcBand(ship, -180, 180, outerRadius, innerRadius, "#7de4ff", 0.14);
-    drawFireArcLabel(ship, 0, labelRadius, t("均匀"), "#b9f4ff");
+    drawFireArcLabel(ship, 0, labelRadius, "×1.5", "#b9f4ff");
     return;
   }
 

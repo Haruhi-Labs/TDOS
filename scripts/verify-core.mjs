@@ -495,6 +495,40 @@ function fireArcDensityCheck() {
   assert(broadsideCooldown < frontCooldown * 0.8, "1.5 倍射界未体现为更高火力密度");
 }
 
+function kyonUniformFireRateCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "haruhi", sub2: "yuki" },
+      B: { main: "koizumi", sub1: "tsuruya", sub2: "future1096" },
+    },
+  });
+  const ship = sim.teamA.ships.main;
+  const target = sim.teamB.ships.main;
+  ship.x = 720;
+  ship.y = 720;
+  ship.angle = 0;
+
+  const directions = [
+    { x: 860, y: 720, label: "正前" },
+    { x: 720, y: 860, label: "侧舷" },
+    { x: 600, y: 720, label: "舰尾" },
+  ];
+  const expectedCooldown = 1 / (ship.effectiveFireRate() * 1.5);
+  for (const direction of directions) {
+    target.x = direction.x;
+    target.y = direction.y;
+    assert(Math.abs(ship.broadsideMultiplier(target) - 1.5) < 1e-6, `阿虚旗舰${direction.label}方向射速不是1.5×`);
+    ship.cooldown = 0;
+    sim.projectiles = [];
+    sim.teamA.computeVisibility(sim.teamB);
+    ship.tryAttack(sim, sim.teamB);
+    assert(sim.projectiles.length === 1, `阿虚旗舰${direction.label}方向未能开火`);
+    assert(Math.abs(ship.cooldown - expectedCooldown) < 1e-6, `阿虚旗舰${direction.label}方向实际射速不是1.5×`);
+  }
+}
+
 function haruhiBlindfireCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -1473,6 +1507,7 @@ function main() {
   beamSkillCheck();
   tsuruyaFlagshipActiveCheck();
   fireArcDensityCheck();
+  kyonUniformFireRateCheck();
   haruhiBlindfireCheck();
   asakuraFlagshipCheck();
   asakuraBladeQueenCheck();
