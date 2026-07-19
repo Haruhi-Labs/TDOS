@@ -12,6 +12,7 @@ const BEAM_VISUAL_DURATION = 0.26;
 const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
 const BEAM_DAMAGE_RATIO = 0.28;
+const FUTURE_1096_HULL_RATIO = 0.75;
 const DEG_TO_RAD = Math.PI / 180;
 const SHIP_HULL_SIZE_SCALE = 1.28;
 export const SCOUT_LAUNCH_COST = 28;
@@ -221,7 +222,7 @@ export const CHARACTER_DEFS = {
       id: "past_future_me",
       name: "过去与未来的我",
       type: "passive",
-      description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的一半（50%）。",
+      description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的75%。",
     },
     subSkill: {
       id: "beam_1096",
@@ -892,8 +893,8 @@ class Ship {
     };
   }
 
-  setHalfHullMode() {
-    this.maxHp = Math.round(this.base.hp * 0.55);
+  setTwinHullMode() {
+    this.maxHp = Math.round(this.base.hp * FUTURE_1096_HULL_RATIO);
     this.hp = Math.min(this.hp, this.maxHp);
   }
 
@@ -1878,7 +1879,7 @@ class Team {
     }
 
     if (this.mainCharacterId() === "future1096") {
-      this.ships.main.setHalfHullMode();
+      this.ships.main.setTwinHullMode();
       const twinFormationOffset = { x: -52, y: 0 };
       const twinSpawnOffset = rotateOffset(twinFormationOffset.x * 0.5, twinFormationOffset.y * 0.5, facing);
       const twin = new Ship(this, "twin", spawnX + twinSpawnOffset.x, spawnY + twinSpawnOffset.y, facing, {
@@ -1888,7 +1889,7 @@ class Team {
         isAuxiliary: true,
         attachToMain: true,
       });
-      twin.setHalfHullMode();
+      twin.setTwinHullMode();
       twin.formationOffset = twinFormationOffset;
       this.extraShips.push(twin);
     }

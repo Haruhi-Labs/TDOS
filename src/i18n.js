@@ -39,7 +39,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "1096",
       title: "高速光束突击舰",
       flavor: "mikuru bea----m!!!",
-      flagshipSkill: { name: "过去与未来的我", description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的一半（50%）。" },
+      flagshipSkill: { name: "过去与未来的我", description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的75%。" },
       subSkill: { name: "1096光线", description: "蓄力1.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。" },
     },
     kyon: {
@@ -97,7 +97,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "1096",
       title: "高速ビーム突撃艦",
       flavor: "みくるびーーーむ!!!",
-      flagshipSkill: { name: "過去と未来のわたし", description: "旗艦枠に追加の1096僚艦を生成。2隻の耐久上限は通常旗艦のそれぞれ半分（50%）。" },
+      flagshipSkill: { name: "過去と未来のわたし", description: "旗艦枠に追加の1096僚艦を生成。2隻の耐久上限は通常旗艦のそれぞれ75%。" },
       subSkill: { name: "1096ビーム", description: "1.05秒チャージ後、指定方向へビームを発射。命中した各敵艦にその最大耐久の28%のダメージを与える。" },
     },
     kyon: {
@@ -155,7 +155,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "1096",
       title: "High-Speed Beam Assault Ship",
       flavor: "mikuru bea----m!!!",
-      flagshipSkill: { name: "Past and Future Me", description: "Spawns an extra 1096 wingman in the flagship slot; both ships have half (50%) of a normal flagship's max hull each." },
+      flagshipSkill: { name: "Past and Future Me", description: "Spawns an extra 1096 wingman in the flagship slot; both ships have 75% of a normal flagship's max hull each." },
       subSkill: { name: "1096 Beam", description: "After a 1.05s charge, fires a beam in the chosen direction, dealing 28% of max hull to each enemy ship it hits." },
     },
     kyon: {

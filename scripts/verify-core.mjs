@@ -219,6 +219,11 @@ function future1096LeaderHandoverCheck() {
   const teamA = sim.teamA;
   const originalMain = teamA.ships.main;
   const twin = teamA.extraShips.find((ship) => ship.slotKey === "twin");
+  const expectedMaxHp = Math.round(originalMain.base.hp * 0.75);
+
+  assert(originalMain.maxHp === expectedMaxHp, "1096 主舰舰体上限不是常规旗舰的75%");
+  assert(twin && twin.maxHp === expectedMaxHp, "1096 僚舰舰体上限不是常规旗舰的75%");
+  assert(originalMain.hp === expectedMaxHp && twin.hp === expectedMaxHp, "1096 双舰开局生命值未与舰体上限一致");
 
   originalMain.takeDamage(originalMain.maxHp * 2, null, sim);
 
