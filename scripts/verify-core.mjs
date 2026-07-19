@@ -305,10 +305,15 @@ function koizumiFlagshipInvulnCheck() {
 
   const castOk = teamA.castFlagshipSkill();
   assert(castOk, "古泉旗舰技能释放失败");
-  main.takeDamage(220, null, sim);
-  assert(main.hp === beforeHp, "古泉旗舰技能前3秒无敌未生效");
+  assert(Math.abs(teamA.effects.taxiUntil - sim.elapsed - 12) < 1e-6, "古泉旗舰技能加速未持续12秒");
+  assert(Math.abs(teamA.effects.taxiInvulnUntil - sim.elapsed - 6) < 1e-6, "古泉旗舰技能无敌未持续6秒");
+  assert(Math.abs(teamA.accelerationModifierForShip(main) - 1.75) < 1e-6, "古泉旗舰技能未使全舰队加速度×1.75");
 
-  runSteps(sim, 3.2);
+  runSteps(sim, 5.9);
+  main.takeDamage(220, null, sim);
+  assert(main.hp === beforeHp, "古泉旗舰技能前6秒无敌未生效");
+
+  runSteps(sim, 0.2);
   main.takeDamage(220, null, sim);
   assert(main.hp < beforeHp, "古泉旗舰技能无敌结束后仍未恢复正常受伤");
 }

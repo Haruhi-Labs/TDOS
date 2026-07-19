@@ -23,7 +23,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "古泉",
       title: "均衡型机动指挥舰",
       flavor: "能够出现在他应该出现的任何地方",
-      flagshipSkill: { name: "机关的力量", description: "全舰队加速度×1.75，持续12秒；前3秒全队无敌。" },
+      flagshipSkill: { name: "机关的力量", description: "全舰队加速度×1.75，持续12秒；前6秒全队无敌。" },
       subSkill: { name: "超能力", description: "闪现到240范围内的目标位置，并使下一次攻击伤害×4。" },
     },
     yuki: {
@@ -81,7 +81,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "古泉",
       title: "均衡型機動指揮艦",
       flavor: "必要な場所に、必要な時に現れる",
-      flagshipSkill: { name: "機関の力", description: "全艦隊の加速度を×1.75、12秒間。最初の3秒は全艦無敵。" },
+      flagshipSkill: { name: "機関の力", description: "全艦隊の加速度を×1.75、12秒間。最初の6秒は全艦無敵。" },
       subSkill: { name: "超能力", description: "240以内の目標地点へブリンクし、次の攻撃ダメージを×4にする。" },
     },
     yuki: {
@@ -139,7 +139,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "Koizumi",
       title: "Balanced Mobile Command Ship",
       flavor: "Appears exactly where he is supposed to be",
-      flagshipSkill: { name: "Power of the Agency", description: "Fleet acceleration ×1.75 for 12 seconds; the whole fleet is invulnerable for the first 3 seconds." },
+      flagshipSkill: { name: "Power of the Agency", description: "Fleet acceleration ×1.75 for 12 seconds; the whole fleet is invulnerable for the first 6 seconds." },
       subSkill: { name: "Esper Power", description: "Blinks to a target point within 240 range and makes the next attack deal ×4 damage." },
     },
     yuki: {

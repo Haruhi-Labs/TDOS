@@ -147,8 +147,8 @@ export const CHARACTER_DEFS = {
       cost: 58,
       duration: 12,
       target: "none",
-      invulnerableDuration: 3,
-      description: "全舰队加速度×1.75，持续12秒；前3秒全队无敌。",
+      invulnerableDuration: 6,
+      description: "全舰队加速度×1.75，持续12秒；前6秒全队无敌。",
     },
     subSkill: {
       id: "esper",
@@ -2508,7 +2508,7 @@ class Team {
         return false;
       }
       this.effects.taxiUntil = this.match.elapsed + (meta.duration || 12);
-      this.effects.taxiInvulnUntil = this.match.elapsed + (meta.invulnerableDuration || 3);
+      this.effects.taxiInvulnUntil = this.match.elapsed + (meta.invulnerableDuration || 6);
       for (const ship of this.fleetMembersByKey("main")) {
         this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "加速", {}, "#9be0ff");
       }
