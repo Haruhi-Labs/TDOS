@@ -3,7 +3,9 @@
 export const DEFAULT_WORLD_SIZE = 1440;
 export const DEFAULT_MAP_PADDING = 20;
 export const TICK_RATE = 30;
-export const SNAPSHOT_RATE = 20;
+// 网络快照固定每两个权威 tick 下发一次。15Hz 配合客户端插值可保持60fps显示，
+// 同时避免多人观战时20Hz未压缩全量快照挤满服务器出口带宽。
+export const SNAPSHOT_RATE = 15;
 export const TICK_DT = 1 / TICK_RATE;
 
 const TAU = Math.PI * 2;

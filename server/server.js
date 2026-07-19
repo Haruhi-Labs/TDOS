@@ -14,12 +14,13 @@ import {
 } from "../shared/game-core.js";
 
 const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "flagship-balance-20260719-01";
+const NETWORK_BUILD = "snapshot-backpressure-20260719-01";
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
 const MAX_CATCHUP_STEPS = 6;
 const LOOP_IDLE_MS = 2;
 const PVP_COUNTDOWN_MS = 3000;
+const MAX_SNAPSHOT_BUFFERED_BYTES = 128 * 1024;
 
 const players = new Map();
 const rooms = new Map();
@@ -92,6 +93,19 @@ function sendToPlayer(player, payload) {
     return;
   }
   send(player.ws, payload);
+}
+
+function sendSnapshotToPlayer(player, payload) {
+  if (!player || !player.ws || player.ws.readyState !== 1) {
+    return;
+  }
+  // 战场快照是可替换状态，不应在慢连接上无限排队。积压超过阈值时直接跳过旧帧，
+  // 等发送缓冲恢复后再下发最新快照，避免延迟从数百毫秒滚成数秒并拖高进程内存。
+  if (player.ws.bufferedAmount > MAX_SNAPSHOT_BUFFERED_BYTES) {
+    player.skippedSnapshots = (player.skippedSnapshots || 0) + 1;
+    return;
+  }
+  sendToPlayer(player, payload);
 }
 
 function sendError(player, message) {
@@ -652,19 +666,19 @@ function sendSnapshot(room) {
   const pB = getPlayerById(room.seats.B);
 
   if (pA) {
-    sendToPlayer(pA, {
+    sendSnapshotToPlayer(pA, {
       ...payloadBase,
       ackSeq: pA.lastProcessedSeq,
     });
   }
   if (room.mode === "pvp" && pB) {
-    sendToPlayer(pB, {
+    sendSnapshotToPlayer(pB, {
       ...payloadBase,
       ackSeq: pB.lastProcessedSeq,
     });
   }
   for (const spectator of roomSpectators(room)) {
-    sendToPlayer(spectator, {
+    sendSnapshotToPlayer(spectator, {
       ...payloadBase,
       ackSeq: 0,
       spectating: true,
@@ -672,7 +686,22 @@ function sendSnapshot(room) {
   }
 }
 
-const wss = new WebSocketServer({ port: PORT });
+const wss = new WebSocketServer({
+  port: PORT,
+  maxPayload: 64 * 1024,
+  perMessageDeflate: {
+    // 快照JSON重复字段多，单帧压缩后实测约为原体积的31%。禁用上下文复用可限制每连接内存，
+    // 服务器当前CPU余量充足，使用低压缩级别换取显著的出口带宽下降。
+    clientNoContextTakeover: true,
+    serverNoContextTakeover: true,
+    concurrencyLimit: 4,
+    threshold: 1024,
+    zlibDeflateOptions: {
+      level: 3,
+      memLevel: 7,
+    },
+  },
+});
 
 wss.on("connection", (ws) => {
   const playerId = randomUUID();
