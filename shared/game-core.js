@@ -337,9 +337,9 @@ export const CHARACTER_DEFS = {
       type: "active",
       cooldown: 24,
       cost: 64,
-      duration: 2,
+      duration: 4,
       target: "none",
-      description: "涤除敌方全部主动技能增益，并揭示敌方全体位置2秒。",
+      description: "涤除敌方全部主动技能增益，并揭示敌方全体位置4秒。",
     },
     subSkill: {
       id: "blade_queen",
@@ -2532,7 +2532,7 @@ class Team {
       }
       const enemyTeam = this.match.enemyTeamBySeat(this.seat);
       enemyTeam.clearActiveSkillBuffs();
-      this.effects.revealEnemiesUntil = this.match.elapsed + (meta.duration || 2);
+      this.effects.revealEnemiesUntil = this.match.elapsed + (meta.duration || 4);
       for (const ship of enemyTeam.getAllShips()) {
         if (!ship.alive) {
           continue;

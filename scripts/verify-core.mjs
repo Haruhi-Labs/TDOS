@@ -629,6 +629,15 @@ function asakuraFlagshipCheck() {
   assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方无敌效果");
   assert(!enemySub1.hasEffect("critUntil"), "朝仓旗舰技能未清除敌方舰船主动增益");
   assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未揭示敌方位置");
+  assert(Math.abs(teamA.effects.revealEnemiesUntil - sim.elapsed - 4) < 1e-6, "朝仓旗舰技能揭示时间不是4秒");
+
+  runSteps(sim, 3.9);
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未完整揭示敌方位置4秒");
+
+  runSteps(sim, 0.2);
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能揭示结束后仍持续显示敌方位置");
 }
 
 function asakuraBladeQueenCheck() {
