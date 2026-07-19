@@ -1307,7 +1307,12 @@ class Ship {
       navTargetY = lookAhead.y;
     }
 
-    const desired = Math.atan2(navTargetY - this.y, navTargetX - this.x);
+    const navDx = navTargetX - this.x;
+    const navDy = navTargetY - this.y;
+    const dist = Math.hypot(navDx, navDy);
+    // 已到达目标且没有位移需求时保持当前航向；atan2(0, 0) 会返回 0，曾令朝向 π 的 B 方旗舰
+    // 在原地无故掉头，进而拖动整支附着编队散开。
+    const desired = dist > 1e-4 ? Math.atan2(navDy, navDx) : this.angle;
     const delta = shortestAngleDelta(this.angle, desired);
     const deltaAbs = Math.abs(delta);
     const turnUrgency = clamp(deltaAbs / Math.PI, 0, 1);
@@ -1316,7 +1321,6 @@ class Ship {
     const turnRate = this.effectiveTurnRate() * (0.22 + this.throttle * 0.4) * turnBoost;
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
 
-    const dist = distance(this.x, this.y, navTargetX, navTargetY);
     const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
     const braking = this.isEmergencyBraking();
@@ -1359,15 +1363,23 @@ class Ship {
     this.command.x = tx;
     this.command.y = ty;
 
-    const desired = Math.atan2(ty - this.y, tx - this.x);
+    const errorX = tx - this.x;
+    const errorY = ty - this.y;
+    const dist = Math.hypot(errorX, errorY);
+    // 编队跟随采用「旗舰速度 + 位置误差修正」的期望速度。
+    // 旧逻辑即使旗舰静止也让副舰以巡航速度冲向编队点，越过后再折返；B 方初始朝向为 π，
+    // 症状尤其明显，会在开局向两侧大幅散开。现在到位后自然静止，旗舰移动时再同步跟进。
+    const correctionRate = compactMode ? 1.35 : 0.82;
+    const desiredVx = Math.cos(leader.angle) * leader.speed + errorX * correctionRate;
+    const desiredVy = Math.sin(leader.angle) * leader.speed + errorY * correctionRate;
+    const desiredSpeed = Math.hypot(desiredVx, desiredVy);
+    const desired = desiredSpeed > 0.05 ? Math.atan2(desiredVy, desiredVx) : leader.angle;
     const delta = shortestAngleDelta(this.angle, desired);
     const turnRate = this.effectiveFormationTurnRate();
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
 
-    const dist = distance(this.x, this.y, tx, ty);
     const fleetSpeed = this.effectiveSpeed();
-    const catchup = clamp(dist * (compactMode ? 0.86 : 0.52), 0, compactMode ? 52 : 30);
-    const targetSpeed = Math.min(fleetSpeed + catchup, fleetSpeed * (compactMode ? 1.4 : 1.18));
+    const targetSpeed = Math.min(desiredSpeed, fleetSpeed * (compactMode ? 1.4 : 1.18));
     const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this) * (compactMode ? 1.8 : 1.3), 0.8, 3.2);
     this.speed = lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
 
@@ -1827,23 +1839,28 @@ class Team {
       revealEnemiesUntil: 0,
     };
 
+    const sub1FormationOffset = { x: -36, y: 22 };
+    const sub2FormationOffset = { x: -36, y: -22 };
+    const sub1SpawnOffset = rotateOffset(sub1FormationOffset.x * 0.5, sub1FormationOffset.y * 0.5, facing);
+    const sub2SpawnOffset = rotateOffset(sub2FormationOffset.x * 0.5, sub2FormationOffset.y * 0.5, facing);
+
     this.ships = {
       main: new Ship(this, "main", spawnX, spawnY, facing, {
         slotKey: "main",
         characterId: this.loadout.main,
       }),
-      sub1: new Ship(this, "sub1", spawnX - 18, spawnY + 14, facing, {
+      sub1: new Ship(this, "sub1", spawnX + sub1SpawnOffset.x, spawnY + sub1SpawnOffset.y, facing, {
         slotKey: "sub1",
         characterId: this.loadout.sub1,
       }),
-      sub2: new Ship(this, "sub2", spawnX - 18, spawnY - 14, facing, {
+      sub2: new Ship(this, "sub2", spawnX + sub2SpawnOffset.x, spawnY + sub2SpawnOffset.y, facing, {
         slotKey: "sub2",
         characterId: this.loadout.sub2,
       }),
     };
 
-    this.ships.sub1.formationOffset = { x: -36, y: 22 };
-    this.ships.sub2.formationOffset = { x: -36, y: -22 };
+    this.ships.sub1.formationOffset = sub1FormationOffset;
+    this.ships.sub2.formationOffset = sub2FormationOffset;
 
     this.extraShips = [];
     this.applyFlagshipPassives(spawnX, spawnY, facing);
@@ -1862,7 +1879,9 @@ class Team {
 
     if (this.mainCharacterId() === "future1096") {
       this.ships.main.setHalfHullMode();
-      const twin = new Ship(this, "twin", spawnX - 34, spawnY, facing, {
+      const twinFormationOffset = { x: -52, y: 0 };
+      const twinSpawnOffset = rotateOffset(twinFormationOffset.x * 0.5, twinFormationOffset.y * 0.5, facing);
+      const twin = new Ship(this, "twin", spawnX + twinSpawnOffset.x, spawnY + twinSpawnOffset.y, facing, {
         slotKey: "twin",
         roleLabel: "1096僚舰",
         characterId: "future1096",
@@ -1870,7 +1889,7 @@ class Team {
         attachToMain: true,
       });
       twin.setHalfHullMode();
-      twin.formationOffset = { x: -52, y: 0 };
+      twin.formationOffset = twinFormationOffset;
       this.extraShips.push(twin);
     }
   }

@@ -158,6 +158,47 @@ function splitFormationCheck() {
   assert(sub1Distance > sub2Distance + 35, "一级分离后应只有被释放的副舰一明显脱离编队");
 }
 
+function initialFormationStabilityCheck() {
+  const loadout = {
+    main: "future1096",
+    sub1: "haruhi",
+    sub2: "kyon",
+  };
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: { A: loadout, B: loadout },
+  });
+
+  const formationError = (team, ship) => {
+    const main = team.ships.main;
+    const scale = 0.5;
+    const ox = ship.formationOffset.x * scale;
+    const oy = ship.formationOffset.y * scale;
+    const cos = Math.cos(main.angle);
+    const sin = Math.sin(main.angle);
+    const expectedX = main.x + ox * cos - oy * sin;
+    const expectedY = main.y + ox * sin + oy * cos;
+    return Math.hypot(ship.x - expectedX, ship.y - expectedY);
+  };
+
+  for (const seat of ["A", "B"]) {
+    const team = sim.teamBySeat(seat);
+    for (const ship of [team.ships.sub1, team.ships.sub2, ...team.extraShips]) {
+      assert(formationError(team, ship) < 0.01, `${seat}队附着舰未按自身朝向生成在编队位置`);
+    }
+  }
+
+  runSteps(sim, 3);
+  for (const seat of ["A", "B"]) {
+    const team = sim.teamBySeat(seat);
+    for (const ship of [team.ships.sub1, team.ships.sub2, ...team.extraShips]) {
+      assert(formationError(team, ship) < 0.5, `${seat}队静止开局时附着舰异常散开`);
+      assert(ship.speed < 0.2, `${seat}队静止开局时附着舰仍在自行推进`);
+    }
+  }
+}
+
 function future1096LeaderHandoverCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -1412,6 +1453,7 @@ function main() {
   emergencyBrakeCheck();
   autoScoutCheck();
   splitFormationCheck();
+  initialFormationStabilityCheck();
   future1096LeaderHandoverCheck();
   flagshipLossAutoSplitCheck();
   skippedSplitLevelCheck();

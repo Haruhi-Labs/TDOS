@@ -14,7 +14,7 @@ import {
 } from "../shared/game-core.js";
 
 const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "pvp-countdown-20260718-01";
+const NETWORK_BUILD = "formation-fix-20260719-01";
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
 const MAX_CATCHUP_STEPS = 6;
