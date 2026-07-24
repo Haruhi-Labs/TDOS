@@ -34,10 +34,12 @@ const SEVERE_CONGESTION_INFLIGHT_SNAPSHOTS = 30;
 const CONGESTION_ACK_AGE_MS = 1200;
 const SEVERE_CONGESTION_ACK_AGE_MS = 3000;
 const STREAM_RECOVERY_STABLE_MS = 4000;
+const LOBBY_BROADCAST_DEBOUNCE_MS = 30;
 
 const players = new Map();
 const rooms = new Map();
 let nextSnapshotStreamPhase = 0;
+let lobbyBroadcastTimer = null;
 
 const MESSAGE_CODES = {
   "房间已关闭": "room_closed",
@@ -426,11 +428,28 @@ function buildLobbyPayload() {
   };
 }
 
-function broadcastLobby() {
+function flushLobbyBroadcast() {
+  lobbyBroadcastTimer = null;
   const payload = buildLobbyPayload();
+  const serialized = JSON.stringify(payload);
   for (const player of players.values()) {
-    sendToPlayer(player, payload);
+    // 已进入房间的客户端由 room_state 驱动，不需要继续接收不可操作的大厅列表。
+    // 只向仍在大厅的人扇出，并复用同一份序列化结果。
+    if (player.roomId || !player.ws || player.ws.readyState !== 1) {
+      continue;
+    }
+    if (player.ws.bufferedAmount > MAX_SNAPSHOT_BUFFERED_BYTES) {
+      continue;
+    }
+    player.ws.send(serialized);
   }
+}
+
+function broadcastLobby() {
+  if (lobbyBroadcastTimer) {
+    return;
+  }
+  lobbyBroadcastTimer = setTimeout(flushLobbyBroadcast, LOBBY_BROADCAST_DEBOUNCE_MS);
 }
 
 function sendRoomStateToMembers(room) {
