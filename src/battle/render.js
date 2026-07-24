@@ -561,6 +561,67 @@ export function drawFloatingText(ctx, label) {
   ctx.restore();
 }
 
+function drawTeamCommMarker(ctx, event) {
+  const anchor = event && event.anchor;
+  if (!anchor || anchor.type !== "point") {
+    return;
+  }
+  const x = Number(anchor.x);
+  const y = Number(anchor.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+  const now = Date.now();
+  const createdAt = Number(event.createdAt) || now;
+  const expiresAt = Number(event.expiresAt) || now;
+  const ttl = Math.max(1, expiresAt - createdAt);
+  const age = Math.max(0, now - createdAt);
+  const remaining = clamp((expiresAt - now) / ttl, 0, 1);
+  if (remaining <= 0) {
+    return;
+  }
+  const pulse = 1 + Math.sin(age / 130) * 0.08;
+  const radius = 24 * pulse;
+  const label = {
+    attack: t("集火"),
+    support: t("支援"),
+    danger: t("危险"),
+    retreat: t("撤退"),
+    ack: t("收到"),
+    emoji: t("漂亮"),
+  }[event.commType] || t("标记");
+
+  ctx.save();
+  ctx.globalAlpha = clamp(remaining * 1.25, 0, 1);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = event.commType === "danger" ? "#ff8c78" : "#ffd36f";
+  ctx.fillStyle = "rgba(12, 8, 4, 0.66)";
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, TAU);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(x, y, 5, 0, TAU);
+  ctx.fill();
+  ctx.stroke();
+  ctx.font = "bold 12px 'Noto Sans SC', 'PingFang SC', sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const text = `${event.senderSeat || ""} ${label}`.trim();
+  const width = ctx.measureText(text).width + 14;
+  const boxX = x - width / 2;
+  const boxY = y - radius - 24;
+  ctx.fillStyle = "rgba(22, 12, 5, 0.82)";
+  ctx.strokeStyle = "#c8a24e";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(boxX, boxY, width, 20, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#ffe7a1";
+  ctx.fillText(text, x, boxY + 10);
+  ctx.restore();
+}
+
 export function drawSelectedVisionCircle(ctx, team, shipKey) {
   if (!team || !team.ships) {
     return;
@@ -707,6 +768,8 @@ export function drawMinimap(ctx, frame, rect, view) {
   const selectedKeyForTeam = frame.selectedKeyForTeam || (() => null);
   const visibleEnemyIds = frame.visibleEnemyIds || new Set();
   const revealAll = spectating || state.phase === "finished";
+  const friendlyTeams = frame.friendlyTeams || (ownTeam ? [ownTeam] : []);
+  const enemyTeams = frame.enemyTeams || (enemyTeam ? [enemyTeam] : []);
 
   ctx.save();
   ctx.fillStyle = "#06121fda";
@@ -739,16 +802,20 @@ export function drawMinimap(ctx, frame, rect, view) {
     ctx.fill();
   };
 
-  const ownSelectedKey = selectedKeyForTeam(ownTeam);
-  for (const ship of teamAllShips(ownTeam)) {
-    plotShip(ship, ship.key === ownSelectedKey ? "#ffe184" : "#79dcff");
-  }
-  const enemySelectedKey = selectedKeyForTeam(enemyTeam);
-  for (const ship of teamAllShips(enemyTeam)) {
-    if (!revealAll && !visibleEnemyIds.has(ship.id)) {
-      continue;
+  for (const team of friendlyTeams) {
+    const selectedKey = selectedKeyForTeam(team);
+    for (const ship of teamAllShips(team)) {
+      plotShip(ship, ship.key === selectedKey ? "#ffe184" : "#79dcff");
     }
-    plotShip(ship, ship.key === enemySelectedKey ? "#ffe184" : "#ff95a0");
+  }
+  for (const team of enemyTeams) {
+    const selectedKey = selectedKeyForTeam(team);
+    for (const ship of teamAllShips(team)) {
+      if (!revealAll && !visibleEnemyIds.has(ship.id)) {
+        continue;
+      }
+      plotShip(ship, ship.key === selectedKey ? "#ffe184" : "#ff95a0");
+    }
   }
 
   ctx.strokeStyle = "#ffe08a";
@@ -855,32 +922,39 @@ export function drawBattleWorld(ctx, frame) {
   // 观战与单人/普通对战共用内核队色，不另设观战专用色板。
   const ownColor = ownTeam?.color || "#65d9ff";
   const enemyColor = enemyTeam?.color || "#ff8692";
+  const friendlyTeams = frame.friendlyTeams || (ownTeam ? [ownTeam] : []);
+  const enemyTeams = frame.enemyTeams || (enemyTeam ? [enemyTeam] : []);
+  const friendlySeats = new Set(friendlyTeams.map((team) => team?.seat).filter(Boolean));
 
   drawBackground(ctx, frame.stars, elapsed);
   drawZones(ctx, state, frame.selectedZoneId);
 
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制
   syncShipDestructionEffects(frame.destructionEffects, [
-    {
-      seat: ownSeat,
-      color: ownColor,
-      ships: teamAllShips(ownTeam),
-    },
-    {
-      seat: enemyTeam?.seat || (ownSeat === "A" ? "B" : "A"),
-      color: enemyColor,
-      ships: teamAllShips(enemyTeam),
+    ...friendlyTeams.map((team) => ({
+      seat: team?.seat || ownSeat,
+      color: team?.color || ownColor,
+      ships: teamAllShips(team),
+    })),
+    ...enemyTeams.map((team) => ({
+      seat: team?.seat || (ownSeat === "A" ? "B" : "A"),
+      color: team?.color || enemyColor,
+      ships: teamAllShips(team),
       isVisible: (ship) => enemyVisible(ship.id),
-    },
+    })),
   ]);
 
   if (spectating) {
-    drawTeamVisionCircles(ctx, state.teams?.A, "#79dcff26");
-    drawTeamVisionCircles(ctx, state.teams?.B, "#ff95a026");
+    const visionTeams = state.fleets ? Object.values(state.fleets) : [state.teams?.A, state.teams?.B];
+    for (const team of visionTeams) {
+      drawTeamVisionCircles(ctx, team, team?.allianceId === "B" || team?.seat === "B" ? "#ff95a026" : "#79dcff26");
+    }
   }
 
   // 航线:非观战画己方全部可控航线;观战只画双方玩家当前所选舰船的航线。
-  const routeTeams = spectating ? [state.teams?.A, state.teams?.B] : [ownTeam];
+  const routeTeams = spectating
+    ? (state.fleets ? Object.values(state.fleets) : [state.teams?.A, state.teams?.B])
+    : friendlyTeams;
   for (const team of routeTeams) {
     if (!team || !team.ships) {
       continue;
@@ -901,11 +975,15 @@ export function drawBattleWorld(ctx, frame) {
     }
   }
 
-  for (const beam of ownTeam?.beams || []) {
-    drawBeam(ctx, beam);
+  for (const team of friendlyTeams) {
+    for (const beam of team?.beams || []) {
+      drawBeam(ctx, beam);
+    }
   }
-  for (const beam of enemyTeam?.beams || []) {
-    drawBeam(ctx, beam);
+  for (const team of enemyTeams) {
+    for (const beam of team?.beams || []) {
+      drawBeam(ctx, beam);
+    }
   }
 
   if (Array.isArray(state.projectiles)) {
@@ -913,44 +991,57 @@ export function drawBattleWorld(ctx, frame) {
       if (!projectile || !projectile.alive) {
         continue;
       }
-      drawProjectile(ctx, projectile, projectile.teamSeat === ownSeat);
+      drawProjectile(ctx, projectile, friendlySeats.has(projectile.teamSeat));
     }
   }
 
   const ownSelectedKey = selectedKeyForTeam(ownTeam);
-  for (const ship of teamAllShips(ownTeam)) {
-    if (!ship || !ship.alive) {
-      continue;
+  for (const team of friendlyTeams) {
+    const selectedKey = selectedKeyForTeam(team);
+    for (const ship of teamAllShips(team)) {
+      if (!ship || !ship.alive) {
+        continue;
+      }
+      drawShip(ctx, ship, team?.color || ownColor, ship.key === selectedKey, ship.attached, false, spectating);
     }
-    drawShip(ctx, ship, ownColor, ship.key === ownSelectedKey, ship.attached, false, spectating);
   }
 
-  const enemySelectedKey = selectedKeyForTeam(enemyTeam);
-  for (const ship of teamAllShips(enemyTeam)) {
-    if (!ship || !ship.alive || !enemyVisible(ship.id)) {
-      continue;
+  for (const team of enemyTeams) {
+    const selectedKey = selectedKeyForTeam(team);
+    for (const ship of teamAllShips(team)) {
+      if (!ship || !ship.alive || !enemyVisible(ship.id)) {
+        continue;
+      }
+      drawShip(ctx, ship, team?.color || enemyColor, ship.key === selectedKey, ship.attached, true, spectating);
     }
-    drawShip(ctx, ship, enemyColor, ship.key === enemySelectedKey, ship.attached, true, spectating);
   }
 
-  for (const scout of ownTeam?.scouts || []) {
-    drawScout(ctx, scout, true);
-  }
-  for (const scout of enemyTeam?.scouts || []) {
-    if (!enemyVisible(scout.id)) {
-      continue;
+  for (const team of friendlyTeams) {
+    for (const scout of team?.scouts || []) {
+      drawScout(ctx, scout, true);
     }
-    drawScout(ctx, scout, false);
+  }
+  for (const team of enemyTeams) {
+    for (const scout of team?.scouts || []) {
+      if (!enemyVisible(scout.id)) {
+        continue;
+      }
+      drawScout(ctx, scout, false);
+    }
   }
 
-  for (const wingman of ownTeam?.wingmen || []) {
-    drawWingman(ctx, wingman, true);
-  }
-  for (const wingman of enemyTeam?.wingmen || []) {
-    if (!enemyVisible(wingman.id)) {
-      continue;
+  for (const team of friendlyTeams) {
+    for (const wingman of team?.wingmen || []) {
+      drawWingman(ctx, wingman, true);
     }
-    drawWingman(ctx, wingman, false);
+  }
+  for (const team of enemyTeams) {
+    for (const wingman of team?.wingmen || []) {
+      if (!enemyVisible(wingman.id)) {
+        continue;
+      }
+      drawWingman(ctx, wingman, false);
+    }
   }
 
   if (Array.isArray(state.bursts)) {
@@ -963,12 +1054,16 @@ export function drawBattleWorld(ctx, frame) {
       drawFloatingText(ctx, label);
     }
   }
+  for (const event of frame.teamComms || []) {
+    drawTeamCommMarker(ctx, event);
+  }
 
   drawShipDestructionEffects(ctx, frame.destructionEffects);
 
   // 选中舰的火力扇区 + 视野圈;观战时双方都画,便于理解走位与输出朝向
   if (spectating) {
-    for (const team of [state.teams?.A, state.teams?.B]) {
+    const arcTeams = state.fleets ? Object.values(state.fleets) : [state.teams?.A, state.teams?.B];
+    for (const team of arcTeams) {
       if (!team) {
         continue;
       }

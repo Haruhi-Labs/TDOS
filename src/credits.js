@@ -5,6 +5,7 @@
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { getLocale, t } from "./i18n.js";
+import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 
 const CREDITS_ZH = [
   { role: "画师", name: "橙海" },
@@ -86,6 +87,15 @@ function mobileTemplate() {
 export function mount(root) {
   root.innerHTML = isMobile() ? mobileTemplate() : template();
   const ac = new AbortController();
-  startStarfield(root.querySelector(".page-stars"), ac.signal);
-  return () => ac.abort();
+  const starfieldAc = new AbortController();
+  startStarfield(root.querySelector(".page-stars"), starfieldAc.signal);
+  const fluidBackdrop = mountRouteFluidBackdrop(root.querySelector(".page-stage, .mpage"), {
+    logLabel: "Credits fluid backdrop",
+    onReady: () => starfieldAc.abort(),
+  });
+  return () => {
+    fluidBackdrop.destroy();
+    starfieldAc.abort();
+    ac.abort();
+  };
 }

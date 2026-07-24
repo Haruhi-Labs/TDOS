@@ -6,6 +6,7 @@ import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { setTutorialSeen } from "./profile.js";
 import { t } from "./i18n.js";
+import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 
 const QUICKSTART = [
   "<b>编队</b>：选 1 名角色担任<b>主舰</b>、2 名担任<b>副舰</b>；同一角色在主舰与副舰位置上技能不同。",
@@ -118,7 +119,12 @@ function mobileTemplate() {
 export function mount(root) {
   root.innerHTML = isMobile() ? mobileTemplate() : template();
   const ac = new AbortController();
-  startStarfield(root.querySelector(".page-stars"), ac.signal);
+  const starfieldAc = new AbortController();
+  startStarfield(root.querySelector(".page-stars"), starfieldAc.signal);
+  const fluidBackdrop = mountRouteFluidBackdrop(root.querySelector(".page-stage, .mpage"), {
+    logLabel: "Guide fluid backdrop",
+    onReady: () => starfieldAc.abort(),
+  });
   // 「重看新手教程」:清掉已看过标记,再让路由跳到 /play(下次进战场即重新触发引导)
   const replay = root.querySelector("[data-replay-tutorial]");
   if (replay) {
@@ -130,5 +136,9 @@ export function mount(root) {
       { signal: ac.signal },
     );
   }
-  return () => ac.abort();
+  return () => {
+    fluidBackdrop.destroy();
+    starfieldAc.abort();
+    ac.abort();
+  };
 }

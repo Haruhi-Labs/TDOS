@@ -4,6 +4,8 @@
 //   shellClass         额外壳类(在线传 "online-shell")
 //   hidden             初始隐藏(在线在大厅/战斗两视图间切换)
 //   panelActionsHTML   面板顶部「← 主菜单」之后的额外按钮(单人:换阵容)
+//   panelFooterHTML    面板底部额外内容(在线:队内通信)
+//   mobileExtraHTML    移动端 HUD 的额外内容(在线:队内通信)
 //   resultMetaClass    结算元信息行的附加类(在线:" result-match-meta")
 //   overlayActionsHTML 结算卡操作区(单人:再来一局+返回主菜单;在线:返回大厅)
 import { DEFAULT_WORLD_SIZE } from "../../shared/game-core.js";
@@ -26,6 +28,8 @@ export function battleViewTemplate({
   shellClass = "",
   hidden = false,
   panelActionsHTML = "",
+  panelFooterHTML = "",
+  mobileExtraHTML = "",
   resultMetaClass = "",
   overlayActionsHTML = "",
 } = {}) {
@@ -90,6 +94,7 @@ ${fleetRowHTML("sub1", t("副一"))}
 ${fleetRowHTML("sub2", t("副二"))}
           </div>
         </section>
+        ${panelFooterHTML}
       </aside>
 
       <main class="game-wrap">
@@ -124,6 +129,7 @@ ${fleetRowHTML("sub2", t("副二"))}
             <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
             <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
           </div>
+          ${mobileExtraHTML}
           <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
         </section>
         <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">

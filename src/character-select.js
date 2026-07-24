@@ -7,6 +7,7 @@ import {
 import { isMobile } from "./mobile.js";
 import { getDifficulty, setDifficulty } from "./profile.js";
 import { t } from "./i18n.js";
+import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 
 // 单人难度档(仅在 solo 的选角页显示)。四档同时影响:敌方数值(血量+伤害)缩放 + AI反应快慢,
 // 极限额外开启"智能集火残血"(优先收掉你打残的舰)。tip 文案会作为按钮 title 提示。
@@ -1143,6 +1144,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   }
 
   let bgAnimId = null;
+  let fluidBackdrop = null;
   function animateBg(time) {
     const bCtx = bgCanvas.getContext("2d");
     const w = bgCanvas.width;
@@ -1272,6 +1274,15 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   // ── 显示 / 隐藏 ──
   function show() {
     document.body.appendChild(screen);
+    fluidBackdrop = mountRouteFluidBackdrop(screen, {
+      logLabel: "Character select fluid backdrop",
+      onReady: () => {
+        if (bgAnimId) {
+          cancelAnimationFrame(bgAnimId);
+          bgAnimId = null;
+        }
+      },
+    });
     // 不预填默认编队：每次都从第一步（选主舰）开始，由玩家自己选
     state.loadout.main = null;
     state.loadout.sub1 = null;
@@ -1314,6 +1325,8 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     state.flipComplete = null;
     screen.classList.add("leaving");
     screen.classList.remove("visible");
+    fluidBackdrop?.destroy();
+    fluidBackdrop = null;
     if (bgAnimId) {
       cancelAnimationFrame(bgAnimId);
       bgAnimId = null;
@@ -1378,6 +1391,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
       <button type="button" class="csm-cta" disabled></button>
     </div>
   `;
+  let fluidBackdrop = null;
   if (opts.showDifficulty) {
     const top = screen.querySelector(".csm-top");
     const faction = top?.querySelector(".csm-faction");
@@ -1720,6 +1734,9 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
 
   function show() {
     document.body.appendChild(screen);
+    fluidBackdrop = mountRouteFluidBackdrop(screen, {
+      logLabel: "Character select fluid backdrop",
+    });
     state.loadout = { main: null, sub1: null, sub2: null };
     state.idx = 0;
     screen.classList.toggle("faction-red", state.color === "red");
@@ -1755,6 +1772,8 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     window.removeEventListener("resize", onResize);
     screen.classList.add("leaving");
     screen.classList.remove("visible");
+    fluidBackdrop?.destroy();
+    fluidBackdrop = null;
     setTimeout(() => {
       screen.remove();
       screen.classList.remove("leaving");
