@@ -35,6 +35,7 @@ import {
 
 import { tutorial } from "./tutorial.js";
 import { showConfirm } from "./confirm-dialog.js";
+import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 import {
   createShipDestructionEffects,
   resetShipDestructionEffects,
@@ -76,6 +77,20 @@ let ac = null; // AbortController：统一移除 window 级监听
 let rafId = 0; // 渲染循环句柄
 let running = false; // 渲染循环开关
 let charSelect = null; // 选角覆盖层引用，卸载时移除
+let routeFluidBackdrop = null;
+
+function mountSoloBattleFluidBackdrop() {
+  if (routeFluidBackdrop) return;
+  routeFluidBackdrop = mountRouteFluidBackdrop(document.getElementById("battleView"), {
+    cursorRing: false,
+    logLabel: "Solo battle fluid backdrop",
+  });
+}
+
+function destroySoloBattleFluidBackdrop() {
+  routeFluidBackdrop?.destroy();
+  routeFluidBackdrop = null;
+}
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -1348,7 +1363,9 @@ function launchWithLoadout(loadout, color) {
 }
 
 function showCharacterSelectScreen() {
+  destroySoloBattleFluidBackdrop();
   charSelect = createCharacterSelect((loadout, color) => {
+    mountSoloBattleFluidBackdrop();
     launchWithLoadout(loadout, color);
   }, { showDifficulty: true });
   charSelect.show();
@@ -1419,6 +1436,7 @@ function unmount() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
   tutorial.stop(); // 静默拆掉教程 overlay(没走完不写已看过标记)
+  destroySoloBattleFluidBackdrop();
   if (ac) ac.abort();
   ac = null;
   // 选角覆盖层挂在 body 上：用 hide() 清掉它的 keydown 监听与背景 rAF，并移除节点

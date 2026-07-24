@@ -8,9 +8,16 @@
     "build": "node scripts/check-battle-drift.mjs && vite build",
     "preview": "vite preview",
     "start:server": "node server/server.js",
-    "test:core": "node scripts/verify-core.mjs"
+    "test:core": "node scripts/verify-core.mjs",
+    "test:2v2-core": "node scripts/verify-2v2-core.mjs",
+    "test:2v2-server": "node scripts/verify-2v2-server.mjs",
+    "test:2v2-client": "node scripts/verify-2v2-client.mjs",
+    "test:2v2-comm": "node scripts/verify-2v2-comm.mjs",
+    "test:2v2-reconnect": "node scripts/verify-2v2-reconnect.mjs",
+    "test:2v2-browser": "node scripts/verify-2v2-browser.mjs"
   },
   "dependencies": {
+    "three": "^0.185.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

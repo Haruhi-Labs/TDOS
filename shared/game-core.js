@@ -395,6 +395,18 @@ const TEAM_PROJECTILE_COLORS = {
   B: "#ffc0bd",
 };
 
+const PVP2V2_FLEET_SEATS = Object.freeze(["A1", "A2", "B1", "B2"]);
+const ALLIANCE_IDS = Object.freeze(["A", "B"]);
+
+function allianceIdForSeat(seat) {
+  const safe = String(seat || "").trim().toUpperCase();
+  return safe.startsWith("B") ? "B" : "A";
+}
+
+function enemyAllianceId(allianceId) {
+  return allianceId === "A" ? "B" : "A";
+}
+
 // SOS团长(春日旗舰技)随机赋予的四种强化。正向增益统一 ×1.5(+50%);异世界人的减伤(受伤 ×0.82)保持不变。
 const SOS_BUFFS = [
   {
@@ -786,8 +798,9 @@ class Projectile {
   }
 
   resolveImpact(match) {
-    const enemyTeam = match.enemyTeamBySeat(this.team.seat);
-    const candidates = enemyTeam.getEntities();
+    const candidates = typeof match.enemyEntitiesBySeat === "function"
+      ? match.enemyEntitiesBySeat(this.team.seat)
+      : match.enemyTeamBySeat(this.team.seat).getEntities();
     let hitTarget = null;
     let nearest = Infinity;
     for (const entity of candidates) {
@@ -1808,9 +1821,10 @@ class Team {
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.match = match;
     this.seat = seat;
+    this.allianceId = options.allianceId || allianceIdForSeat(seat);
     this.name = name;
-    this.color = TEAM_COLORS[seat];
-    this.projectileColor = TEAM_PROJECTILE_COLORS[seat];
+    this.color = options.color || TEAM_COLORS[this.allianceId] || TEAM_COLORS.A;
+    this.projectileColor = options.projectileColor || TEAM_PROJECTILE_COLORS[this.allianceId] || TEAM_PROJECTILE_COLORS.A;
     this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
@@ -2659,31 +2673,35 @@ class Team {
 
   bribeZone(ship, zoneId) {
     const zone = this.match.zoneById(zoneId);
-    const enemyTeam = this.match.enemyTeamBySeat(this.seat);
+    const enemyFleets = typeof this.match.enemyFleetsBySeat === "function"
+      ? this.match.enemyFleetsBySeat(this.seat)
+      : [this.match.enemyTeamBySeat(this.seat)];
     let converted = 0;
 
-    for (const scout of enemyTeam.scouts) {
-      if (!scout.alive || !zoneContains(zone, scout.x, scout.y)) {
-        continue;
+    for (const enemyTeam of enemyFleets) {
+      for (const scout of enemyTeam.scouts) {
+        if (!scout.alive || !zoneContains(zone, scout.x, scout.y)) {
+          continue;
+        }
+        scout.team = this;
+        this.scouts.push(scout);
+        scout.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+        converted += 1;
       }
-      scout.team = this;
-      this.scouts.push(scout);
-      scout.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
-      converted += 1;
-    }
-    enemyTeam.scouts = enemyTeam.scouts.filter((scout) => scout.team === enemyTeam);
+      enemyTeam.scouts = enemyTeam.scouts.filter((scout) => scout.team === enemyTeam);
 
-    for (const wingman of enemyTeam.wingmen) {
-      if (!wingman.alive || !zoneContains(zone, wingman.x, wingman.y)) {
-        continue;
+      for (const wingman of enemyTeam.wingmen) {
+        if (!wingman.alive || !zoneContains(zone, wingman.x, wingman.y)) {
+          continue;
+        }
+        wingman.team = this;
+        wingman.zone = zone;
+        wingman.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+        this.wingmen.push(wingman);
+        converted += 1;
       }
-      wingman.team = this;
-      wingman.zone = zone;
-      wingman.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
-      this.wingmen.push(wingman);
-      converted += 1;
+      enemyTeam.wingmen = enemyTeam.wingmen.filter((wingman) => wingman.team === enemyTeam);
     }
-    enemyTeam.wingmen = enemyTeam.wingmen.filter((wingman) => wingman.team === enemyTeam);
 
     if (converted > 0) {
       this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "钞能力 x{count}", { count: converted }, "#ffd27e", `钞能力 x${converted}`);
@@ -5960,16 +5978,26 @@ export class MatchSimulation {
     const mapPadding = Number.isFinite(options.mapPadding) ? options.mapPadding : DEFAULT_MAP_PADDING;
     const aiAutoBeam = Boolean(options.aiAutoBeam);
     const aiSeats = normalizeAiSeats(mode, options.aiSeats);
+    const isTwoVsTwo = mode === "pvp2v2";
     const teamNames = {
       A: options.teamNames?.A || (aiSeats.includes("A") ? "观察方AI舰队A" : "玩家A舰队"),
       B: options.teamNames?.B || (aiSeats.includes("B") ? "统合思念体AI舰队" : "玩家B舰队"),
+      A1: options.teamNames?.A1 || options.teamNames?.A || "玩家A1舰队",
+      A2: options.teamNames?.A2 || "玩家A2舰队",
+      B1: options.teamNames?.B1 || options.teamNames?.B || "玩家B1舰队",
+      B2: options.teamNames?.B2 || "玩家B2舰队",
     };
     const teamLoadouts = {
       A: options.teamLoadouts?.A || DEFAULT_TEAM_LOADOUT,
       B: options.teamLoadouts?.B || (aiSeats.includes("B") ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
+      A1: options.teamLoadouts?.A1 || options.teamLoadouts?.A || DEFAULT_TEAM_LOADOUT,
+      A2: options.teamLoadouts?.A2 || DEFAULT_TEAM_LOADOUT,
+      B1: options.teamLoadouts?.B1 || options.teamLoadouts?.B || DEFAULT_TEAM_LOADOUT,
+      B2: options.teamLoadouts?.B2 || DEFAULT_TEAM_LOADOUT,
     };
 
     this.mode = mode;
+    this.isTwoVsTwo = isTwoVsTwo;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
     this.aiAutoBeam = aiAutoBeam;
@@ -5980,17 +6008,51 @@ export class MatchSimulation {
     this.elapsed = 0;
     this.phase = "running";
     this.winnerSeat = null;
+    this.winnerAllianceId = null;
 
     const centerY = worldSize * 0.5;
     const leftX = worldSize * 0.35;
     const rightX = worldSize * 0.65;
 
-    this.teamA = new Team(this, "A", teamNames.A || "玩家A舰队", leftX, centerY, 0, {
-      loadout: teamLoadouts.A || DEFAULT_TEAM_LOADOUT,
-    });
-    this.teamB = new Team(this, "B", teamNames.B || (mode === "ai" ? "统合思念体AI舰队" : "玩家B舰队"), rightX, centerY, Math.PI, {
-      loadout: teamLoadouts.B || (mode === "ai" ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
-    });
+    this.fleetSeats = isTwoVsTwo ? [...PVP2V2_FLEET_SEATS] : ["A", "B"];
+    this.fleets = {};
+    this.alliances = {
+      A: { id: "A", fleetSeats: [] },
+      B: { id: "B", fleetSeats: [] },
+    };
+
+    if (isTwoVsTwo) {
+      const spawns = {
+        A1: { x: leftX, y: worldSize * 0.42, facing: 0 },
+        A2: { x: leftX, y: worldSize * 0.58, facing: 0 },
+        B1: { x: rightX, y: worldSize * 0.42, facing: Math.PI },
+        B2: { x: rightX, y: worldSize * 0.58, facing: Math.PI },
+      };
+      for (const seat of this.fleetSeats) {
+        const allianceId = allianceIdForSeat(seat);
+        const spawn = spawns[seat];
+        this.fleets[seat] = new Team(this, seat, teamNames[seat], spawn.x, spawn.y, spawn.facing, {
+          allianceId,
+          loadout: teamLoadouts[seat] || DEFAULT_TEAM_LOADOUT,
+        });
+        this.alliances[allianceId].fleetSeats.push(seat);
+      }
+      this.teamA = this.fleets.A1;
+      this.teamB = this.fleets.B1;
+    } else {
+      this.teamA = new Team(this, "A", teamNames.A || "玩家A舰队", leftX, centerY, 0, {
+        allianceId: "A",
+        loadout: teamLoadouts.A || DEFAULT_TEAM_LOADOUT,
+      });
+      this.teamB = new Team(this, "B", teamNames.B || (mode === "ai" ? "统合思念体AI舰队" : "玩家B舰队"), rightX, centerY, Math.PI, {
+        allianceId: "B",
+        loadout: teamLoadouts.B || (mode === "ai" ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
+      });
+      this.fleets.A = this.teamA;
+      this.fleets.B = this.teamB;
+      this.alliances.A.fleetSeats.push("A");
+      this.alliances.B.fleetSeats.push("B");
+    }
 
     this.projectiles = [];
     this.bursts = [];
@@ -6022,10 +6084,70 @@ export class MatchSimulation {
   }
 
   teamBySeat(seat) {
-    return seat === "A" ? this.teamA : this.teamB;
+    return this.fleetBySeat(seat);
+  }
+
+  fleetBySeat(seat) {
+    const safe = String(seat || "").trim().toUpperCase();
+    if (this.fleets[safe]) {
+      return this.fleets[safe];
+    }
+    if (safe === "A") {
+      return this.teamA;
+    }
+    if (safe === "B") {
+      return this.teamB;
+    }
+    return null;
+  }
+
+  fleetsForAlliance(allianceId) {
+    const safeAllianceId = allianceId === "B" ? "B" : "A";
+    return (this.alliances[safeAllianceId]?.fleetSeats || [])
+      .map((seat) => this.fleetBySeat(seat))
+      .filter(Boolean);
+  }
+
+  allianceBySeat(seat) {
+    return this.alliances[allianceIdForSeat(seat)] || null;
+  }
+
+  enemyFleetsBySeat(seat) {
+    return this.fleetsForAlliance(enemyAllianceId(allianceIdForSeat(seat)));
+  }
+
+  enemyEntitiesBySeat(seat) {
+    return this.enemyFleetsBySeat(seat).flatMap((fleet) => fleet.getEntities());
+  }
+
+  fleetGroupForAlliance(allianceId) {
+    const fleets = this.fleetsForAlliance(allianceId);
+    return {
+      seat: allianceId,
+      allianceId,
+      getEntities: () => fleets.flatMap((fleet) => fleet.getEntities()),
+      getAllShips: () => fleets.flatMap((fleet) => fleet.getAllShips()),
+      clearActiveSkillBuffs: () => {
+        for (const fleet of fleets) {
+          fleet.clearActiveSkillBuffs();
+        }
+      },
+      get visibleEnemyIds() {
+        const ids = new Set();
+        for (const fleet of fleets) {
+          for (const id of fleet.visibleEnemyIds || []) {
+            ids.add(id);
+          }
+        }
+        return ids;
+      },
+    };
   }
 
   enemyTeamBySeat(seat) {
+    if (this.isTwoVsTwo) {
+      return this.fleetGroupForAlliance(enemyAllianceId(allianceIdForSeat(seat)));
+    }
     return seat === "A" ? this.teamB : this.teamA;
   }
 
@@ -6035,6 +6157,9 @@ export class MatchSimulation {
 
   applyActionForSeat(seat, action) {
     const team = this.teamBySeat(seat);
+    if (!team) {
+      return false;
+    }
     return this.applyAction(team, action);
   }
 
@@ -6162,13 +6287,16 @@ export class MatchSimulation {
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
   // (用上一帧的接触集做迟滞判定),持续贴着不再反复减速,避免被一路压停。同队编队跟随的舰不互撞。
   resolveShipCollisions() {
-    const ships = [...this.teamA.getAllShips(), ...this.teamB.getAllShips()].filter((s) => s.alive);
+    const ships = this.fleetSeats.flatMap((seat) => this.fleetBySeat(seat).getAllShips()).filter((s) => s.alive);
     const prevContacts = this._contactPairs || new Set();
     const contacts = new Set();
     for (let i = 0; i < ships.length; i++) {
       for (let j = i + 1; j < ships.length; j++) {
         const a = ships[i];
         const b = ships[j];
+        if (a.team.allianceId === b.team.allianceId) {
+          continue;
+        }
         if (a.team === b.team && (a.isAttached() || b.isAttached())) {
           continue;
         }
@@ -6211,27 +6339,31 @@ export class MatchSimulation {
   }
 
   resolveScoutClashes() {
-    for (const scoutA of this.teamA.scouts) {
-      if (!scoutA.alive) {
-        continue;
-      }
-      for (const scoutB of this.teamB.scouts) {
-        if (!scoutB.alive) {
-          continue;
-        }
-        if (distance(scoutA.x, scoutA.y, scoutB.x, scoutB.y) <= scoutA.radius + scoutB.radius + 2) {
-          scoutA.takeDamage(1, null, this);
-          scoutB.takeDamage(1, null, this);
+    for (const fleetA of this.fleetsForAlliance("A")) {
+      for (const fleetB of this.fleetsForAlliance("B")) {
+        for (const scoutA of fleetA.scouts) {
+          if (!scoutA.alive) {
+            continue;
+          }
+          for (const scoutB of fleetB.scouts) {
+            if (!scoutB.alive) {
+              continue;
+            }
+            if (distance(scoutA.x, scoutA.y, scoutB.x, scoutB.y) <= scoutA.radius + scoutB.radius + 2) {
+              scoutA.takeDamage(1, null, this);
+              scoutB.takeDamage(1, null, this);
+            }
+          }
         }
       }
     }
   }
 
   resolveBladeQueenContacts() {
-    const pairs = [
-      [this.teamA, this.teamB],
-      [this.teamB, this.teamA],
-    ];
+    const pairs = this.fleetSeats.map((seat) => {
+      const fleet = this.fleetBySeat(seat);
+      return [fleet, this.fleetGroupForAlliance(enemyAllianceId(fleet.allianceId))];
+    });
     const now = this.elapsed;
     for (const [team, enemyTeam] of pairs) {
       for (const ship of team.getAllShips()) {
@@ -6278,6 +6410,17 @@ export class MatchSimulation {
     if (this.phase !== "running") {
       return;
     }
+    if (this.isTwoVsTwo) {
+      const aAlive = this.fleetsForAlliance("A").some((fleet) => fleet.hasLivingShips());
+      const bAlive = this.fleetsForAlliance("B").some((fleet) => fleet.hasLivingShips());
+      if (aAlive && bAlive) {
+        return;
+      }
+      this.phase = "finished";
+      this.winnerAllianceId = aAlive ? "A" : bAlive ? "B" : null;
+      this.winnerSeat = this.winnerAllianceId;
+      return;
+    }
     const aAlive = this.teamA.hasLivingShips();
     const bAlive = this.teamB.hasLivingShips();
     if (aAlive && bAlive) {
@@ -6285,6 +6428,7 @@ export class MatchSimulation {
     }
     this.phase = "finished";
     this.winnerSeat = aAlive ? "A" : bAlive ? "B" : null;
+    this.winnerAllianceId = this.winnerSeat;
   }
 
   spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {
@@ -6321,6 +6465,36 @@ export class MatchSimulation {
     this.floatingTexts = this.floatingTexts.filter((label) => label.life > 0);
   }
 
+  computeAllianceVisibility() {
+    for (const allianceId of ALLIANCE_IDS) {
+      const alliedFleets = this.fleetsForAlliance(allianceId);
+      const enemyFleets = this.fleetsForAlliance(enemyAllianceId(allianceId));
+      const sensors = alliedFleets.flatMap((fleet) => fleet.getVisionSources());
+      const enemies = enemyFleets.flatMap((fleet) => fleet.getEntities());
+      const visible = new Set();
+      const revealAll = alliedFleets.some((fleet) => fleet.effects.revealEnemiesUntil > this.elapsed);
+
+      if (revealAll) {
+        for (const enemy of enemies) {
+          visible.add(enemy.id);
+        }
+      } else {
+        for (const enemy of enemies) {
+          for (const sensor of sensors) {
+            if (distanceSq(enemy.x, enemy.y, sensor.x, sensor.y) <= sensor.range * sensor.range) {
+              visible.add(enemy.id);
+              break;
+            }
+          }
+        }
+      }
+
+      for (const fleet of alliedFleets) {
+        fleet.visibleEnemyIds = new Set(visible);
+      }
+    }
+  }
+
   update(dt = TICK_DT) {
     if (this.phase !== "running") {
       return;
@@ -6334,19 +6508,31 @@ export class MatchSimulation {
       bot.update(safeDt, this.elapsed);
     }
 
-    this.teamA.update(safeDt);
-    this.teamB.update(safeDt);
+    for (const seat of this.fleetSeats) {
+      this.fleetBySeat(seat).update(safeDt);
+    }
 
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();
     this.resolveScoutClashes();
-    this.teamA.computeVisibility(this.teamB);
-    this.teamB.computeVisibility(this.teamA);
-    this.teamA.resolveChargedBeams(this.teamB);
-    this.teamB.resolveChargedBeams(this.teamA);
+    if (this.isTwoVsTwo) {
+      this.computeAllianceVisibility();
+    } else {
+      this.teamA.computeVisibility(this.teamB);
+      this.teamB.computeVisibility(this.teamA);
+    }
 
-    this.teamA.stepCombat(this.teamB);
-    this.teamB.stepCombat(this.teamA);
+    for (const seat of this.fleetSeats) {
+      const fleet = this.fleetBySeat(seat);
+      const enemies = this.fleetGroupForAlliance(enemyAllianceId(fleet.allianceId));
+      fleet.resolveChargedBeams(enemies);
+    }
+
+    for (const seat of this.fleetSeats) {
+      const fleet = this.fleetBySeat(seat);
+      const enemies = this.fleetGroupForAlliance(enemyAllianceId(fleet.allianceId));
+      fleet.stepCombat(enemies);
+    }
     this.updateProjectiles(safeDt);
     this.updateVisualEffects(safeDt);
 
@@ -6354,6 +6540,10 @@ export class MatchSimulation {
   }
 
   serializeState() {
+    const fleets = {};
+    for (const seat of this.fleetSeats) {
+      fleets[seat] = this.fleetBySeat(seat).serialize();
+    }
     return {
       world: {
         size: this.worldSize,
@@ -6363,10 +6553,16 @@ export class MatchSimulation {
       zones: this.zones,
       phase: this.phase,
       winnerSeat: this.winnerSeat,
+      winnerAllianceId: this.winnerAllianceId,
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
+      alliances: {
+        A: { ...this.alliances.A, fleetSeats: [...this.alliances.A.fleetSeats] },
+        B: { ...this.alliances.B, fleetSeats: [...this.alliances.B.fleetSeats] },
+      },
+      fleets,
       teams: {
         A: this.teamA.serialize(),
         B: this.teamB.serialize(),
@@ -6374,6 +6570,116 @@ export class MatchSimulation {
       bots: {
         A: this.botBySeat("A") ? this.botBySeat("A").serializeDebugState() : null,
         B: this.botBySeat("B") ? this.botBySeat("B").serializeDebugState() : null,
+      },
+    };
+  }
+
+  serializeVisibleFleet(fleet, visibleEnemyIds) {
+    const ships = {};
+    for (const [key, ship] of Object.entries(fleet.ships || {})) {
+      if (visibleEnemyIds.has(ship.id)) {
+        ships[key] = ship.serialize();
+      }
+    }
+    const extraShips = (fleet.extraShips || [])
+      .filter((ship) => visibleEnemyIds.has(ship.id))
+      .map((ship) => ship.serialize());
+    const scouts = (fleet.scouts || [])
+      .filter((scout) => scout.alive && visibleEnemyIds.has(scout.id))
+      .map((scout) => scout.serialize());
+    const wingmen = (fleet.wingmen || [])
+      .filter((wingman) => wingman.alive && visibleEnemyIds.has(wingman.id))
+      .map((wingman) => wingman.serialize());
+
+    if (Object.keys(ships).length === 0 && extraShips.length === 0 && scouts.length === 0 && wingmen.length === 0) {
+      return null;
+    }
+
+    return {
+      seat: fleet.seat,
+      allianceId: fleet.allianceId,
+      name: fleet.name,
+      color: fleet.color,
+      loadout: cloneLoadout(fleet.loadout),
+      visibleEnemyIds: [],
+      hullRatio: fleet.hullRatio(),
+      ships,
+      extraShips,
+      scouts,
+      wingmen,
+      beams: (fleet.beams || [])
+        .filter((beam) => visibleEnemyIds.has(fleet.shipByKey(beam.shipKey)?.id))
+        .map((beam) => ({ ...beam })),
+    };
+  }
+
+  buildSnapshotForAlliance(allianceId) {
+    const safeAllianceId = allianceId === "B" ? "B" : "A";
+    const visibleEnemyIds = new Set(
+      this.fleetsForAlliance(safeAllianceId).flatMap((fleet) => Array.from(fleet.visibleEnemyIds || [])),
+    );
+    const fleets = {};
+    for (const seat of this.fleetSeats) {
+      const fleet = this.fleetBySeat(seat);
+      if (fleet.allianceId === safeAllianceId) {
+        fleets[seat] = fleet.serialize();
+      } else {
+        const visibleFleet = this.serializeVisibleFleet(fleet, visibleEnemyIds);
+        if (visibleFleet) {
+          fleets[seat] = visibleFleet;
+        }
+      }
+    }
+
+    return {
+      world: {
+        size: this.worldSize,
+      },
+      mode: this.mode,
+      zones: this.zones,
+      phase: this.phase,
+      winnerSeat: this.winnerSeat,
+      winnerAllianceId: this.winnerAllianceId,
+      elapsed: this.elapsed,
+      viewer: {
+        allianceId: safeAllianceId,
+      },
+      alliances: {
+        A: { ...this.alliances.A, fleetSeats: [...this.alliances.A.fleetSeats] },
+        B: { ...this.alliances.B, fleetSeats: [...this.alliances.B.fleetSeats] },
+      },
+      fleets,
+      projectiles: this.projectiles
+        .filter((projectile) => {
+          const sourceAllianceId = allianceIdForSeat(projectile.team.seat);
+          return sourceAllianceId === safeAllianceId || visibleEnemyIds.has(projectile.sourceId);
+        })
+        .map((projectile) => projectile.serialize()),
+      bursts: [],
+      floatingTexts: [],
+      contacts: {
+        visibleEnemyIds: Array.from(visibleEnemyIds),
+      },
+    };
+  }
+
+  buildSnapshotForViewer(viewerSeat) {
+    const safeSeat = String(viewerSeat || "");
+    const fleet = this.fleetBySeat(safeSeat);
+    const allianceId = fleet ? fleet.allianceId : allianceIdForSeat(safeSeat);
+    const snapshot = this.buildSnapshotForAlliance(allianceId);
+    const aliveShips = fleet ? fleet.getAllShips().filter((ship) => ship.alive).length : 0;
+    const fleetDefeated = aliveShips <= 0;
+    return {
+      ...snapshot,
+      viewer: {
+        ...(snapshot.viewer || {}),
+        seat: safeSeat,
+        fleetId: safeSeat,
+        allianceId,
+        fleetDefeated,
+        canControlFleet: !fleetDefeated && this.phase === "running",
+        aliveShips,
       },
     };
   }

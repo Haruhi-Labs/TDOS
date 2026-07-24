@@ -8,6 +8,7 @@ import { getProfile, setNickname, setFaction, getFaction } from "./profile.js";
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { t } from "./i18n.js";
+import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 
 // 移动端专属：满宽表单 + 大触控目标（复用同样的 #pvNickname / .pv-faction-btn 钩子，逻辑共享）
 function mobileTemplate(profile) {
@@ -78,7 +79,12 @@ export function mount(root) {
   root.innerHTML = (isMobile() ? mobileTemplate : template)(getProfile());
   const ac = new AbortController();
   const { signal } = ac;
-  startStarfield(root.querySelector(".page-stars"), signal);
+  const starfieldAc = new AbortController();
+  startStarfield(root.querySelector(".page-stars"), starfieldAc.signal);
+  const fluidBackdrop = mountRouteFluidBackdrop(root.querySelector(".page-stage, .mpage"), {
+    logLabel: "Profile fluid backdrop",
+    onReady: () => starfieldAc.abort(),
+  });
 
   const input = root.querySelector("#pvNickname");
   const factionBtns = Array.from(root.querySelectorAll(".pv-faction-btn"));
@@ -111,5 +117,9 @@ export function mount(root) {
 
   renderFaction();
 
-  return () => ac.abort();
+  return () => {
+    fluidBackdrop.destroy();
+    starfieldAc.abort();
+    ac.abort();
+  };
 }

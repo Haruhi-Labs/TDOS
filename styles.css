@@ -642,21 +642,21 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 
 /* 全队舰况 — 吃掉日志腾出的高度；每艘舰一张铜牌（血/能量条 + 状态） */
 .battle-panel .fleet-section {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
 }
 .battle-panel .fleet-section h2 { flex: 0 0 auto; }
 .fleet-roster {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 .fleet-row {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 50px;
   display: flex;
   flex-direction: column;
@@ -751,6 +751,70 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   color: var(--gilt-pale);
   font-family: var(--font-engrave);
   letter-spacing: 0.02em;
+}
+
+.team-comm-panel {
+  flex: 0 0 auto;
+}
+.team-comm-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+.team-comm-buttons button {
+  min-height: 32px;
+  padding-inline: 5px;
+  font-size: 0.76rem;
+}
+.team-comm-feed {
+  min-height: 78px;
+  max-height: 104px;
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+.team-comm-row,
+.team-comm-empty {
+  min-height: 19px;
+  display: flex;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid #6c4a2855;
+  border-radius: 3px;
+  background: #160c0588;
+  color: var(--gilt-pale);
+  font-size: 0.72rem;
+  line-height: 1.2;
+}
+.team-comm-empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.team-comm-danger {
+  color: #ffb4a8;
+  border-color: #a2453480;
+}
+.mobile-team-comm-panel {
+  display: grid;
+  gap: 6px;
+}
+.mobile-team-comm-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.mobile-team-comm-buttons button {
+  min-height: 38px;
+  padding: 6px 4px;
+  font-size: 0.76rem;
+}
+.mobile-team-comm-feed {
+  min-height: 42px;
+  max-height: 58px;
+  margin-top: 0;
+  overflow: hidden;
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1178,6 +1242,29 @@ button.toggle-active {
 }
 .result-side-player .result-side-label { color: var(--gilt-bright); }
 .result-side-enemy .result-side-label { color: #e09a9a; }
+.result-alliance {
+  gap: 8px;
+}
+.result-alliance > .result-side-label {
+  font-size: 0.86rem;
+}
+.result-alliance-players {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(8px, 1.6vw, 12px);
+}
+.result-alliance-players .result-side {
+  border: 1px solid #6c4a2844;
+  border-radius: 4px;
+  padding: 7px 7px 8px;
+  background: rgba(20, 12, 5, 0.34);
+}
+.result-alliance-players .result-side-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .rl-cards { display: flex; gap: clamp(6px, 1.6vw, 12px); justify-content: center; }
 .rl-card {
   display: flex;
@@ -1242,6 +1329,7 @@ button.toggle-active {
 @media (max-width: 560px) {
   .result-versus { flex-direction: column; align-items: stretch; gap: 12px; }
   .result-vs { padding-top: 0; }
+  .result-alliance-players { grid-template-columns: 1fr; }
 }
 
 /* ═══════════════════════════════════════════════════
@@ -1650,8 +1738,8 @@ button.toggle-active {
   color: var(--ink);
 }
 /* 背景幕(渐变 + 木纹 + 星空 canvas)始终在场;书页/页眉/页脚等内容随 visible 淡入 */
-.cs-screen > :not(.cs-bg-canvas) { opacity: 0; transition: opacity 0.45s ease; }
-.cs-screen.visible > :not(.cs-bg-canvas) { opacity: 1; }
+.cs-screen > :not(.cs-bg-canvas):not(.fluid-reveal-canvas):not(.fluid-pointer-ring) { opacity: 0; transition: opacity 0.45s ease; }
+.cs-screen.visible > :not(.cs-bg-canvas):not(.fluid-reveal-canvas):not(.fluid-pointer-ring) { opacity: 1; }
 .cs-screen.leaving { opacity: 0; transform: scale(1.05); pointer-events: none; }
 
 .cs-bg-canvas {
@@ -3083,6 +3171,36 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .mmenu-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
 .mmenu-list { gap: 9px; }
+
+.route-fluid-backdrop {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+.cs-screen.route-fluid-backdrop {
+  position: fixed;
+  inset: 0;
+}
+.route-fluid-backdrop .fluid-reveal-canvas {
+  z-index: 1;
+  pointer-events: none;
+}
+.route-fluid-backdrop > :not(.fluid-reveal-canvas):not(.fluid-pointer-ring):not(.page-stars):not(.ts-bg):not(.page-bg):not(.ts-vignette):not(.cs-bg-canvas) {
+  position: relative;
+  z-index: 2;
+}
+.route-fluid-backdrop .page-stars,
+.route-fluid-backdrop .ts-bg,
+.route-fluid-backdrop .page-bg,
+.route-fluid-backdrop .cs-bg-canvas {
+  z-index: 0;
+}
+.route-fluid-backdrop.route-fluid-no-ring .fluid-pointer-ring {
+  display: none;
+}
+.battle-shell.route-fluid-backdrop .fluid-reveal-canvas {
+  opacity: 0.72;
+}
 .mmenu-foot { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
 .mmenu-foot .ts-foot-actions { gap: 16px; }
 .mmenu .ts-item {
@@ -3129,6 +3247,61 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   background: radial-gradient(120% 90% at 78% 16%, #4a1726 0%, #2a0c1c 40%, #14060f 80%, #0a040a 100%);
 }
 .ts-bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+.ts-fluid-cover .ts-bg {
+  opacity: 0.34;
+  mix-blend-mode: screen;
+}
+.ts-fluid-cover .fluid-reveal-canvas {
+  z-index: 1;
+}
+.fluid-pointer-ring {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  width: 0.8cm;
+  height: 0.8cm;
+  border: 1px solid rgba(244, 217, 154, 0.92);
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1);
+  box-shadow:
+    0 0 0 1px rgba(22, 12, 5, 0.42),
+    0 0 18px rgba(244, 217, 154, 0.34);
+  mix-blend-mode: screen;
+  transition: opacity 0.16s ease;
+  will-change: left, top, transform, opacity;
+}
+.fluid-pointer-ring.is-visible {
+  opacity: 0.92;
+}
+.fluid-pointer-ring.is-pulsing {
+  animation: fluid-pointer-ring-pulse 0.8s cubic-bezier(0.16, 0.9, 0.2, 1) both;
+}
+@keyframes fluid-pointer-ring-pulse {
+  0% {
+    opacity: 0.94;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  42% {
+    opacity: 0.62;
+    transform: translate(-50%, -50%) scale(2.85);
+  }
+  72% {
+    opacity: 0.5;
+    transform: translate(-50%, -50%) scale(2.85);
+  }
+  100% {
+    opacity: 0.92;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+@media (pointer: coarse) {
+  .fluid-pointer-ring {
+    display: none;
+  }
+}
 .ts-vignette {
   position: absolute;
   inset: 0;
@@ -3716,6 +3889,261 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 
 /* ── 联机：编队改用「翻书选角」覆盖层，隐藏原始下拉 ── */
 .online-hidden { display: none !important; }
+
+/* ── Fluid reveal standalone prototype (/fluid-reveal) ── */
+.fluid-reveal-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #eff6ff;
+  background: #02060e;
+  isolation: isolate;
+}
+
+.fluid-static-fallback,
+.fluid-reveal-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.fluid-static-fallback {
+  z-index: 0;
+  background-position: center;
+  background-size: cover;
+  filter: brightness(0.22) saturate(0.58);
+  opacity: 0.75;
+}
+
+.fluid-reveal-canvas {
+  z-index: 1;
+  display: block;
+}
+
+.fluid-reveal-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 72% 34%, rgba(76, 139, 255, 0.18), transparent 28%),
+    radial-gradient(circle at 22% 80%, rgba(246, 196, 98, 0.11), transparent 26%),
+    linear-gradient(90deg, rgba(1, 5, 16, 0.55), rgba(1, 5, 16, 0.08) 54%, rgba(1, 5, 16, 0.34));
+}
+
+.fluid-shell {
+  position: relative;
+  z-index: 2;
+  min-height: 100vh;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: clamp(18px, 3.2vw, 46px);
+}
+
+.fluid-topbar {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: clamp(14px, 2vw, 28px);
+}
+
+.fluid-back,
+.fluid-switch,
+.fluid-panel,
+.fluid-callout {
+  border: 1px solid rgba(174, 207, 255, 0.22);
+  background: rgba(4, 10, 24, 0.54);
+  box-shadow: 0 18px 58px rgba(0, 0, 0, 0.34);
+  backdrop-filter: blur(18px) saturate(1.2);
+}
+
+.fluid-back {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 70px;
+  height: 38px;
+  color: #dce9ff;
+  text-decoration: none;
+  font-family: var(--font-engrave);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+}
+
+.fluid-title-block {
+  display: grid;
+  gap: 4px;
+}
+
+.fluid-kicker {
+  margin: 0;
+  color: #95b7ff;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.26em;
+}
+
+.fluid-title-block h1 {
+  margin: 0;
+  color: #fff6d8;
+  font-family: var(--font-title);
+  font-size: clamp(2.4rem, 7vw, 6.7rem);
+  font-weight: 900;
+  line-height: 0.9;
+  text-shadow: 0 0 28px rgba(58, 120, 255, 0.26), 0 8px 32px rgba(0, 0, 0, 0.52);
+}
+
+.fluid-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 38px;
+  padding: 0 13px;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  color: #dce9ff;
+}
+
+.fluid-switch input {
+  accent-color: #87b9ff;
+}
+
+.fluid-stage-copy {
+  display: flex;
+  align-items: end;
+  justify-content: flex-start;
+  min-height: 0;
+  padding-bottom: clamp(28px, 7vh, 92px);
+}
+
+.fluid-callout {
+  display: grid;
+  gap: 7px;
+  width: min(380px, 76vw);
+  padding: 16px 18px;
+}
+
+.fluid-callout span {
+  color: #95b7ff;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+}
+
+.fluid-callout strong {
+  color: #fff8de;
+  font-family: var(--font-engrave);
+  font-size: clamp(1.35rem, 2.6vw, 2.2rem);
+  letter-spacing: 0.04em;
+}
+
+.fluid-panel {
+  position: absolute;
+  top: clamp(92px, 14vh, 136px);
+  right: clamp(18px, 3.2vw, 46px);
+  width: min(330px, calc(100vw - 36px));
+  max-height: calc(100vh - 140px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.fluid-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 13px;
+  border-bottom: 1px solid rgba(174, 207, 255, 0.16);
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+  color: #dce9ff;
+}
+
+.fluid-panel-head button {
+  border: 1px solid rgba(255, 235, 178, 0.32);
+  background: rgba(255, 224, 140, 0.1);
+  color: #fff3c4;
+  padding: 5px 9px;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+}
+
+.fluid-controls {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  overflow: auto;
+}
+
+.fluid-control {
+  display: grid;
+  gap: 7px;
+}
+
+.fluid-control-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  color: #d7e6ff;
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+}
+
+.fluid-control output {
+  color: #fff0b8;
+  font-variant-numeric: tabular-nums;
+}
+
+.fluid-control input {
+  width: 100%;
+  accent-color: #84b7ff;
+}
+
+.fluid-disabled .fluid-reveal-canvas {
+  opacity: 0.2 !important;
+}
+
+@media (max-width: 820px) {
+  .fluid-shell {
+    padding: 14px;
+  }
+
+  .fluid-topbar {
+    grid-template-columns: 1fr auto;
+  }
+
+  .fluid-title-block {
+    grid-column: 1 / -1;
+    order: 3;
+  }
+
+  .fluid-title-block h1 {
+    font-size: clamp(2.2rem, 14vw, 4.4rem);
+  }
+
+  .fluid-panel {
+    top: auto;
+    right: 14px;
+    left: 14px;
+    bottom: 14px;
+    width: auto;
+    max-height: 42vh;
+  }
+
+  .fluid-stage-copy {
+    align-items: start;
+    padding-top: 12px;
+    padding-bottom: 44vh;
+  }
+}
 #openFleetSelectBtn {
   width: 100%;
   font-family: var(--font-cn);
