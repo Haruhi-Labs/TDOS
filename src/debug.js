@@ -791,7 +791,7 @@ function updateSelectedCard() {
       energyPercent: energyPercent(ship),
     }),
     t("推进 {throttle}% | 航速 {speed} | 最小转弯半径 {radius}", {
-      throttle: Math.round((ship.throttle || 1) * 100),
+      throttle: Math.round((Number.isFinite(Number(ship.throttle)) ? Number(ship.throttle) : 1) * 100),
       speed: (ship.speed || 0).toFixed(1),
       radius: minRadius,
     }),

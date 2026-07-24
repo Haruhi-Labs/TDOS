@@ -8,6 +8,39 @@ export const TICK_RATE = 30;
 export const SNAPSHOT_RATE = 15;
 export const TICK_DT = 1 / TICK_RATE;
 
+// 单人、联机、AI 与服务端统一使用离散推进档位，杜绝各端自行维护百分比预设。
+// P 档为完全停止；前进 3 档保持原来的标准巡航速度，前进 4 档对应原来的最高推进。
+export const THROTTLE_GEAR_VALUES = Object.freeze([0, 0.4, 0.7, 1, 1.4]);
+export const DEFAULT_THROTTLE_GEAR = 3;
+
+export function throttleForGear(gear) {
+  const index = clamp(Math.round(Number(gear) || 0), 0, THROTTLE_GEAR_VALUES.length - 1);
+  return THROTTLE_GEAR_VALUES[index];
+}
+
+export function throttleGearForValue(value, fallback = DEFAULT_THROTTLE_GEAR) {
+  const throttle = Number(value);
+  if (!Number.isFinite(throttle)) {
+    const fallbackNumber = Number(fallback);
+    const fallbackGear = Number.isFinite(fallbackNumber) ? fallbackNumber : DEFAULT_THROTTLE_GEAR;
+    return clamp(Math.round(fallbackGear), 0, THROTTLE_GEAR_VALUES.length - 1);
+  }
+  let closestGear = 0;
+  let closestGap = Infinity;
+  for (let gear = 0; gear < THROTTLE_GEAR_VALUES.length; gear += 1) {
+    const gap = Math.abs(THROTTLE_GEAR_VALUES[gear] - throttle);
+    if (gap < closestGap) {
+      closestGear = gear;
+      closestGap = gap;
+    }
+  }
+  return closestGear;
+}
+
+export function normalizeThrottleToGear(value, fallback = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR]) {
+  return throttleForGear(throttleGearForValue(value, throttleGearForValue(fallback)));
+}
+
 const TAU = Math.PI * 2;
 const BEAM_CHARGE_DURATION = 1.05;
 const BEAM_VISUAL_DURATION = 0.26;
@@ -866,7 +899,7 @@ class Ship {
     this.y = y;
     this.angle = facing;
     this.speed = 0;
-    this.throttle = 1;
+    this.throttle = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR];
     this.command = { x, y };
     this.route = null;
 
@@ -1230,7 +1263,7 @@ class Ship {
 
   setBezierRoute(controlX, controlY, endX, endY, throttle, anchorToMain = true) {
     const match = this.team.match;
-    this.throttle = clamp(throttle, 0.25, 1.4);
+    this.throttle = normalizeThrottleToGear(throttle, this.throttle);
     this.route = {
       anchorToMain,
       p0: { x: this.x, y: this.y },
@@ -1343,7 +1376,8 @@ class Ship {
 
     if (this.route) {
       const minAdvance = 5;
-      const routeSpeed = Math.max(minAdvance, this.speed);
+      // P 档下保持当前航线进度，重新挂入前进档后可沿原航线继续航行。
+      const routeSpeed = this.throttle <= 0 ? 0 : Math.max(minAdvance, this.speed);
       const headingAlign = clamp(Math.cos(deltaAbs), -1, 1);
       const alignFactor = clamp((headingAlign + 0.25) / 1.25, 0.12, 1);
       const deltaT = (routeSpeed * dt * alignFactor) / Math.max(130, this.route.length);
@@ -2333,7 +2367,7 @@ class Team {
       const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
       const regenMultiplier = throttle <= 1 ? 1 + (1 - throttle) * 0.76 : 1 - (throttle - 1) * 0.72;
       const regen = Math.max(1.2, ship.baseEnergyRegen() * regenMultiplier);
-      const moveCost = ship.moveEnergyDrain() * clamp(throttle, 0.2, 1.4);
+      const moveCost = ship.moveEnergyDrain() * clamp(throttle, 0, 1.4);
       ship.energy = clamp(ship.energy + (regen - moveCost) * dt, 0, ship.maxEnergy);
     }
   }
@@ -5614,7 +5648,12 @@ export class BotController {
     }
     const tx = this.team.match.clampX(targetX, padding);
     const ty = this.team.match.clampY(targetY, padding);
-    const th = clamp(throttle, 0.45, 1.2);
+    const requestedThrottle = clamp(throttle, 0.45, 1.2);
+    // AI 的战术层以 >1 表示明确的超速意图；离散化后应进入前进4档，
+    // 不能因为 1.04～1.18 在数值上更靠近标准巡航而丢掉脱困/追击加速。
+    const th = requestedThrottle > 1
+      ? throttleForGear(4)
+      : normalizeThrottleToGear(requestedThrottle);
     let update = "new";
 
     if (!ship.route) {
@@ -5633,7 +5672,7 @@ export class BotController {
       ship.setBezierRoute(undefined, undefined, tx, ty, th, false);
       update = "reset";
     } else {
-      ship.throttle = th;
+      ship.throttle = normalizeThrottleToGear(th, ship.throttle);
       ship.setRouteEndpoint(tx, ty, false);
       update = "retarget";
     }
@@ -6106,7 +6145,11 @@ export class MatchSimulation {
       if (!ship || !ship.alive || !ship.canControl()) {
         return false;
       }
-      ship.throttle = clamp(Number(action.throttle) || ship.throttle, 0.25, 1.4);
+      const throttle = Number(action.throttle);
+      if (!Number.isFinite(throttle)) {
+        return false;
+      }
+      ship.throttle = normalizeThrottleToGear(throttle, ship.throttle);
       return true;
     }
 

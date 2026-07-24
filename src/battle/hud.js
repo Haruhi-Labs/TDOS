@@ -1,8 +1,9 @@
 // 共享战斗 HUD 刷新:技能按钮/移动端HUD/全队舰况等纯展示逻辑,单人与在线共用。
 // 约定:第一个参数是各模式 cacheDom 出的 ui 对象(id 已由 battle/template.js 统一),
 // 战斗状态与选中信息全部显式传入,不读各模式的模块级变量。
-import { EMERGENCY_BRAKE_COST, SCOUT_LAUNCH_COST, clamp, skillMetaForCharacter } from "../../shared/game-core.js";
+import { EMERGENCY_BRAKE_COST, SCOUT_LAUNCH_COST, skillMetaForCharacter } from "../../shared/game-core.js";
 import { shipCharacterName, slotLabel as localizedSlotLabel, t } from "../i18n.js";
+import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
 
 export function fleetSlotLabel(slotKey) {
   return localizedSlotLabel(slotKey, "short");
@@ -153,9 +154,8 @@ export function syncMobileHud(ui, own, opts = {}) {
   }
 
   const shipName = selected ? shipCharacterName(selected) : t("无");
-  const throttleValue = Math.round(clamp((selected?.throttle || 1) * 100, 25, 140));
   const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}%`;
+  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
   ui.mobileBattleHint.textContent = pendingSubSkillAim
     ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
     : t("点舰船切换 · 点战场下航线 · 点右上小地图选战区");
@@ -187,10 +187,7 @@ export function syncMobileHud(ui, own, opts = {}) {
   ui.mobileFlagshipBtn.textContent = t("旗舰技");
   ui.mobileSubSkillBtn.textContent = selected && currentSubMeta(selected) ? currentSubMeta(selected).name : t("分舰技");
 
-  for (const button of ui.mobileThrottleButtons) {
-    const preset = Number(button.dataset.throttle);
-    button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
-  }
+  syncThrottleGearControls(ui, selected?.throttle);
 }
 
 // 全队舰况：逐舰刷新血/能量条 + 状态，并高亮当前选中舰

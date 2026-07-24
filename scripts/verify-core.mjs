@@ -3,7 +3,11 @@ import {
   EMERGENCY_BRAKE_COST,
   MANUAL_SCOUT_COOLDOWN,
   MatchSimulation,
+  THROTTLE_GEAR_VALUES,
   TICK_DT,
+  normalizeThrottleToGear,
+  throttleForGear,
+  throttleGearForValue,
 } from "../shared/game-core.js";
 
 function runSteps(sim, seconds) {
@@ -93,6 +97,44 @@ function speedAndEnergyRuleCheck() {
 
   teamA.split(2);
   assert(Math.round(teamA.ships.sub2.effectiveSpeed()) === 37, "二级分离后1096独立航速异常");
+}
+
+function throttleGearCheck() {
+  assert(
+    JSON.stringify(THROTTLE_GEAR_VALUES) === JSON.stringify([0, 0.4, 0.7, 1, 1.4]),
+    "统一推进档位映射发生漂移",
+  );
+  assert(throttleForGear(0) === 0 && throttleForGear(4) === 1.4, "档位转推进值异常");
+  assert(throttleGearForValue(0.68) === 2, "推进值未归入最近档位");
+  assert(normalizeThrottleToGear(1.22) === 1.4, "连续推进值未归一到合法档位");
+  assert(normalizeThrottleToGear(undefined, 0) === 0, "无效输入未保留当前P档");
+
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const main = sim.teamA.ships.main;
+  const parked = sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 0 });
+  assert(parked && main.throttle === 0, "P档动作未被权威模拟接受");
+
+  const invalid = sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: "无效" });
+  assert(!invalid && main.throttle === 0, "非法推进动作未被拒绝或破坏了当前档位");
+
+  const routed = sim.applyActionForSeat("A", {
+    type: "set_route",
+    shipKey: "main",
+    endX: main.x + 400,
+    endY: main.y,
+    throttle: 0,
+  });
+  assert(routed && main.route && main.throttle === 0, "P档下未能保留待执行航线");
+  const startX = main.x;
+  const startRouteProgress = main.route.t;
+  runSteps(sim, 0.5);
+  assert(Math.abs(main.x - startX) < 0.01, "P档舰船仍在移动");
+  assert(Math.abs(main.route.t - startRouteProgress) < 1e-9, "P档仍在暗中推进航线进度");
+
+  const forward = sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 1.22 });
+  assert(forward && main.throttle === 1.4, "前进档未在服务端归一为合法档位");
+  runSteps(sim, 0.5);
+  assert(main.x > startX, "从P档切入前进档后未沿原航线恢复航行");
 }
 
 function emergencyBrakeCheck() {
@@ -1503,6 +1545,7 @@ function aiEdgeRecoveryCheck() {
 function main() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
+  throttleGearCheck();
   emergencyBrakeCheck();
   autoScoutCheck();
   splitFormationCheck();

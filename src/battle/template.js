@@ -6,7 +6,7 @@
 //   panelActionsHTML   面板顶部「← 主菜单」之后的额外按钮(单人:换阵容)
 //   resultMetaClass    结算元信息行的附加类(在线:" result-match-meta")
 //   overlayActionsHTML 结算卡操作区(单人:再来一局+返回主菜单;在线:返回大厅)
-import { DEFAULT_WORLD_SIZE } from "../../shared/game-core.js";
+import { DEFAULT_THROTTLE_GEAR, DEFAULT_WORLD_SIZE, THROTTLE_GEAR_VALUES } from "../../shared/game-core.js";
 import { t } from "../i18n.js";
 
 const LOGICAL = DEFAULT_WORLD_SIZE;
@@ -20,6 +20,16 @@ function fleetRowHTML(slotKey, label) {
                 <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
               </div>
             </button>`;
+}
+
+function throttleGearButtonsHTML(buttonClass = "") {
+  return THROTTLE_GEAR_VALUES.map((_, gear) => {
+    const label = gear === 0 ? t("P档") : t("前进{gear}", { gear });
+    const shortcut = gear === 0 ? "P" : `Shift+${gear}`;
+    const text = gear === 0 ? "P" : String(gear);
+    const active = gear === DEFAULT_THROTTLE_GEAR ? " active" : "";
+    return `<button type="button" class="throttle-gear-btn${buttonClass ? ` ${buttonClass}` : ""}${active}" data-gear="${gear}" aria-label="${label}" aria-pressed="${gear === DEFAULT_THROTTLE_GEAR ? "true" : "false"}" title="${label} · ${shortcut}">${text}</button>`;
+  }).join("");
 }
 
 export function battleViewTemplate({
@@ -59,9 +69,12 @@ export function battleViewTemplate({
               <button id="splitOneBtn">${t("一级分离")}</button>
               <button id="splitTwoBtn">${t("二级分离")}</button>
             </div>
-            <div class="slider-wrap">
-              <div class="slider-head"><label for="powerSlider">${t("推进功率")}</label><strong id="powerValue">100%</strong></div>
-              <input id="powerSlider" type="range" min="25" max="140" step="1" value="100" />
+            <div class="throttle-wrap">
+              <div class="slider-head"><span>${t("速度档位")}</span><strong id="powerValue">${t("前进{gear}", { gear: DEFAULT_THROTTLE_GEAR })}</strong></div>
+              <div id="powerGearControl" class="throttle-gear-row" role="group" aria-label="${t("速度档位")}">
+                ${throttleGearButtonsHTML()}
+              </div>
+              <small class="throttle-shortcut">${t("快捷键：P 停车，Shift+1–4 直达，Q/E 降升档")}</small>
             </div>
             <div class="zoom-control-row">
               <button id="zoomOutBtn" type="button">${t("缩小")}</button>
@@ -97,7 +110,7 @@ ${fleetRowHTML("sub2", t("副二"))}
         <section id="mobileBattleHud" class="mobile-battle-hud" aria-live="polite">
           <div class="mobile-battle-head">
             <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>
-            <div id="mobileBattleSummary" class="mobile-battle-summary">${t("主舰")} · ${t("区")}5 · ${t("推进")}100%</div>
+            <div id="mobileBattleSummary" class="mobile-battle-summary">${t("主舰")} · ${t("区")}5 · ${t("前进{gear}", { gear: DEFAULT_THROTTLE_GEAR })}</div>
             <button id="mobileCenterBtn" type="button" class="mobile-chip-btn">${t("跟随")}</button>
           </div>
           <div id="mobileShipSwitch" class="mobile-ship-switch">
@@ -117,12 +130,8 @@ ${fleetRowHTML("sub2", t("副二"))}
             <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
           </div>
           <div class="mobile-throttle-wrap">
-            <span class="mobile-throttle-label">${t("推进")}</span>
-            <button type="button" class="mobile-throttle-btn" data-throttle="40">40</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="70">70</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="100">100</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
+            <span class="mobile-throttle-label">${t("档位")}</span>
+            ${throttleGearButtonsHTML("mobile-throttle-btn")}
           </div>
           <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
         </section>

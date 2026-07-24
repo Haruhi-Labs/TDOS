@@ -52,6 +52,12 @@ import {
 } from "./battle/camera.js";
 import { routeHandleAtPoint, shipAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
+  syncThrottleGearControls,
+  throttleGearFromShortcut,
+  throttleLabelForValue,
+  throttleValueForGear,
+} from "./battle/throttle.js";
+import {
   currentFlagshipMeta,
   currentSubMeta,
   energyPercentForShip,
@@ -91,7 +97,7 @@ function cacheDom() {
   selectedValue: document.getElementById("selectedValue"),
   splitOneBtn: document.getElementById("splitOneBtn"),
   splitTwoBtn: document.getElementById("splitTwoBtn"),
-  powerSlider: document.getElementById("powerSlider"),
+  powerGearButtons: Array.from(document.querySelectorAll("#powerGearControl .throttle-gear-btn")),
   powerValue: document.getElementById("powerValue"),
   zoomOutBtn: document.getElementById("zoomOutBtn"),
   zoomInBtn: document.getElementById("zoomInBtn"),
@@ -416,7 +422,7 @@ function setSelectedShip(shipKey) {
   if ((app.mobileMode || camera.zoom > CAMERA_ZOOM_MIN + 1e-3) && shipSim) {
     camera.centerCameraOn(shipSim.x, shipSim.y, false);
   }
-  syncPowerSliderFromSelected();
+  syncPowerFromSelected();
   updateUi();
   return true;
 }
@@ -447,27 +453,21 @@ function syncShipSelection() {
   }
 }
 
-function syncPowerSliderFromSelected() {
-  if (document.activeElement === ui.powerSlider) {
-    return;
-  }
+function syncPowerFromSelected() {
   const ship = selectedShipState();
   if (!ship) {
     return;
   }
-  const value = Math.round(clamp((ship.throttle || 1) * 100, 25, 140));
-  ui.powerSlider.value = String(value);
-  ui.powerValue.textContent = `${value}%`;
+  syncThrottleGearControls(ui, ship.throttle);
 }
 
-function setThrottleValue(percent) {
-  const value = clamp(Number(percent), 25, 140);
-  ui.powerSlider.value = String(value);
-  ui.powerValue.textContent = `${Math.round(value)}%`;
+function setThrottleGear(gear) {
+  const throttle = throttleValueForGear(gear);
+  syncThrottleGearControls(ui, throttle);
   applyAction({
     type: "set_throttle",
     shipKey: app.selectedShipKey,
-    throttle: value / 100,
+    throttle,
   });
   updateUi();
 }
@@ -553,7 +553,7 @@ function setRouteForSelectedShip(x, y, logRoute = false) {
   if (!ship || !ship.alive || !ship.canControl) {
     return false;
   }
-  const throttle = clamp(Number(ui.powerSlider.value) / 100, 0.25, 1.4);
+  const throttle = throttleValueForGear(syncThrottleGearControls(ui, ship.throttle));
   const ok = applyAction({
     type: "set_route",
     shipKey: ship.key,
@@ -575,7 +575,7 @@ function updateUi() {
   }
 
   syncShipSelection();
-  syncPowerSliderFromSelected();
+  syncPowerFromSelected();
 
   ui.hullValue.textContent = `${Math.round((own.hullRatio || 0) * 100)}%`;
   ui.splitValue.textContent = localizedSplitLabel(own.splitLevel);
@@ -589,7 +589,7 @@ function updateUi() {
   ui.energyValue.textContent = `${energyPercentForShip(selectedState || own.ships.main)}%`;
   if (selectedState && selectedSim) {
     const minRadius = Math.round(selectedSim.routeConstraintProfile().minTurnRadius);
-    ui.selectedValue.textContent = `${shipCharacterName(selectedState)} | ${t("推进")} ${(selectedState.throttle || 1).toFixed(2)} | ${t("能量")} ${Math.round(
+    ui.selectedValue.textContent = `${shipCharacterName(selectedState)} | ${throttleLabelForValue(selectedState.throttle)} | ${t("能量")} ${Math.round(
       Number(selectedState.fleetEnergy) || 0,
     )}/${Math.round(Number(selectedState.fleetMaxEnergy) || 1)} | ${t("最小半径")}${minRadius}${selectedState.braking ? ` | ${t("急刹中")}` : ""}`;
   } else {
@@ -909,9 +909,11 @@ function bindUiEvents() {
     });
   }
 
-  ui.powerSlider.addEventListener("input", () => {
-    setThrottleValue(ui.powerSlider.value);
-  });
+  for (const button of ui.powerGearButtons) {
+    button.addEventListener("click", () => {
+      setThrottleGear(button.dataset.gear);
+    });
+  }
   ui.zoomOutBtn.addEventListener("click", () => {
     camera.adjustCameraZoom(-1);
   });
@@ -920,7 +922,7 @@ function bindUiEvents() {
   });
   for (const button of ui.mobileThrottleButtons) {
     button.addEventListener("click", () => {
-      setThrottleValue(button.dataset.throttle || 100);
+      setThrottleGear(button.dataset.gear);
     });
   }
   if (ui.mobileCenterBtn) {
@@ -1165,6 +1167,13 @@ function bindUiEvents() {
       active &&
       (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT" || active.isContentEditable)
     ) {
+      return;
+    }
+
+    const throttleGear = throttleGearFromShortcut(event, selectedShipState()?.throttle);
+    if (throttleGear !== null) {
+      event.preventDefault();
+      setThrottleGear(throttleGear);
       return;
     }
 

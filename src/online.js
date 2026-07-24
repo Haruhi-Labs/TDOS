@@ -35,6 +35,11 @@ import {
 } from "./battle/camera.js";
 import { routeHandleAtPoint, shipAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
+  syncThrottleGearControls,
+  throttleGearFromShortcut,
+  throttleValueForGear,
+} from "./battle/throttle.js";
+import {
   currentFlagshipMeta,
   currentSubMeta,
   energyPercentForShip,
@@ -105,7 +110,7 @@ function cacheDom() {
   selectedValue: document.getElementById("onlineSelectedValue"),
   shipSelect: document.getElementById("onlineShipSelect"),
   shipSwitchButtons: Array.from(document.querySelectorAll("#shipQuickSwitch .ship-switch-btn")),
-  powerSlider: document.getElementById("powerSlider"),
+  powerGearButtons: Array.from(document.querySelectorAll("#powerGearControl .throttle-gear-btn")),
   powerValue: document.getElementById("powerValue"),
   zoomOutBtn: document.getElementById("zoomOutBtn"),
   zoomInBtn: document.getElementById("zoomInBtn"),
@@ -236,7 +241,6 @@ function initApp() {
   connectAttemptId: 0,
   playerLoadout: readStoredLoadout(),
   pointer: { x: LOGICAL * 0.5, y: LOGICAL * 0.5 },
-  throttleSendTimer: null,
   mobileMode: false,
   stars: Array.from({ length: 260 }, () => ({
     x: Math.random() * LOGICAL,
@@ -670,10 +674,6 @@ function clearMatchRuntime() {
   resetShipDestructionEffects(app.destructionEffects);
   app.lastWinnerSeat = null;
   app.gameOverLogged = false;
-  if (app.throttleSendTimer) {
-    clearTimeout(app.throttleSendTimer);
-    app.throttleSendTimer = null;
-  }
 }
 
 function closeOverlay() {
@@ -1272,17 +1272,12 @@ function syncPowerFromSelectedShip(team) {
   if (!team || !team.ships) {
     return;
   }
-  if (document.activeElement === ui.powerSlider) {
-    return;
-  }
   const ship = team.ships[app.selectedShipKey];
   if (!ship) {
     return;
   }
-  const value = Math.round(clamp((ship.throttle || 1) * 100, 25, 140));
-  ui.powerSlider.value = String(value);
-  ui.powerValue.textContent = `${value}%`;
-  app.throttle = value / 100;
+  const gear = syncThrottleGearControls(ui, ship.throttle);
+  app.throttle = throttleValueForGear(gear);
 }
 
 function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.state : null) {
@@ -1824,28 +1819,19 @@ function pruneAckedOverrides(snapshotState) {
   }
 }
 
-function setThrottleFromSlider(shouldSend) {
-  const value = clamp(Number(ui.powerSlider.value), 25, 140);
-  ui.powerValue.textContent = `${Math.round(value)}%`;
-  app.throttle = value / 100;
+function setThrottleGear(gear, shouldSend = true) {
+  app.throttle = throttleValueForGear(gear);
+  syncThrottleGearControls(ui, app.throttle);
 
   if (!shouldSend) {
-    return;
+    return true;
   }
 
-  if (app.throttleSendTimer) {
-    clearTimeout(app.throttleSendTimer);
-  }
-  app.throttleSendTimer = setTimeout(() => {
-    const seq = sendAction({
-      type: "set_throttle",
-      shipKey: app.selectedShipKey,
-      throttle: app.throttle,
-    });
-    if (seq !== null) {
-      // 不需要绘制覆盖，仅提交控制档位。
-    }
-  }, 80);
+  return sendAction({
+    type: "set_throttle",
+    shipKey: app.selectedShipKey,
+    throttle: app.throttle,
+  }) !== null;
 }
 
 function currentBattleState() {
@@ -1869,11 +1855,6 @@ function getSelectedShipFromState(state) {
     return null;
   }
   return own.ships[app.selectedShipKey] || null;
-}
-
-function setThrottleValue(percent, shouldSend = true) {
-  ui.powerSlider.value = String(clamp(Number(percent), 25, 140));
-  setThrottleFromSlider(shouldSend);
 }
 
 function syncAutoScoutZoneOnline() {
@@ -2718,9 +2699,11 @@ function bindUiEvents() {
     });
   }
 
-  ui.powerSlider.addEventListener("input", () => {
-    setThrottleFromSlider(true);
-  });
+  for (const button of ui.powerGearButtons) {
+    button.addEventListener("click", () => {
+      setThrottleGear(button.dataset.gear, true);
+    });
+  }
   ui.zoomOutBtn.addEventListener("click", () => {
     camera.adjustCameraZoom(-1);
   });
@@ -2729,7 +2712,7 @@ function bindUiEvents() {
   });
   for (const button of ui.mobileThrottleButtons) {
     button.addEventListener("click", () => {
-      setThrottleValue(button.dataset.throttle || 100, true);
+      setThrottleGear(button.dataset.gear, true);
     });
   }
   if (ui.mobileCenterBtn) {
@@ -3029,6 +3012,15 @@ function bindUiEvents() {
       return;
     }
 
+    const throttleGear = throttleGearFromShortcut(event, app.throttle);
+    if (throttleGear !== null) {
+      if (canControlBattle()) {
+        event.preventDefault();
+        setThrottleGear(throttleGear, true);
+      }
+      return;
+    }
+
     const shipByKey = {
       Digit1: "main",
       Digit2: "sub1",
@@ -3255,10 +3247,6 @@ function unmount() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
   stopPingLoop();
-  if (app && app.throttleSendTimer) {
-    clearTimeout(app.throttleSendTimer);
-    app.throttleSendTimer = null;
-  }
   disconnectServer();
   if (ac) ac.abort();
   ac = null;
