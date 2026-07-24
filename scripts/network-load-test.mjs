@@ -115,6 +115,7 @@ class LoadClient {
       if (
         this.deliveryAckEnabled &&
         !this.protocolError &&
+        this.ws?.readyState === WebSocket.OPEN &&
         (message.type === "snapshot" || message.type === "snapshot_delta")
       ) {
         const now = performance.now();
@@ -218,7 +219,8 @@ class LoadClient {
 
   close() {
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
-      this.ws.close();
+      // 压测客户端不需要等待 WebSocket 关闭握手；直接终止可避免测试结束后残留30秒定时器。
+      this.ws.terminate();
     }
   }
 }

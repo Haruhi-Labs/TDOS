@@ -4,6 +4,7 @@ const PATCH_REPLACE = 2;
 const PATCH_DELETE = 3;
 const PATCH_KEYED_ARRAY = 4;
 const NO_CHANGE = Symbol("network-patch-no-change");
+const DEFAULT_NETWORK_DECIMALS = 3;
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -11,6 +12,33 @@ function isObject(value) {
 
 function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
+}
+
+/**
+ * 将仅用于表现的网络状态限制到毫单位精度。权威模拟仍保留完整双精度，
+ * 这里只减少 JSON 中不断变化且难以压缩的浮点尾数。
+ */
+export function quantizeNetworkState(value, decimals = DEFAULT_NETWORK_DECIMALS) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || Number.isInteger(value)) {
+      return value;
+    }
+    const safeDecimals = Math.max(0, Math.min(6, Number(decimals) || 0));
+    const scale = 10 ** safeDecimals;
+    const rounded = Math.round(value * scale) / scale;
+    return rounded === 0 ? 0 : rounded;
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => quantizeNetworkState(item, decimals));
+  }
+  if (isObject(value)) {
+    const result = {};
+    for (const [key, item] of Object.entries(value)) {
+      result[key] = quantizeNetworkState(item, decimals);
+    }
+    return result;
+  }
+  return value;
 }
 
 function entityId(value) {

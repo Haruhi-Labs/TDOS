@@ -12,7 +12,10 @@ import {
   TICK_DT,
   normalizeLoadout,
 } from "../shared/game-core.js";
-import { createStatePatch } from "../shared/network-patch.js";
+import {
+  createStatePatch,
+  quantizeNetworkState,
+} from "../shared/network-patch.js";
 
 const PORT = Number(process.env.PORT || 21246);
 const NETWORK_BUILD = "snapshot-delta-20260724-01";
@@ -828,12 +831,19 @@ function buildSnapshotFrame(room, advanceSeq = true) {
     room.snapshotSeq = (room.snapshotSeq || 0) + 1;
   }
   const serverTime = Date.now();
+  const serializedState = room.match.serializeState();
+  const {
+    bots: _bots,
+    zones,
+    ...dynamicState
+  } = serializedState;
   const state = {
-    ...room.match.serializeState(),
+    ...quantizeNetworkState(dynamicState),
+    // 战区是整局不变的只读数据，保留同一引用可让差量比较直接跳过。
+    zones,
     selectedShips: selectedShipsForRoom(room),
   };
-  // AI 调试状态只供本地 /debug 推演页使用,却占快照 JSON 约 40% 体积——不进网络快照
-  delete state.bots;
+  // AI 调试状态只供本地 /debug 推演页使用,却占快照 JSON 约 40% 体积——不进网络快照。
   return {
     roomId: room.id,
     roomSnapshotSeq: room.snapshotSeq || 0,

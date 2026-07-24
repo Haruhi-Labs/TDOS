@@ -6,6 +6,7 @@ import {
 import {
   applyStatePatch,
   createStatePatch,
+  quantizeNetworkState,
 } from "../shared/network-patch.js";
 
 function jsonRoundTrip(value) {
@@ -56,16 +57,38 @@ function malformedPatchCheck() {
   );
 }
 
+function quantizationCheck() {
+  const source = {
+    integer: 12,
+    positive: 1.23456,
+    negative: -8.76549,
+    nested: [{ value: 0.0004 }],
+  };
+  const quantized = quantizeNetworkState(source);
+  assert.deepEqual(
+    quantized,
+    {
+      integer: 12,
+      positive: 1.235,
+      negative: -8.765,
+      nested: [{ value: 0 }],
+    },
+    "网络浮点量化结果错误",
+  );
+  assert.notEqual(quantized, source, "网络量化不应改写权威状态对象");
+  assert.equal(source.positive, 1.23456, "网络量化意外修改了权威数值");
+}
+
 function createNetworkState(simulation) {
   const state = simulation.serializeState();
   delete state.bots;
-  return {
+  return quantizeNetworkState({
     ...state,
     selectedShips: {
       A: "main",
       B: "main",
     },
-  };
+  });
 }
 
 function battleSequenceCheck() {
@@ -125,4 +148,5 @@ function battleSequenceCheck() {
 basicStructureCheck();
 noChangeCheck();
 malformedPatchCheck();
+quantizationCheck();
 battleSequenceCheck();
