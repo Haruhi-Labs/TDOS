@@ -34,6 +34,7 @@ const durationSeconds = positiveInteger(process.env.NETWORK_DURATION_SECONDS, 15
 const unackedClientCount = Math.max(0, Number(process.env.NETWORK_UNACKED_CLIENTS) || 0);
 const ackRecoverySeconds = Math.max(0, Number(process.env.NETWORK_ACK_RECOVERY_SECONDS) || 0);
 const dropDeltaClientCount = Math.max(0, Number(process.env.NETWORK_DROP_DELTA_CLIENTS) || 0);
+const legacyClientCount = Math.max(0, Number(process.env.NETWORK_LEGACY_CLIENTS) || 0);
 const configuredUrl = String(process.env.NETWORK_WS_URL || "").trim();
 const localPort = positiveInteger(process.env.NETWORK_PORT, 23000 + Math.floor(Math.random() * 1000));
 const wsUrl = configuredUrl || `ws://127.0.0.1:${localPort}`;
@@ -69,6 +70,8 @@ class LoadClient {
     this.dropNextDelta = false;
     this.droppedDelta = false;
     this.resyncRequests = 0;
+    this.protocolNegotiationEnabled = true;
+    this.networkProtocolVersion = 1;
   }
 
   async connect() {
@@ -132,6 +135,7 @@ class LoadClient {
       }
       if (
         this.deliveryAckEnabled &&
+        this.networkProtocolVersion >= 2 &&
         !this.protocolError &&
         this.ws?.readyState === WebSocket.OPEN &&
         (message.type === "snapshot" || message.type === "snapshot_delta")
@@ -164,7 +168,14 @@ class LoadClient {
         reject(error);
       });
     });
-    await this.waitFor((message) => message.type === "connected");
+    const connected = await this.waitFor((message) => message.type === "connected");
+    if (this.protocolNegotiationEnabled && Number(connected.protocolVersion) >= 2) {
+      this.networkProtocolVersion = 2;
+      this.send({
+        type: "protocol_hello",
+        protocolVersion: 2,
+      });
+    }
   }
 
   send(payload) {
@@ -229,6 +240,7 @@ class LoadClient {
       deltas: this.deltaCount,
       protocolError: this.protocolError,
       resyncRequests: this.resyncRequests,
+      protocolVersion: this.networkProtocolVersion,
       minSnapshotRate: this.snapshotRates.length ? Math.min(...this.snapshotRates) : 0,
       maxSnapshotRate: this.snapshotRates.length ? Math.max(...this.snapshotRates) : 0,
       finalSnapshotRate: this.snapshotRates.at(-1) || 0,
@@ -341,6 +353,7 @@ function summarize(results, role) {
     maxFinalSnapshotRate: Math.max(0, ...selected.map((item) => item.finalSnapshotRate)),
     maxStreamTier: Math.max(0, ...selected.map((item) => item.maxStreamTier)),
     resyncRequests: selected.reduce((sum, item) => sum + item.resyncRequests, 0),
+    legacyConnections: selected.filter((item) => item.protocolVersion < 2).length,
   };
 }
 
@@ -361,6 +374,9 @@ async function main() {
     clients.push(host, guest, ...spectators);
   }
 
+  for (const client of clients.slice(Math.max(0, clients.length - legacyClientCount))) {
+    client.protocolNegotiationEnabled = false;
+  }
   await Promise.all(clients.map((client) => client.connect()));
   const unackedClients = clients.slice(Math.max(0, clients.length - unackedClientCount));
   for (const client of unackedClients) {

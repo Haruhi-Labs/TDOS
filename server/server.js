@@ -291,7 +291,13 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   }
   const stream = player.snapshotStream;
   const now = Date.now();
-  updateStreamCongestion(player, now, options);
+  const supportsDeltaProtocol = Number(player.networkProtocolVersion) >= 2;
+  if (supportsDeltaProtocol) {
+    updateStreamCongestion(player, now, options);
+  } else {
+    stream.rateTier = 0;
+    stream.healthySince = 0;
+  }
   const divisors = streamDivisors(options);
   const divisor = divisors[Math.min(stream.rateTier, divisors.length - 1)];
   if (!stream.forceKeyframe && frame.roomSnapshotSeq % divisor !== stream.phase % divisor) {
@@ -314,6 +320,7 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   }
 
   const keyframeDue =
+    !supportsDeltaProtocol ||
     stream.forceKeyframe ||
     !stream.lastState ||
     frame.roomSnapshotSeq - stream.lastKeyframeRoomSeq >= SNAPSHOT_KEYFRAME_INTERVAL;
@@ -1060,6 +1067,7 @@ wss.on("connection", (ws) => {
     selectedShipKey: "main",
     snapshotStream: null,
     rateLimits: new Map(),
+    networkProtocolVersion: 1,
   };
   resetSnapshotStream(player);
 
@@ -1191,8 +1199,23 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (type === "protocol_hello") {
+      const protocolVersion = Number(data.protocolVersion);
+      if (Number.isInteger(protocolVersion) && protocolVersion >= 2 && player.networkProtocolVersion < 2) {
+        player.networkProtocolVersion = Math.min(protocolVersion, NETWORK_PROTOCOL_VERSION);
+        if (player.snapshotStream) {
+          player.snapshotStream.forceKeyframe = true;
+          player.snapshotStream.lastState = null;
+          // 握手前的兼容全量帧不要求客户端补交到达确认。
+          player.snapshotStream.lastDeliveryAckSeq = player.snapshotStream.sequence;
+          player.snapshotStream.lastDeliveryAckAt = Date.now();
+        }
+      }
+      return;
+    }
+
     if (type === "snapshot_resync") {
-      if (player.snapshotStream) {
+      if (player.networkProtocolVersion >= 2 && player.snapshotStream) {
         player.snapshotStream.forceKeyframe = true;
       }
       networkStats.resyncRequests += 1;

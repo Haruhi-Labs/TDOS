@@ -207,6 +207,7 @@ function initApp() {
   clockReady: false,
   serverTickRate: 30,
   serverSnapshotRate: 20,
+  networkProtocolVersion: 1,
   snapshotIntervalMs: 1000 / 20,
   snapshots: [],
   latestSnapshot: null,
@@ -604,6 +605,7 @@ function resetConnectionSyncState() {
   app.clockReady = false;
   app.serverTickRate = 30;
   app.serverSnapshotRate = 20;
+  app.networkProtocolVersion = 1;
   app.snapshotIntervalMs = 1000 / app.serverSnapshotRate;
 }
 
@@ -1042,6 +1044,8 @@ function handleConnected(message) {
   const tickRate = Number(message.tickRate);
   const snapshotRate = Number(message.snapshotRate);
   const snapshotIntervalMs = Number(message.snapshotIntervalMs);
+  const protocolVersion = Number(message.protocolVersion);
+  app.networkProtocolVersion = Number.isInteger(protocolVersion) && protocolVersion >= 2 ? protocolVersion : 1;
   if (Number.isFinite(tickRate) && tickRate >= 5) {
     app.serverTickRate = tickRate;
   }
@@ -1056,6 +1060,12 @@ function handleConnected(message) {
   if (Number.isFinite(serverTime)) {
     app.clockOffsetMs = serverTime - nowMs();
     app.clockReady = true;
+  }
+  if (app.networkProtocolVersion >= 2) {
+    socketSend({
+      type: "protocol_hello",
+      protocolVersion: 2,
+    });
   }
   updateInterpolationDelay();
 }
@@ -1500,7 +1510,7 @@ function decodeSnapshotState(message) {
 }
 
 function sendSnapshotDeliveryAck(snapshotSeq, force = false) {
-  if (!Number.isInteger(snapshotSeq) || snapshotSeq <= 0) {
+  if (app.networkProtocolVersion < 2 || !Number.isInteger(snapshotSeq) || snapshotSeq <= 0) {
     return;
   }
   const now = nowMs();
