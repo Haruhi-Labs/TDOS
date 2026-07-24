@@ -7,6 +7,27 @@ function assert(condition, message) {
   }
 }
 
+function functionBlock(source, name) {
+  const marker = `function ${name}`;
+  const start = source.indexOf(marker);
+  assert(start >= 0, `Missing function ${name}`);
+  const bodyStart = source.indexOf("{", start);
+  assert(bodyStart >= 0, `Missing function body for ${name}`);
+  let depth = 0;
+  for (let index = bodyStart; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return source.slice(start, index + 1);
+      }
+    }
+  }
+  throw new Error(`Unterminated function body for ${name}`);
+}
+
 async function nodeCheck(file) {
   await new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ["--check", file], {
@@ -64,6 +85,37 @@ assert(onlineSource.includes("clearReconnectTicket"), "client should clear recon
 assert(onlineSource.includes("fleetDefeated"), "client should track defeated-fleet observer state from viewer snapshots");
 assert(onlineSource.includes("canControlFleet"), "client should honor server-provided fleet control state");
 assert(onlineSource.includes("function defeatedObservationTeam("), "client should keep defeated players in allied observation mode");
+
+const setControlsBody = functionBlock(onlineSource, "setBattleControlsEnabled");
+assert(
+  !setControlsBody.includes("querySelectorAll") && !setControlsBody.includes("element.disabled"),
+  "setBattleControlsEnabled must not blindly rewrite every battle control disabled state",
+);
+
+assert(onlineSource.includes("function routeOverrideKey("), "client route override state should use a namespaced ship key");
+for (const token of [
+  "setRouteOverride(routeOverrideKey",
+  "app.routeOverrides.get(routeOverrideKey",
+  "app.routeOverrides.delete(routeOverrideKey",
+]) {
+  assert(onlineSource.includes(token), `route override lifecycle should use namespaced keys: ${token}`);
+}
+assert(
+  !functionBlock(onlineSource, "getRouteForShip").includes("app.routeOverrides.get(ship.key)"),
+  "route rendering must not read local overrides by bare ship.key",
+);
+
+const resultBody = functionBlock(onlineSource, "showMatchResultOverlay");
+assert(
+  resultBody.includes("winnerAllianceId") && resultBody.includes("app.allianceId"),
+  "2v2 result overlay should compare winnerAllianceId with the local alliance",
+);
+assert(!resultBody.includes("winnerSeat === app.seat"), "2v2 result overlay must not compare alliance winners to player seats");
+assert(
+  !resultBody.includes('seat === "A"') && !resultBody.includes('seat === "B"'),
+  "2v2 result roster should not be hard-coded to only legacy A/B seats",
+);
+
 assert(
   renderSource.includes("frame.friendlyTeams") && renderSource.includes("frame.enemyTeams"),
   "battle renderer should accept multi-fleet frame teams",

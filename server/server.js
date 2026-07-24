@@ -385,6 +385,7 @@ function buildRoomStatePayload(room, viewerId = null) {
   const viewer = viewerId ? getPlayerById(viewerId) : null;
   const isMember = viewer && viewer.roomId === room.id && !viewer.spectating;
   const result = room.result || null;
+  const nextInputSeq = viewer ? Number(viewer.lastProcessedSeq || 0) + 1 : 1;
   return {
     type: "room_state",
     room: {
@@ -412,6 +413,8 @@ function buildRoomStatePayload(room, viewerId = null) {
           spectating: Boolean(viewer.spectating),
           loadout: viewer.loadout,
           reconnectToken: isMember ? viewer.reconnectToken || null : null,
+          ackSeq: Number(viewer.lastProcessedSeq) || 0,
+          nextInputSeq,
         }
       : null,
   };
@@ -449,6 +452,17 @@ function buildLobbyPayload() {
     rooms: list,
     now: Date.now(),
   };
+}
+
+function playerProfileLockedReason(player) {
+  if (!player || !player.roomId) {
+    return "";
+  }
+  const room = rooms.get(player.roomId);
+  if (!room || (room.status !== "countdown" && room.status !== "running")) {
+    return "";
+  }
+  return "倒计时开始后不能修改昵称或阵容";
 }
 
 function broadcastLobby() {
@@ -999,9 +1013,12 @@ function validShipKey(shipKey) {
   return shipKey === "main" || shipKey === "sub1" || shipKey === "sub2" ? shipKey : "main";
 }
 
-function selectedShipsForRoom(room) {
+function selectedShipsForRoom(room, viewer = null) {
   const selected = {};
   for (const seat of seatListForRoom(room)) {
+    if (isTwoVsTwoRoom(room) && viewer && viewer.seat && !viewer.spectating && allianceIdForSeat(seat) !== allianceIdForSeat(viewer.seat)) {
+      continue;
+    }
     const player = getPlayerById(room.seats[seat]);
     const reconnectSlot = room.reconnectSlots?.[seat] || null;
     selected[seat] = validShipKey(player ? player.selectedShipKey : reconnectSlot ? reconnectSlot.selectedShipKey : "main");
@@ -1021,11 +1038,11 @@ function buildSnapshotPayloadBase(room, advanceSeq = true, viewer = null) {
   const state = isTwoVsTwoRoom(room) && viewer && viewer.seat
     ? {
         ...room.match.buildSnapshotForViewer(viewer.seat),
-        selectedShips: selectedShipsForRoom(room),
+        selectedShips: selectedShipsForRoom(room, viewer),
       }
     : {
         ...room.match.serializeState(),
-        selectedShips: selectedShipsForRoom(room),
+        selectedShips: selectedShipsForRoom(room, viewer),
       };
   // AI 调试状态只供本地 /debug 推演页使用,却占快照 JSON 约 40% 体积——不进网络快照
   delete state.bots;
@@ -1138,6 +1155,11 @@ wss.on("connection", (ws) => {
     const type = String(data.type || "");
 
     if (type === "set_name") {
+      const lockedReason = playerProfileLockedReason(player);
+      if (lockedReason) {
+        sendError(player, lockedReason);
+        return;
+      }
       const name = String(data.name || "").trim().slice(0, 16);
       if (!name) {
         return;
@@ -1154,6 +1176,11 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "set_loadout") {
+      const lockedReason = playerProfileLockedReason(player);
+      if (lockedReason) {
+        sendError(player, lockedReason);
+        return;
+      }
       player.loadout = normalizeLoadout(data.loadout || {}, DEFAULT_TEAM_LOADOUT);
       if (player.roomId) {
         const room = rooms.get(player.roomId);

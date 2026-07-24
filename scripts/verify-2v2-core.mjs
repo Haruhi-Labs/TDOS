@@ -86,6 +86,133 @@ function controllerIsolationCheck() {
   assert(Math.abs(enemy.ships.main.command.x - enemyX) < 0.001, "forged fleetSeat must not affect enemy fleet");
 }
 
+function routeSignature(route) {
+  if (!route) {
+    return null;
+  }
+  return {
+    p1: route.p1 ? { x: Math.round(route.p1.x), y: Math.round(route.p1.y) } : null,
+    p2: route.p2 ? { x: Math.round(route.p2.x), y: Math.round(route.p2.y) } : null,
+    anchorToMain: route.anchorToMain !== false,
+  };
+}
+
+function fleetControlSignature(fleet) {
+  const ships = {};
+  for (const [key, ship] of Object.entries(fleet.ships || {})) {
+    ships[key] = {
+      command: {
+        x: Math.round(Number(ship.command?.x) || 0),
+        y: Math.round(Number(ship.command?.y) || 0),
+      },
+      throttle: Number(ship.throttle || 0).toFixed(3),
+      route: routeSignature(ship.route),
+      attached: Boolean(ship.attached),
+      fleetEnergy: Math.round(Number(ship.fleetEnergy) || 0),
+      brakeCooldown: Number(ship.brakeCooldown || 0).toFixed(3),
+    };
+  }
+  return JSON.stringify({
+    splitLevel: fleet.splitLevel,
+    cooldowns: fleet.cooldowns || {},
+    autoScout: fleet.autoScout || null,
+    scoutCount: Array.isArray(fleet.scouts) ? fleet.scouts.length : 0,
+    ships,
+  });
+}
+
+function prepareA1ForAction(sim, name) {
+  const a1 = sim.fleetBySeat("A1");
+  for (const ship of Object.values(a1.ships)) {
+    ship.fleetEnergy = Math.max(Number(ship.fleetEnergy) || 0, 999);
+  }
+  if (name === "route_control" || name === "route_end" || name === "clear_route") {
+    sim.applyActionForSeat("A1", {
+      type: "set_route",
+      shipKey: "main",
+      endX: 520,
+      endY: 540,
+      throttle: 0.9,
+    });
+  }
+  if (name === "cast_sub_skill") {
+    sim.applyActionForSeat("A1", { type: "split", level: 1 });
+  }
+}
+
+function actionIsolationMatrixCheck() {
+  const cases = [
+    {
+      name: "set_route",
+      action: { type: "set_route", fleetSeat: "A2", shipKey: "main", endX: 640, endY: 680, throttle: 1.05 },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "route_control",
+      action: { type: "route_control", fleetSeat: "A2", shipKey: "main", controlX: 610, controlY: 600 },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "route_end",
+      action: { type: "route_end", fleetSeat: "A2", shipKey: "main", endX: 700, endY: 650 },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "clear_route",
+      action: { type: "clear_route", fleetSeat: "A2", shipKey: "main" },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "set_throttle",
+      action: { type: "set_throttle", fleetSeat: "A2", shipKey: "main", throttle: 0.42 },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "split",
+      action: { type: "split", fleetSeat: "A2", level: 1 },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "launch_scout",
+      action: { type: "launch_scout", fleetSeat: "A2", zoneId: 3, shipKey: "main" },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "configure_auto_scout",
+      action: { type: "configure_auto_scout", fleetSeat: "A2", enabled: true, zoneId: 7 },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "emergency_brake",
+      action: { type: "emergency_brake", fleetSeat: "A2", shipKey: "main" },
+      protectedSeats: ["A2", "B1", "B2"],
+    },
+    {
+      name: "cast_flagship_skill",
+      action: { type: "cast_flagship_skill", fleetSeat: "A2", zoneId: 5 },
+      protectedSeats: ["A2"],
+    },
+    {
+      name: "cast_sub_skill",
+      action: { type: "cast_sub_skill", fleetSeat: "A2", shipKey: "sub1", zoneId: 5, targetX: 720, targetY: 720 },
+      protectedSeats: ["A2"],
+    },
+  ];
+
+  for (const item of cases) {
+    const sim = new MatchSimulation({ mode: "pvp2v2", worldSize: 1440 });
+    prepareA1ForAction(sim, item.name);
+    const before = new Map(item.protectedSeats.map((seat) => [seat, fleetControlSignature(sim.fleetBySeat(seat))]));
+    sim.applyActionForSeat("A1", item.action);
+    for (const seat of item.protectedSeats) {
+      assert(
+        fleetControlSignature(sim.fleetBySeat(seat)) === before.get(seat),
+        `${item.name} from A1 must not mutate ${seat} control state`,
+      );
+    }
+  }
+}
+
 function allianceVictoryCheck() {
   const sim = new MatchSimulation({ mode: "pvp2v2", worldSize: 1440 });
 
@@ -221,6 +348,7 @@ function snapshotPerformanceEnvelopeCheck() {
 function main() {
   twoVsTwoFleetModelCheck();
   controllerIsolationCheck();
+  actionIsolationMatrixCheck();
   allianceVictoryCheck();
   allianceSnapshotFilterCheck();
   defeatedViewerSnapshotCheck();

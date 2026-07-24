@@ -578,11 +578,11 @@ function updateConnectionUi() {
 
 function setBattleControlsEnabled(enabled) {
   ui.battleControls.classList.toggle("disabled-panel", !enabled);
-  for (const element of ui.battleControls.querySelectorAll("button, select, input")) {
-    element.disabled = !enabled;
-  }
-  if (ui.mobileBattleHud) {
-    ui.mobileBattleHud.hidden = !app.mobileMode || !enabled;
+  if (!enabled) {
+    disableCombatControls();
+    if (ui.mobileBattleHud) {
+      ui.mobileBattleHud.hidden = true;
+    }
   }
 }
 
@@ -727,17 +727,85 @@ function seatLabelForRoomSeat(seat) {
   return seat || "-";
 }
 
-function canControlBattle() {
-  return Boolean(app && app.connected && app.room && app.room.status === "running" && app.seat && !app.spectating);
-}
-
 function validShipKey(shipKey) {
   return shipKey === "main" || shipKey === "sub1" || shipKey === "sub2" ? shipKey : "main";
+}
+
+function canIssueCombatCommands() {
+  return Boolean(
+    app &&
+      app.connected &&
+      app.room &&
+      app.room.status === "running" &&
+      app.seat &&
+      !app.spectating &&
+      app.canControlFleet &&
+      !app.fleetDefeated,
+  );
+}
+
+function canControlBattle() {
+  return canIssueCombatCommands();
+}
+
+function setDisabledIfChanged(element, disabled) {
+  if (element && element.disabled !== disabled) {
+    element.disabled = disabled;
+  }
+}
+
+function combatControlElements() {
+  return [
+    ui.shipSelect,
+    ...ui.shipSwitchButtons,
+    ui.splitOneBtn,
+    ui.splitTwoBtn,
+    ui.powerSlider,
+    ui.scoutBtn,
+    ui.autoScoutBtn,
+    ui.brakeBtn,
+    ui.flagshipBtn,
+    ui.subSkillBtn,
+    ...ui.mobileShipButtons,
+    ui.mobileSplitOneBtn,
+    ui.mobileSplitTwoBtn,
+    ui.mobileBrakeBtn,
+    ui.mobileFlagshipBtn,
+    ui.mobileSubSkillBtn,
+    ui.mobileScoutBtn,
+    ui.mobileAutoScoutBtn,
+    ...ui.mobileThrottleButtons,
+  ].filter(Boolean);
+}
+
+function disableCombatControls() {
+  for (const element of combatControlElements()) {
+    setDisabledIfChanged(element, true);
+  }
+}
+
+function applyCombatControlGate() {
+  if (!canIssueCombatCommands()) {
+    disableCombatControls();
+  }
 }
 
 function selectedShipKeyForSeat(state, seat) {
   const selectedShips = state && state.selectedShips ? state.selectedShips : null;
   return validShipKey(selectedShips && selectedShips[seat] ? selectedShips[seat] : "main");
+}
+
+function routeOverrideKey(seat, shipKey) {
+  const safeSeat = String(seat || app?.seat || "").trim().toUpperCase();
+  return `${safeSeat || "-"}:${validShipKey(shipKey)}`;
+}
+
+function routeOverrideParts(key) {
+  const [seat, shipKey] = String(key || "").split(":");
+  return {
+    seat: String(seat || "").trim().toUpperCase(),
+    shipKey: validShipKey(shipKey),
+  };
 }
 
 function fleetEntriesForAlliance(state, allianceId) {
@@ -1058,7 +1126,10 @@ function resultPlayerId(row) {
   return raw ? raw.slice(0, 8) : "-";
 }
 
-function resultWinnerText(winnerSeat) {
+function resultWinnerText(winnerSeat, winnerAllianceId = null) {
+  if (winnerAllianceId) {
+    return t("{alliance}阵营", { alliance: winnerAllianceId });
+  }
   return winnerSeat ? fleetSideLabel(winnerSeat) : t("平局");
 }
 
@@ -1090,6 +1161,68 @@ function onlineResultSideHTML(loadout, faction, sideLabel, sideClass, sideId = "
   );
 }
 
+function isTwoVsTwoResultContext() {
+  return Boolean(isTwoVsTwoRoom() || isTwoVsTwoState(app.latestSnapshot?.state));
+}
+
+function currentWinnerAllianceId(winnerSeat) {
+  if (!isTwoVsTwoResultContext()) {
+    return null;
+  }
+  return (
+    app.latestSnapshot?.state?.winnerAllianceId ||
+    app.room?.winnerAllianceId ||
+    (winnerSeat === "A" || winnerSeat === "B" ? winnerSeat : null)
+  );
+}
+
+function localPlayerWonMatch(winnerSeat, winnerAllianceId) {
+  if (!winnerSeat && !winnerAllianceId) {
+    return false;
+  }
+  if (isTwoVsTwoResultContext()) {
+    return Boolean(winnerAllianceId && app.allianceId && winnerAllianceId === app.allianceId);
+  }
+  return Boolean(winnerSeat && winnerSeat === app.seat);
+}
+
+function resultRowsForAlliance(players, allianceId) {
+  return (players || []).filter((row) => {
+    const rowAlliance = row?.allianceId || allianceIdForSeatClient(row?.seat);
+    return rowAlliance === allianceId;
+  });
+}
+
+function onlineResultAllianceHTML(players, allianceId, faction, sideClass) {
+  const rows = resultRowsForAlliance(players, allianceId);
+  const safeRows = rows.length > 0
+    ? rows
+    : [`${allianceId}1`, `${allianceId}2`].map((seat) => ({
+        seat,
+        allianceId,
+        name: seatLabelForRoomSeat(seat),
+        loadout: null,
+        playerId: null,
+      }));
+  const playerCards = safeRows
+    .map((row) =>
+      onlineResultSideHTML(
+        row.loadout || DEFAULT_TEAM_LOADOUT,
+        faction,
+        `${seatLabelForRoomSeat(row.seat)} · ${localizedServerName(row.name, row.isBot)}`,
+        "result-side-player",
+        resultPlayerId(row),
+      ),
+    )
+    .join("");
+  return (
+    `<div class="result-side result-alliance ${sideClass}">` +
+    `<div class="result-side-label">${escapeHtml(t("{alliance}阵营", { alliance: allianceId }))}</div>` +
+    `<div class="result-alliance-players">${playerCards}</div>` +
+    `</div>`
+  );
+}
+
 // 胜负结算:皮面富卡片(标题 + 双方阵容 VS),与单人同款;磨砂层只作卡片背景,不再裸罩地图/面板。
 // 每条 finished 房态消息都会调用,故首次渲染后用 gameOverLogged 锁住,避免反复重建与重放入场动画。
 function showMatchResultOverlay(winnerSeat) {
@@ -1105,19 +1238,26 @@ function showMatchResultOverlay(winnerSeat) {
   const subEl = document.getElementById("resultSub");
   const metaEl = document.getElementById("resultDiff");
   const versusEl = document.getElementById("resultVersus");
+  const winnerAllianceId = currentWinnerAllianceId(winnerSeat);
+  const viewerAllianceId = app.allianceId;
+  const twoVsTwoResult = isTwoVsTwoResultContext();
+  const localWon = twoVsTwoResult
+    ? Boolean(winnerAllianceId && winnerAllianceId === viewerAllianceId)
+    : localPlayerWonMatch(winnerSeat, winnerAllianceId);
+  const hasWinner = Boolean(winnerSeat || winnerAllianceId);
 
   let cls, eyebrow, title, sub, logLine;
   if (app.spectating) {
-    const winnerName = winnerSeat ? fleetSideLabel(winnerSeat) : "";
+    const winnerName = hasWinner ? resultWinnerText(winnerSeat, winnerAllianceId) : "";
     cls = "result-draw";
     eyebrow = "SPECTATE";
     title = winnerName ? t("{seat}获胜", { seat: winnerName }) : t("战斗结束");
     sub = t("观战结束");
     logLine = winnerName ? t("战斗结束：{seat}获胜", { seat: winnerName }) : t("战斗结束：平局");
-  } else if (winnerSeat && winnerSeat === app.seat) {
+  } else if (localWon) {
     cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t("敌方舰队已被击溃");
     logLine = t("战斗结束：我方舰队获胜");
-  } else if (winnerSeat) {
+  } else if (hasWinner) {
     cls = "result-lose"; eyebrow = "DEFEAT"; title = t("失败"); sub = t("我方舰队被歼灭");
     logLine = t("战斗结束：我方舰队战败");
   } else {
@@ -1134,27 +1274,33 @@ function showMatchResultOverlay(winnerSeat) {
   if (subEl) subEl.textContent = sub;
   if (metaEl) {
     const roomId = app.room ? app.room.roomId : "-";
-    const winnerText = resultWinnerText(winnerSeat);
+    const winnerText = resultWinnerText(winnerSeat, winnerAllianceId);
     metaEl.innerHTML =
       `<span class="result-diff-label">${t("房间ID")}</span>` +
       `<span class="result-diff-val rd-normal">${escapeHtml(roomId)}</span>` +
       `<span class="result-diff-label">${t("胜利方")}</span>` +
-      `<span class="result-diff-val ${winnerSeat ? "rd-normal" : "rd-hard"}">${escapeHtml(winnerText)}</span>`;
+      `<span class="result-diff-val ${hasWinner ? "rd-normal" : "rd-hard"}">${escapeHtml(winnerText)}</span>`;
   }
 
-  // 双方阵容固定按 A/B 展示，保证对战双方与观战者看到同一张结算卡。
   if (versusEl) {
     const players = (app.room && app.room.players) || [];
-    const rowA = players.find((p) => p.seat === "A");
-    const rowB = players.find((p) => p.seat === "B");
-    const loadoutA = (rowA && rowA.loadout) || app.playerLoadout;
-    const loadoutB = rowB && rowB.loadout;
-    const nameA = (rowA && localizedServerName(rowA.name, rowA.isBot)) || fleetSideLabel("A");
-    const nameB = (rowB && localizedServerName(rowB.name, rowB.isBot)) || fleetSideLabel("B");
-    versusEl.innerHTML =
-      onlineResultSideHTML(loadoutA, "blue", nameA, "result-side-player", resultPlayerId(rowA)) +
-      `<div class="result-vs"><span>VS</span></div>` +
-      onlineResultSideHTML(loadoutB, "red", nameB, "result-side-enemy", resultPlayerId(rowB));
+    if (twoVsTwoResult) {
+      versusEl.innerHTML =
+        onlineResultAllianceHTML(players, "A", "blue", "result-side-player") +
+        `<div class="result-vs"><span>VS</span></div>` +
+        onlineResultAllianceHTML(players, "B", "red", "result-side-enemy");
+    } else {
+      const rowA = resultRowsForAlliance(players, "A")[0];
+      const rowB = resultRowsForAlliance(players, "B")[0];
+      const loadoutA = (rowA && rowA.loadout) || app.playerLoadout;
+      const loadoutB = rowB && rowB.loadout;
+      const nameA = (rowA && localizedServerName(rowA.name, rowA.isBot)) || fleetSideLabel("A");
+      const nameB = (rowB && localizedServerName(rowB.name, rowB.isBot)) || fleetSideLabel("B");
+      versusEl.innerHTML =
+        onlineResultSideHTML(loadoutA, "blue", nameA, "result-side-player", resultPlayerId(rowA)) +
+        `<div class="result-vs"><span>VS</span></div>` +
+        onlineResultSideHTML(loadoutB, "red", nameB, "result-side-enemy", resultPlayerId(rowB));
+    }
   }
 
   // 重新触发入场动画
@@ -1491,6 +1637,12 @@ function applyRoomState(message) {
   app.seat = app.spectating ? null : message.self ? message.self.seat : null;
   app.allianceId = app.seat ? message.self?.allianceId || allianceIdForSeatClient(app.seat) : null;
   app.ready = Boolean(message.self && message.self.ready);
+  if (message.self && Number.isInteger(message.self.nextInputSeq)) {
+    app.seq = Math.max(app.seq, Number(message.self.nextInputSeq) - 1);
+  }
+  if (message.self && Number.isInteger(message.self.ackSeq)) {
+    app.ackSeq = Math.max(app.ackSeq, Number(message.self.ackSeq));
+  }
   if (app.room && app.seat && !message.self?.ready) {
     const ownRow = (app.room.players || []).find((row) => row && row.seat === app.seat);
     app.ready = Boolean(ownRow && ownRow.ready);
@@ -1635,6 +1787,7 @@ function syncShipSelectOptions(team) {
   if (!team || !team.ships) {
     return;
   }
+  const combatEnabled = canIssueCombatCommands();
 
   const selected = team.ships[app.selectedShipKey];
   if (!selected || !selected.alive || !selected.canControl) {
@@ -1651,8 +1804,9 @@ function syncShipSelectOptions(team) {
   if (ui.shipSelect) {
     for (const option of Array.from(ui.shipSelect.options)) {
       const ship = team.ships[option.value];
-      option.disabled = !(ship && ship.alive && ship.canControl);
+      option.disabled = !combatEnabled || !(ship && ship.alive && ship.canControl);
     }
+    setDisabledIfChanged(ui.shipSelect, !combatEnabled);
     ui.shipSelect.value = app.selectedShipKey;
   }
 
@@ -1660,7 +1814,7 @@ function syncShipSelectOptions(team) {
     const key = button.dataset.ship;
     const ship = key ? team.ships[key] : null;
     const enabled = Boolean(ship && ship.alive && ship.canControl);
-    button.disabled = !enabled;
+    setDisabledIfChanged(button, !combatEnabled || !enabled);
     button.classList.toggle("active", key === app.selectedShipKey);
   }
 }
@@ -1734,6 +1888,7 @@ function updateSpectatorBattleStatus(state) {
   refreshSkillButtons(null);
   renderFleetRoster(ui, teamA, { selectedShipKey: app.selectedShipKey });
   syncMobileHud(ui, null, { visible: false });
+  applyCombatControlGate();
 }
 
 function updateBattleStatus(state) {
@@ -1754,6 +1909,7 @@ function updateBattleStatus(state) {
     ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
     refreshSkillButtons(null);
     renderFleetRoster(ui, null, {});
+    applyCombatControlGate();
     return;
   }
 
@@ -1772,6 +1928,7 @@ function updateBattleStatus(state) {
     refreshSkillButtons(null);
     renderFleetRoster(ui, own, { selectedShipKey: observedSelectedKey });
     syncMobileHud(ui, null, { visible: false });
+    applyCombatControlGate();
     return;
   }
 
@@ -1786,7 +1943,9 @@ function updateBattleStatus(state) {
       : t("无");
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
+  setDisabledIfChanged(ui.powerSlider, !canIssueCombatCommands() || !(selectedShip && selectedShip.alive && selectedShip.canControl));
   refreshSkillButtons(own);
+  applyCombatControlGate();
   renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey });
   syncMobileHud(ui, own, {
     visible: app.mobileMode && Boolean(app.room && app.room.status === "running") && !app.spectating,
@@ -1895,6 +2054,7 @@ function handleSnapshot(message) {
 
   if (Number.isInteger(message.ackSeq)) {
     app.ackSeq = Math.max(app.ackSeq, message.ackSeq);
+    app.seq = Math.max(app.seq, app.ackSeq);
     pruneAckedOverrides(snapshot.state);
   }
 
@@ -2048,11 +2208,11 @@ function handleTeamCommEvent(message) {
   renderTeamCommFeed();
 }
 
-function setRouteOverride(shipKey, seq, route) {
-  if (!shipKey || !route) {
+function setRouteOverride(key, seq, route) {
+  if (!key || !route) {
     return;
   }
-  app.routeOverrides.set(shipKey, {
+  app.routeOverrides.set(key, {
     seq,
     route,
     createdAtMs: nowMs(),
@@ -2098,11 +2258,12 @@ function applySetRouteOverride(shipKey, seq, endX, endY) {
     return;
   }
   const route = createRouteGuessForSet(ship, endX, endY);
-  setRouteOverride(shipKey, seq, route);
+  setRouteOverride(routeOverrideKey(app.seat, shipKey), seq, route);
 }
 
 function applyRouteControlOverride(shipKey, seq, controlX, controlY) {
-  let existing = app.routeOverrides.get(shipKey);
+  const key = routeOverrideKey(app.seat, shipKey);
+  let existing = app.routeOverrides.get(key);
   if (!existing) {
     const ship = getLatestOwnShip(shipKey);
     if (!ship || !ship.route) {
@@ -2114,7 +2275,7 @@ function applyRouteControlOverride(shipKey, seq, controlX, controlY) {
       createdAtMs: nowMs(),
       ackedAtMs: null,
     };
-    app.routeOverrides.set(shipKey, existing);
+    app.routeOverrides.set(key, existing);
   }
   if (!existing.route) {
     return;
@@ -2126,11 +2287,12 @@ function applyRouteControlOverride(shipKey, seq, controlX, controlY) {
       y: clampToMapY(controlY, 20),
     },
   };
-  setRouteOverride(shipKey, seq, route);
+  setRouteOverride(routeOverrideKey(app.seat, shipKey), seq, route);
 }
 
 function applyRouteEndOverride(shipKey, seq, endX, endY) {
-  let existing = app.routeOverrides.get(shipKey);
+  const key = routeOverrideKey(app.seat, shipKey);
+  let existing = app.routeOverrides.get(key);
   if (!existing) {
     const ship = getLatestOwnShip(shipKey);
     if (!ship || !ship.route) {
@@ -2142,7 +2304,7 @@ function applyRouteEndOverride(shipKey, seq, endX, endY) {
       createdAtMs: nowMs(),
       ackedAtMs: null,
     };
-    app.routeOverrides.set(shipKey, existing);
+    app.routeOverrides.set(key, existing);
   }
   if (!existing.route) {
     return;
@@ -2154,11 +2316,11 @@ function applyRouteEndOverride(shipKey, seq, endX, endY) {
       y: clampToMapY(endY, 20),
     },
   };
-  setRouteOverride(shipKey, seq, route);
+  setRouteOverride(routeOverrideKey(app.seat, shipKey), seq, route);
 }
 
 function clearRouteOverride(shipKey) {
-  app.routeOverrides.delete(shipKey);
+  app.routeOverrides.delete(routeOverrideKey(app.seat, shipKey));
 }
 
 function routeMatchesOverride(serverRoute, overrideRoute) {
@@ -2181,9 +2343,15 @@ function pruneAckedOverrides(snapshotState) {
   const own = teamBySeat(snapshotState, app.seat);
   const ownShips = own && own.ships ? own.ships : null;
 
-  for (const [shipKey, override] of app.routeOverrides) {
+  for (const [key, override] of app.routeOverrides) {
+    const { seat, shipKey } = routeOverrideParts(key);
     if (!override || !override.route) {
-      app.routeOverrides.delete(shipKey);
+      app.routeOverrides.delete(key);
+      continue;
+    }
+
+    if (seat !== String(app.seat || "").toUpperCase()) {
+      app.routeOverrides.delete(key);
       continue;
     }
 
@@ -2193,10 +2361,10 @@ function pruneAckedOverrides(snapshotState) {
 
     if (!override.ackedAtMs) {
       override.ackedAtMs = now;
-      app.routeOverrides.set(shipKey, override);
+      app.routeOverrides.set(key, override);
     }
 
-    if (app.drag && app.drag.shipKey === shipKey) {
+    if (app.drag && routeOverrideKey(app.seat, app.drag.shipKey) === key) {
       continue;
     }
 
@@ -2207,12 +2375,12 @@ function pruneAckedOverrides(snapshotState) {
 
     const ship = ownShips ? ownShips[shipKey] : null;
     if (ship && routeMatchesOverride(ship.route, override.route)) {
-      app.routeOverrides.delete(shipKey);
+      app.routeOverrides.delete(key);
       continue;
     }
 
     if (ackAge >= ROUTE_OVERRIDE_MAX_HOLD_MS) {
-      app.routeOverrides.delete(shipKey);
+      app.routeOverrides.delete(key);
     }
   }
 }
@@ -2344,11 +2512,11 @@ function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
   return true;
 }
 
-function getRouteForShip(ship) {
+function getRouteForShip(team, ship) {
   if (!ship) {
     return null;
   }
-  const override = app.routeOverrides.get(ship.key);
+  const override = team && team.seat === app.seat ? app.routeOverrides.get(routeOverrideKey(team.seat, ship.key)) : null;
   if (override && override.route) {
     return override.route;
   }
@@ -2376,7 +2544,7 @@ function cloneRoute(route) {
 }
 
 function getDisplayRouteForShip(team, ship) {
-  const route = getRouteForShip(ship);
+  const route = getRouteForShip(team, ship);
   if (!route) {
     return null;
   }

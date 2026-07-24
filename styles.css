@@ -642,21 +642,21 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 
 /* 全队舰况 — 吃掉日志腾出的高度；每艘舰一张铜牌（血/能量条 + 状态） */
 .battle-panel .fleet-section {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
 }
 .battle-panel .fleet-section h2 { flex: 0 0 auto; }
 .fleet-roster {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
+  min-height: auto;
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 .fleet-row {
-  flex: 1 1 0;
+  flex: 0 0 auto;
   min-height: 50px;
   display: flex;
   flex-direction: column;
@@ -1242,6 +1242,29 @@ button.toggle-active {
 }
 .result-side-player .result-side-label { color: var(--gilt-bright); }
 .result-side-enemy .result-side-label { color: #e09a9a; }
+.result-alliance {
+  gap: 8px;
+}
+.result-alliance > .result-side-label {
+  font-size: 0.86rem;
+}
+.result-alliance-players {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(8px, 1.6vw, 12px);
+}
+.result-alliance-players .result-side {
+  border: 1px solid #6c4a2844;
+  border-radius: 4px;
+  padding: 7px 7px 8px;
+  background: rgba(20, 12, 5, 0.34);
+}
+.result-alliance-players .result-side-label {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .rl-cards { display: flex; gap: clamp(6px, 1.6vw, 12px); justify-content: center; }
 .rl-card {
   display: flex;
@@ -1306,6 +1329,7 @@ button.toggle-active {
 @media (max-width: 560px) {
   .result-versus { flex-direction: column; align-items: stretch; gap: 12px; }
   .result-vs { padding-top: 0; }
+  .result-alliance-players { grid-template-columns: 1fr; }
 }
 
 /* ═══════════════════════════════════════════════════

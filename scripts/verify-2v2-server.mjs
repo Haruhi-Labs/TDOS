@@ -126,6 +126,9 @@ async function main() {
       assert(state.room.status === "waiting", "2v2 should stay waiting until all players are ready");
     }
 
+    send(clients[2], { type: "select_ship", shipKey: "sub2" });
+    send(clients[3], { type: "select_ship", shipKey: "sub1" });
+
     for (const ws of clients) {
       send(ws, { type: "set_ready", ready: true });
     }
@@ -153,7 +156,37 @@ async function main() {
     assert(snapshotB.state.viewer.allianceId === "B", "B player should receive B alliance snapshot");
     assert(snapshotA.state.fleets.A1 && snapshotA.state.fleets.A2, "A snapshot should include allied fleets");
     assert(!snapshotA.state.fleets.B1 && !snapshotA.state.fleets.B2, "A snapshot should not include hidden enemy fleets at spawn");
+    assert(snapshotA.state.selectedShips?.A1 === "main", "A snapshot should include the viewer selected ship");
+    assert(snapshotA.state.selectedShips?.A2 === "main", "A snapshot should include allied selected ships");
+    assert(
+      !Object.prototype.hasOwnProperty.call(snapshotA.state.selectedShips || {}, "B1") &&
+        !Object.prototype.hasOwnProperty.call(snapshotA.state.selectedShips || {}, "B2"),
+      "A snapshot must not leak hidden enemy selected ships",
+    );
+    assert(snapshotB.state.selectedShips?.B1 === "sub2", "B snapshot should include B1 selected ship");
+    assert(snapshotB.state.selectedShips?.B2 === "sub1", "B snapshot should include B2 selected ship");
+    assert(
+      !Object.prototype.hasOwnProperty.call(snapshotB.state.selectedShips || {}, "A1") &&
+        !Object.prototype.hasOwnProperty.call(snapshotB.state.selectedShips || {}, "A2"),
+      "B snapshot must not leak hidden enemy selected ships",
+    );
     assert(snapshotA.ackSeq === 0, "snapshot should include per-player ack sequence");
+
+    send(clients[0], { type: "set_name", name: "MutatedAfterReady" });
+    await waitForMessage(
+      clients[0],
+      (message) => message.type === "error",
+      "set_name should be rejected after ready countdown starts",
+    );
+    send(clients[0], {
+      type: "set_loadout",
+      loadout: { main: "asakura", sub1: "asakura", sub2: "asakura" },
+    });
+    await waitForMessage(
+      clients[0],
+      (message) => message.type === "error",
+      "set_loadout should be rejected after ready countdown starts",
+    );
 
     for (const ws of clients) {
       ws.close();
