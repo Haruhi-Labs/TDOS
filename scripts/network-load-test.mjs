@@ -33,6 +33,7 @@ const spectatorsPerRoom = positiveInteger(process.env.NETWORK_SPECTATORS_PER_ROO
 const durationSeconds = positiveInteger(process.env.NETWORK_DURATION_SECONDS, 15);
 const unackedClientCount = Math.max(0, Number(process.env.NETWORK_UNACKED_CLIENTS) || 0);
 const ackRecoverySeconds = Math.max(0, Number(process.env.NETWORK_ACK_RECOVERY_SECONDS) || 0);
+const dropDeltaClientCount = Math.max(0, Number(process.env.NETWORK_DROP_DELTA_CLIENTS) || 0);
 const configuredUrl = String(process.env.NETWORK_WS_URL || "").trim();
 const localPort = positiveInteger(process.env.NETWORK_PORT, 23000 + Math.floor(Math.random() * 1000));
 const wsUrl = configuredUrl || `ws://127.0.0.1:${localPort}`;
@@ -65,6 +66,9 @@ class LoadClient {
     this.lastDeliveryAckAt = 0;
     this.snapshotRates = [];
     this.streamTiers = [];
+    this.dropNextDelta = false;
+    this.droppedDelta = false;
+    this.resyncRequests = 0;
   }
 
   async connect() {
@@ -83,13 +87,27 @@ class LoadClient {
       if (this.messages.length > 200) {
         this.messages.splice(0, this.messages.length - 200);
       }
+      if (this.measuring && message.type === "snapshot_delta" && this.dropNextDelta && !this.droppedDelta) {
+        // 模拟浏览器漏掉一帧解码：下一帧应检测基线不连续并请求关键帧。
+        this.droppedDelta = true;
+        return;
+      }
       if (message.type === "snapshot") {
         this.decodedState = message.state;
         this.decodedSeq = Number(message.snapshotSeq) || 0;
       } else if (message.type === "snapshot_delta") {
         const baseSeq = Number(message.baseSnapshotSeq) || 0;
         if (!this.decodedState || baseSeq !== this.decodedSeq) {
-          this.protocolError = `差量基线不连续：需要 ${baseSeq}，本地为 ${this.decodedSeq}`;
+          this.resyncRequests += 1;
+          if (this.resyncRequests > 3 || this.ws?.readyState !== WebSocket.OPEN) {
+            this.protocolError = `差量基线反复不连续：需要 ${baseSeq}，本地为 ${this.decodedSeq}`;
+          } else {
+            this.send({
+              type: "snapshot_resync",
+              snapshotSeq: this.decodedSeq,
+            });
+          }
+          return;
         } else {
           try {
             this.decodedState = applyStatePatch(this.decodedState, message.patch ?? null);
@@ -210,6 +228,7 @@ class LoadClient {
       keyframes: this.keyframeCount,
       deltas: this.deltaCount,
       protocolError: this.protocolError,
+      resyncRequests: this.resyncRequests,
       minSnapshotRate: this.snapshotRates.length ? Math.min(...this.snapshotRates) : 0,
       maxSnapshotRate: this.snapshotRates.length ? Math.max(...this.snapshotRates) : 0,
       finalSnapshotRate: this.snapshotRates.at(-1) || 0,
@@ -321,6 +340,7 @@ function summarize(results, role) {
     minFinalSnapshotRate: Math.min(...selected.map((item) => item.finalSnapshotRate)),
     maxFinalSnapshotRate: Math.max(0, ...selected.map((item) => item.finalSnapshotRate)),
     maxStreamTier: Math.max(0, ...selected.map((item) => item.maxStreamTier)),
+    resyncRequests: selected.reduce((sum, item) => sum + item.resyncRequests, 0),
   };
 }
 
@@ -345,6 +365,9 @@ async function main() {
   const unackedClients = clients.slice(Math.max(0, clients.length - unackedClientCount));
   for (const client of unackedClients) {
     client.deliveryAckEnabled = false;
+  }
+  for (const client of clients.slice(0, dropDeltaClientCount)) {
+    client.dropNextDelta = true;
   }
 
   await Promise.all(
