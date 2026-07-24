@@ -103,6 +103,7 @@ async function startServer() {
       MAX_ROOMS: "4",
       MAX_ACTIVE_ROOMS: "2",
       MAX_SPECTATORS_PER_ROOM: "1",
+      MAX_STREAM_CAPACITY_UNITS: "5",
       HEARTBEAT_INTERVAL_MS: "100",
       NETWORK_METRICS_INTERVAL_MS: "1000",
     },
@@ -185,6 +186,11 @@ async function spectatorLimitCheck() {
   await spectatorA.waitFor(
     (message) => message.type === "room_state" && message.self?.spectating === true,
   );
+  spectatorB.send({ type: "create_room", visibility: "private", mode: "ai" });
+  const capacityError = await spectatorB.waitFor(
+    (message) => message.type === "error" && message.code === "server_stream_capacity_limit",
+  );
+  assert.equal(capacityError.code, "server_stream_capacity_limit", "实时流容量上限错误码不正确");
   spectatorB.send({ type: "spectate_room", roomId });
   const error = await spectatorB.waitFor(
     (message) => message.type === "error" && message.code === "room_spectator_limit",

@@ -46,8 +46,9 @@ const LOBBY_BROADCAST_DEBOUNCE_MS = 30;
 const MAX_PAYLOAD_BYTES = envInteger("MAX_PAYLOAD_BYTES", 16 * 1024, 1024, 64 * 1024);
 const MAX_CONNECTIONS = envInteger("MAX_CONNECTIONS", 256, 8, 4096);
 const MAX_ROOMS = envInteger("MAX_ROOMS", 64, 4, 1024);
-const MAX_ACTIVE_ROOMS = envInteger("MAX_ACTIVE_ROOMS", 32, 2, 512);
+const MAX_ACTIVE_ROOMS = envInteger("MAX_ACTIVE_ROOMS", 16, 2, 512);
 const MAX_SPECTATORS_PER_ROOM = envInteger("MAX_SPECTATORS_PER_ROOM", 24, 1, 256);
+const MAX_STREAM_CAPACITY_UNITS = envInteger("MAX_STREAM_CAPACITY_UNITS", 72, 4, 2048);
 const HEARTBEAT_INTERVAL_MS = envInteger("HEARTBEAT_INTERVAL_MS", 30_000, 100, 120_000);
 const NETWORK_METRICS_INTERVAL_MS = envInteger("NETWORK_METRICS_INTERVAL_MS", 60_000, 1000, 600_000);
 
@@ -94,6 +95,7 @@ const MESSAGE_CODES = {
   "服务器连接数已满": "server_connection_limit",
   "服务器房间数已满": "server_room_limit",
   "服务器活跃对局已满": "server_active_room_limit",
+  "服务器实时流容量已满": "server_stream_capacity_limit",
   "该房间观战人数已满": "room_spectator_limit",
 };
 
@@ -123,6 +125,21 @@ function activeRoomCount() {
     }
   }
   return count;
+}
+
+function streamCapacityUnits() {
+  let units = 0;
+  for (const player of players.values()) {
+    if (!player.roomId) {
+      continue;
+    }
+    const room = rooms.get(player.roomId);
+    if (!room || (room.status !== "countdown" && room.status !== "running")) {
+      continue;
+    }
+    units += player.spectating ? 1 : player.seat ? 2 : 0;
+  }
+  return units;
 }
 
 function consumeRateLimit(player, key, refillPerSecond, capacity, now = Date.now()) {
@@ -749,6 +766,9 @@ function createRoom(player, visibility, mode) {
   if (safeMode === "ai" && activeRoomCount() >= MAX_ACTIVE_ROOMS) {
     return { ok: false, message: "服务器活跃对局已满" };
   }
+  if (safeMode === "ai" && streamCapacityUnits() + 2 > MAX_STREAM_CAPACITY_UNITS) {
+    return { ok: false, message: "服务器实时流容量已满" };
+  }
 
   const room = {
     id: createRoomId(),
@@ -804,6 +824,10 @@ function joinRoom(player, room) {
   if (activeRoomCount() >= MAX_ACTIVE_ROOMS) {
     return { ok: false, message: "服务器活跃对局已满" };
   }
+  // 当前1v1开局后会新增两条15Hz玩家流；未来3v3接入时按实际参战人数扩展此权重。
+  if (streamCapacityUnits() + 4 > MAX_STREAM_CAPACITY_UNITS) {
+    return { ok: false, message: "服务器实时流容量已满" };
+  }
 
   assignPlayerToRoom(player, room, "B");
   startMatch(room);
@@ -826,6 +850,9 @@ function spectateRoom(player, room) {
   }
   if (spectatorCount(room) >= MAX_SPECTATORS_PER_ROOM) {
     return { ok: false, message: "该房间观战人数已满" };
+  }
+  if (streamCapacityUnits() + 1 > MAX_STREAM_CAPACITY_UNITS) {
+    return { ok: false, message: "服务器实时流容量已满" };
   }
 
   player.roomId = room.id;
@@ -1258,6 +1285,8 @@ function flushNetworkMetrics() {
     connections: players.size,
     rooms: rooms.size,
     activeRooms: activeRoomCount(),
+    streamCapacityUnits: streamCapacityUnits(),
+    streamCapacityLimit: MAX_STREAM_CAPACITY_UNITS,
     spectators,
     streamTiers: tiers,
     bufferedBytes,
