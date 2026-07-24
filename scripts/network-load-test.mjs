@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { spawn } from "node:child_process";
 import { promisify } from "node:util";
 import WebSocket from "ws";
+import { applyStatePatch } from "../shared/network-patch.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -53,6 +54,11 @@ class LoadClient {
     this.snapshotCount = 0;
     this.snapshotArrivalTimes = [];
     this.snapshotSeqs = [];
+    this.keyframeCount = 0;
+    this.deltaCount = 0;
+    this.decodedState = null;
+    this.decodedSeq = 0;
+    this.protocolError = null;
   }
 
   async connect() {
@@ -71,11 +77,32 @@ class LoadClient {
       if (this.messages.length > 200) {
         this.messages.splice(0, this.messages.length - 200);
       }
-      if (this.measuring && message.type === "snapshot") {
+      if (message.type === "snapshot") {
+        this.decodedState = message.state;
+        this.decodedSeq = Number(message.snapshotSeq) || 0;
+      } else if (message.type === "snapshot_delta") {
+        const baseSeq = Number(message.baseSnapshotSeq) || 0;
+        if (!this.decodedState || baseSeq !== this.decodedSeq) {
+          this.protocolError = `差量基线不连续：需要 ${baseSeq}，本地为 ${this.decodedSeq}`;
+        } else {
+          try {
+            this.decodedState = applyStatePatch(this.decodedState, message.patch ?? null);
+            this.decodedSeq = Number(message.snapshotSeq) || 0;
+          } catch (error) {
+            this.protocolError = error instanceof Error ? error.message : String(error);
+          }
+        }
+      }
+      if (this.measuring && (message.type === "snapshot" || message.type === "snapshot_delta")) {
         this.snapshotRawBytes += Buffer.byteLength(raw);
         this.snapshotCount += 1;
         this.snapshotArrivalTimes.push(performance.now());
         this.snapshotSeqs.push(Number(message.snapshotSeq) || 0);
+        if (message.type === "snapshot") {
+          this.keyframeCount += 1;
+        } else {
+          this.deltaCount += 1;
+        }
       }
       for (const waiter of [...this.waiters]) {
         if (waiter.predicate(message)) {
@@ -131,6 +158,8 @@ class LoadClient {
     this.snapshotCount = 0;
     this.snapshotArrivalTimes = [];
     this.snapshotSeqs = [];
+    this.keyframeCount = 0;
+    this.deltaCount = 0;
   }
 
   finishMeasure() {
@@ -153,6 +182,9 @@ class LoadClient {
       arrivalP95Ms: percentile(gaps, 0.95),
       arrivalMaxMs: gaps.length ? Math.max(...gaps) : 0,
       maxSeqGap,
+      keyframes: this.keyframeCount,
+      deltas: this.deltaCount,
+      protocolError: this.protocolError,
     };
   }
 
@@ -252,6 +284,8 @@ function summarize(results, role) {
     arrivalP95Ms: round(percentile(selected.map((item) => item.arrivalP95Ms), 0.95)),
     arrivalMaxMs: round(Math.max(0, ...selected.map((item) => item.arrivalMaxMs))),
     maxSeqGap: Math.max(0, ...selected.map((item) => item.maxSeqGap)),
+    keyframes: selected.reduce((sum, item) => sum + item.keyframes, 0),
+    deltas: selected.reduce((sum, item) => sum + item.deltas, 0),
   };
 }
 
@@ -363,6 +397,10 @@ async function main() {
   await sampleServerProcess(processSamples);
 
   const results = clients.map((client) => client.finishMeasure());
+  const protocolError = results.find((item) => item.protocolError);
+  if (protocolError) {
+    throw new Error(`快照协议校验失败：${protocolError.protocolError}`);
+  }
   const wireBytes = results.reduce((sum, item) => sum + item.wireBytes, 0);
   const rawBytes = results.reduce((sum, item) => sum + item.snapshotRawBytes, 0);
   const report = {

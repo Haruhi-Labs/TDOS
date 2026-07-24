@@ -9,6 +9,7 @@ import {
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
+import { applyStatePatch } from "../shared/network-patch.js";
 
 import {
   getLoadout,
@@ -210,6 +211,8 @@ function initApp() {
   latestSnapshot: null,
   lastSnapshotTick: 0,
   lastSnapshotSeq: 0,
+  decodedSnapshotState: null,
+  decodedSnapshotSeq: 0,
   lastSnapshotArriveAtMs: 0,
   snapshotArrivalMs: 0,
   snapshotArrivalJitterMs: 0,
@@ -641,6 +644,8 @@ function clearMatchRuntime() {
   app.latestSnapshot = null;
   app.lastSnapshotTick = 0;
   app.lastSnapshotSeq = 0;
+  app.decodedSnapshotState = null;
+  app.decodedSnapshotSeq = 0;
   app.lastSnapshotArriveAtMs = 0;
   app.snapshotArrivalMs = 0;
   app.snapshotArrivalJitterMs = 0;
@@ -1443,11 +1448,62 @@ function insertSnapshot(snapshot) {
   }
 }
 
+function updateSnapshotRate(message) {
+  const snapshotRate = Number(message.snapshotRate);
+  if (!Number.isFinite(snapshotRate) || snapshotRate < 2 || snapshotRate === app.serverSnapshotRate) {
+    return;
+  }
+  app.serverSnapshotRate = snapshotRate;
+  app.snapshotIntervalMs = 1000 / snapshotRate;
+}
+
+function decodeSnapshotState(message) {
+  const snapshotSeq = Number(message.snapshotSeq) || 0;
+  if (message.type === "snapshot") {
+    if (!message.state || typeof message.state !== "object") {
+      return null;
+    }
+    app.decodedSnapshotState = message.state;
+    app.decodedSnapshotSeq = snapshotSeq;
+    return message.state;
+  }
+
+  if (message.type !== "snapshot_delta") {
+    return null;
+  }
+  const baseSnapshotSeq = Number(message.baseSnapshotSeq) || 0;
+  if (!app.decodedSnapshotState || baseSnapshotSeq !== app.decodedSnapshotSeq) {
+    socketSend({
+      type: "snapshot_resync",
+      snapshotSeq: app.decodedSnapshotSeq,
+    });
+    return null;
+  }
+  try {
+    app.decodedSnapshotState = applyStatePatch(app.decodedSnapshotState, message.patch ?? null);
+    app.decodedSnapshotSeq = snapshotSeq;
+    return app.decodedSnapshotState;
+  } catch (_error) {
+    app.decodedSnapshotState = null;
+    app.decodedSnapshotSeq = 0;
+    socketSend({
+      type: "snapshot_resync",
+      snapshotSeq: 0,
+    });
+    return null;
+  }
+}
+
 function handleSnapshot(message) {
   if (!app.room || message.roomId !== app.room.roomId) {
     return;
   }
 
+  updateSnapshotRate(message);
+  const state = decodeSnapshotState(message);
+  if (!state) {
+    return;
+  }
   const simTime = Number(message.simTime) || 0;
   const tickValue = Number(message.tick);
   const tick = Number.isFinite(tickValue) && tickValue > 0 ? Math.round(tickValue) : Math.max(0, Math.round(simTime * app.serverTickRate));
@@ -1457,7 +1513,7 @@ function handleSnapshot(message) {
     serverTimeMs: Number(message.serverTime) || 0,
     snapshotSeq: Number(message.snapshotSeq) || 0,
     receivedAtMs: nowMs(),
-    state: message.state,
+    state,
   };
 
   updateSnapshotTransportStats(snapshot);
@@ -1528,7 +1584,7 @@ function handleServerMessage(raw) {
     return;
   }
 
-  if (type === "snapshot") {
+  if (type === "snapshot" || type === "snapshot_delta") {
     handleSnapshot(message);
     return;
   }

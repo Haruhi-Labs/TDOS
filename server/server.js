@@ -12,9 +12,11 @@ import {
   TICK_DT,
   normalizeLoadout,
 } from "../shared/game-core.js";
+import { createStatePatch } from "../shared/network-patch.js";
 
 const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "spectator-throttle-20260719-01";
+const NETWORK_BUILD = "snapshot-delta-20260724-01";
+const NETWORK_PROTOCOL_VERSION = 2;
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
 const MAX_CATCHUP_STEPS = 6;
@@ -22,6 +24,8 @@ const LOOP_IDLE_MS = 2;
 const PVP_COUNTDOWN_MS = 3000;
 const MAX_SNAPSHOT_BUFFERED_BYTES = 128 * 1024;
 const SPECTATOR_SNAPSHOT_DIVISOR = 2;
+const SNAPSHOT_KEYFRAME_INTERVAL = SNAPSHOT_RATE * 5;
+const MAX_DELTA_TO_FULL_RATIO = 0.8;
 
 const players = new Map();
 const rooms = new Map();
@@ -96,17 +100,90 @@ function sendToPlayer(player, payload) {
   send(player.ws, payload);
 }
 
-function sendSnapshotToPlayer(player, payload) {
-  if (!player || !player.ws || player.ws.readyState !== 1) {
+function resetSnapshotStream(player) {
+  if (!player) {
     return;
+  }
+  player.snapshotStream = {
+    sequence: 0,
+    lastState: null,
+    lastKeyframeRoomSeq: 0,
+    forceKeyframe: true,
+  };
+}
+
+function sendSnapshotToPlayer(player, frame, options = {}) {
+  if (!player || !player.ws || player.ws.readyState !== 1) {
+    return false;
   }
   // 战场快照是可替换状态，不应在慢连接上无限排队。积压超过阈值时直接跳过旧帧，
   // 等发送缓冲恢复后再下发最新快照，避免延迟从数百毫秒滚成数秒并拖高进程内存。
   if (player.ws.bufferedAmount > MAX_SNAPSHOT_BUFFERED_BYTES) {
     player.skippedSnapshots = (player.skippedSnapshots || 0) + 1;
-    return;
+    if (player.snapshotStream) {
+      player.snapshotStream.forceKeyframe = true;
+    }
+    return false;
   }
-  sendToPlayer(player, payload);
+
+  if (!player.snapshotStream) {
+    resetSnapshotStream(player);
+  }
+  const stream = player.snapshotStream;
+  const snapshotSeq = stream.sequence + 1;
+  const header = {
+    roomId: frame.roomId,
+    snapshotSeq,
+    serverFrame: frame.roomSnapshotSeq,
+    tick: frame.tick,
+    simTime: frame.simTime,
+    serverTime: frame.serverTime,
+    snapshotRate: Number(options.snapshotRate) || SNAPSHOT_RATE,
+    ackSeq: Number(options.ackSeq) || 0,
+  };
+  if (options.spectating) {
+    header.spectating = true;
+  }
+
+  const keyframeDue =
+    stream.forceKeyframe ||
+    !stream.lastState ||
+    frame.roomSnapshotSeq - stream.lastKeyframeRoomSeq >= SNAPSHOT_KEYFRAME_INTERVAL;
+  let serialized = null;
+  let keyframe = keyframeDue;
+
+  if (!keyframeDue) {
+    const patch = createStatePatch(stream.lastState, frame.state);
+    const deltaPayload = {
+      type: "snapshot_delta",
+      ...header,
+      baseSnapshotSeq: stream.sequence,
+      patch,
+    };
+    const deltaText = JSON.stringify(deltaPayload);
+    if (Buffer.byteLength(deltaText) <= frame.stateBytes * MAX_DELTA_TO_FULL_RATIO) {
+      serialized = deltaText;
+    } else {
+      keyframe = true;
+    }
+  }
+
+  if (!serialized) {
+    serialized = JSON.stringify({
+      type: "snapshot",
+      ...header,
+      state: frame.state,
+    });
+  }
+
+  player.ws.send(serialized);
+  stream.sequence = snapshotSeq;
+  stream.lastState = frame.state;
+  stream.forceKeyframe = false;
+  if (keyframe) {
+    stream.lastKeyframeRoomSeq = frame.roomSnapshotSeq;
+  }
+  return true;
 }
 
 function sendError(player, message) {
@@ -297,6 +374,7 @@ function assignPlayerToRoom(player, room, seat) {
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
   player.selectedShipKey = "main";
+  resetSnapshotStream(player);
   room.seats[seat] = player.id;
 }
 
@@ -371,6 +449,7 @@ function closeRoom(roomId, reason = "房间已关闭") {
     p.spectating = false;
     p.inputQueue = [];
     p.lastProcessedSeq = 0;
+    resetSnapshotStream(p);
     sendToPlayer(p, {
       type: "room_closed",
       reasonCode: messageCode(reason, "room_closed"),
@@ -395,6 +474,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
     player.spectating = false;
     player.inputQueue = [];
     player.lastProcessedSeq = 0;
+    resetSnapshotStream(player);
     return;
   }
 
@@ -407,6 +487,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
     player.spectating = false;
     player.inputQueue = [];
     player.lastProcessedSeq = 0;
+    resetSnapshotStream(player);
     if (room.status === "finished" && connectedCount(room) === 0 && spectatorCount(room) === 0) {
       rooms.delete(oldRoomId);
       broadcastLobby();
@@ -422,6 +503,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
   player.spectating = false;
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
+  resetSnapshotStream(player);
 
   if (room.seats.A === player.id) {
     room.seats.A = null;
@@ -551,6 +633,7 @@ function spectateRoom(player, room) {
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
   player.selectedShipKey = "main";
+  resetSnapshotStream(player);
   if (!room.spectators) {
     room.spectators = new Set();
   }
@@ -631,7 +714,7 @@ function selectedShipsForRoom(room) {
   };
 }
 
-function buildSnapshotPayloadBase(room, advanceSeq = true) {
+function buildSnapshotFrame(room, advanceSeq = true) {
   if (!room.match) {
     return null;
   }
@@ -647,19 +730,19 @@ function buildSnapshotPayloadBase(room, advanceSeq = true) {
   // AI 调试状态只供本地 /debug 推演页使用,却占快照 JSON 约 40% 体积——不进网络快照
   delete state.bots;
   return {
-    type: "snapshot",
     roomId: room.id,
-    snapshotSeq: room.snapshotSeq || 0,
+    roomSnapshotSeq: room.snapshotSeq || 0,
     tick: room.match.tick,
     simTime: room.match.elapsed,
     serverTime,
     state,
+    stateBytes: Buffer.byteLength(JSON.stringify(state)),
   };
 }
 
 function sendSnapshot(room) {
-  const payloadBase = buildSnapshotPayloadBase(room, true);
-  if (!payloadBase) {
+  const frame = buildSnapshotFrame(room, true);
+  if (!frame) {
     return;
   }
 
@@ -667,27 +750,25 @@ function sendSnapshot(room) {
   const pB = getPlayerById(room.seats.B);
 
   if (pA) {
-    sendSnapshotToPlayer(pA, {
-      ...payloadBase,
+    sendSnapshotToPlayer(pA, frame, {
       ackSeq: pA.lastProcessedSeq,
+      snapshotRate: SNAPSHOT_RATE,
     });
   }
   if (room.mode === "pvp" && pB) {
-    sendSnapshotToPlayer(pB, {
-      ...payloadBase,
+    sendSnapshotToPlayer(pB, frame, {
       ackSeq: pB.lastProcessedSeq,
+      snapshotRate: SNAPSHOT_RATE,
     });
   }
   // 观战者不参与操作，使用交错的7.5Hz权威快照即可由客户端插值到60fps。
   // 玩家仍保持15Hz；观战人数增加时不再按完整玩家带宽线性放大出口压力。
-  if (payloadBase.snapshotSeq % SPECTATOR_SNAPSHOT_DIVISOR === 0) {
+  if (frame.roomSnapshotSeq % SPECTATOR_SNAPSHOT_DIVISOR === 0) {
     for (const spectator of roomSpectators(room)) {
-      sendSnapshotToPlayer(spectator, {
-        ...payloadBase,
-        // 对观战端使用连续序号，避免把服务器主动限频误判为丢包。
-        snapshotSeq: payloadBase.snapshotSeq / SPECTATOR_SNAPSHOT_DIVISOR,
+      sendSnapshotToPlayer(spectator, frame, {
         ackSeq: 0,
         spectating: true,
+        snapshotRate: SNAPSHOT_RATE / SPECTATOR_SNAPSHOT_DIVISOR,
       });
     }
   }
@@ -722,7 +803,9 @@ wss.on("connection", (ws) => {
     inputQueue: [],
     lastProcessedSeq: 0,
     selectedShipKey: "main",
+    snapshotStream: null,
   };
+  resetSnapshotStream(player);
 
   players.set(playerId, player);
 
@@ -730,6 +813,7 @@ wss.on("connection", (ws) => {
     type: "connected",
     playerId,
     build: NETWORK_BUILD,
+    protocolVersion: NETWORK_PROTOCOL_VERSION,
     serverTime: Date.now(),
     tickRate: TICK_RATE,
     snapshotRate: SNAPSHOT_RATE,
@@ -831,6 +915,13 @@ wss.on("connection", (ws) => {
     if (type === "select_ship") {
       if (player.roomId && player.seat && !player.spectating) {
         player.selectedShipKey = validShipKey(data.shipKey);
+      }
+      return;
+    }
+
+    if (type === "snapshot_resync") {
+      if (player.snapshotStream) {
+        player.snapshotStream.forceKeyframe = true;
       }
       return;
     }
