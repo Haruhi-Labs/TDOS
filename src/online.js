@@ -171,6 +171,7 @@ const MAX_INTERP_MS = 280;
 const MAX_EXTRAPOLATE_MS = 180;
 const SNAPSHOT_HISTORY_SECONDS = 6;
 const PING_INTERVAL_MS = 1000;
+const SNAPSHOT_ACK_INTERVAL_MS = 250;
 const DRAG_SEND_INTERVAL_MS = 75;
 const REMOTE_WS_PORT = 21246;
 const ROUTE_OVERRIDE_MIN_HOLD_MS = 180;
@@ -213,6 +214,8 @@ function initApp() {
   lastSnapshotSeq: 0,
   decodedSnapshotState: null,
   decodedSnapshotSeq: 0,
+  lastSnapshotAckSentAt: 0,
+  lastAckedSnapshotSeq: 0,
   lastSnapshotArriveAtMs: 0,
   snapshotArrivalMs: 0,
   snapshotArrivalJitterMs: 0,
@@ -646,6 +649,8 @@ function clearMatchRuntime() {
   app.lastSnapshotSeq = 0;
   app.decodedSnapshotState = null;
   app.decodedSnapshotSeq = 0;
+  app.lastSnapshotAckSentAt = 0;
+  app.lastAckedSnapshotSeq = 0;
   app.lastSnapshotArriveAtMs = 0;
   app.snapshotArrivalMs = 0;
   app.snapshotArrivalJitterMs = 0;
@@ -1494,6 +1499,23 @@ function decodeSnapshotState(message) {
   }
 }
 
+function sendSnapshotDeliveryAck(snapshotSeq, force = false) {
+  if (!Number.isInteger(snapshotSeq) || snapshotSeq <= 0) {
+    return;
+  }
+  const now = nowMs();
+  if (!force && now - app.lastSnapshotAckSentAt < SNAPSHOT_ACK_INTERVAL_MS) {
+    return;
+  }
+  if (socketSend({
+    type: "snapshot_ack",
+    snapshotSeq,
+  })) {
+    app.lastSnapshotAckSentAt = now;
+    app.lastAckedSnapshotSeq = snapshotSeq;
+  }
+}
+
 function handleSnapshot(message) {
   if (!app.room || message.roomId !== app.room.roomId) {
     return;
@@ -1504,6 +1526,8 @@ function handleSnapshot(message) {
   if (!state) {
     return;
   }
+  const snapshotSeq = Number(message.snapshotSeq) || 0;
+  sendSnapshotDeliveryAck(snapshotSeq, message.type === "snapshot");
   const simTime = Number(message.simTime) || 0;
   const tickValue = Number(message.tick);
   const tick = Number.isFinite(tickValue) && tickValue > 0 ? Math.round(tickValue) : Math.max(0, Math.round(simTime * app.serverTickRate));
@@ -1511,7 +1535,7 @@ function handleSnapshot(message) {
     tick,
     simTime,
     serverTimeMs: Number(message.serverTime) || 0,
-    snapshotSeq: Number(message.snapshotSeq) || 0,
+    snapshotSeq,
     receivedAtMs: nowMs(),
     state,
   };

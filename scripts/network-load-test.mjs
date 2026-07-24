@@ -31,6 +31,8 @@ function delay(ms) {
 const roomCount = positiveInteger(process.env.NETWORK_ROOMS, 3);
 const spectatorsPerRoom = positiveInteger(process.env.NETWORK_SPECTATORS_PER_ROOM, 4);
 const durationSeconds = positiveInteger(process.env.NETWORK_DURATION_SECONDS, 15);
+const unackedClientCount = Math.max(0, Number(process.env.NETWORK_UNACKED_CLIENTS) || 0);
+const ackRecoverySeconds = Math.max(0, Number(process.env.NETWORK_ACK_RECOVERY_SECONDS) || 0);
 const configuredUrl = String(process.env.NETWORK_WS_URL || "").trim();
 const localPort = positiveInteger(process.env.NETWORK_PORT, 23000 + Math.floor(Math.random() * 1000));
 const wsUrl = configuredUrl || `ws://127.0.0.1:${localPort}`;
@@ -59,6 +61,10 @@ class LoadClient {
     this.decodedState = null;
     this.decodedSeq = 0;
     this.protocolError = null;
+    this.deliveryAckEnabled = true;
+    this.lastDeliveryAckAt = 0;
+    this.snapshotRates = [];
+    this.streamTiers = [];
   }
 
   async connect() {
@@ -98,10 +104,26 @@ class LoadClient {
         this.snapshotCount += 1;
         this.snapshotArrivalTimes.push(performance.now());
         this.snapshotSeqs.push(Number(message.snapshotSeq) || 0);
+        this.snapshotRates.push(Number(message.snapshotRate) || 0);
+        this.streamTiers.push(Number(message.streamTier) || 0);
         if (message.type === "snapshot") {
           this.keyframeCount += 1;
         } else {
           this.deltaCount += 1;
+        }
+      }
+      if (
+        this.deliveryAckEnabled &&
+        !this.protocolError &&
+        (message.type === "snapshot" || message.type === "snapshot_delta")
+      ) {
+        const now = performance.now();
+        if (message.type === "snapshot" || now - this.lastDeliveryAckAt >= 200) {
+          this.send({
+            type: "snapshot_ack",
+            snapshotSeq: Number(message.snapshotSeq) || 0,
+          });
+          this.lastDeliveryAckAt = now;
         }
       }
       for (const waiter of [...this.waiters]) {
@@ -160,6 +182,8 @@ class LoadClient {
     this.snapshotSeqs = [];
     this.keyframeCount = 0;
     this.deltaCount = 0;
+    this.snapshotRates = [];
+    this.streamTiers = [];
   }
 
   finishMeasure() {
@@ -185,6 +209,10 @@ class LoadClient {
       keyframes: this.keyframeCount,
       deltas: this.deltaCount,
       protocolError: this.protocolError,
+      minSnapshotRate: this.snapshotRates.length ? Math.min(...this.snapshotRates) : 0,
+      maxSnapshotRate: this.snapshotRates.length ? Math.max(...this.snapshotRates) : 0,
+      finalSnapshotRate: this.snapshotRates.at(-1) || 0,
+      maxStreamTier: Math.max(0, ...this.streamTiers),
     };
   }
 
@@ -286,6 +314,11 @@ function summarize(results, role) {
     maxSeqGap: Math.max(0, ...selected.map((item) => item.maxSeqGap)),
     keyframes: selected.reduce((sum, item) => sum + item.keyframes, 0),
     deltas: selected.reduce((sum, item) => sum + item.deltas, 0),
+    minSnapshotRate: Math.min(...selected.map((item) => item.minSnapshotRate)),
+    maxSnapshotRate: Math.max(0, ...selected.map((item) => item.maxSnapshotRate)),
+    minFinalSnapshotRate: Math.min(...selected.map((item) => item.finalSnapshotRate)),
+    maxFinalSnapshotRate: Math.max(0, ...selected.map((item) => item.finalSnapshotRate)),
+    maxStreamTier: Math.max(0, ...selected.map((item) => item.maxStreamTier)),
   };
 }
 
@@ -307,6 +340,10 @@ async function main() {
   }
 
   await Promise.all(clients.map((client) => client.connect()));
+  const unackedClients = clients.slice(Math.max(0, clients.length - unackedClientCount));
+  for (const client of unackedClients) {
+    client.deliveryAckEnabled = false;
+  }
 
   await Promise.all(
     rooms.map(async (room, roomIndex) => {
@@ -379,6 +416,13 @@ async function main() {
   await delay(250);
   for (const client of clients) {
     client.beginMeasure();
+  }
+  if (ackRecoverySeconds > 0 && unackedClients.length > 0) {
+    setTimeout(() => {
+      for (const client of unackedClients) {
+        client.deliveryAckEnabled = true;
+      }
+    }, ackRecoverySeconds * 1000).unref();
   }
 
   const processSamples = [];

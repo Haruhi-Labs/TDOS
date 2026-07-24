@@ -23,12 +23,21 @@ const MAX_CATCHUP_STEPS = 6;
 const LOOP_IDLE_MS = 2;
 const PVP_COUNTDOWN_MS = 3000;
 const MAX_SNAPSHOT_BUFFERED_BYTES = 128 * 1024;
-const SPECTATOR_SNAPSHOT_DIVISOR = 2;
 const SNAPSHOT_KEYFRAME_INTERVAL = SNAPSHOT_RATE * 5;
 const MAX_DELTA_TO_FULL_RATIO = 0.8;
+const PLAYER_STREAM_DIVISORS = [1, 2, 3];
+const SPECTATOR_STREAM_DIVISORS = [2, 3, 5];
+const CONGESTION_BUFFERED_BYTES = 24 * 1024;
+const SEVERE_CONGESTION_BUFFERED_BYTES = 96 * 1024;
+const CONGESTION_INFLIGHT_SNAPSHOTS = 12;
+const SEVERE_CONGESTION_INFLIGHT_SNAPSHOTS = 30;
+const CONGESTION_ACK_AGE_MS = 1200;
+const SEVERE_CONGESTION_ACK_AGE_MS = 3000;
+const STREAM_RECOVERY_STABLE_MS = 4000;
 
 const players = new Map();
 const rooms = new Map();
+let nextSnapshotStreamPhase = 0;
 
 const MESSAGE_CODES = {
   "房间已关闭": "room_closed",
@@ -104,13 +113,73 @@ function resetSnapshotStream(player) {
   if (!player) {
     return;
   }
+  nextSnapshotStreamPhase += 1;
   player.snapshotStream = {
     sequence: 0,
     lastState: null,
     lastRoomSnapshotSeq: 0,
     lastKeyframeRoomSeq: 0,
     forceKeyframe: true,
+    rateTier: 0,
+    phase: nextSnapshotStreamPhase,
+    lastDeliveryAckSeq: 0,
+    lastDeliveryAckAt: Date.now(),
+    healthySince: 0,
   };
+}
+
+function streamDivisors(options) {
+  return options.spectating ? SPECTATOR_STREAM_DIVISORS : PLAYER_STREAM_DIVISORS;
+}
+
+function updateStreamCongestion(player, now, options) {
+  const stream = player.snapshotStream;
+  const bufferedBytes = Number(player.ws.bufferedAmount) || 0;
+  const inFlight = Math.max(0, stream.sequence - stream.lastDeliveryAckSeq);
+  // 已全部确认时没有在途数据，等待阶段即使很久没有新 ACK 也不属于拥塞。
+  const ackAge = inFlight > 0 ? Math.max(0, now - stream.lastDeliveryAckAt) : 0;
+  const severe =
+    bufferedBytes >= SEVERE_CONGESTION_BUFFERED_BYTES ||
+    inFlight >= SEVERE_CONGESTION_INFLIGHT_SNAPSHOTS ||
+    ackAge >= SEVERE_CONGESTION_ACK_AGE_MS;
+  const congested =
+    severe ||
+    bufferedBytes >= CONGESTION_BUFFERED_BYTES ||
+    inFlight >= CONGESTION_INFLIGHT_SNAPSHOTS ||
+    ackAge >= CONGESTION_ACK_AGE_MS;
+  const maxTier = streamDivisors(options).length - 1;
+
+  if (severe && stream.rateTier < maxTier) {
+    stream.rateTier = maxTier;
+    stream.healthySince = 0;
+    return;
+  }
+  if (congested && stream.rateTier < 1) {
+    stream.rateTier = 1;
+    stream.healthySince = 0;
+    return;
+  }
+  if (congested) {
+    stream.healthySince = 0;
+    return;
+  }
+
+  const healthy =
+    bufferedBytes < 8 * 1024 &&
+    inFlight <= 5 &&
+    ackAge < 800;
+  if (!healthy || stream.rateTier <= 0) {
+    stream.healthySince = 0;
+    return;
+  }
+  if (!stream.healthySince) {
+    stream.healthySince = now;
+    return;
+  }
+  if (now - stream.healthySince >= STREAM_RECOVERY_STABLE_MS) {
+    stream.rateTier -= 1;
+    stream.healthySince = 0;
+  }
 }
 
 function sendSnapshotToPlayer(player, frame, options = {}) {
@@ -131,6 +200,13 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
     resetSnapshotStream(player);
   }
   const stream = player.snapshotStream;
+  const now = Date.now();
+  updateStreamCongestion(player, now, options);
+  const divisors = streamDivisors(options);
+  const divisor = divisors[Math.min(stream.rateTier, divisors.length - 1)];
+  if (!stream.forceKeyframe && frame.roomSnapshotSeq % divisor !== stream.phase % divisor) {
+    return false;
+  }
   const snapshotSeq = stream.sequence + 1;
   const header = {
     roomId: frame.roomId,
@@ -139,7 +215,8 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
     tick: frame.tick,
     simTime: frame.simTime,
     serverTime: frame.serverTime,
-    snapshotRate: Number(options.snapshotRate) || SNAPSHOT_RATE,
+    snapshotRate: SNAPSHOT_RATE / divisor,
+    streamTier: stream.rateTier,
     ackSeq: Number(options.ackSeq) || 0,
   };
   if (options.spectating) {
@@ -762,25 +839,20 @@ function sendSnapshot(room) {
   if (pA) {
     sendSnapshotToPlayer(pA, frame, {
       ackSeq: pA.lastProcessedSeq,
-      snapshotRate: SNAPSHOT_RATE,
     });
   }
   if (room.mode === "pvp" && pB) {
     sendSnapshotToPlayer(pB, frame, {
       ackSeq: pB.lastProcessedSeq,
-      snapshotRate: SNAPSHOT_RATE,
     });
   }
-  // 观战者不参与操作，使用交错的7.5Hz权威快照即可由客户端插值到60fps。
-  // 玩家仍保持15Hz；观战人数增加时不再按完整玩家带宽线性放大出口压力。
-  if (frame.roomSnapshotSeq % SPECTATOR_SNAPSHOT_DIVISOR === 0) {
-    for (const spectator of roomSpectators(room)) {
-      sendSnapshotToPlayer(spectator, frame, {
-        ackSeq: 0,
-        spectating: true,
-        snapshotRate: SNAPSHOT_RATE / SPECTATOR_SNAPSHOT_DIVISOR,
-      });
-    }
+  // 观战者默认使用7.5Hz权威快照；每条连接会根据端到端确认独立降档，
+  // 慢观战端不会拖累同房玩家或其他观战者。
+  for (const spectator of roomSpectators(room)) {
+    sendSnapshotToPlayer(spectator, frame, {
+      ackSeq: 0,
+      spectating: true,
+    });
   }
 }
 
@@ -932,6 +1004,21 @@ wss.on("connection", (ws) => {
     if (type === "snapshot_resync") {
       if (player.snapshotStream) {
         player.snapshotStream.forceKeyframe = true;
+      }
+      return;
+    }
+
+    if (type === "snapshot_ack") {
+      const snapshotSeq = Number(data.snapshotSeq);
+      const stream = player.snapshotStream;
+      if (
+        stream &&
+        Number.isInteger(snapshotSeq) &&
+        snapshotSeq > stream.lastDeliveryAckSeq &&
+        snapshotSeq <= stream.sequence
+      ) {
+        stream.lastDeliveryAckSeq = snapshotSeq;
+        stream.lastDeliveryAckAt = Date.now();
       }
       return;
     }
