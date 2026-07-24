@@ -9,6 +9,7 @@
     "preview": "vite preview",
     "start:server": "node server/server.js",
     "test:core": "node scripts/verify-core.mjs",
+    "test:network": "node scripts/verify-network-patch.mjs",
     "test:network:load": "node scripts/network-load-test.mjs"
   },
   "dependencies": {
