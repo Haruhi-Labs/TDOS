@@ -107,6 +107,7 @@ function resetSnapshotStream(player) {
   player.snapshotStream = {
     sequence: 0,
     lastState: null,
+    lastRoomSnapshotSeq: 0,
     lastKeyframeRoomSeq: 0,
     forceKeyframe: true,
   };
@@ -153,7 +154,14 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   let keyframe = keyframeDue;
 
   if (!keyframeDue) {
-    const patch = createStatePatch(stream.lastState, frame.state);
+    const baseRoomSeq = stream.lastRoomSnapshotSeq;
+    let patch = frame.patchCache.get(baseRoomSeq);
+    if (!frame.patchCache.has(baseRoomSeq)) {
+      // 同一房间、同一发送档位的连接拥有相同基线。差量树只计算一次，
+      // 玩家与观战扇出时复用结果，避免连接数增加后重复遍历整份战场状态。
+      patch = createStatePatch(stream.lastState, frame.state);
+      frame.patchCache.set(baseRoomSeq, patch);
+    }
     const deltaPayload = {
       type: "snapshot_delta",
       ...header,
@@ -179,6 +187,7 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   player.ws.send(serialized);
   stream.sequence = snapshotSeq;
   stream.lastState = frame.state;
+  stream.lastRoomSnapshotSeq = frame.roomSnapshotSeq;
   stream.forceKeyframe = false;
   if (keyframe) {
     stream.lastKeyframeRoomSeq = frame.roomSnapshotSeq;
@@ -737,6 +746,7 @@ function buildSnapshotFrame(room, advanceSeq = true) {
     serverTime,
     state,
     stateBytes: Buffer.byteLength(JSON.stringify(state)),
+    patchCache: new Map(),
   };
 }
 
