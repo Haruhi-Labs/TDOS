@@ -8,7 +8,8 @@
     "build": "node scripts/check-battle-drift.mjs && vite build",
     "preview": "vite preview",
     "start:server": "node server/server.js",
-    "test:core": "node scripts/verify-core.mjs"
+    "test:core": "node scripts/verify-core.mjs",
+    "test:network:load": "node scripts/network-load-test.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"
