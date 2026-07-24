@@ -17,8 +17,13 @@ import {
   quantizeNetworkState,
 } from "../shared/network-patch.js";
 
+function envInteger(name, fallback, min, max) {
+  const value = Number(process.env[name]);
+  return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
+}
+
 const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "snapshot-delta-20260724-01";
+const NETWORK_BUILD = "network-guard-20260724-01";
 const NETWORK_PROTOCOL_VERSION = 2;
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
@@ -38,11 +43,39 @@ const CONGESTION_ACK_AGE_MS = 1200;
 const SEVERE_CONGESTION_ACK_AGE_MS = 3000;
 const STREAM_RECOVERY_STABLE_MS = 4000;
 const LOBBY_BROADCAST_DEBOUNCE_MS = 30;
+const MAX_PAYLOAD_BYTES = envInteger("MAX_PAYLOAD_BYTES", 16 * 1024, 1024, 64 * 1024);
+const MAX_CONNECTIONS = envInteger("MAX_CONNECTIONS", 256, 8, 4096);
+const MAX_ROOMS = envInteger("MAX_ROOMS", 64, 4, 1024);
+const MAX_ACTIVE_ROOMS = envInteger("MAX_ACTIVE_ROOMS", 32, 2, 512);
+const MAX_SPECTATORS_PER_ROOM = envInteger("MAX_SPECTATORS_PER_ROOM", 24, 1, 256);
+const HEARTBEAT_INTERVAL_MS = envInteger("HEARTBEAT_INTERVAL_MS", 30_000, 100, 120_000);
+const NETWORK_METRICS_INTERVAL_MS = envInteger("NETWORK_METRICS_INTERVAL_MS", 60_000, 1000, 600_000);
 
 const players = new Map();
 const rooms = new Map();
 let nextSnapshotStreamPhase = 0;
 let lobbyBroadcastTimer = null;
+const networkStats = {
+  snapshotMessages: 0,
+  keyframes: 0,
+  deltas: 0,
+  snapshotRawBytes: 0,
+  skippedSnapshots: 0,
+  streamTierChanges: 0,
+  resyncRequests: 0,
+  rateLimitedMessages: 0,
+  coalescedInputs: 0,
+};
+const CONTROL_MESSAGE_TYPES = new Set([
+  "set_name",
+  "set_loadout",
+  "list_rooms",
+  "create_room",
+  "join_room",
+  "spectate_room",
+  "join_private",
+  "leave_room",
+]);
 
 const MESSAGE_CODES = {
   "房间已关闭": "room_closed",
@@ -58,6 +91,10 @@ const MESSAGE_CODES = {
   "房间已满或不可加入": "room_full",
   "消息格式错误": "invalid_message_format",
   "未知消息类型": "unknown_message_type",
+  "服务器连接数已满": "server_connection_limit",
+  "服务器房间数已满": "server_room_limit",
+  "服务器活跃对局已满": "server_active_room_limit",
+  "该房间观战人数已满": "room_spectator_limit",
 };
 
 function messageCode(message, fallback = "unknown") {
@@ -76,6 +113,41 @@ function messageCode(message, fallback = "unknown") {
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
+}
+
+function activeRoomCount() {
+  let count = 0;
+  for (const room of rooms.values()) {
+    if (room.status === "countdown" || room.status === "running") {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function consumeRateLimit(player, key, refillPerSecond, capacity, now = Date.now()) {
+  if (!player.rateLimits) {
+    player.rateLimits = new Map();
+  }
+  const previous = player.rateLimits.get(key);
+  if (!previous) {
+    player.rateLimits.set(key, {
+      tokens: Math.max(0, capacity - 1),
+      updatedAt: now,
+    });
+    return true;
+  }
+  const elapsedSeconds = Math.max(0, now - previous.updatedAt) / 1000;
+  const tokens = Math.min(capacity, previous.tokens + elapsedSeconds * refillPerSecond);
+  if (tokens < 1) {
+    previous.tokens = tokens;
+    previous.updatedAt = now;
+    networkStats.rateLimitedMessages += 1;
+    return false;
+  }
+  previous.tokens = tokens - 1;
+  previous.updatedAt = now;
+  return true;
 }
 
 function createRoomId() {
@@ -153,37 +225,32 @@ function updateStreamCongestion(player, now, options) {
     inFlight >= CONGESTION_INFLIGHT_SNAPSHOTS ||
     ackAge >= CONGESTION_ACK_AGE_MS;
   const maxTier = streamDivisors(options).length - 1;
+  const previousTier = stream.rateTier;
 
   if (severe && stream.rateTier < maxTier) {
     stream.rateTier = maxTier;
     stream.healthySince = 0;
-    return;
-  }
-  if (congested && stream.rateTier < 1) {
+  } else if (congested && stream.rateTier < 1) {
     stream.rateTier = 1;
     stream.healthySince = 0;
-    return;
-  }
-  if (congested) {
+  } else if (congested) {
     stream.healthySince = 0;
-    return;
+  } else {
+    const healthy =
+      bufferedBytes < 8 * 1024 &&
+      inFlight <= 5 &&
+      ackAge < 800;
+    if (!healthy || stream.rateTier <= 0) {
+      stream.healthySince = 0;
+    } else if (!stream.healthySince) {
+      stream.healthySince = now;
+    } else if (now - stream.healthySince >= STREAM_RECOVERY_STABLE_MS) {
+      stream.rateTier -= 1;
+      stream.healthySince = 0;
+    }
   }
-
-  const healthy =
-    bufferedBytes < 8 * 1024 &&
-    inFlight <= 5 &&
-    ackAge < 800;
-  if (!healthy || stream.rateTier <= 0) {
-    stream.healthySince = 0;
-    return;
-  }
-  if (!stream.healthySince) {
-    stream.healthySince = now;
-    return;
-  }
-  if (now - stream.healthySince >= STREAM_RECOVERY_STABLE_MS) {
-    stream.rateTier -= 1;
-    stream.healthySince = 0;
+  if (stream.rateTier !== previousTier) {
+    networkStats.streamTierChanges += 1;
   }
 }
 
@@ -195,6 +262,7 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   // 等发送缓冲恢复后再下发最新快照，避免延迟从数百毫秒滚成数秒并拖高进程内存。
   if (player.ws.bufferedAmount > MAX_SNAPSHOT_BUFFERED_BYTES) {
     player.skippedSnapshots = (player.skippedSnapshots || 0) + 1;
+    networkStats.skippedSnapshots += 1;
     if (player.snapshotStream) {
       player.snapshotStream.forceKeyframe = true;
     }
@@ -267,6 +335,13 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   }
 
   player.ws.send(serialized);
+  networkStats.snapshotMessages += 1;
+  networkStats.snapshotRawBytes += Buffer.byteLength(serialized);
+  if (keyframe) {
+    networkStats.keyframes += 1;
+  } else {
+    networkStats.deltas += 1;
+  }
   stream.sequence = snapshotSeq;
   stream.lastState = frame.state;
   stream.lastRoomSnapshotSeq = frame.roomSnapshotSeq;
@@ -481,6 +556,7 @@ function assignPlayerToRoom(player, room, seat) {
   player.spectating = false;
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
+  player.lastQueuedSeq = 0;
   player.selectedShipKey = "main";
   resetSnapshotStream(player);
   room.seats[seat] = player.id;
@@ -522,6 +598,7 @@ function startMatch(room) {
     }
     p.inputQueue = [];
     p.lastProcessedSeq = 0;
+    p.lastQueuedSeq = 0;
   }
 
   sendRoomStateToMembers(room);
@@ -557,6 +634,7 @@ function closeRoom(roomId, reason = "房间已关闭") {
     p.spectating = false;
     p.inputQueue = [];
     p.lastProcessedSeq = 0;
+    p.lastQueuedSeq = 0;
     resetSnapshotStream(p);
     sendToPlayer(p, {
       type: "room_closed",
@@ -582,6 +660,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
     player.spectating = false;
     player.inputQueue = [];
     player.lastProcessedSeq = 0;
+    player.lastQueuedSeq = 0;
     resetSnapshotStream(player);
     return;
   }
@@ -595,6 +674,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
     player.spectating = false;
     player.inputQueue = [];
     player.lastProcessedSeq = 0;
+    player.lastQueuedSeq = 0;
     resetSnapshotStream(player);
     if (room.status === "finished" && connectedCount(room) === 0 && spectatorCount(room) === 0) {
       rooms.delete(oldRoomId);
@@ -611,6 +691,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间") {
   player.spectating = false;
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
+  player.lastQueuedSeq = 0;
   resetSnapshotStream(player);
 
   if (room.seats.A === player.id) {
@@ -662,6 +743,12 @@ function createRoom(player, visibility, mode) {
 
   const safeVisibility = visibility === "private" ? "private" : "public";
   const safeMode = mode === "ai" ? "ai" : "pvp";
+  if (rooms.size >= MAX_ROOMS) {
+    return { ok: false, message: "服务器房间数已满" };
+  }
+  if (safeMode === "ai" && activeRoomCount() >= MAX_ACTIVE_ROOMS) {
+    return { ok: false, message: "服务器活跃对局已满" };
+  }
 
   const room = {
     id: createRoomId(),
@@ -714,6 +801,9 @@ function joinRoom(player, room) {
   if (!room.seats.A || room.seats.B) {
     return { ok: false, message: "房间已满或不可加入" };
   }
+  if (activeRoomCount() >= MAX_ACTIVE_ROOMS) {
+    return { ok: false, message: "服务器活跃对局已满" };
+  }
 
   assignPlayerToRoom(player, room, "B");
   startMatch(room);
@@ -734,12 +824,16 @@ function spectateRoom(player, room) {
   if (room.status !== "running" || !room.match) {
     return { ok: false, message: "房间不在对战状态" };
   }
+  if (spectatorCount(room) >= MAX_SPECTATORS_PER_ROOM) {
+    return { ok: false, message: "该房间观战人数已满" };
+  }
 
   player.roomId = room.id;
   player.seat = null;
   player.spectating = true;
   player.inputQueue = [];
   player.lastProcessedSeq = 0;
+  player.lastQueuedSeq = 0;
   player.selectedShipKey = "main";
   resetSnapshotStream(player);
   if (!room.spectators) {
@@ -768,15 +862,29 @@ function handleInput(player, data) {
   if (!action || typeof action !== "object") {
     return;
   }
-  if (seq <= player.lastProcessedSeq - 30) {
+  if (seq <= player.lastProcessedSeq || seq <= (player.lastQueuedSeq || 0)) {
     return;
   }
-  player.inputQueue.push({
+  player.lastQueuedSeq = seq;
+  const queued = {
     seq,
     action,
-  });
-  if (player.inputQueue.length > 120) {
-    player.inputQueue.splice(0, player.inputQueue.length - 120);
+  };
+  const replaceable = action.type === "route_control" || action.type === "route_end" || action.type === "set_throttle";
+  const lastQueued = player.inputQueue[player.inputQueue.length - 1];
+  if (
+    replaceable &&
+    lastQueued &&
+    lastQueued.action?.type === action.type &&
+    String(lastQueued.action?.shipKey || "main") === String(action.shipKey || "main")
+  ) {
+    player.inputQueue[player.inputQueue.length - 1] = queued;
+    networkStats.coalescedInputs += 1;
+  } else {
+    player.inputQueue.push(queued);
+  }
+  if (player.inputQueue.length > 90) {
+    player.inputQueue.splice(0, player.inputQueue.length - 90);
   }
 }
 
@@ -788,7 +896,6 @@ function applyQueuedInputs(room) {
       continue;
     }
 
-    player.inputQueue.sort((a, b) => a.seq - b.seq);
     let handled = 0;
     while (player.inputQueue.length > 0 && handled < 30) {
       const item = player.inputQueue.shift();
@@ -887,7 +994,7 @@ function sendSnapshot(room) {
 
 const wss = new WebSocketServer({
   port: PORT,
-  maxPayload: 64 * 1024,
+  maxPayload: MAX_PAYLOAD_BYTES,
   perMessageDeflate: {
     // 保留服务端跨帧压缩上下文：相邻快照结构高度重复，可进一步压缩多人和观战的持续流量。
     // 客户端上行消息很小，无需保留其压缩上下文；服务器当前CPU与内存余量足够。
@@ -902,6 +1009,15 @@ const wss = new WebSocketServer({
 });
 
 wss.on("connection", (ws) => {
+  if (players.size >= MAX_CONNECTIONS) {
+    ws.close(1013, "服务器连接数已满");
+    return;
+  }
+  ws.isAlive = true;
+  ws.on("pong", () => {
+    ws.isAlive = true;
+  });
+
   const playerId = randomUUID();
   const player = {
     id: playerId,
@@ -913,8 +1029,10 @@ wss.on("connection", (ws) => {
     spectating: false,
     inputQueue: [],
     lastProcessedSeq: 0,
+    lastQueuedSeq: 0,
     selectedShipKey: "main",
     snapshotStream: null,
+    rateLimits: new Map(),
   };
   resetSnapshotStream(player);
 
@@ -943,6 +1061,22 @@ wss.on("connection", (ws) => {
     }
 
     const type = String(data.type || "");
+    const messageNow = Date.now();
+    if (!consumeRateLimit(player, "all", 120, 180, messageNow)) {
+      return;
+    }
+    if (type === "input" && !consumeRateLimit(player, "input", 60, 90, messageNow)) {
+      return;
+    }
+    if (type === "ping" && !consumeRateLimit(player, "ping", 4, 8, messageNow)) {
+      return;
+    }
+    if (type === "snapshot_resync" && !consumeRateLimit(player, "resync", 1, 2, messageNow)) {
+      return;
+    }
+    if (CONTROL_MESSAGE_TYPES.has(type) && !consumeRateLimit(player, "control", 10, 20, messageNow)) {
+      return;
+    }
 
     if (type === "set_name") {
       const name = String(data.name || "").trim().slice(0, 16);
@@ -1034,6 +1168,7 @@ wss.on("connection", (ws) => {
       if (player.snapshotStream) {
         player.snapshotStream.forceKeyframe = true;
       }
+      networkStats.resyncRequests += 1;
       return;
     }
 
@@ -1083,6 +1218,67 @@ wss.on("connection", (ws) => {
   ws.on("error", () => {
     // 连接层错误交由 close 统一回收
   });
+});
+
+const heartbeatTimer = setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.isAlive === false) {
+      ws.terminate();
+      continue;
+    }
+    ws.isAlive = false;
+    try {
+      ws.ping();
+    } catch (_error) {
+      ws.terminate();
+    }
+  }
+}, HEARTBEAT_INTERVAL_MS);
+heartbeatTimer.unref();
+
+function flushNetworkMetrics() {
+  if (players.size === 0 && rooms.size === 0) {
+    return;
+  }
+  const tiers = [0, 0, 0];
+  let bufferedBytes = 0;
+  let maxBufferedBytes = 0;
+  let spectators = 0;
+  for (const player of players.values()) {
+    const buffered = Number(player.ws?.bufferedAmount) || 0;
+    bufferedBytes += buffered;
+    maxBufferedBytes = Math.max(maxBufferedBytes, buffered);
+    const tier = Math.max(0, Math.min(2, Number(player.snapshotStream?.rateTier) || 0));
+    tiers[tier] += 1;
+    if (player.spectating) {
+      spectators += 1;
+    }
+  }
+  console.log(`网络指标 ${JSON.stringify({
+    connections: players.size,
+    rooms: rooms.size,
+    activeRooms: activeRoomCount(),
+    spectators,
+    streamTiers: tiers,
+    bufferedBytes,
+    maxBufferedBytes,
+    ...networkStats,
+  })}`);
+  for (const key of Object.keys(networkStats)) {
+    networkStats[key] = 0;
+  }
+}
+
+const networkMetricsTimer = setInterval(flushNetworkMetrics, NETWORK_METRICS_INTERVAL_MS);
+networkMetricsTimer.unref();
+
+wss.on("close", () => {
+  clearInterval(heartbeatTimer);
+  clearInterval(networkMetricsTimer);
+  if (lobbyBroadcastTimer) {
+    clearTimeout(lobbyBroadcastTimer);
+    lobbyBroadcastTimer = null;
+  }
 });
 
 function tickRooms() {
