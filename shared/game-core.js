@@ -1,3 +1,15 @@
+import {
+  DEFAULT_GAMEPLAY_RULES,
+  normalizeGameplayRules,
+} from "./gameplay/rules.js";
+
+export {
+  DEFAULT_GAMEPLAY_RULES,
+  GAMEPLAY_RULE_LIMITS,
+  GAMEPLAY_RULE_SCHEMA,
+  normalizeGameplayRules,
+} from "./gameplay/rules.js";
+
 // 全模式统一的世界尺寸,以单人版(1440)为权威;单人/在线/调试/服务器都必须引用此常量,
 // 任何一处硬编码尺寸都会造成两种模式地图、战区布局与节奏割裂(在线曾长期跑在 1800 上)。
 export const DEFAULT_WORLD_SIZE = 1440;
@@ -998,12 +1010,16 @@ class Ship {
     return value;
   }
 
+  gameplayRules() {
+    return this.team?.match?.gameplayRules || DEFAULT_GAMEPLAY_RULES;
+  }
+
   baseSpeed() {
-    return this.statWithBuffs("speed", this.base.speed);
+    return this.statWithBuffs("speed", this.base.speed) * this.gameplayRules().movementSpeedMultiplier;
   }
 
   baseTurnRate() {
-    return this.statWithBuffs("turnRate", this.base.turnRate);
+    return this.statWithBuffs("turnRate", this.base.turnRate) * this.gameplayRules().turnRateMultiplier;
   }
 
   baseAcceleration() {
@@ -1011,7 +1027,7 @@ class Ship {
   }
 
   baseEnergyRegen() {
-    return this.statWithBuffs("regen", this.base.energyRegen);
+    return this.statWithBuffs("regen", this.base.energyRegen) * this.gameplayRules().energyRegenMultiplier;
   }
 
   moveEnergyDrain() {
@@ -1055,16 +1071,20 @@ class Ship {
     if (this.characterId === "yuki" && !this.isAttached()) {
       value += 24;
     }
-    return value;
+    return value * this.gameplayRules().visionMultiplier;
   }
 
   effectiveRange() {
-    return this.statWithBuffs("range", this.base.range);
+    return this.statWithBuffs("range", this.base.range) * this.gameplayRules().rangeMultiplier;
   }
 
   effectiveDamage() {
     // 末乘难度数值缩放(简单0.8/普通1.0/困难1.2/极限1.0);玩家队 statMult 恒为1,不受影响。
-    return this.statWithBuffs("damage", this.base.damage) * (this.team.statMult || 1);
+    return (
+      this.statWithBuffs("damage", this.base.damage) *
+      (this.team.statMult || 1) *
+      this.gameplayRules().damageMultiplier
+    );
   }
 
   effectiveFireRate() {
@@ -6003,6 +6023,8 @@ export class MatchSimulation {
     this.aiAutoBeam = aiAutoBeam;
     this.aiSeats = aiSeats;
     this.zones = buildZones(worldSize);
+    // 玩法倍率:正式模式不传时与历史行为一致;原型平台可注入实验参数。
+    this.gameplayRules = normalizeGameplayRules(options.gameplayRules);
 
     this.tick = 0;
     this.elapsed = 0;

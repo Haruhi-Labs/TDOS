@@ -30,6 +30,7 @@ const routes = {
   "/play": () => import("./solo.js"),
   "/online": () => import("./online.js"),
   "/debug": () => import("./debug.js"),
+  "/prototype": () => import("./prototype/index.js"),
 };
 
 const router = createRouter({

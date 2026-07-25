@@ -32,10 +32,12 @@ export function battleViewTemplate({
   mobileExtraHTML = "",
   resultMetaClass = "",
   overlayActionsHTML = "",
+  developerPanelHTML = "",
 } = {}) {
   const shell = ["app-shell", shellClass, "battle-shell"].filter(Boolean).join(" ");
+  const withDev = Boolean(developerPanelHTML);
   return `
-    <div id="battleView" class="${shell}"${hidden ? " hidden" : ""}>
+    <div id="battleView" class="${shell}${withDev ? " has-dev-panel" : ""}"${hidden ? " hidden" : ""}>
       <aside class="panel compact-panel battle-panel">
         <h1>${t("射手座之日")}</h1>
 
@@ -149,6 +151,7 @@ ${fleetRowHTML("sub2", t("副二"))}
           </div>
         </div>
       </main>
+      ${withDev ? `<aside class="panel compact-panel prototype-dev-panel">${developerPanelHTML}</aside>` : ""}
     </div>
   `;
 }
