@@ -1,10 +1,13 @@
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
+  CHARACTER_DEFS,
+  ENERGY_GEAR_PROFILES,
   EMERGENCY_BRAKE_COST,
   MANUAL_SCOUT_COOLDOWN,
   MatchSimulation,
   THROTTLE_GEAR_VALUES,
   TICK_DT,
+  energyRateForThrottle,
   normalizeThrottleToGear,
   throttleForGear,
   throttleGearForValue,
@@ -108,6 +111,19 @@ function throttleGearCheck() {
   assert(throttleGearForValue(0.68) === 2, "推进值未归入最近档位");
   assert(normalizeThrottleToGear(1.22) === 1.4, "连续推进值未归一到合法档位");
   assert(normalizeThrottleToGear(undefined, 0) === 0, "无效输入未保留当前P档");
+  assert(ENERGY_GEAR_PROFILES.length === THROTTLE_GEAR_VALUES.length, "能量曲线与推进档位数量不一致");
+
+  for (const character of Object.values(CHARACTER_DEFS)) {
+    const rates = THROTTLE_GEAR_VALUES.map((throttle) => (
+      energyRateForThrottle(character.stats.energyRegen, character.stats.moveDrain, throttle)
+    ));
+    for (let gear = 1; gear < rates.length; gear += 1) {
+      assert(rates[gear - 1] > rates[gear], `${character.name}的能量净变化未随档位严格下降`);
+    }
+    assert(rates[3] > 0, `${character.name}在前进3档无法小幅回能`);
+    assert(rates[4] < 0, `${character.name}在前进4档没有持续耗能`);
+    assert(rates[0] >= 13 && rates[0] <= 19, `${character.name}的P档回能超出合理范围`);
+  }
 
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const main = sim.teamA.ships.main;
@@ -135,6 +151,19 @@ function throttleGearCheck() {
   assert(forward && main.throttle === 1.4, "前进档未在服务端归一为合法档位");
   runSteps(sim, 0.5);
   assert(main.x > startX, "从P档切入前进档后未沿原航线恢复航行");
+
+  main.energy = 50;
+  main.throttle = throttleForGear(0);
+  sim.teamA.updateEnergy(1);
+  const parkedEnergy = main.energy;
+  assert(
+    Math.abs(parkedEnergy - 50 - energyRateForThrottle(main.baseEnergyRegen(), main.moveEnergyDrain(), 0)) < 1e-6,
+    "权威模拟未按P档曲线回能",
+  );
+  main.energy = 50;
+  main.throttle = throttleForGear(4);
+  sim.teamA.updateEnergy(1);
+  assert(main.energy < 50, "权威模拟中的前进4档未实际消耗能量");
 }
 
 function emergencyBrakeCheck() {

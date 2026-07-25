@@ -25,10 +25,17 @@ function fleetRowHTML(slotKey, label) {
 function throttleGearButtonsHTML(buttonClass = "") {
   return THROTTLE_GEAR_VALUES.map((_, gear) => {
     const label = gear === 0 ? t("P档") : t("前进{gear}", { gear });
+    const energyHint = [
+      t("快速回能"),
+      t("高效回能"),
+      t("稳定回能"),
+      t("巡航·小幅回能"),
+      t("超速·持续耗能"),
+    ][gear];
     const shortcut = gear === 0 ? "P" : `Shift+${gear}`;
     const text = gear === 0 ? "P" : String(gear);
     const active = gear === DEFAULT_THROTTLE_GEAR ? " active" : "";
-    return `<button type="button" class="throttle-gear-btn${buttonClass ? ` ${buttonClass}` : ""}${active}" data-gear="${gear}" aria-label="${label}" aria-pressed="${gear === DEFAULT_THROTTLE_GEAR ? "true" : "false"}" title="${label} · ${shortcut}">${text}</button>`;
+    return `<button type="button" class="throttle-gear-btn${buttonClass ? ` ${buttonClass}` : ""}${active}" data-gear="${gear}" aria-label="${label} · ${energyHint}" aria-pressed="${gear === DEFAULT_THROTTLE_GEAR ? "true" : "false"}" title="${label} · ${energyHint} · ${shortcut}">${text}</button>`;
   }).join("");
 }
 
@@ -74,6 +81,7 @@ export function battleViewTemplate({
               <div id="powerGearControl" class="throttle-gear-row" role="group" aria-label="${t("速度档位")}">
                 ${throttleGearButtonsHTML()}
               </div>
+              <small class="throttle-energy-hint">${t("能量：P/1/2档回能，3档小幅回能，4档持续耗能")}</small>
               <small class="throttle-shortcut">${t("快捷键：P 停车，Shift+1–4 直达，Q/E 降升档")}</small>
             </div>
             <div class="zoom-control-row">

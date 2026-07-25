@@ -13,6 +13,16 @@ export const TICK_DT = 1 / TICK_RATE;
 export const THROTTLE_GEAR_VALUES = Object.freeze([0, 0.4, 0.7, 1, 1.4]);
 export const DEFAULT_THROTTLE_GEAR = 3;
 
+// 每档分别定义基础回能与推进消耗倍率，避免用连续公式外推后出现
+// P档回能过快、前进4档几乎无代价，甚至高回能舰在超速时仍净回能的问题。
+export const ENERGY_GEAR_PROFILES = Object.freeze([
+  Object.freeze({ regenMultiplier: 1.25, moveCostMultiplier: 0 }),
+  Object.freeze({ regenMultiplier: 1.15, moveCostMultiplier: 0.25 }),
+  Object.freeze({ regenMultiplier: 1.05, moveCostMultiplier: 0.55 }),
+  Object.freeze({ regenMultiplier: 0.9, moveCostMultiplier: 1 }),
+  Object.freeze({ regenMultiplier: 0.55, moveCostMultiplier: 1.65 }),
+]);
+
 export function throttleForGear(gear) {
   const index = clamp(Math.round(Number(gear) || 0), 0, THROTTLE_GEAR_VALUES.length - 1);
   return THROTTLE_GEAR_VALUES[index];
@@ -39,6 +49,17 @@ export function throttleGearForValue(value, fallback = DEFAULT_THROTTLE_GEAR) {
 
 export function normalizeThrottleToGear(value, fallback = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR]) {
   return throttleForGear(throttleGearForValue(value, throttleGearForValue(fallback)));
+}
+
+export function energyProfileForThrottle(throttle) {
+  return ENERGY_GEAR_PROFILES[throttleGearForValue(throttle)];
+}
+
+export function energyRateForThrottle(baseRegen, moveDrain, throttle) {
+  const profile = energyProfileForThrottle(throttle);
+  const regen = Math.max(1.2, Number(baseRegen) * profile.regenMultiplier);
+  const moveCost = Math.max(0, Number(moveDrain)) * profile.moveCostMultiplier;
+  return regen - moveCost;
 }
 
 const TAU = Math.PI * 2;
@@ -2365,10 +2386,8 @@ class Team {
         continue;
       }
       const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
-      const regenMultiplier = throttle <= 1 ? 1 + (1 - throttle) * 0.76 : 1 - (throttle - 1) * 0.72;
-      const regen = Math.max(1.2, ship.baseEnergyRegen() * regenMultiplier);
-      const moveCost = ship.moveEnergyDrain() * clamp(throttle, 0, 1.4);
-      ship.energy = clamp(ship.energy + (regen - moveCost) * dt, 0, ship.maxEnergy);
+      const energyRate = energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
+      ship.energy = clamp(ship.energy + energyRate * dt, 0, ship.maxEnergy);
     }
   }
 

@@ -538,6 +538,11 @@ button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.5); }
   font-size: 0.68rem;
   line-height: 1.35;
 }
+.throttle-energy-hint {
+  color: var(--gilt-pale);
+  font-size: 0.7rem;
+  line-height: 1.35;
+}
 
 .zoom-control-row {
   display: grid;
