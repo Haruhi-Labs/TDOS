@@ -14,6 +14,7 @@
     "test:2v2-client": "node scripts/verify-2v2-client.mjs",
     "test:2v2-comm": "node scripts/verify-2v2-comm.mjs",
     "test:2v2-reconnect": "node scripts/verify-2v2-reconnect.mjs",
+    "test:2v2-result": "node scripts/verify-2v2-result.mjs",
     "test:2v2-browser": "node scripts/verify-2v2-browser.mjs"
   },
   "dependencies": {

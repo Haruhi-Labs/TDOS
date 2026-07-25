@@ -1,8 +1,6 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import WebSocket from "ws";
-
-const PORT = 24000 + Math.floor(Math.random() * 1000);
-const URL = `ws://127.0.0.1:${PORT}/`;
 
 function assert(condition, message) {
   if (!condition) {
@@ -34,15 +32,36 @@ async function eventually(fn, timeoutMs = 4000, intervalMs = 25) {
   throw new Error("Timed out waiting for condition");
 }
 
-function startServer() {
+function reservePort() {
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      const port = typeof address === "object" && address ? address.port : 0;
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        resolve(port);
+      });
+    });
+    server.on("error", reject);
+  });
+}
+
+async function startServer() {
+  const port = await reservePort();
+  const url = `ws://127.0.0.1:${port}/`;
   const child = spawn(process.execPath, ["server/server.js"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       HOST: "127.0.0.1",
-      PORT: String(PORT),
+      PORT: String(port),
     },
     stdio: ["ignore", "pipe", "pipe"],
+    windowsHide: true,
   });
   let output = "";
   child.stdout.on("data", (chunk) => {
@@ -52,12 +71,22 @@ function startServer() {
     output += String(chunk);
   });
   child.output = () => output;
+  child.port = port;
+  child.url = url;
+
+  await eventually(() => {
+    if (child.exitCode !== null) {
+      throw new Error(`server exited early (${child.exitCode}): ${output}`);
+    }
+    return output.includes("网络对战服务器已启动") || output.includes(`:${port}`);
+  }, 8000, 25);
+
   return child;
 }
 
-function connectClient() {
+function connectClient(url) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(URL);
+    const ws = new WebSocket(url);
     ws.messages = [];
     ws.on("message", (raw) => {
       ws.messages.push(JSON.parse(String(raw)));
@@ -72,16 +101,17 @@ function send(ws, payload) {
 }
 
 async function waitForMessage(ws, predicate, label) {
-  return eventually(() => ws.messages.find(predicate), 5000).catch((error) => {
-    throw new Error(`${label}: ${error.message}`);
+  return eventually(() => ws.messages.find(predicate), 8000).catch((error) => {
+    const recent = ws.messages.slice(-5).map((message) => message.type);
+    throw new Error(`${label}: ${error.message}; recent=${recent.join(",")}`);
   });
 }
 
-async function connectWithRetry() {
+async function connectWithRetry(url) {
   let lastError = null;
-  for (let i = 0; i < 40; i += 1) {
+  for (let i = 0; i < 60; i += 1) {
     try {
-      return await connectClient();
+      return await connectClient(url);
     } catch (error) {
       lastError = error;
       await wait(50);
@@ -90,12 +120,37 @@ async function connectWithRetry() {
   throw lastError || new Error("Could not connect client");
 }
 
+async function stopServer(server) {
+  if (!server) return;
+  try {
+    if (process.platform === "win32" && server.pid) {
+      spawn("taskkill", ["/pid", String(server.pid), "/t", "/f"], {
+        stdio: "ignore",
+        windowsHide: true,
+      });
+    } else {
+      server.kill("SIGTERM");
+    }
+  } catch (_error) {
+    // ignore
+  }
+  await wait(150);
+  if (server.exitCode === null) {
+    try {
+      server.kill("SIGKILL");
+    } catch (_error) {
+      // ignore
+    }
+  }
+  await wait(50);
+}
+
 async function main() {
-  const server = startServer();
+  const server = await startServer();
   try {
     const clients = [];
     for (let i = 0; i < 4; i += 1) {
-      const ws = await connectWithRetry();
+      const ws = await connectWithRetry(server.url);
       clients.push(ws);
       await waitForMessage(ws, (message) => message.type === "connected", `client ${i} connected`);
       send(ws, { type: "set_name", name: `P${i + 1}` });
@@ -112,22 +167,33 @@ async function main() {
     assert(created.room.players.length === 4, "2v2 room_state should expose four slots");
     assert(created.room.players.map((row) => row.seat).join(",") === "A1,A2,B1,B2", "2v2 slots should be ordered");
 
+    // Join one-by-one to avoid seat-assignment races under concurrent joins.
+    const expectedSeats = ["A1", "A2", "B1", "B2"];
+    const bySeat = { A1: clients[0] };
     for (let i = 1; i < 4; i += 1) {
       send(clients[i], { type: "join_room", roomId });
-    }
-
-    const expectedSeats = ["A1", "A2", "B1", "B2"];
-    for (let i = 0; i < 4; i += 1) {
       const state = await waitForMessage(
         clients[i],
-        (message) => message.type === "room_state" && message.room?.roomId === roomId && message.self?.seat === expectedSeats[i],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          message.self?.seat === expectedSeats[i],
         `client ${i} seat assignment`,
       );
       assert(state.room.status === "waiting", "2v2 should stay waiting until all players are ready");
+      bySeat[state.self.seat] = clients[i];
     }
+    await waitForMessage(
+      clients[0],
+      (message) =>
+        message.type === "room_state" &&
+        message.room?.roomId === roomId &&
+        (message.room.players || []).filter((row) => row.playerId).length === 4,
+      "creator sees four filled seats",
+    );
 
-    send(clients[2], { type: "select_ship", shipKey: "sub2" });
-    send(clients[3], { type: "select_ship", shipKey: "sub1" });
+    send(bySeat.B1, { type: "select_ship", shipKey: "sub2" });
+    send(bySeat.B2, { type: "select_ship", shipKey: "sub1" });
 
     for (const ws of clients) {
       send(ws, { type: "set_ready", ready: true });
@@ -139,12 +205,12 @@ async function main() {
       "2v2 countdown",
     );
     const snapshotA = await waitForMessage(
-      clients[0],
+      bySeat.A1,
       (message) => message.type === "snapshot" && message.roomId === roomId && message.state?.mode === "pvp2v2",
       "A snapshot",
     );
     const snapshotB = await waitForMessage(
-      clients[2],
+      bySeat.B1,
       (message) => message.type === "snapshot" && message.roomId === roomId && message.state?.mode === "pvp2v2",
       "B snapshot",
     );
@@ -192,13 +258,209 @@ async function main() {
       ws.close();
     }
   } finally {
-    server.kill();
-    await wait(100);
-    if (server.exitCode === null) {
-      server.kill("SIGKILL");
+    await stopServer(server);
+  }
+
+  await runLoadoutReadyRaceCases();
+  console.log("2v2 server verification passed");
+}
+
+async function createFilledWaitingRoom(server) {
+  const clients = [];
+  for (let i = 0; i < 4; i += 1) {
+    const ws = await connectWithRetry(server.url);
+    clients.push(ws);
+    await waitForMessage(ws, (message) => message.type === "connected", `race client ${i} connected`);
+    send(ws, { type: "set_name", name: `R${i + 1}` });
+  }
+  send(clients[0], { type: "create_room", visibility: "public", mode: "pvp2v2" });
+  const created = await waitForMessage(
+    clients[0],
+    (message) => message.type === "room_state" && message.room?.mode === "pvp2v2",
+    "race creator room_state",
+  );
+  const roomId = created.room.roomId;
+  const expectedSeats = ["A1", "A2", "B1", "B2"];
+  for (let i = 1; i < 4; i += 1) {
+    send(clients[i], { type: "join_room", roomId });
+    await waitForMessage(
+      clients[i],
+      (message) =>
+        message.type === "room_state" &&
+        message.room?.roomId === roomId &&
+        message.self?.seat === expectedSeats[i],
+      `race seat ${expectedSeats[i]}`,
+    );
+  }
+  return { clients, roomId };
+}
+
+async function runLoadoutReadyRaceCases() {
+  // Scenario C: ready player changes loadout -> ready cleared, stay waiting.
+  {
+    const server = await startServer();
+    try {
+      const { clients, roomId } = await createFilledWaitingRoom(server);
+      send(clients[0], { type: "set_ready", ready: true });
+      await waitForMessage(
+        clients[0],
+        (message) => message.type === "room_state" && message.room?.roomId === roomId && message.self?.ready === true,
+        "A1 ready before loadout change",
+      );
+      send(clients[0], {
+        type: "set_loadout",
+        loadout: { main: "yuki", sub1: "kyon", sub2: "koizumi" },
+      });
+      const cleared = await waitForMessage(
+        clients[0],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          message.self?.ready === false &&
+          message.self?.loadout?.main === "yuki",
+        "A1 loadout should clear ready atomically",
+      );
+      assert(cleared.room.status === "waiting", "loadout change while waiting must not start countdown");
+      const peer = await waitForMessage(
+        clients[1],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          (message.room.players || []).some((row) => row.seat === "A1" && row.ready === false && row.loadout?.main === "yuki"),
+        "peers should observe A1 unready after loadout change",
+      );
+      assert(peer.room.status === "waiting", "peer room state should remain waiting after ready loadout change");
+      for (const ws of clients) ws.close();
+    } finally {
+      await stopServer(server);
     }
   }
-  console.log("2v2 server verification passed");
+
+  // Scenario B: three ready, unready player changes loadout -> still waiting.
+  {
+    const server = await startServer();
+    try {
+      const { clients, roomId } = await createFilledWaitingRoom(server);
+      for (const index of [0, 1, 2]) {
+        send(clients[index], { type: "set_ready", ready: true });
+      }
+      await waitForMessage(
+        clients[0],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          (message.room.players || []).filter((row) => row.ready).length === 3,
+        "three players ready",
+      );
+      send(clients[3], {
+        type: "set_loadout",
+        loadout: { main: "tsuruya", sub1: "haruhi", sub2: "asakura" },
+      });
+      const state = await waitForMessage(
+        clients[3],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          message.self?.loadout?.main === "tsuruya",
+        "B2 loadout while others ready",
+      );
+      assert(state.room.status === "waiting", "three-ready room must stay waiting after unready loadout edit");
+      assert(state.self.ready === false, "unready editor must remain unready");
+      for (const ws of clients) ws.close();
+    } finally {
+      await stopServer(server);
+    }
+  }
+
+  // Scenario A1: set_loadout arrives as the fourth "ready-like" action before all ready stick.
+  {
+    const server = await startServer();
+    try {
+      const { clients, roomId } = await createFilledWaitingRoom(server);
+      for (const index of [0, 1, 2]) {
+        send(clients[index], { type: "set_ready", ready: true });
+      }
+      await waitForMessage(
+        clients[0],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          (message.room.players || []).filter((row) => row.ready).length === 3,
+        "three ready before last loadout",
+      );
+      send(clients[3], { type: "set_ready", ready: true });
+      send(clients[3], {
+        type: "set_loadout",
+        loadout: { main: "future1096", sub1: "yuki", sub2: "kyon" },
+      });
+      const outcome = await eventually(() => {
+        const states = clients[3].messages.filter(
+          (message) => message.type === "room_state" && message.room?.roomId === roomId,
+        );
+        const last = states[states.length - 1];
+        if (!last) return null;
+        if (last.room.status === "countdown" || last.room.status === "running") {
+          return last;
+        }
+        if (last.self?.loadout?.main === "future1096" && last.self?.ready === false && last.room.status === "waiting") {
+          return last;
+        }
+        return null;
+      }, 5000);
+      if (outcome.room.status === "waiting") {
+        assert(outcome.self.ready === false, "loadout-first path must clear B2 ready and stay waiting");
+      } else {
+        // set_ready won the race and match started; subsequent loadout must be rejected.
+        await waitForMessage(
+          clients[3],
+          (message) => message.type === "error",
+          "loadout after countdown must error",
+        );
+      }
+      for (const ws of clients) ws.close();
+    } finally {
+      await stopServer(server);
+    }
+  }
+
+  // Deterministic path: ready player edits loadout before fourth ready.
+  {
+    const server = await startServer();
+    try {
+      const { clients, roomId } = await createFilledWaitingRoom(server);
+      for (const index of [0, 1, 2]) {
+        send(clients[index], { type: "set_ready", ready: true });
+      }
+      await waitForMessage(
+        clients[2],
+        (message) => message.type === "room_state" && message.room?.roomId === roomId && message.self?.ready === true,
+        "B1 ready",
+      );
+      send(clients[2], {
+        type: "set_loadout",
+        loadout: { main: "koizumi", sub1: "tsuruya", sub2: "haruhi" },
+      });
+      const cleared = await waitForMessage(
+        clients[2],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          message.self?.ready === false &&
+          message.self?.loadout?.main === "koizumi",
+        "ready player loadout clears ready",
+      );
+      assert(cleared.room.status === "waiting", "ready loadout edit must keep room waiting");
+      send(clients[3], { type: "set_ready", ready: true });
+      await wait(200);
+      const stillWaiting = clients[0].messages
+        .filter((message) => message.type === "room_state" && message.room?.roomId === roomId)
+        .at(-1);
+      assert(stillWaiting?.room?.status === "waiting", "room cannot countdown while a loadout-cleared player is unready");
+      for (const ws of clients) ws.close();
+    } finally {
+      await stopServer(server);
+    }
+  }
 }
 
 main();

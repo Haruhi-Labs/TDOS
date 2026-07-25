@@ -859,6 +859,22 @@ function setPlayerReady(player, ready) {
   return { ok: true };
 }
 
+// 2v2 waiting 下修改阵容必须原子撤销准备，避免“准备中改阵容仍开局”。
+function invalidatePlayerReady(room, player) {
+  if (
+    room &&
+    isTwoVsTwoRoom(room) &&
+    room.status === "waiting" &&
+    player?.seat
+  ) {
+    player.ready = false;
+    if (!room.ready) {
+      room.ready = {};
+    }
+    room.ready[player.seat] = false;
+  }
+}
+
 function handleTeamComm(player, data) {
   if (!player.roomId || !player.seat || player.spectating) {
     return { ok: false, message: "该房间不接受玩家加入" };
@@ -1185,6 +1201,7 @@ wss.on("connection", (ws) => {
       if (player.roomId) {
         const room = rooms.get(player.roomId);
         if (room && room.status === "waiting") {
+          invalidatePlayerReady(room, player);
           sendRoomStateToMembers(room);
         }
       }

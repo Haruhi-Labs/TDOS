@@ -9,6 +9,10 @@ import {
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
+import {
+  buildResultRenderKey,
+  resolveViewerMatchResult,
+} from "../shared/match-result.js";
 
 import {
   getLoadout,
@@ -255,6 +259,7 @@ function initApp() {
   destructionEffects: createShipDestructionEffects(),
   lastWinnerSeat: null,
   gameOverLogged: false,
+  lastResultRenderKey: null,
   connectAttemptId: 0,
   playerLoadout: readStoredLoadout(),
   pointer: { x: LOGICAL * 0.5, y: LOGICAL * 0.5 },
@@ -1093,6 +1098,7 @@ function clearMatchRuntime() {
   renderTeamCommFeed();
   app.lastWinnerSeat = null;
   app.gameOverLogged = false;
+  app.lastResultRenderKey = null;
   if (app.throttleSendTimer) {
     clearTimeout(app.throttleSendTimer);
     app.throttleSendTimer = null;
@@ -1103,6 +1109,7 @@ function closeOverlay() {
   ui.overlay.classList.add("hidden");
   ui.overlayTitle.textContent = "";
   app.gameOverLogged = false;
+  app.lastResultRenderKey = null;
 }
 
 function escapeHtml(value) {
@@ -1161,29 +1168,44 @@ function onlineResultSideHTML(loadout, faction, sideLabel, sideClass, sideId = "
   );
 }
 
-function isTwoVsTwoResultContext() {
-  return Boolean(isTwoVsTwoRoom() || isTwoVsTwoState(app.latestSnapshot?.state));
+function isTwoVsTwoResultContext(state = null, room = null) {
+  const matchState = state || app?.latestSnapshot?.state || null;
+  const matchRoom = room || app?.room || null;
+  return Boolean(isTwoVsTwoRoom(matchRoom) || isTwoVsTwoState(matchState) || matchRoom?.mode === "pvp2v2" || matchState?.mode === "pvp2v2");
 }
 
-function currentWinnerAllianceId(winnerSeat) {
-  if (!isTwoVsTwoResultContext()) {
+function currentWinnerAllianceId(winnerSeat, state = null, room = null) {
+  const matchState = state || app?.latestSnapshot?.state || null;
+  const matchRoom = room || app?.room || null;
+  if (!isTwoVsTwoResultContext(matchState, matchRoom)) {
     return null;
   }
   return (
-    app.latestSnapshot?.state?.winnerAllianceId ||
-    app.room?.winnerAllianceId ||
+    matchState?.winnerAllianceId ||
+    matchRoom?.winnerAllianceId ||
     (winnerSeat === "A" || winnerSeat === "B" ? winnerSeat : null)
   );
 }
 
-function localPlayerWonMatch(winnerSeat, winnerAllianceId) {
-  if (!winnerSeat && !winnerAllianceId) {
-    return false;
-  }
-  if (isTwoVsTwoResultContext()) {
-    return Boolean(winnerAllianceId && app.allianceId && winnerAllianceId === app.allianceId);
-  }
-  return Boolean(winnerSeat && winnerSeat === app.seat);
+function resolveViewerAllianceId({ state = null, room = null, viewerSeat = null, viewerAllianceId = null } = {}) {
+  return (
+    viewerAllianceId ||
+    state?.viewer?.allianceId ||
+    room?.selfAllianceId ||
+    app?.allianceId ||
+    (viewerSeat || app?.seat ? allianceIdForSeatClient(viewerSeat || app?.seat) : null)
+  );
+}
+
+function localPlayerWonMatch(winnerSeat, winnerAllianceId, options = {}) {
+  const result = resolveViewerMatchResult({
+    mode: options.mode || (isTwoVsTwoResultContext(options.state, options.room) ? "pvp2v2" : null),
+    winnerSeat,
+    winnerAllianceId,
+    viewerSeat: options.viewerSeat ?? app?.seat,
+    viewerAllianceId: resolveViewerAllianceId(options),
+  });
+  return result === "win";
 }
 
 function resultRowsForAlliance(players, allianceId) {
@@ -1224,13 +1246,49 @@ function onlineResultAllianceHTML(players, allianceId, faction, sideClass) {
 }
 
 // 胜负结算:皮面富卡片(标题 + 双方阵容 VS),与单人同款;磨砂层只作卡片背景,不再裸罩地图/面板。
-// 每条 finished 房态消息都会调用,故首次渲染后用 gameOverLogged 锁住,避免反复重建与重放入场动画。
-function showMatchResultOverlay(winnerSeat) {
+// 用结果指纹跳过完全相同的重绘；信息不完整时允许后续 room_state / snapshot 纠正。
+function showMatchResultOverlay(input = {}) {
+  const options = input && typeof input === "object" && !Array.isArray(input) ? input : { winnerSeat: input };
+  const state = options.state || app.latestSnapshot?.state || null;
+  const room = options.room || app.room || null;
+  const winnerSeat = options.winnerSeat ?? state?.winnerSeat ?? room?.winnerSeat ?? app.lastWinnerSeat ?? null;
+  const viewerSeat = options.viewerSeat ?? app.seat;
+  const winnerAllianceId = options.winnerAllianceId ?? currentWinnerAllianceId(winnerSeat, state, room);
+  const viewerAllianceId = resolveViewerAllianceId({
+    state,
+    room,
+    viewerSeat,
+    viewerAllianceId: options.viewerAllianceId,
+  });
+  const players = options.players || room?.players || [];
+  const twoVsTwoResult = isTwoVsTwoResultContext(state, room);
+  const mode = room?.mode || state?.mode || (twoVsTwoResult ? "pvp2v2" : null);
+  const result = app.spectating
+    ? (winnerSeat || winnerAllianceId ? "spectate" : "draw")
+    : resolveViewerMatchResult({
+        mode,
+        winnerSeat,
+        winnerAllianceId,
+        viewerSeat,
+        viewerAllianceId,
+      });
+  const resultRenderKey = buildResultRenderKey({
+    roomId: room?.roomId || "-",
+    winnerAllianceId,
+    winnerSeat,
+    viewerAllianceId,
+    viewerSeat,
+    spectating: app.spectating,
+    playerCount: players.length,
+    result,
+  });
+
   app.lastWinnerSeat = winnerSeat || null;
   ui.overlay.classList.remove("hidden");
-  if (app.gameOverLogged) {
+  if (app.lastResultRenderKey === resultRenderKey) {
     return;
   }
+  app.lastResultRenderKey = resultRenderKey;
   app.gameOverLogged = true;
 
   const card = document.getElementById("resultCard");
@@ -1238,12 +1296,7 @@ function showMatchResultOverlay(winnerSeat) {
   const subEl = document.getElementById("resultSub");
   const metaEl = document.getElementById("resultDiff");
   const versusEl = document.getElementById("resultVersus");
-  const winnerAllianceId = currentWinnerAllianceId(winnerSeat);
-  const viewerAllianceId = app.allianceId;
-  const twoVsTwoResult = isTwoVsTwoResultContext();
-  const localWon = twoVsTwoResult
-    ? Boolean(winnerAllianceId && winnerAllianceId === viewerAllianceId)
-    : localPlayerWonMatch(winnerSeat, winnerAllianceId);
+  const localWon = result === "win";
   const hasWinner = Boolean(winnerSeat || winnerAllianceId);
 
   let cls, eyebrow, title, sub, logLine;
@@ -1266,14 +1319,15 @@ function showMatchResultOverlay(winnerSeat) {
   }
 
   if (card) {
-    card.classList.remove("result-win", "result-lose", "result-draw");
+    card.classList.remove("result-win", "result-lose", "result-draw", "result-card-2v2");
     card.classList.add(cls);
+    card.classList.toggle("result-card-2v2", twoVsTwoResult);
   }
   if (eyebrowEl) eyebrowEl.textContent = eyebrow;
   ui.overlayTitle.textContent = title;
   if (subEl) subEl.textContent = sub;
   if (metaEl) {
-    const roomId = app.room ? app.room.roomId : "-";
+    const roomId = room ? room.roomId : "-";
     const winnerText = resultWinnerText(winnerSeat, winnerAllianceId);
     metaEl.innerHTML =
       `<span class="result-diff-label">${t("房间ID")}</span>` +
@@ -1283,7 +1337,7 @@ function showMatchResultOverlay(winnerSeat) {
   }
 
   if (versusEl) {
-    const players = (app.room && app.room.players) || [];
+    versusEl.classList.toggle("result-versus-2v2", twoVsTwoResult);
     if (twoVsTwoResult) {
       versusEl.innerHTML =
         onlineResultAllianceHTML(players, "A", "blue", "result-side-player") +
@@ -1632,6 +1686,7 @@ function renderLobbyRooms(rooms) {
 function applyRoomState(message) {
   const previousRoomId = app.room ? app.room.roomId : null;
   const previousSpectating = app.spectating;
+  const previousStatus = app.room ? app.room.status : null;
   app.room = message.room || null;
   app.spectating = Boolean(message.self && message.self.spectating);
   app.seat = app.spectating ? null : message.self ? message.self.seat : null;
@@ -1663,6 +1718,13 @@ function applyRoomState(message) {
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
   const showBattleView = isCountdown || canBattle || isFinished;
+  // 离开 waiting 后强制关闭选角覆盖层，避免与战斗页叠层/卡死。
+  if (previousStatus === "waiting" && (isCountdown || canBattle || isFinished)) {
+    if (charSelect && typeof charSelect.hide === "function") {
+      charSelect.hide();
+    }
+    charSelect = null;
+  }
   setBattleControlsEnabled(Boolean(canBattle && !app.spectating && app.canControlFleet));
   updateReadyRoomButton();
   updateTeamCommUi();
@@ -1671,11 +1733,27 @@ function applyRoomState(message) {
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
   if (showBattleView) requestAnimationFrame(() => camera.resizeCanvas());
   updateShipSwitchLabels(app.playerLoadout);
-  const loadoutLocked = Boolean(app.room && (app.room.status === "countdown" || app.room.status === "running"));
-  for (const element of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role, ui.applyLoadoutOnlineBtn]) {
+  const loadoutLocked = Boolean(
+    app.room &&
+      (app.room.status === "countdown" ||
+        app.room.status === "running" ||
+        (isTwoVsTwoRoom() && app.ready)),
+  );
+  for (const element of [
+    ui.onlineMainRole,
+    ui.onlineSub1Role,
+    ui.onlineSub2Role,
+    ui.applyLoadoutOnlineBtn,
+    ui.openFleetSelectBtn,
+  ]) {
     if (element) {
       element.disabled = loadoutLocked;
     }
+  }
+  if (ui.openFleetSelectBtn) {
+    ui.openFleetSelectBtn.title = loadoutLocked && isTwoVsTwoRoom() && app.ready
+      ? t("取消准备后可修改舰队")
+      : "";
   }
 
   if (app.seat === "A") {
@@ -1694,8 +1772,16 @@ function applyRoomState(message) {
     if (app.room && app.room.winnerSeat) {
       app.lastWinnerSeat = app.room.winnerSeat;
     }
-    const latestWinner = app.latestSnapshot && app.latestSnapshot.state ? app.latestSnapshot.state.winnerSeat : null;
-    showMatchResultOverlay(latestWinner || app.lastWinnerSeat || (app.room ? app.room.winnerSeat : null) || null);
+    const latestState = app.latestSnapshot?.state || null;
+    showMatchResultOverlay({
+      state: latestState,
+      room: app.room,
+      winnerSeat: latestState?.winnerSeat || app.lastWinnerSeat || app.room?.winnerSeat || null,
+      winnerAllianceId: latestState?.winnerAllianceId || app.room?.winnerAllianceId || null,
+      viewerSeat: app.seat,
+      viewerAllianceId: app.allianceId || message.self?.allianceId || null,
+      players: app.room?.players || [],
+    });
   } else if (!canBattle && !isCountdown) {
     clearMatchRuntime();
     closeOverlay();
@@ -2078,12 +2164,29 @@ function handleSnapshot(message) {
   if (phase !== app.lastMatchPhase) {
     app.lastMatchPhase = phase;
     if (phase === "finished") {
-      showMatchResultOverlay(winner || app.lastWinnerSeat || null);
+      showMatchResultOverlay({
+        state: snapshot.state,
+        room: app.room,
+        winnerSeat: winner || app.lastWinnerSeat || null,
+        winnerAllianceId: snapshot.state?.winnerAllianceId || app.room?.winnerAllianceId || null,
+        viewerSeat: app.seat,
+        viewerAllianceId: snapshot.state?.viewer?.allianceId || app.allianceId || null,
+        players: app.room?.players || [],
+      });
     } else {
       closeOverlay();
     }
-  } else if (phase === "finished" && ui.overlay.classList.contains("hidden")) {
-    showMatchResultOverlay(winner || app.lastWinnerSeat || null);
+  } else if (phase === "finished") {
+    // 即使 overlay 已显示，也允许用更完整的 viewer/alliance 信息纠正结算结果。
+    showMatchResultOverlay({
+      state: snapshot.state,
+      room: app.room,
+      winnerSeat: winner || app.lastWinnerSeat || null,
+      winnerAllianceId: snapshot.state?.winnerAllianceId || app.room?.winnerAllianceId || null,
+      viewerSeat: app.seat,
+      viewerAllianceId: snapshot.state?.viewer?.allianceId || app.allianceId || null,
+      players: app.room?.players || [],
+    });
   }
 }
 
@@ -3161,12 +3264,24 @@ function syncLoadoutToServer(logOnSuccess = true) {
 
 // 与单机一致的「翻书选角」：选完写回隐藏下拉并同步服务器
 function openOnlineCharSelect() {
+  if (isTwoVsTwoRoom() && app.ready) {
+    log(t("取消准备后可修改舰队"));
+    return;
+  }
+  if (app.room && (app.room.status === "countdown" || app.room.status === "running")) {
+    return;
+  }
   if (charSelect && typeof charSelect.hide === "function") charSelect.hide();
   destroyOnlineFluidBackdrop();
   charSelect = createCharacterSelect((loadout) => {
+    // 若倒计时已开始，丢弃这次选角，避免覆盖服务端锁定状态。
+    if (!app.room || app.room.status !== "waiting") {
+      syncOnlineFluidBackdrop(Boolean(ui.lobbyView && !ui.lobbyView.hidden));
+      return;
+    }
     syncLoadoutControls(loadout); // 写入下拉，复用既有同步机制
     syncLoadoutToServer(true); // 读取下拉 → app.playerLoadout → 本地档案 → 发服务器
-    syncOnlineFluidBackdrop(true);
+    syncOnlineFluidBackdrop(Boolean(ui.lobbyView && !ui.lobbyView.hidden));
   });
   charSelect.show();
 }

@@ -11,7 +11,10 @@ function functionBlock(source, name) {
   const marker = `function ${name}`;
   const start = source.indexOf(marker);
   assert(start >= 0, `Missing function ${name}`);
-  const bodyStart = source.indexOf("{", start);
+  // Skip default-parameter objects such as `input = {}` before the real function body.
+  const headerEnd = source.indexOf(")", start);
+  assert(headerEnd >= 0, `Missing function header close for ${name}`);
+  const bodyStart = source.indexOf("{", headerEnd);
   assert(bodyStart >= 0, `Missing function body for ${name}`);
   let depth = 0;
   for (let index = bodyStart; index < source.length; index += 1) {
@@ -105,16 +108,24 @@ assert(
   "route rendering must not read local overrides by bare ship.key",
 );
 
+assert(onlineSource.includes('from "../shared/match-result.js"'), "client should import shared match result helpers");
+assert(onlineSource.includes("resolveViewerMatchResult"), "client should resolve match outcomes via the shared helper");
+assert(onlineSource.includes("lastResultRenderKey"), "client should use result fingerprints instead of a one-shot gameOver lock");
+assert(onlineSource.includes("result-card-2v2"), "client should mark 2v2 result cards for layout styling");
+assert(onlineSource.includes("result-versus-2v2"), "client should mark 2v2 result versus rows for layout styling");
+assert(onlineSource.includes("openFleetSelectBtn"), "client should gate the open fleet select button");
+assert(onlineSource.includes("取消准备后可修改舰队"), "ready players should be told to cancel ready before editing fleets");
+assert(onlineSource.includes('app.room.status !== "waiting"'), "character select completion must ignore non-waiting rooms");
+
 const resultBody = functionBlock(onlineSource, "showMatchResultOverlay");
-assert(
-  resultBody.includes("winnerAllianceId") && resultBody.includes("app.allianceId"),
-  "2v2 result overlay should compare winnerAllianceId with the local alliance",
-);
+assert(resultBody.includes("resolveViewerMatchResult"), "result overlay should call resolveViewerMatchResult");
+assert(resultBody.includes("buildResultRenderKey") || resultBody.includes("resultRenderKey"), "result overlay should fingerprint renders");
 assert(!resultBody.includes("winnerSeat === app.seat"), "2v2 result overlay must not compare alliance winners to player seats");
 assert(
   !resultBody.includes('seat === "A"') && !resultBody.includes('seat === "B"'),
   "2v2 result roster should not be hard-coded to only legacy A/B seats",
 );
+assert(!resultBody.includes("fleetDefeated"), "result overlay must not use fleetDefeated for final win/lose");
 
 assert(
   renderSource.includes("frame.friendlyTeams") && renderSource.includes("frame.enemyTeams"),

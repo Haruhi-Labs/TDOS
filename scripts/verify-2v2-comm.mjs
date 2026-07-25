@@ -114,15 +114,15 @@ async function main() {
     );
     const roomId = created.room.roomId;
 
+    const expectedSeats = ["A1", "A2", "B1", "B2"];
     for (let i = 1; i < 4; i += 1) {
       send(clients[i], { type: "join_room", roomId });
-    }
-
-    const expectedSeats = ["A1", "A2", "B1", "B2"];
-    for (let i = 0; i < 4; i += 1) {
       await waitForMessage(
         clients[i],
-        (message) => message.type === "room_state" && message.room?.roomId === roomId && message.self?.seat === expectedSeats[i],
+        (message) =>
+          message.type === "room_state" &&
+          message.room?.roomId === roomId &&
+          message.self?.seat === expectedSeats[i],
         `client ${i} seat assignment`,
       );
     }
