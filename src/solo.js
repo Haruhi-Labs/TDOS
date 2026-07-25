@@ -62,6 +62,11 @@ import {
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
 import {
+  bindBattleBgmMuteButton,
+  startBattleBgm,
+  stopBattleBgm,
+} from "./battle-bgm.js";
+import {
   characterShortName,
   shipCharacterName,
   shipDisplayName,
@@ -1336,6 +1341,7 @@ function launchWithLoadout(loadout, color) {
   syncLoadoutControls(loadout);
   resetMatch(true);
   camera.resizeCanvas(); // 战斗画布此刻可见且已布局,按设备像素定 backing,首帧即清晰
+  startBattleBgm();
   if (!running) {
     running = true;
     app.tickRunning = true;
@@ -1363,6 +1369,7 @@ function launchWithLoadout(loadout, color) {
 }
 
 function showCharacterSelectScreen() {
+  stopBattleBgm();
   destroySoloBattleFluidBackdrop();
   charSelect = createCharacterSelect((loadout, color) => {
     mountSoloBattleFluidBackdrop();
@@ -1427,6 +1434,7 @@ export function mount(root) {
   syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
+  bindBattleBgmMuteButton(document.getElementById("battleBgmMuteBtn"));
   showCharacterSelectScreen();
   return unmount;
 }
@@ -1436,6 +1444,7 @@ function unmount() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
   tutorial.stop(); // 静默拆掉教程 overlay(没走完不写已看过标记)
+  stopBattleBgm();
   destroySoloBattleFluidBackdrop();
   if (ac) ac.abort();
   ac = null;

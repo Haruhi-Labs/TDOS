@@ -29,6 +29,11 @@ import {
   splitLabel as localizedSplitLabel,
   t,
 } from "./i18n.js";
+import {
+  bindBattleBgmMuteButton,
+  startBattleBgm,
+  stopBattleBgm,
+} from "./battle-bgm.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, loadoutUi, app;
@@ -1864,6 +1869,8 @@ export function mount(root) {
   syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
+  bindBattleBgmMuteButton(document.getElementById("battleBgmMuteBtn"));
+  startBattleBgm();
   setSpeedScale(1, true);
   resetMatch(true);
   rafId = requestAnimationFrame(tick);
@@ -1874,6 +1881,7 @@ function unmount() {
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
+  stopBattleBgm();
   if (ac) ac.abort();
   ac = null;
   app = null;
@@ -1888,6 +1896,7 @@ function debugTemplate() {
         <section class="controls slim-controls">
           <div class="btn-col">
             <a class="btn-link btn-link-home" href="/">${t("← 主菜单")}</a>
+            <button id="battleBgmMuteBtn" type="button" class="btn-link battle-bgm-mute-btn" aria-pressed="false">${t("静音")}</button>
           </div>
         </section>
 

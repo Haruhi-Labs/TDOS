@@ -41,6 +41,7 @@ export function battleViewTemplate({
 
         <div class="panel-actions">
           <a class="btn-link btn-link-home" href="/">${t("← 主菜单")}</a>
+          <button id="battleBgmMuteBtn" type="button" class="btn-link battle-bgm-mute-btn" aria-pressed="false">${t("静音")}</button>
           ${panelActionsHTML}
         </div>
 

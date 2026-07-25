@@ -55,6 +55,11 @@ import {
   drawNoDataHint,
 } from "./battle/render.js";
 import {
+  bindBattleBgmMuteButton,
+  startBattleBgm,
+  stopBattleBgm,
+} from "./battle-bgm.js";
+import {
   characterShortName,
   formatClockTime,
   shipCharacterName,
@@ -606,6 +611,12 @@ function setRoomHudVisible(visible) {
   if (ui.lobbyView) ui.lobbyView.hidden = !visible;
   if (ui.battleView) ui.battleView.hidden = visible;
   syncOnlineFluidBackdrop(visible);
+  // 战斗视图全时段（countdown/running/finished）播 BGM；回大厅停止
+  if (visible) {
+    stopBattleBgm();
+  } else {
+    startBattleBgm();
+  }
 }
 
 function destroyOnlineFluidBackdrop() {
@@ -4021,6 +4032,7 @@ export function mount(root) {
   startStarfield(root.querySelector(".page-stars"), lobbyStarfieldAc.signal);
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
+  bindBattleBgmMuteButton(document.getElementById("battleBgmMuteBtn"));
   updateTeamCommUi();
   updateConnectionUi();
   syncResponsiveMode();
@@ -4040,6 +4052,7 @@ function unmount() {
     app.throttleSendTimer = null;
   }
   disconnectServer();
+  stopBattleBgm();
   destroyOnlineFluidBackdrop();
   lobbyStarfieldAc?.abort();
   lobbyStarfieldAc = null;
