@@ -237,6 +237,91 @@ assert(
   "movementSpeedMultiplier should scale base speed",
 );
 
+// --- optional mode hooks: handleAction + beforeSimulationStep + presentation ---
+let beforeCalls = 0;
+let presentationMounted = false;
+let presentationDestroyed = false;
+const virtualMode = {
+  id: "virtual-hook-mode",
+  name: "虚拟钩子模式",
+  description: "仅测试通用扩展接口",
+  status: MODE_STATUS.EXPERIMENTAL,
+  version: 1,
+  parameterSchema: [],
+  defaultParameters: {},
+  createInitialModeState() {
+    return { counter: 0, lastAction: null };
+  },
+  beforeSimulationStep({ modeState }) {
+    beforeCalls += 1;
+    return { modeState: { ...modeState, counter: (modeState?.counter || 0) + 1 } };
+  },
+  handleAction({ action, modeState, seat }) {
+    if (!action || action.type !== "virtual_ping") return { handled: false };
+    return {
+      handled: true,
+      accepted: true,
+      modeState: { ...modeState, lastAction: { type: action.type, seat, value: action.value || null } },
+      events: [{ type: "virtual_ping", seat, payload: { value: action.value || null } }],
+    };
+  },
+  updateModeState({ modeState }) {
+    return modeState || { counter: 0, lastAction: null };
+  },
+  resolveOutcome() {
+    return { finished: false, winnerAllianceId: null, winnerSeat: null, reason: null, label: null };
+  },
+  buildDiagnostics({ modeState }) {
+    return { 虚拟计数: modeState?.counter || 0 };
+  },
+  getPresentationState({ modeState }) {
+    return { counter: modeState?.counter || 0, lastAction: modeState?.lastAction || null };
+  },
+  serializeModeState(modeState) {
+    return modeState ? { ...modeState } : { counter: 0, lastAction: null };
+  },
+  presentationFactory() {
+    presentationMounted = true;
+    return {
+      sync() {},
+      update() {},
+      renderWorldBefore() {},
+      renderWorldAfter() {},
+      renderScreen() {},
+      destroy() {
+        presentationDestroyed = true;
+      },
+    };
+  },
+};
+validateModeDefinition(virtualMode);
+const hookRuntime = createPrototypeRuntime({
+  modeDefinition: virtualMode,
+  runtimePreset: { controlA: "ai", controlB: "ai" },
+  teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
+});
+hookRuntime.start();
+const beforeBaseline = beforeCalls;
+hookRuntime.step(TICK_DT);
+hookRuntime.step(TICK_DT);
+assert(beforeCalls === beforeBaseline + 2, `beforeSimulationStep should run per step (${beforeCalls})`);
+assert(hookRuntime.getModeState()?.counter >= 2, "beforeSimulationStep should mutate mode state counter");
+const accepted = hookRuntime.applyAction({ type: "virtual_ping", value: 42 }, "A");
+assert(accepted === true, "handleAction virtual_ping should accept");
+assert(hookRuntime.getModeState()?.lastAction?.value === 42, "handleAction should store payload");
+const events = hookRuntime.consumeModeEvents();
+assert(events.length === 1 && events[0].type === "virtual_ping", "mode events should queue and consume");
+assert(hookRuntime.consumeModeEvents().length === 0, "consumeModeEvents should clear queue");
+const presentation = hookRuntime.getPresentationState();
+assert(presentation && presentation.counter >= 2, "getPresentationState should expose serializable data");
+assert(hookRuntime.getFleetLayout()?.localSeat === "A", "getFleetLayout should expose local seat");
+const presentationApi = virtualMode.presentationFactory({});
+assert(presentationMounted && presentationApi && typeof presentationApi.destroy === "function", "presentationFactory mount");
+presentationApi.destroy();
+assert(presentationDestroyed, "presentation destroy should run");
+hookRuntime.destroy();
+assert(hookRuntime.consumeModeEvents().length === 0, "destroy clears mode events");
+
 // --- static extension checks: platform core must not hardcode mode ids ---
 const coreFiles = [
   "src/prototype/index.js",
@@ -252,6 +337,8 @@ for (const file of coreFiles) {
   assert(!source.includes("switch (mode.id)"), `${file} must not switch on mode.id`);
   assert(!source.includes('=== "standard-elimination"'), `${file} must not compare standard-elimination`);
   assert(!source.includes('=== "validation-survival"'), `${file} must not compare validation-survival`);
+  assert(!source.includes('mode.id === "stellar-territory"'), `${file} must not hardcode stellar-territory`);
+  assert(!source.includes('modeId === "stellar-territory"'), `${file} must not hardcode stellar-territory id`);
 }
 
 const mainSource = await readFile("src/main.js", "utf8");
@@ -262,6 +349,7 @@ const indexSource = await readFile("src/prototype/index.js", "utf8");
 assert(indexSource.includes("export function mount"), "prototype index must export mount");
 assert(indexSource.includes("MatchSimulation") || indexSource.includes("createPrototypeRuntime"), "prototype must use shared runtime/sim");
 assert(indexSource.includes("drawBattleWorld"), "prototype must reuse battle render");
+assert(indexSource.includes("presentationFactory") || indexSource.includes("createPresentationForCurrentMode"), "prototype must support presentation hooks");
 assert(!indexSource.includes("class MatchSimulation"), "prototype must not copy MatchSimulation");
 assert(!indexSource.includes("CHARACTER_DEFS ="), "prototype must not redefine CHARACTER_DEFS");
 

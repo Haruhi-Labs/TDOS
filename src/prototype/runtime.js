@@ -9,6 +9,8 @@ import {
 import { normalizeGameplayRules } from "../../shared/gameplay/rules.js";
 import { normalizeModeParameters, createEmptyOutcome } from "../../shared/modes/mode-definition.js";
 
+const MODE_EVENT_QUEUE_LIMIT = 128;
+
 function countAliveShips(fleet) {
   if (!fleet?.ships) return 0;
   return Object.values(fleet.ships).filter((ship) => ship && ship.alive).length;
@@ -20,6 +22,27 @@ function hullRatio(fleet) {
   const max = ships.reduce((sum, ship) => sum + (Number(ship.maxHp) || 0), 0);
   const hp = ships.reduce((sum, ship) => sum + (ship.alive ? Number(ship.hp) || 0 : 0), 0);
   return max > 0 ? hp / max : 0;
+}
+
+function pushModeEvents(queue, events, meta) {
+  if (!events) return;
+  const list = Array.isArray(events) ? events : [events];
+  for (const raw of list) {
+    if (!raw || typeof raw !== "object") continue;
+    meta.eventSequence += 1;
+    queue.push({
+      id: raw.id != null ? String(raw.id) : `evt-${meta.eventSequence}`,
+      type: String(raw.type || "mode_event"),
+      tick: Number.isFinite(Number(raw.tick)) ? Number(raw.tick) : meta.elapsedTicks,
+      position: raw.position && typeof raw.position === "object" ? { ...raw.position } : null,
+      allianceId: raw.allianceId || null,
+      seat: raw.seat || null,
+      payload: raw.payload && typeof raw.payload === "object" ? { ...raw.payload } : raw.payload ?? null,
+    });
+  }
+  while (queue.length > MODE_EVENT_QUEUE_LIMIT) {
+    queue.shift();
+  }
 }
 
 /**
@@ -67,6 +90,8 @@ export function createPrototypeRuntime({
     aiDifficulty,
     controlA: runtimePreset.controlA || "human",
     controlB: runtimePreset.controlB || "ai",
+    modeEvents: [],
+    eventSequence: 0,
   };
 
   function buildAiSeats() {
@@ -98,10 +123,15 @@ export function createPrototypeRuntime({
     return state.snapshot;
   }
 
+  function clearModeEvents() {
+    state.modeEvents.length = 0;
+    state.eventSequence = 0;
+  }
+
   function evaluateMode(dt = 0) {
     if (!state.simulation || !state.modeDefinition) return;
     const snapshot = refreshSnapshot();
-    state.modeState = state.modeDefinition.updateModeState({
+    const nextState = state.modeDefinition.updateModeState({
       simulation: state.simulation,
       snapshot,
       modeState: state.modeState,
@@ -109,6 +139,13 @@ export function createPrototypeRuntime({
       dt,
       runtime: publicApi,
     });
+    if (nextState && typeof nextState === "object" && Array.isArray(nextState.events)) {
+      pushModeEvents(state.modeEvents, nextState.events, state);
+      const { events: _drop, ...rest } = nextState;
+      state.modeState = rest;
+    } else {
+      state.modeState = nextState;
+    }
     const outcome = state.modeDefinition.resolveOutcome({
       simulation: state.simulation,
       snapshot,
@@ -119,6 +156,26 @@ export function createPrototypeRuntime({
     state.result = outcome;
   }
 
+  function runBeforeSimulationStep(dt) {
+    const hook = state.modeDefinition?.beforeSimulationStep;
+    if (typeof hook !== "function" || !state.simulation) return;
+    const result = hook({
+      simulation: state.simulation,
+      snapshot: state.snapshot || refreshSnapshot(),
+      modeState: state.modeState,
+      parameters: state.modeParameters,
+      dt,
+      runtime: publicApi,
+    });
+    if (!result || typeof result !== "object") return;
+    if (Object.prototype.hasOwnProperty.call(result, "modeState")) {
+      state.modeState = result.modeState;
+    }
+    if (result.events) {
+      pushModeEvents(state.modeEvents, result.events, state);
+    }
+  }
+
   function start() {
     if (state.destroyed) return publicApi;
     state.simulation = createSimulation();
@@ -126,11 +183,13 @@ export function createPrototypeRuntime({
       parameters: state.modeParameters,
       runtimePreset: state.runtimePreset,
       teamLoadouts: state.teamLoadouts,
+      randomSeed: state.randomSeed,
     });
     state.result = createEmptyOutcome();
     state.elapsedTicks = 0;
     state.timeBudget = 0;
     state.paused = false;
+    clearModeEvents();
     refreshSnapshot();
     evaluateMode(0);
     return publicApi;
@@ -163,6 +222,8 @@ export function createPrototypeRuntime({
     if (state.destroyed || !state.simulation) return publicApi;
     if (state.result?.finished) return publicApi;
     const safeDt = Math.max(0, Math.min(0.05, Number(dt) || TICK_DT));
+    // 固定 Tick 顺序：before → sim → snapshot → updateMode → outcome
+    runBeforeSimulationStep(safeDt);
     state.simulation.update(safeDt);
     state.elapsedTicks += 1;
     evaluateMode(safeDt);
@@ -192,6 +253,28 @@ export function createPrototypeRuntime({
 
   function applyAction(action, seat = "A") {
     if (state.destroyed || !state.simulation || state.result?.finished) return false;
+    const hook = state.modeDefinition?.handleAction;
+    if (typeof hook === "function") {
+      const handled = hook({
+        action,
+        seat,
+        simulation: state.simulation,
+        snapshot: state.snapshot || refreshSnapshot(),
+        modeState: state.modeState,
+        parameters: state.modeParameters,
+        runtime: publicApi,
+      });
+      if (handled && handled.handled === true) {
+        if (Object.prototype.hasOwnProperty.call(handled, "modeState")) {
+          state.modeState = handled.modeState;
+        }
+        if (handled.events) {
+          pushModeEvents(state.modeEvents, handled.events, state);
+        }
+        refreshSnapshot();
+        return handled.accepted !== false;
+      }
+    }
     return state.simulation.applyActionForSeat(seat, action);
   }
 
@@ -223,6 +306,7 @@ export function createPrototypeRuntime({
       B存活: countAliveShips(teamB),
       A舰体: `${Math.round(hullRatio(teamA) * 100)}%`,
       B舰体: `${Math.round(hullRatio(teamB) * 100)}%`,
+      模式事件积压: state.modeEvents.length,
       ...modeDiagnostics,
     };
   }
@@ -250,6 +334,7 @@ export function createPrototypeRuntime({
     state.simulation = null;
     state.snapshot = null;
     state.modeState = null;
+    clearModeEvents();
   }
 
   const publicApi = {
@@ -301,6 +386,38 @@ export function createPrototypeRuntime({
     },
     getGameplayRules() {
       return { ...state.gameplayRules };
+    },
+    getModeState() {
+      return state.modeState;
+    },
+    getPresentationState() {
+      const hook = state.modeDefinition?.getPresentationState;
+      if (typeof hook !== "function") return null;
+      return hook({
+        snapshot: state.snapshot || refreshSnapshot(),
+        modeState: state.modeState,
+        parameters: state.modeParameters,
+        runtime: publicApi,
+      });
+    },
+    consumeModeEvents() {
+      if (!state.modeEvents.length) return [];
+      const batch = state.modeEvents.slice();
+      state.modeEvents.length = 0;
+      return batch;
+    },
+    getRandomSeed() {
+      return state.randomSeed;
+    },
+    getFleetLayout() {
+      // 现阶段固定 A/B；后续 3v3 再泛化。保持旧模式兼容。
+      return {
+        alliances: {
+          A: [{ seat: "A", control: state.controlA, loadout: { ...state.teamLoadouts.A } }],
+          B: [{ seat: "B", control: state.controlB, loadout: { ...state.teamLoadouts.B } }],
+        },
+        localSeat: state.controlA === "human" ? "A" : state.controlB === "human" ? "B" : "A",
+      };
     },
     getDiagnostics,
     serialize,

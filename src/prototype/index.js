@@ -100,6 +100,7 @@ function initApp() {
     lastFrameTime: performance.now(),
     destructionEffects: createShipDestructionEffects(),
     resultShown: false,
+    presentation: null,
   };
 }
 
@@ -224,9 +225,40 @@ function rebuildParameterPanels() {
   });
 }
 
+function destroyPresentation() {
+  if (app?.presentation?.destroy) {
+    try {
+      app.presentation.destroy();
+    } catch (_error) {
+      // presentation 销毁失败不阻断平台
+    }
+  }
+  if (app) app.presentation = null;
+}
+
+function createPresentationForCurrentMode() {
+  destroyPresentation();
+  const factory = app?.modeDefinition?.presentationFactory || app?.modeDefinition?.runtimePreset?.presentationFactory;
+  if (typeof factory !== "function" || !canvas || !ui?.root) return null;
+  try {
+    app.presentation = factory({
+      canvas,
+      root: ui.root,
+      quality: "medium",
+      reducedMotion: typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
+      modeDefinition: app.modeDefinition,
+      runtime: app.runtime,
+    }) || null;
+  } catch (_error) {
+    app.presentation = null;
+  }
+  return app.presentation;
+}
+
 function createRuntimeForCurrentMode() {
   const mode = app.modeDefinition;
   if (!mode) return null;
+  destroyPresentation();
   if (app.runtime) {
     app.runtime.destroy();
     app.runtime = null;
@@ -238,6 +270,7 @@ function createRuntimeForCurrentMode() {
     gameplayRules: app.gameplayRules,
     modeParameters: app.modeParameters,
     aiDifficulty: mode.runtimePreset?.aiDifficulty || "normal",
+    randomSeed: mode.runtimePreset?.randomSeed ?? null,
   });
   runtime.start();
   app.runtime = runtime;
@@ -247,6 +280,7 @@ function createRuntimeForCurrentMode() {
   app.pendingSubSkillAim = null;
   app.drag = null;
   resetShipDestructionEffects(app.destructionEffects);
+  createPresentationForCurrentMode();
   const snap = runtime.getSnapshot();
   const main = snap?.fleets?.A?.ships?.main || snap?.teams?.A?.ships?.main;
   if (main && camera) camera.reset({ x: main.x, y: main.y });
@@ -441,9 +475,30 @@ function renderFrame() {
     pendingSubSkillAim: app.pendingSubSkillAim,
     pointer: app.pointer,
   };
+  const presentation = app.presentation;
+  const presentationState = app.runtime?.getPresentationState?.() || null;
+  const modeEvents = app.runtime?.consumeModeEvents?.() || [];
+  if (presentation?.sync) {
+    presentation.sync({
+      snapshot: snap,
+      modeState: app.runtime?.getModeState?.(),
+      presentationState,
+      events: modeEvents,
+      frame,
+    });
+  }
+  if (presentation?.renderWorldBefore) {
+    presentation.renderWorldBefore(ctx, { snapshot: snap, presentationState, frame });
+  }
   drawBattleWorld(ctx, frame);
+  if (presentation?.renderWorldAfter) {
+    presentation.renderWorldAfter(ctx, { snapshot: snap, presentationState, frame });
+  }
   ctx.restore();
   drawMinimap(ctx, frame, camera.minimapRect(), view);
+  if (presentation?.renderScreen) {
+    presentation.renderScreen(ctx, { snapshot: snap, presentationState, frame, view: camera.currentViewState() });
+  }
   if (app.runtime?.isPaused?.()) drawPauseOverlay(ctx);
 }
 
@@ -453,6 +508,13 @@ function tick(timestamp) {
   app.lastFrameTime = timestamp;
   if (app.runtime) {
     app.runtime.update(rawDt, { maxSteps: 8 });
+  }
+  if (app.presentation?.update) {
+    app.presentation.update(rawDt, {
+      snapshot: currentSnapshot(),
+      modeState: app.runtime?.getModeState?.(),
+      presentationState: app.runtime?.getPresentationState?.(),
+    });
   }
   updateHud();
   renderFrame();
@@ -781,6 +843,7 @@ function unmount() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
   stopBattleBgm();
+  destroyPresentation();
   if (app?.runtime) {
     app.runtime.destroy();
     app.runtime = null;

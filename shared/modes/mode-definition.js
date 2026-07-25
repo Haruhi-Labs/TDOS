@@ -69,6 +69,18 @@ export function normalizeModeParameters(schema, input = {}) {
   return out;
 }
 
+// 可选扩展钩子（未实现时平台行为与旧模式完全一致）：
+//   beforeSimulationStep(ctx)  — 权威模拟 step 前
+//   handleAction(ctx)          — 拦截模式动作；{ handled:false } 则交给 MatchSimulation
+//   getPresentationState(ctx)  — 可序列化表现快照（无 DOM/函数）
+// Prototype 预设上还可挂 presentationFactory（非 shared 规则层）。
+const OPTIONAL_HOOKS = [
+  "beforeSimulationStep",
+  "handleAction",
+  "getPresentationState",
+  "serializeModeState",
+];
+
 export function validateModeDefinition(mode) {
   assert(mode && typeof mode === "object", "mode definition must be an object");
   assert(typeof mode.id === "string" && mode.id.trim(), "mode.id is required");
@@ -82,8 +94,10 @@ export function validateModeDefinition(mode) {
   assert(isFunction(mode.updateModeState), `${mode.id}: updateModeState required`);
   assert(isFunction(mode.resolveOutcome), `${mode.id}: resolveOutcome required`);
   assert(isFunction(mode.buildDiagnostics), `${mode.id}: buildDiagnostics required`);
-  if (mode.serializeModeState != null) {
-    assert(isFunction(mode.serializeModeState), `${mode.id}: serializeModeState must be function`);
+  for (const hook of OPTIONAL_HOOKS) {
+    if (mode[hook] != null) {
+      assert(isFunction(mode[hook]), `${mode.id}: ${hook} must be function when provided`);
+    }
   }
   return true;
 }
