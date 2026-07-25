@@ -49,6 +49,8 @@ export function createPrototypeRuntime({
     result: createEmptyOutcome(),
     paused: false,
     speedScale: 1,
+    // 固定步长剩余时间：60fps 单帧 dt 常 < TICK_DT，若不累计则多数帧 0 step，舰船几乎不动。
+    timeBudget: 0,
     elapsedTicks: 0,
     destroyed: false,
     gameplayRules: normalizeGameplayRules(gameplayRules),
@@ -127,6 +129,7 @@ export function createPrototypeRuntime({
     });
     state.result = createEmptyOutcome();
     state.elapsedTicks = 0;
+    state.timeBudget = 0;
     state.paused = false;
     refreshSnapshot();
     evaluateMode(0);
@@ -171,13 +174,17 @@ export function createPrototypeRuntime({
       refreshSnapshot();
       return publicApi;
     }
-    let budget = Math.max(0, Number(frameDeltaSeconds) || 0) * state.speedScale;
+    state.timeBudget += Math.max(0, Number(frameDeltaSeconds) || 0) * state.speedScale;
     let steps = 0;
-    while (budget + 1e-9 >= TICK_DT && steps < maxSteps) {
+    while (state.timeBudget + 1e-9 >= TICK_DT && steps < maxSteps) {
       step(TICK_DT);
-      budget -= TICK_DT;
+      state.timeBudget -= TICK_DT;
       steps += 1;
       if (state.result?.finished) break;
+    }
+    // 追帧上限：避免长时间切后台后一次吐出过大预算拖垮主线程。
+    if (state.timeBudget > TICK_DT * maxSteps) {
+      state.timeBudget = TICK_DT * maxSteps;
     }
     refreshSnapshot();
     return publicApi;

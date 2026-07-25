@@ -351,13 +351,21 @@ function updateHud() {
     button.classList.toggle("active", Number(button.dataset.speed) === (app.runtime?.getSpeedScale?.() || 1));
   }
 
-  // battle/hud API: (ui, own, opts)
+  // battle/hud API 需要与 solo 相同的按钮字段：
+  // syncMobileHud 会镜像 splitOneBtn/splitTwoBtn 的 disabled 到移动端按钮。
+  // 缺字段会在 mobileMode 下抛 TypeError，打断 rAF，整局冻结。
+  if (ui.splitOneBtn) ui.splitOneBtn.disabled = Boolean(own && own.splitLevel >= 1);
+  if (ui.splitTwoBtn) ui.splitTwoBtn.disabled = Boolean(!own || own.splitLevel < 1 || own.splitLevel >= 2);
   const hudUi = {
+    splitOneBtn: ui.splitOneBtn,
+    splitTwoBtn: ui.splitTwoBtn,
     scoutBtn: ui.scoutBtn,
     autoScoutBtn: ui.autoScoutBtn,
     brakeBtn: ui.brakeBtn,
     flagshipBtn: ui.flagshipBtn,
     subSkillBtn: ui.subSkillBtn,
+    mobileSplitOneBtn: ui.mobileSplitOneBtn,
+    mobileSplitTwoBtn: ui.mobileSplitTwoBtn,
     mobileScoutBtn: ui.mobileScoutBtn,
     mobileAutoScoutBtn: ui.mobileAutoScoutBtn,
     mobileBrakeBtn: ui.mobileBrakeBtn,
@@ -422,6 +430,8 @@ function renderFrame() {
     ownTeam: own,
     enemyTeam: enemyTeam(),
     spectating: false,
+    // 实验台玩家默认控 A：编制舰浅蓝↔深蓝脉动，便于验收后再接到 2v2 local seat
+    localControlSeat: own?.seat || "A",
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
     mobileMode: app.mobileMode,

@@ -17,6 +17,80 @@ const LOGICAL = DEFAULT_WORLD_SIZE;
 // 航线终点/控制点把手的可视半径,画布命中检测(routeHandleAtPoint)也用它,保证「看见多大就能点多大」
 export const ROUTE_HANDLE_RADIUS = 11;
 
+// 本机操控舰队船体/名牌：联盟色浅↔深时间循环（2v2 区分「我的船」与队友固态队色）
+const ALLIANCE_PULSE = Object.freeze({
+  A: Object.freeze({ light: "#9ee9ff", dark: "#1f6f9c" }),
+  B: Object.freeze({ light: "#ffb4bc", dark: "#b83a48" }),
+});
+const ALLIANCE_PULSE_PERIOD_SEC = 2;
+
+function parseHexColor(hex) {
+  const raw = String(hex || "").replace("#", "").trim();
+  if (raw.length === 3) {
+    const r = Number.parseInt(raw[0] + raw[0], 16);
+    const g = Number.parseInt(raw[1] + raw[1], 16);
+    const b = Number.parseInt(raw[2] + raw[2], 16);
+    if ([r, g, b].every(Number.isFinite)) return { r, g, b };
+    return null;
+  }
+  if (raw.length >= 6) {
+    const r = Number.parseInt(raw.slice(0, 2), 16);
+    const g = Number.parseInt(raw.slice(2, 4), 16);
+    const b = Number.parseInt(raw.slice(4, 6), 16);
+    if ([r, g, b].every(Number.isFinite)) return { r, g, b };
+  }
+  return null;
+}
+
+function rgbToHex({ r, g, b }) {
+  const to = (n) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0");
+  return `#${to(r)}${to(g)}${to(b)}`;
+}
+
+function lerpHexColor(a, b, t) {
+  const ca = parseHexColor(a);
+  const cb = parseHexColor(b);
+  if (!ca || !cb) return a || b || "#ffffff";
+  const k = clamp(Number(t) || 0, 0, 1);
+  return rgbToHex({
+    r: ca.r + (cb.r - ca.r) * k,
+    g: ca.g + (cb.g - ca.g) * k,
+    b: ca.b + (cb.b - ca.b) * k,
+  });
+}
+
+function allianceIdOfTeam(team) {
+  if (!team) return "A";
+  if (team.allianceId === "A" || team.allianceId === "B") return team.allianceId;
+  const seat = String(team.seat || "").trim().toUpperCase();
+  return seat.startsWith("B") ? "B" : "A";
+}
+
+export function pulseAllianceColor(allianceId, elapsed = 0, periodSec = ALLIANCE_PULSE_PERIOD_SEC) {
+  const pair = ALLIANCE_PULSE[allianceId === "B" ? "B" : "A"];
+  const period = periodSec > 1e-6 ? periodSec : ALLIANCE_PULSE_PERIOD_SEC;
+  const wave = 0.5 + 0.5 * Math.sin(((Number(elapsed) || 0) / period) * TAU);
+  return lerpHexColor(pair.dark, pair.light, wave);
+}
+
+function isLocalControlledFleet(team, frame) {
+  if (!team) return false;
+  const seat = String(team.seat || "").trim();
+  if (!seat) return false;
+  if (Array.isArray(frame?.localControlSeats) && frame.localControlSeats.length > 0) {
+    return frame.localControlSeats.some((item) => String(item || "").trim() === seat);
+  }
+  const local = frame?.localControlSeat;
+  if (local == null || local === "") return false;
+  return String(local).trim() === seat;
+}
+
+function resolveFleetDrawColor(team, frame, fallbackColor, elapsed) {
+  const base = team?.color || fallbackColor;
+  if (!isLocalControlledFleet(team, frame)) return base;
+  return pulseAllianceColor(allianceIdOfTeam(team), elapsed);
+}
+
 // 队伍的全部舰船:三条编制舰 + 技能产生的额外舰(如双子舰),额外舰同样可选中/有航线
 function teamAllShips(team) {
   if (!team || !team.ships) {
@@ -907,6 +981,8 @@ export function drawPauseOverlay(ctx) {
 //   selectedKeyForTeam(team) → 该队高亮舰 key;非观战时敌方应返回 null
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
 //   mobileMode         移动端:不画航线曲度旋钮
+//   localControlSeat   本机操控席位(如 "A" / "A1");仅该席编制舰船体+名牌做联盟色浅深脉动
+//   localControlSeats  多席本机控制(少见);优先于 localControlSeat
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer
 export function drawBattleWorld(ctx, frame) {
   const { state, ownTeam, enemyTeam, spectating = false } = frame;
@@ -998,21 +1074,24 @@ export function drawBattleWorld(ctx, frame) {
   const ownSelectedKey = selectedKeyForTeam(ownTeam);
   for (const team of friendlyTeams) {
     const selectedKey = selectedKeyForTeam(team);
+    const fleetColor = resolveFleetDrawColor(team, frame, ownColor, elapsed);
     for (const ship of teamAllShips(team)) {
       if (!ship || !ship.alive) {
         continue;
       }
-      drawShip(ctx, ship, team?.color || ownColor, ship.key === selectedKey, ship.attached, false, spectating);
+      drawShip(ctx, ship, fleetColor, ship.key === selectedKey, ship.attached, false, spectating);
     }
   }
 
   for (const team of enemyTeams) {
     const selectedKey = selectedKeyForTeam(team);
+    // 敌方保持固态队色：脉动只标记「本机操控」,避免敌我双方同时闪烁
+    const fleetColor = team?.color || enemyColor;
     for (const ship of teamAllShips(team)) {
       if (!ship || !ship.alive || !enemyVisible(ship.id)) {
         continue;
       }
-      drawShip(ctx, ship, team?.color || enemyColor, ship.key === selectedKey, ship.attached, true, spectating);
+      drawShip(ctx, ship, fleetColor, ship.key === selectedKey, ship.attached, true, spectating);
     }
   }
 

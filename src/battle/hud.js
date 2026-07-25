@@ -172,13 +172,14 @@ export function syncMobileHud(ui, own, opts = {}) {
     button.classList.toggle("active", button.dataset.ship === selectedShipKey);
   }
 
-  ui.mobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
-  ui.mobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
-  ui.mobileScoutBtn.disabled = ui.scoutBtn.disabled;
-  ui.mobileAutoScoutBtn.disabled = ui.autoScoutBtn.disabled;
-  ui.mobileBrakeBtn.disabled = ui.brakeBtn.disabled;
-  ui.mobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
-  ui.mobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
+  // 桌面按钮可能尚未装配（例如实验台只传了部分 ui）；缺字段时跳过镜像，避免抛错打断 rAF。
+  if (ui.mobileSplitOneBtn && ui.splitOneBtn) ui.mobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
+  if (ui.mobileSplitTwoBtn && ui.splitTwoBtn) ui.mobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
+  if (ui.mobileScoutBtn && ui.scoutBtn) ui.mobileScoutBtn.disabled = ui.scoutBtn.disabled;
+  if (ui.mobileAutoScoutBtn && ui.autoScoutBtn) ui.mobileAutoScoutBtn.disabled = ui.autoScoutBtn.disabled;
+  if (ui.mobileBrakeBtn && ui.brakeBtn) ui.mobileBrakeBtn.disabled = ui.brakeBtn.disabled;
+  if (ui.mobileFlagshipBtn && ui.flagshipBtn) ui.mobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
+  if (ui.mobileSubSkillBtn && ui.subSkillBtn) ui.mobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
 
   const autoScoutEnabled = Boolean(own.autoScout?.enabled);
   ui.mobileAutoScoutBtn.textContent = autoScoutEnabled ? t("自侦开") : t("自侦关");

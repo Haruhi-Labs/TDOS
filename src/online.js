@@ -3214,6 +3214,8 @@ function renderFrame() {
     friendlyTeams,
     enemyTeams,
     spectating,
+    // 仅本机仍可操控的 seat 脉动；全灭观战队友/纯观战时不脉动，避免把队友当成「我的船」
+    localControlSeat: spectating || !app.canControlFleet ? null : (app.seat || null),
     visibleEnemyIds: visibleEnemyIdSetForTeams(friendlyTeams),
     // 观战:按快照内各座位的选中舰高亮;对战:己方取本地选中,敌方不高亮
     selectedKeyForTeam: (team) =>

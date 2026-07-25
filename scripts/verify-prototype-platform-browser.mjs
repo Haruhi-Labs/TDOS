@@ -58,7 +58,16 @@ async function main() {
   try {
     await waitForHttp(`http://127.0.0.1:${VITE_PORT}/prototype`);
     browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+    // 窄屏会触发 prefersMobileBattleMode；曾因 hudUi 缺 split 按钮字段而抛错冻结整局。
+    const page = await browser.newPage({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const pageErrors = [];
+    page.on("pageerror", (error) => {
+      pageErrors.push(String(error?.message || error));
+    });
     await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
 
     await page.waitForSelector("#gameCanvas", { timeout: 10000 });
@@ -70,11 +79,16 @@ async function main() {
     const modeCount = await page.locator("#protoModeSelect option").count();
     assert(modeCount >= 2, `expected >=2 modes, got ${modeCount}`);
 
-    // ensure runtime advances
+    // ensure runtime advances (mobile HUD path must not crash the rAF loop)
+    await eventually(async () => {
+      const text = await page.locator("#protoDiagnostics").innerText();
+      return text.includes("模拟时间");
+    }, 5000);
     const elapsed1 = await page.locator(".proto-diag-row", { hasText: "模拟时间" }).locator(".proto-diag-val").textContent();
     await wait(800);
     const elapsed2 = await page.locator(".proto-diag-row", { hasText: "模拟时间" }).locator(".proto-diag-val").textContent();
-    assert(Number(elapsed2) >= Number(elapsed1), "elapsed should not go backwards while running");
+    assert(Number(elapsed2) > Number(elapsed1), `elapsed should advance while running, got ${elapsed1} -> ${elapsed2}`);
+    assert(pageErrors.length === 0, `page errors on mobile prototype: ${pageErrors.join(" | ")}`);
 
     await page.click("#protoPauseBtn");
     const pausedLabel = await page.locator("#protoPauseBtn").textContent();

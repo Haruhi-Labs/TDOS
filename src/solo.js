@@ -802,6 +802,7 @@ function render() {
     ownTeam: own,
     enemyTeam: enemyTeamState(),
     spectating: false,
+    localControlSeat: own?.seat || "A",
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
     mobileMode: app.mobileMode,

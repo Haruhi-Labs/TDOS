@@ -107,6 +107,20 @@ runtime.resume();
 runtime.setSpeedScale(2);
 runtime.update(TICK_DT); // one frame budget *2 => at least one tick
 assert(runtime.getSnapshot().elapsed > t1, "resume+speed should advance");
+
+// 亚 tick 帧必须累计，否则 60fps 下多数帧 0 step
+runtime.restart();
+runtime.setSpeedScale(1);
+const subTick = TICK_DT * 0.4;
+runtime.update(subTick);
+runtime.update(subTick);
+assert(approxEqual(runtime.getSnapshot().elapsed, 0, 1e-6), "two 0.4-tick frames should not yet reach one step");
+runtime.update(subTick);
+assert(
+  approxEqual(runtime.getSnapshot().elapsed, TICK_DT, 1e-4),
+  `third 0.4-tick frame should flush one step, got ${runtime.getSnapshot().elapsed}`,
+);
+
 runtime.restart();
 assert(approxEqual(runtime.getSnapshot().elapsed, 0, 1e-4), "restart should zero elapsed");
 runtime.destroy();
