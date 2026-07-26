@@ -17,12 +17,14 @@ import {
 } from "../shared/modes/mode-definition.js";
 import { standardEliminationMode } from "../shared/modes/standard-elimination.js";
 import { validationSurvivalMode } from "../shared/modes/validation-survival.js";
+import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
 import {
   registerPrototypeMode,
   getPrototypeMode,
   listPrototypeModes,
   resetPrototypeRegistry,
 } from "../src/prototype/registry.js";
+import { registerBuiltInPrototypeModes, resetBuiltInPrototypeRegistrationFlag } from "../src/prototype/modes/index.js";
 import { createPrototypeRuntime } from "../src/prototype/runtime.js";
 
 function assert(condition, message) {
@@ -357,5 +359,63 @@ validateModeDefinition(standardEliminationMode);
 validateModeDefinition(validationSurvivalMode);
 assert(standardEliminationMode.status === MODE_STATUS.EXPERIMENTAL, "elimination status");
 assert(validationSurvivalMode.status === MODE_STATUS.EXPERIMENTAL, "survival status");
+
+// --- stellar territory skeleton ---
+validateModeDefinition(stellarTerritoryMode);
+assert(stellarTerritoryMode.id === "stellar-territory", "stellar territory mode id");
+assert(stellarTerritoryMode.status === MODE_STATUS.EXPERIMENTAL, "stellar territory status");
+const stellarParams = normalizeModeParameters(stellarTerritoryMode.parameterSchema, {});
+assert(stellarParams.initialTickets === 120, "stellar default initial tickets");
+assert(stellarParams.controlPointCount === 3, "stellar default control point count");
+assert(stellarParams.captureSeconds === 6, "stellar default capture seconds");
+assert(stellarParams.resourceSpawnInterval === 26, "stellar default resource interval");
+assert(stellarParams.skillSpawnInterval === 55, "stellar default skill interval");
+assert(stellarParams.respawnEnabled === true, "stellar default respawn enabled");
+assert(stellarParams.mapTemplate === "three-lane-v1", "stellar default map template");
+
+const stellarState = stellarTerritoryMode.createInitialModeState({
+  parameters: stellarParams,
+  randomSeed: 424242,
+});
+assert(stellarState.version === 1, "stellar state version");
+assert(stellarState.seed === 424242, "stellar state seed");
+assert(stellarState.phase === "opening", "stellar initial phase");
+assert(stellarState.alliances.A.tickets === 120, "stellar A initial tickets");
+assert(stellarState.alliances.B.tickets === 120, "stellar B initial tickets");
+assert(stellarState.map.templateId === "three-lane-v1", "stellar map template recorded");
+assert(Array.isArray(stellarState.map.controlPoints), "stellar control points array");
+assert(Array.isArray(stellarState.pickups), "stellar pickups array");
+assert(Array.isArray(stellarState.activeSkillEffects), "stellar active skill effects array");
+assert(Array.isArray(stellarState.respawnQueue), "stellar respawn queue array");
+
+const serializedStellar = stellarTerritoryMode.serializeModeState(stellarState);
+assert(serializedStellar !== stellarState, "stellar serialize returns copy");
+assert(JSON.stringify(serializedStellar) === JSON.stringify(stellarState), "stellar serialize preserves state");
+const stellarDiagnostics = stellarTerritoryMode.buildDiagnostics({
+  modeState: stellarState,
+  parameters: stellarParams,
+});
+assert(stellarDiagnostics["随机种子"] === 424242, "stellar diagnostics include seed");
+assert(stellarDiagnostics["地图模板"] === "three-lane-v1", "stellar diagnostics include map template");
+assert(stellarDiagnostics["A战争点数"] === 120, "stellar diagnostics include A tickets");
+assert(stellarDiagnostics["B战争点数"] === 120, "stellar diagnostics include B tickets");
+
+resetPrototypeRegistry();
+resetBuiltInPrototypeRegistrationFlag();
+registerBuiltInPrototypeModes();
+assert(getPrototypeMode("stellar-territory")?.id === "stellar-territory", "built-ins register stellar territory");
+const stellarRuntime = createPrototypeRuntime({
+  modeDefinition: getPrototypeMode("stellar-territory"),
+  runtimePreset: { controlA: "ai", controlB: "ai" },
+  teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
+  randomSeed: 13579,
+});
+stellarRuntime.start();
+stellarRuntime.pause();
+stellarRuntime.step(TICK_DT);
+assert(stellarRuntime.getModeState()?.elapsed >= TICK_DT, "stellar mode steps while paused via explicit single step");
+assert(stellarRuntime.serialize().modeState.seed === 13579, "stellar runtime serializes mode state");
+assert(stellarRuntime.getDiagnostics()["模式ID"] === "stellar-territory", "stellar runtime diagnostics mode id");
+stellarRuntime.destroy();
 
 console.log("prototype platform verification passed");

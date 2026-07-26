@@ -90,6 +90,14 @@ const COLLISION_SLOW_FLOOR = 0.5; // 撞击瞬间速度上限压到正常速度�
 const COLLISION_RELEASE_MARGIN = 30; // 迟滞:两船分开超过相切+该余量才算"脱离",之内不重复触发减速——
 // 避免编队/集火时一堆船反复擦碰被永久压速(那会拖垮 AI 走位)。一次擦碰只减速一回,3 秒内恢复。
 
+const DEFAULT_ENVIRONMENT_MODIFIER = Object.freeze({
+  speedMultiplier: 1,
+  turnMultiplier: 1,
+  accelerationMultiplier: 1,
+  damageMultiplier: 1,
+  moveEnergyDrainMultiplier: 1,
+});
+
 export const CHARACTER_ORDER = ["haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura"];
 
 export const CHARACTER_DEFS = {
@@ -566,9 +574,35 @@ function normalizeAiSeats(mode = "pvp", aiSeats) {
     new Set(
       source
         .map((seat) => String(seat || "").trim().toUpperCase())
-        .filter((seat) => seat === "A" || seat === "B"),
+        .filter((seat) => /^A\d*$/.test(seat) || /^B\d*$/.test(seat)),
     ),
   );
+}
+
+function normalizeFleetLayout(layout = null) {
+  if (!layout?.alliances || typeof layout.alliances !== "object") return null;
+  const alliances = { A: [], B: [] };
+  const seen = new Set();
+  for (const allianceId of ["A", "B"]) {
+    const entries = Array.isArray(layout.alliances[allianceId]) ? layout.alliances[allianceId] : [];
+    for (const entry of entries) {
+      const rawSeat = entry?.seat;
+      const seat = String(rawSeat || "").trim().toUpperCase();
+      if (!seat || seen.has(seat) || allianceIdForSeat(seat) !== allianceId) continue;
+      seen.add(seat);
+      alliances[allianceId].push({
+        seat,
+        control: entry.control === "human" ? "human" : "ai",
+        loadout: normalizeLoadout(entry.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT),
+      });
+    }
+  }
+  if (!alliances.A.length || !alliances.B.length) return null;
+  const localSeat = String(layout.localSeat || alliances.A[0].seat).trim().toUpperCase();
+  return {
+    alliances,
+    localSeat: seen.has(localSeat) ? localSeat : alliances.A[0].seat,
+  };
 }
 
 export function skillMetaForCharacter(characterId, mode = "flagship") {
@@ -1014,16 +1048,28 @@ class Ship {
     return this.team?.match?.gameplayRules || DEFAULT_GAMEPLAY_RULES;
   }
 
+  environmentModifier() {
+    return this.team?.match?.environmentModifierForShip?.(this.team.seat, this.key) || DEFAULT_ENVIRONMENT_MODIFIER;
+  }
+
   baseSpeed() {
-    return this.statWithBuffs("speed", this.base.speed) * this.gameplayRules().movementSpeedMultiplier;
+    return (
+      this.statWithBuffs("speed", this.base.speed) *
+      this.gameplayRules().movementSpeedMultiplier *
+      this.environmentModifier().speedMultiplier
+    );
   }
 
   baseTurnRate() {
-    return this.statWithBuffs("turnRate", this.base.turnRate) * this.gameplayRules().turnRateMultiplier;
+    return (
+      this.statWithBuffs("turnRate", this.base.turnRate) *
+      this.gameplayRules().turnRateMultiplier *
+      this.environmentModifier().turnMultiplier
+    );
   }
 
   baseAcceleration() {
-    return this.statWithBuffs("accel", this.base.accel);
+    return this.statWithBuffs("accel", this.base.accel) * this.environmentModifier().accelerationMultiplier;
   }
 
   baseEnergyRegen() {
@@ -1031,7 +1077,7 @@ class Ship {
   }
 
   moveEnergyDrain() {
-    return this.base.moveDrain;
+    return this.base.moveDrain * this.environmentModifier().moveEnergyDrainMultiplier;
   }
 
   effectiveSpeed() {
@@ -1083,7 +1129,8 @@ class Ship {
     return (
       this.statWithBuffs("damage", this.base.damage) *
       (this.team.statMult || 1) *
-      this.gameplayRules().damageMultiplier
+      this.gameplayRules().damageMultiplier *
+      this.environmentModifier().damageMultiplier
     );
   }
 
@@ -1114,6 +1161,7 @@ class Ship {
     this.effects.bladeQueenUntil = 0;
     this.effects.sosBuff = null;
     this.effects.nextShotDamageMultiplier = 1;
+    this.territoryShield = 0;
   }
 
   routeAnchorShip() {
@@ -1518,7 +1566,16 @@ class Ship {
       }
     }
     const finalAmount = amount * this.damageTakenMultiplier();
-    this.hp = Math.max(0, this.hp - finalAmount);
+    let hullDamage = finalAmount;
+    if (this.territoryShield > 0) {
+      const absorbed = Math.min(this.territoryShield, finalAmount);
+      this.territoryShield = Math.max(0, this.territoryShield - absorbed);
+      hullDamage = Math.max(0, finalAmount - absorbed);
+    }
+    if (hullDamage <= 0) {
+      return;
+    }
+    this.hp = Math.max(0, this.hp - hullDamage);
     if (this.hp > 0) {
       return;
     }
@@ -5999,6 +6056,7 @@ export class MatchSimulation {
     const aiAutoBeam = Boolean(options.aiAutoBeam);
     const aiSeats = normalizeAiSeats(mode, options.aiSeats);
     const isTwoVsTwo = mode === "pvp2v2";
+    const fleetLayout = normalizeFleetLayout(options.fleetLayout);
     const teamNames = {
       A: options.teamNames?.A || (aiSeats.includes("A") ? "观察方AI舰队A" : "玩家A舰队"),
       B: options.teamNames?.B || (aiSeats.includes("B") ? "统合思念体AI舰队" : "玩家B舰队"),
@@ -6031,19 +6089,58 @@ export class MatchSimulation {
     this.phase = "running";
     this.winnerSeat = null;
     this.winnerAllianceId = null;
+    this.victoryPolicy = options.victoryPolicy === "external" ? "external" : "internal";
+    this.environmentModifiers = new Map();
 
     const centerY = worldSize * 0.5;
     const leftX = worldSize * 0.35;
     const rightX = worldSize * 0.65;
 
-    this.fleetSeats = isTwoVsTwo ? [...PVP2V2_FLEET_SEATS] : ["A", "B"];
+    this.fleetLayout = fleetLayout;
+    this.fleetSeats = fleetLayout
+      ? [...fleetLayout.alliances.A, ...fleetLayout.alliances.B].map((entry) => entry.seat)
+      : isTwoVsTwo
+        ? [...PVP2V2_FLEET_SEATS]
+        : ["A", "B"];
     this.fleets = {};
     this.alliances = {
       A: { id: "A", fleetSeats: [] },
       B: { id: "B", fleetSeats: [] },
     };
 
-    if (isTwoVsTwo) {
+    if (fleetLayout) {
+      const spawnFor = (allianceId, index, count) => {
+        const lane = count <= 1 ? 0.5 : 0.36 + (0.28 * index) / Math.max(1, count - 1);
+        return {
+          x: allianceId === "A" ? leftX : rightX,
+          y: worldSize * lane,
+          facing: allianceId === "A" ? 0 : Math.PI,
+        };
+      };
+      for (const allianceId of ["A", "B"]) {
+        const entries = fleetLayout.alliances[allianceId];
+        for (let i = 0; i < entries.length; i += 1) {
+          const entry = entries[i];
+          const spawn = spawnFor(allianceId, i, entries.length);
+          const fallbackLoadout = allianceId === "B" && aiSeats.includes(entry.seat) ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT;
+          this.fleets[entry.seat] = new Team(
+            this,
+            entry.seat,
+            teamNames[entry.seat] || `${allianceId}${i + 1}`,
+            spawn.x,
+            spawn.y,
+            spawn.facing,
+            {
+              allianceId,
+              loadout: entry.loadout || teamLoadouts[entry.seat] || fallbackLoadout,
+            },
+          );
+          this.alliances[allianceId].fleetSeats.push(entry.seat);
+        }
+      }
+      this.teamA = this.fleets[fleetLayout.alliances.A[0].seat];
+      this.teamB = this.fleets[fleetLayout.alliances.B[0].seat];
+    } else if (isTwoVsTwo) {
       const spawns = {
         A1: { x: leftX, y: worldSize * 0.42, facing: 0 },
         A2: { x: leftX, y: worldSize * 0.58, facing: 0 },
@@ -6123,6 +6220,89 @@ export class MatchSimulation {
     return null;
   }
 
+  environmentModifierKey(seat, shipKey) {
+    return `${String(seat || "").trim().toUpperCase()}:${String(shipKey || "").trim()}`;
+  }
+
+  normalizeEnvironmentModifier(modifier = {}) {
+    const speedMultiplier = Number(modifier.speedMultiplier);
+    const turnMultiplier = Number(modifier.turnMultiplier);
+    const accelerationMultiplier = Number(modifier.accelerationMultiplier);
+    const damageMultiplier = Number(modifier.damageMultiplier);
+    const moveEnergyDrainMultiplier = Number(modifier.moveEnergyDrainMultiplier);
+    return {
+      speedMultiplier: Number.isFinite(speedMultiplier) && speedMultiplier > 0 ? speedMultiplier : 1,
+      turnMultiplier: Number.isFinite(turnMultiplier) && turnMultiplier > 0 ? turnMultiplier : 1,
+      accelerationMultiplier: Number.isFinite(accelerationMultiplier) && accelerationMultiplier > 0 ? accelerationMultiplier : 1,
+      damageMultiplier: Number.isFinite(damageMultiplier) && damageMultiplier > 0 ? damageMultiplier : 1,
+      moveEnergyDrainMultiplier: Number.isFinite(moveEnergyDrainMultiplier) && moveEnergyDrainMultiplier > 0 ? moveEnergyDrainMultiplier : 1,
+    };
+  }
+
+  composeEnvironmentModifiers(modifiers = []) {
+    return modifiers.reduce(
+      (result, modifier) => {
+        const normalized = this.normalizeEnvironmentModifier(modifier);
+        return {
+          speedMultiplier: result.speedMultiplier * normalized.speedMultiplier,
+          turnMultiplier: result.turnMultiplier * normalized.turnMultiplier,
+          accelerationMultiplier: result.accelerationMultiplier * normalized.accelerationMultiplier,
+          damageMultiplier: result.damageMultiplier * normalized.damageMultiplier,
+          moveEnergyDrainMultiplier: result.moveEnergyDrainMultiplier * normalized.moveEnergyDrainMultiplier,
+        };
+      },
+      {
+        speedMultiplier: 1,
+        turnMultiplier: 1,
+        accelerationMultiplier: 1,
+        damageMultiplier: 1,
+        moveEnergyDrainMultiplier: 1,
+      },
+    );
+  }
+
+  setEnvironmentModifier(seat, shipKey, modifier = {}, source = "default") {
+    const fleet = this.fleetBySeat(seat);
+    const ship = fleet?.shipByKey?.(shipKey);
+    if (!fleet || !ship) return false;
+    const key = this.environmentModifierKey(fleet.seat, ship.key);
+    const sourceKey = String(source || "default");
+    let entry = this.environmentModifiers.get(key);
+    if (!(entry instanceof Map)) {
+      const previous = entry;
+      entry = new Map();
+      if (previous) entry.set("default", previous);
+    }
+    entry.set(sourceKey, this.normalizeEnvironmentModifier(modifier));
+    this.environmentModifiers.set(key, entry);
+    return true;
+  }
+
+  environmentModifierForShip(seat, shipKey) {
+    const entry = this.environmentModifiers.get(this.environmentModifierKey(seat, shipKey));
+    if (!entry) return DEFAULT_ENVIRONMENT_MODIFIER;
+    if (entry instanceof Map) {
+      return this.composeEnvironmentModifiers([...entry.values()]);
+    }
+    return this.normalizeEnvironmentModifier(entry);
+  }
+
+  clearEnvironmentModifiers(source = null) {
+    if (source != null) {
+      const sourceKey = String(source || "default");
+      for (const [key, entry] of this.environmentModifiers.entries()) {
+        if (entry instanceof Map) {
+          entry.delete(sourceKey);
+          if (entry.size === 0) this.environmentModifiers.delete(key);
+        } else if (sourceKey === "default") {
+          this.environmentModifiers.delete(key);
+        }
+      }
+      return;
+    }
+    this.environmentModifiers.clear();
+  }
+
   fleetsForAlliance(allianceId) {
     const safeAllianceId = allianceId === "B" ? "B" : "A";
     return (this.alliances[safeAllianceId]?.fleetSeats || [])
@@ -6175,6 +6355,32 @@ export class MatchSimulation {
 
   botBySeat(seat) {
     return this.bots[seat] || null;
+  }
+
+  respawnShipForSeat(seat, shipKey, options = {}) {
+    const fleet = this.fleetBySeat(seat);
+    const ship = fleet?.shipByKey?.(shipKey);
+    if (!fleet || !ship || ship.alive) return false;
+    const padding = Math.max(this.mapPadding, ship.radius + 6);
+    const x = Number(options.x);
+    const y = Number(options.y);
+    ship.x = this.clampX(Number.isFinite(x) ? x : ship.x, padding);
+    ship.y = this.clampY(Number.isFinite(y) ? y : ship.y, padding);
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    ship.hp = Math.max(1, ship.maxHp * clamp(Number(options.hpRatio ?? 1), 0.01, 1));
+    ship.energy = ship.maxEnergy * clamp(Number(options.energyRatio ?? 0.5), 0, 1);
+    ship.speed = 0;
+    ship.route = null;
+    ship.cooldown = 0;
+    ship.alive = true;
+    ship.clearActiveSkillBuffs?.();
+    ship.effects.brakeUntil = 0;
+    ship.effects.brakeCooldownUntil = 0;
+    ship.spawnProtectionUntil = this.elapsed + Math.max(0, Number(options.protectionSeconds) || 0);
+    fleet.resolvePostCasualtyState(this);
+    this.spawnBurst(ship.x, ship.y, "#8cf7ff", 13);
+    return true;
   }
 
   applyActionForSeat(seat, action) {
@@ -6430,6 +6636,9 @@ export class MatchSimulation {
 
   checkVictory() {
     if (this.phase !== "running") {
+      return;
+    }
+    if (this.victoryPolicy === "external") {
       return;
     }
     if (this.isTwoVsTwo) {

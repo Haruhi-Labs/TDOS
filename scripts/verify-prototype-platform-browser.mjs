@@ -127,6 +127,53 @@ async function main() {
     const restarted = await page.locator(".proto-diag-row", { hasText: "模拟时间" }).locator(".proto-diag-val").textContent();
     assert(Number(restarted) < 2, `restart should near-zero elapsed, got ${restarted}`);
 
+    await page.selectOption("#protoModeSelect", "stellar-territory");
+    await page.click("#protoApplyModeBtn");
+    await page.waitForSelector("#protoModeTools", { timeout: 8000 });
+    await page.waitForSelector("#protoModeHud", { timeout: 8000 });
+    await eventually(async () => {
+      const tools = await page.locator("#protoModeTools").innerText();
+      const hud = await page.locator("#protoModeHud").innerText();
+      return tools.includes("当前种子") && tools.includes("显示调试边界") && hud.includes("A战争点数") && hud.includes("控制区");
+    }, 8000);
+    const stellarDiag = await page.locator("#protoDiagnostics").textContent();
+    assert(stellarDiag.includes("地图模板") && stellarDiag.includes("three-lane-v1"), `stellar diagnostics missing map: ${stellarDiag}`);
+    const mapPixels = await page.locator("#gameCanvas").evaluate((canvas) => {
+      const ctx = canvas.getContext("2d");
+      const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let bright = 0;
+      for (let i = 0; i < sample.length; i += 4) {
+        const r = sample[i];
+        const g = sample[i + 1];
+        const b = sample[i + 2];
+        if (r > 120 && g > 110 && b > 70) bright += 1;
+      }
+      return bright;
+    });
+    assert(mapPixels > 200, `stellar map presentation should draw visible non-background pixels, got ${mapPixels}`);
+    await page.getByRole("button", { name: "生成维修包" }).click();
+    await page.getByRole("button", { name: "生成技能包" }).click();
+    await eventually(async () => {
+      const hud = await page.locator("#protoModeHud").innerText();
+      return hud.includes("资源实体") && hud.includes("1") && hud.includes("技能包");
+    }, 5000);
+    const entityPixels = await page.locator("#gameCanvas").evaluate((canvas) => {
+      const ctx = canvas.getContext("2d");
+      const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      let resourceLike = 0;
+      let skillLike = 0;
+      for (let i = 0; i < sample.length; i += 4) {
+        const r = sample[i];
+        const g = sample[i + 1];
+        const b = sample[i + 2];
+        if (g > 150 && r < 150 && b < 180) resourceLike += 1;
+        if (r > 150 && b > 180 && g < 170) skillLike += 1;
+      }
+      return { resourceLike, skillLike };
+    });
+    assert(entityPixels.resourceLike > 40, `resource entity should draw green pixels: ${JSON.stringify(entityPixels)}`);
+    assert(entityPixels.skillLike > 40, `skill entity should draw violet pixels: ${JSON.stringify(entityPixels)}`);
+
     await page.close();
   } finally {
     if (browser) await browser.close();

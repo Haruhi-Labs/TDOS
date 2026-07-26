@@ -24,6 +24,32 @@ function hullRatio(fleet) {
   return max > 0 ? hp / max : 0;
 }
 
+function normalizeRuntimeFleetLayout(layout = null, fallbackLoadouts = {}) {
+  if (!layout?.alliances || typeof layout.alliances !== "object") return null;
+  const alliances = { A: [], B: [] };
+  const seen = new Set();
+  for (const allianceId of ["A", "B"]) {
+    const entries = Array.isArray(layout.alliances[allianceId]) ? layout.alliances[allianceId] : [];
+    for (const entry of entries) {
+      const seat = String(entry?.seat || "").trim().toUpperCase();
+      if (!seat || seen.has(seat) || !seat.startsWith(allianceId)) continue;
+      seen.add(seat);
+      const fallback = fallbackLoadouts[seat] || fallbackLoadouts[allianceId] || (allianceId === "A" ? DEFAULT_TEAM_LOADOUT : DEFAULT_AI_LOADOUT);
+      alliances[allianceId].push({
+        seat,
+        control: entry.control === "human" ? "human" : "ai",
+        loadout: normalizeLoadout(entry.loadout || fallback, fallback),
+      });
+    }
+  }
+  if (!alliances.A.length || !alliances.B.length) return null;
+  const localSeat = String(layout.localSeat || alliances.A[0].seat).trim().toUpperCase();
+  return {
+    alliances,
+    localSeat: seen.has(localSeat) ? localSeat : alliances.A[0].seat,
+  };
+}
+
 function pushModeEvents(queue, events, meta) {
   if (!events) return;
   const list = Array.isArray(events) ? events : [events];
@@ -90,11 +116,18 @@ export function createPrototypeRuntime({
     aiDifficulty,
     controlA: runtimePreset.controlA || "human",
     controlB: runtimePreset.controlB || "ai",
+    fleetLayout: normalizeRuntimeFleetLayout(runtimePreset.fleetLayout, teamLoadouts),
+    modeAiNextActionAt: {},
     modeEvents: [],
     eventSequence: 0,
   };
 
   function buildAiSeats() {
+    if (state.fleetLayout) {
+      return [...state.fleetLayout.alliances.A, ...state.fleetLayout.alliances.B]
+        .filter((entry) => entry.control === "ai")
+        .map((entry) => entry.seat);
+    }
     const seats = [];
     if (state.controlA === "ai") seats.push("A");
     if (state.controlB === "ai") seats.push("B");
@@ -115,6 +148,8 @@ export function createPrototypeRuntime({
       aiSeats,
       aiDifficulty: state.aiDifficulty,
       gameplayRules: state.gameplayRules,
+      victoryPolicy: state.runtimePreset.victoryPolicy,
+      fleetLayout: state.fleetLayout,
     });
   }
 
@@ -176,6 +211,27 @@ export function createPrototypeRuntime({
     }
   }
 
+  function runModeAiActions() {
+    const hook = state.modeDefinition?.buildAiAction;
+    if (typeof hook !== "function" || !state.simulation) return;
+    for (const seat of buildAiSeats()) {
+      const now = Number(state.snapshot?.elapsed || state.simulation.elapsed || 0);
+      const nextAt = Number(state.modeAiNextActionAt[seat] || 0);
+      if (now + 1e-9 < nextAt) continue;
+      state.modeAiNextActionAt[seat] = now + 0.75;
+      const action = hook({
+        seat,
+        simulation: state.simulation,
+        snapshot: state.snapshot || refreshSnapshot(),
+        modeState: state.modeState,
+        parameters: state.modeParameters,
+        runtime: publicApi,
+      });
+      if (!action || typeof action !== "object") continue;
+      applyAction(action, seat);
+    }
+  }
+
   function start() {
     if (state.destroyed) return publicApi;
     state.simulation = createSimulation();
@@ -184,12 +240,14 @@ export function createPrototypeRuntime({
       runtimePreset: state.runtimePreset,
       teamLoadouts: state.teamLoadouts,
       randomSeed: state.randomSeed,
+      fleetLayout: state.fleetLayout,
     });
     state.result = createEmptyOutcome();
     state.elapsedTicks = 0;
     state.timeBudget = 0;
     state.paused = false;
     clearModeEvents();
+    state.modeAiNextActionAt = {};
     refreshSnapshot();
     evaluateMode(0);
     return publicApi;
@@ -215,6 +273,9 @@ export function createPrototypeRuntime({
     if (next.randomSeed !== undefined) {
       state.randomSeed = next.randomSeed == null || next.randomSeed === "" ? null : Number(next.randomSeed);
     }
+    if (next.fleetLayout) {
+      state.fleetLayout = normalizeRuntimeFleetLayout(next.fleetLayout, state.teamLoadouts);
+    }
     return start();
   }
 
@@ -227,6 +288,7 @@ export function createPrototypeRuntime({
     state.simulation.update(safeDt);
     state.elapsedTicks += 1;
     evaluateMode(safeDt);
+    runModeAiActions();
     return publicApi;
   }
 
@@ -410,6 +472,23 @@ export function createPrototypeRuntime({
       return state.randomSeed;
     },
     getFleetLayout() {
+      if (state.fleetLayout) {
+        return {
+          alliances: {
+            A: state.fleetLayout.alliances.A.map((entry) => ({
+              seat: entry.seat,
+              control: entry.control,
+              loadout: { ...entry.loadout },
+            })),
+            B: state.fleetLayout.alliances.B.map((entry) => ({
+              seat: entry.seat,
+              control: entry.control,
+              loadout: { ...entry.loadout },
+            })),
+          },
+          localSeat: state.fleetLayout.localSeat,
+        };
+      }
       // 现阶段固定 A/B；后续 3v3 再泛化。保持旧模式兼容。
       return {
         alliances: {

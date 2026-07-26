@@ -123,6 +123,8 @@ function cacheDom(root) {
     applyModeParamsBtn: root.querySelector("#protoApplyModeParamsBtn"),
     gameplayParams: root.querySelector("#protoGameplayParams"),
     applyGameplayBtn: root.querySelector("#protoApplyGameplayBtn"),
+    modeTools: root.querySelector("#protoModeTools"),
+    modeHud: root.querySelector("#protoModeHud"),
     diagnostics: root.querySelector("#protoDiagnostics"),
     paramHint: root.querySelector("#protoParamHint"),
     resultRestartBtn: root.querySelector("#protoResultRestartBtn"),
@@ -274,6 +276,9 @@ function createRuntimeForCurrentMode() {
   });
   runtime.start();
   app.runtime = runtime;
+  if (typeof window !== "undefined") {
+    window.__TDOS_PROTOTYPE_RUNTIME__ = runtime;
+  }
   app.resultShown = false;
   app.selectedShipKey = "main";
   app.selectedZoneId = 5;
@@ -847,6 +852,9 @@ function unmount() {
   if (app?.runtime) {
     app.runtime.destroy();
     app.runtime = null;
+  }
+  if (typeof window !== "undefined") {
+    window.__TDOS_PROTOTYPE_RUNTIME__ = null;
   }
   if (ac) ac.abort();
   ac = null;

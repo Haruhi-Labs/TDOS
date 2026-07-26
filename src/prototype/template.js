@@ -79,6 +79,16 @@ export function prototypeShellHTML({ modeOptionsHTML = "", loadoutA, loadoutB } 
     </section>
 
     <section class="proto-section">
+      <h3>模式工具</h3>
+      <div id="protoModeTools" class="proto-mode-tools"></div>
+    </section>
+
+    <section class="proto-section">
+      <h3>模式 HUD</h3>
+      <div id="protoModeHud" class="proto-mode-hud"></div>
+    </section>
+
+    <section class="proto-section">
       <h3>诊断</h3>
       <div id="protoDiagnostics" class="proto-diagnostics"></div>
     </section>

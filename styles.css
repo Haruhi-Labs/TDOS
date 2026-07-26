@@ -1511,6 +1511,59 @@ button.toggle-active {
 }
 .proto-diag-key { color: #8b919a; }
 .proto-diag-val { color: #e8eaed; text-align: right; }
+.proto-mode-tools:empty,
+.proto-mode-hud:empty {
+  min-height: 20px;
+}
+.proto-mode-tools:empty::before,
+.proto-mode-hud:empty::before {
+  content: "当前模式未提供";
+  color: #747b86;
+  font-size: 0.74rem;
+}
+.territory-tools {
+  display: grid;
+  gap: 8px;
+}
+.territory-seed-row,
+.territory-hud div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+.territory-seed-row span,
+.territory-hud span {
+  color: #8b919a;
+}
+.territory-seed-row strong,
+.territory-hud strong {
+  color: #f0f4f8;
+}
+.territory-tools button {
+  justify-self: start;
+  background: #1a1c20;
+  color: #f3f4f6;
+  border: 1px solid #30343b;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.proto-mode-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #c8cdd4;
+  font-size: 0.76rem;
+}
+.proto-mode-toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: #c9a227;
+}
+.territory-hud {
+  display: grid;
+  gap: 5px;
+}
 @media (max-width: 1100px) {
   .prototype-shell.has-dev-panel {
     grid-template-columns: 1fr;
