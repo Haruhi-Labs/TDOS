@@ -210,6 +210,108 @@ const invalid = validateTerritoryMap({
 });
 assert(!invalid.valid, `validator must reject an invalid navigation graph: ${stableJson(invalid)}`);
 
+const invalidTerrainCenter = validateTerritoryMap({
+  ...mapA,
+  terrainRegions: mapA.terrainRegions.map((region, index) => (
+    index === 0 ? { ...region, center: { ...region.center, x: Number.NaN } } : region
+  )),
+});
+assert(
+  !invalidTerrainCenter.valid && invalidTerrainCenter.errors.some((error) => error.includes("terrain center invalid")),
+  `validator must reject terrain with a non-finite center: ${stableJson(invalidTerrainCenter)}`,
+);
+
+const templateCompound = mapA.terrainRegions.find((region) => region.shape === "compound");
+const templateLane = mapA.terrainRegions.find((region) => region.type === "speed_lane");
+assert(templateCompound && templateLane, `terrain validation fixtures missing: ${stableJson(mapA.terrainRegions)}`);
+const invalidTerrainSchemaCases = [
+  [
+    "missing terrain id",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region) => (
+        region.id === templateCompound.id ? { ...region, id: "" } : region
+      )),
+    }),
+    "terrain id missing",
+  ],
+  [
+    "duplicate terrain id",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region, index) => (
+        index === 1 ? { ...region, id: mapA.terrainRegions[0].id } : region
+      )),
+    }),
+    "duplicate terrain id",
+  ],
+  [
+    "compound speed lane",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region) => (
+        region.id === templateCompound.id ? { ...region, type: "speed_lane" } : region
+      )),
+    }),
+    "compound terrain type invalid",
+  ],
+  [
+    "compound missing envelope",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region) => (
+        region.id === templateCompound.id ? { ...region, radius: Number.NaN } : region
+      )),
+    }),
+    "compound terrain envelope invalid",
+  ],
+  [
+    "field beyond compound envelope",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region) => (
+        region.id === templateCompound.id
+          ? {
+            ...region,
+            fields: region.fields.map((field, index) => (
+              index === 0
+                ? { ...field, x: region.center.x + region.radius + field.radius + 1 }
+                : field
+            )),
+          }
+          : region
+      )),
+    }),
+    "compound terrain field outside envelope",
+  ],
+  [
+    "non-finite lane dimensions",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region) => (
+        region.id === templateLane.id ? { ...region, length: Number.NaN, width: Number.NaN } : region
+      )),
+    }),
+    "speed lane terrain dimensions invalid",
+  ],
+  [
+    "lane outside safe bounds",
+    validateTerritoryMap({
+      ...mapA,
+      terrainRegions: mapA.terrainRegions.map((region) => (
+        region.id === templateLane.id ? { ...region, center: { x: -600, y: -600 } } : region
+      )),
+    }),
+    "speed lane terrain outside safe bounds",
+  ],
+];
+assert(
+  invalidTerrainSchemaCases.every(([, result, expectedError]) => (
+    !result.valid && result.errors.some((error) => error.includes(expectedError))
+  )),
+  `validator must reject malformed terrain schemas: ${stableJson(invalidTerrainSchemaCases)}`,
+);
+
 const asymmetricObstacleMap = JSON.parse(stableJson(mapA));
 asymmetricObstacleMap.obstacleRegions.find((obstacle) => obstacle.id === "obstacle-lower-east").points[0].x += 1;
 const asymmetricObstacle = validateTerritoryMap(asymmetricObstacleMap);

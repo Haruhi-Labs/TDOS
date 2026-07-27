@@ -353,8 +353,8 @@ function buildFixedGeometry(size, teamSize) {
 function buildTerrainRegions(seed, slots) {
   const rng = createSeededRng(seed).fork("terrain-v2");
   const types = rng.shuffle(TERRAIN_TYPES);
-  return slots.slice(0, 3).map((slot, index) => {
-    const type = types[index];
+  return slots.map((slot, index) => {
+    const type = types[index % types.length];
     const center = point(slot.center.x + rng.nextInt(-24, 24), slot.center.y + rng.nextInt(-20, 20));
     if (type === "speed_lane") {
       return {
@@ -364,21 +364,40 @@ function buildTerrainRegions(seed, slots) {
         type,
         shape: "capsule",
         center,
-        length: 620 + rng.nextInt(-20, 30),
-        width: 220 + rng.nextInt(-10, 18),
-        angle: slot.regionId === "mid" ? -Math.PI / 4 : 0,
+        length: 680 + rng.nextInt(0, 220),
+        width: 240 + rng.nextInt(0, 60),
+        angle: slot.regionId === "mid" ? -Math.PI / 4 : slot.regionId.includes("wild") ? Math.PI / 3 : 0,
         strength: 0.9 + rng.next() * 0.2,
         blocksPath: false,
       };
     }
+    const phase = rng.next() * Math.PI * 2;
+    const fields = [0, 1, 2].map((fieldIndex) => {
+      const angle = phase + fieldIndex * (Math.PI * 2 / 3) + rng.nextInt(-8, 8) * (Math.PI / 180);
+      const offset = 58 + rng.nextInt(0, 24);
+      const radius = 150 + rng.nextInt(0, 34);
+      return {
+        x: Math.round(center.x + Math.cos(angle) * offset),
+        y: Math.round(center.y + Math.sin(angle) * offset),
+        radius,
+        coreRadius: Math.round(radius * (0.34 + rng.next() * 0.08)),
+      };
+    });
+    const radius = Math.max(
+      220,
+      Math.min(360, Math.ceil(Math.max(...fields.map((field) => (
+        Math.hypot(field.x - center.x, field.y - center.y) + field.radius
+      ))) / 10) * 10),
+    );
     return {
       id: `terrain-${slot.regionId}`,
       slotId: slot.id,
       regionId: slot.regionId,
       type,
-      shape: "circle",
+      shape: "compound",
       center,
-      radius: 220 + rng.nextInt(-12, 24),
+      radius,
+      fields,
       strength: 0.9 + rng.next() * 0.2,
       blocksPath: false,
     };
@@ -403,6 +422,21 @@ function buildV2Map({ seed, worldSize, teamSize, fallback = false }) {
 function withinBounds(center, radius, bounds) {
   return Boolean(center && bounds) && center.x - radius >= bounds.x && center.y - radius >= bounds.y
     && center.x + radius <= bounds.x + bounds.width && center.y + radius <= bounds.y + bounds.height;
+}
+
+function capsuleWithinBounds(region, bounds) {
+  const center = region?.center;
+  const length = Number(region?.length);
+  const width = Number(region?.width);
+  const angle = Number(region?.angle);
+  if (!center || !bounds || !Number.isFinite(center.x) || !Number.isFinite(center.y)
+    || !Number.isFinite(length) || !Number.isFinite(width) || !Number.isFinite(angle)) return false;
+  const halfLength = length / 2;
+  const radius = width / 2;
+  const extentX = Math.abs(Math.cos(angle)) * halfLength + radius;
+  const extentY = Math.abs(Math.sin(angle)) * halfLength + radius;
+  return center.x - extentX >= bounds.x && center.y - extentY >= bounds.y
+    && center.x + extentX <= bounds.x + bounds.width && center.y + extentY <= bounds.y + bounds.height;
 }
 
 function axisDistance(value, start, end) {
@@ -484,6 +518,7 @@ export function validateTerritoryMap(map) {
   validateUniqueIds(graphEdges, "navigation edge", errors);
   validateUniqueIds(resources, "resource node", errors);
   validateUniqueIds(skills, "skill node", errors);
+  validateUniqueIds(terrain, "terrain", errors);
 
   for (const expected of SPAWN_LAYOUT) {
     const spawn = spawns.find((candidate) => candidate.id === expected.id);
@@ -628,7 +663,35 @@ export function validateTerritoryMap(map) {
   for (const region of terrain) {
     if (!TERRAIN_TYPES.includes(region.type)) errors.push(`invalid terrain type: ${region.type}`);
     if (region.blocksPath) errors.push(`terrain blocks path: ${region.id}`);
-    if (!region.center || (bounds && !withinBounds(region.center, Number(region.radius || region.width || 40), bounds))) errors.push(`terrain outside safe bounds: ${region.id}`);
+    if (!region.center || !Number.isFinite(region.center.x) || !Number.isFinite(region.center.y)) {
+      errors.push(`terrain center invalid: ${region.id}`);
+      continue;
+    }
+    if (region.shape === "compound") {
+      if (region.type === "speed_lane") errors.push(`compound terrain type invalid: ${region.id}`);
+      if (!Number.isFinite(region.radius) || region.radius < 220 || region.radius > 360) errors.push(`compound terrain envelope invalid: ${region.id}`);
+      if (!Array.isArray(region.fields) || region.fields.length < 3) errors.push(`compound terrain fields invalid: ${region.id}`);
+      for (const field of region.fields || []) {
+        const fieldRadius = Number(field?.radius) || 0;
+        const coreRadius = Number(field?.coreRadius) || 0;
+        if (!Number.isFinite(field?.x) || !Number.isFinite(field?.y) || coreRadius <= 0 || coreRadius >= fieldRadius) {
+          errors.push(`compound terrain field invalid: ${region.id}`);
+          continue;
+        }
+        if (bounds && !withinBounds(field, fieldRadius, bounds)) errors.push(`compound terrain outside safe bounds: ${region.id}`);
+        if (Math.hypot(field.x - region.center.x, field.y - region.center.y) + fieldRadius > region.radius) {
+          errors.push(`compound terrain field outside envelope: ${region.id}`);
+        }
+      }
+    } else if (region.type === "speed_lane") {
+      if (region.shape !== "capsule" || !Number.isFinite(region.length) || !Number.isFinite(region.width)
+        || !Number.isFinite(region.angle) || region.length < 600 || region.length > 1000 || region.width < 220 || region.width > 320) {
+        errors.push(`speed lane terrain dimensions invalid: ${region.id}`);
+      }
+      if (bounds && !capsuleWithinBounds(region, bounds)) errors.push(`speed lane terrain outside safe bounds: ${region.id}`);
+    } else {
+      errors.push(`terrain shape invalid: ${region.id}`);
+    }
   }
 
   return { valid: errors.length === 0, errors };

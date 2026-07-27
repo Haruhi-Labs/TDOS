@@ -1,5 +1,6 @@
 import { buildControlPointVisualState } from "./effects.js";
 import { ALLOWED_TACTICAL_SKILLS } from "../../../shared/gameplay/territory-skills.js";
+import { terrainIntensityAtPoint } from "../../../shared/gameplay/territory-terrain.js";
 
 const TAU = Math.PI * 2;
 
@@ -319,13 +320,30 @@ function terrainUnit(region, index, salt) {
   return hashUnit(`${region?.id || region?.type || "terrain"}:${index}:${salt}`);
 }
 
+function terrainFields(region) {
+  if (region?.shape === "compound" && Array.isArray(region.fields) && region.fields.length > 0) {
+    return region.fields.map((field) => ({
+      x: Number(field.x),
+      y: Number(field.y),
+      radius: Math.max(1, Number(field.radius) || 1),
+      coreRadius: Math.max(1, Number(field.coreRadius) || Number(field.radius) * 0.36),
+    }));
+  }
+  return [{
+    x: Number(region?.center?.x) || 0,
+    y: Number(region?.center?.y) || 0,
+    radius: Math.max(1, Number(region?.radius) || 72),
+    coreRadius: Math.max(8, (Number(region?.radius) || 72) * 0.36),
+  }];
+}
+
 export function buildTerrainVisualState(region = {}) {
   if (region.type === "asteroid_belt") {
     return {
       kind: "asteroid",
       label: "小行星带",
       detail: "航速降低",
-      fragmentCount: 18,
+      fragmentCount: Math.max(18, terrainFields(region).length * 12),
       region,
     };
   }
@@ -342,7 +360,7 @@ export function buildTerrainVisualState(region = {}) {
     kind: "gravity",
     label: "引力泥沼",
     detail: "航速与转向降低",
-    rippleCount: 4,
+    rippleCount: Math.max(4, terrainFields(region).length + 2),
     region,
   };
 }
@@ -351,38 +369,54 @@ function drawTerrainCaption(ctx, visual) {
   const region = visual.region;
   const extent = region.shape === "capsule"
     ? Math.max(36, Number(region.width) || 78) / 2
+    : region.shape === "compound"
+      ? Math.max(48, Number(region.radius) || 70)
     : Math.max(48, Number(region.radius) || 70);
-  const y = region.center.y - extent - 28;
+  const above = region.center.y - extent - 28;
+  const y = above < 72 ? region.center.y + extent + 28 : above;
   drawLabel(ctx, visual.label, region.center.x, y, "#eef7fa", { fontSize: 18 });
   drawLabel(ctx, visual.detail, region.center.x, y + 28, "#b8c8cf", { fontSize: 16 });
 }
 
 function drawAsteroidTerrain(ctx, visual, effect, clock) {
   const region = visual.region;
-  const radius = Number(region.radius) || 72;
+  const fields = terrainFields(region);
   const disturbance = Math.max(0, Math.min(1, Number(effect?.disturbanceStrength) || 0));
   ctx.save();
-  ctx.fillStyle = "rgba(134, 148, 157, 0.08)";
-  ctx.strokeStyle = "rgba(191, 205, 213, 0.42)";
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([10, 9]);
-  ctx.beginPath();
-  ctx.arc(region.center.x, region.center.y, radius, 0, TAU);
-  ctx.fill();
-  ctx.stroke();
-  ctx.setLineDash([]);
+  for (const field of fields) {
+    const coreIntensity = terrainIntensityAtPoint({ x: field.x, y: field.y }, region);
+    ctx.fillStyle = `rgba(134, 148, 157, ${0.035 + coreIntensity * 0.055})`;
+    ctx.strokeStyle = `rgba(191, 205, 213, ${0.24 + coreIntensity * 0.18})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([10, 9]);
+    ctx.beginPath();
+    ctx.arc(field.x, field.y, field.radius, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(221, 229, 232, 0.18)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(field.x, field.y, field.coreRadius, 0, TAU);
+    ctx.stroke();
+  }
 
   for (let index = 0; index < visual.fragmentCount; index += 1) {
+    const field = fields[index % fields.length];
     const angle = terrainUnit(region, index, "angle") * TAU;
-    const spread = Math.sqrt(terrainUnit(region, index, "spread")) * radius * 0.82;
+    const spread = Math.sqrt(terrainUnit(region, index, "spread")) * field.radius * 0.82;
     const drift = disturbance * (5 + terrainUnit(region, index, "drift") * 12);
     const wobble = Math.sin(clock * 4 + index) * disturbance * 2;
-    const x = region.center.x + Math.cos(angle) * (spread + drift) + Math.cos(angle + Math.PI / 2) * wobble;
-    const y = region.center.y + Math.sin(angle) * (spread + drift) + Math.sin(angle + Math.PI / 2) * wobble;
-    const size = 3 + terrainUnit(region, index, "size") * 6;
+    const x = field.x + Math.cos(angle) * (spread + drift) + Math.cos(angle + Math.PI / 2) * wobble;
+    const y = field.y + Math.sin(angle) * (spread + drift) + Math.sin(angle + Math.PI / 2) * wobble;
+    const intensity = terrainIntensityAtPoint({ x, y }, region);
+    if (intensity <= 0.04) continue;
+    const size = (3 + terrainUnit(region, index, "size") * 6) * (0.62 + intensity * 0.58);
     const vertices = 5 + Math.floor(terrainUnit(region, index, "vertices") * 3);
-    ctx.fillStyle = index % 3 === 0 ? "rgba(191, 200, 205, 0.5)" : "rgba(119, 134, 145, 0.56)";
-    ctx.strokeStyle = "rgba(221, 229, 232, 0.54)";
+    ctx.fillStyle = index % 3 === 0
+      ? `rgba(191, 200, 205, ${0.18 + intensity * 0.34})`
+      : `rgba(119, 134, 145, ${0.22 + intensity * 0.34})`;
+    ctx.strokeStyle = `rgba(221, 229, 232, ${0.2 + intensity * 0.34})`;
     ctx.lineWidth = 0.9;
     ctx.beginPath();
     for (let vertex = 0; vertex < vertices; vertex += 1) {
@@ -444,35 +478,38 @@ function drawSpeedLaneTerrain(ctx, visual, clock) {
 
 function drawGravityTerrain(ctx, visual, clock) {
   const region = visual.region;
-  const radius = Number(region.radius) || 78;
+  const fields = terrainFields(region);
   ctx.save();
-  ctx.fillStyle = "rgba(38, 26, 58, 0.3)";
-  ctx.strokeStyle = "rgba(181, 147, 218, 0.46)";
-  ctx.lineWidth = 1.5;
-  ctx.beginPath();
-  ctx.arc(region.center.x, region.center.y, radius, 0, TAU);
-  ctx.fill();
-  ctx.stroke();
-
-  for (let index = 0; index < visual.rippleCount; index += 1) {
-    const rippleRadius = radius * (0.28 + index * 0.17);
-    const rotation = clock * (0.42 + index * 0.08) * (index % 2 === 0 ? 1 : -1);
-    ctx.strokeStyle = index % 2 === 0 ? "rgba(211, 178, 235, 0.58)" : "rgba(104, 190, 205, 0.4)";
-    ctx.lineWidth = 1.3 + (visual.rippleCount - index) * 0.18;
-    ctx.setLineDash([18 - index * 2, 10 + index * 2]);
-    ctx.lineDashOffset = rotation * 18;
+  for (const [fieldIndex, field] of fields.entries()) {
+    const coreIntensity = terrainIntensityAtPoint({ x: field.x, y: field.y }, region);
+    ctx.fillStyle = `rgba(38, 26, 58, ${0.12 + coreIntensity * 0.18})`;
+    ctx.strokeStyle = `rgba(181, 147, 218, ${0.25 + coreIntensity * 0.21})`;
+    ctx.lineWidth = 1.5;
     ctx.beginPath();
-    ctx.arc(region.center.x, region.center.y, rippleRadius, rotation, rotation + Math.PI * 1.55);
+    ctx.arc(field.x, field.y, field.radius, 0, TAU);
+    ctx.fill();
+    ctx.stroke();
+    for (let index = 0; index < visual.rippleCount; index += 1) {
+      const rippleRadius = field.radius * (0.22 + index * 0.12);
+      if (rippleRadius >= field.radius) break;
+      const rotation = clock * (0.42 + index * 0.08) * (index % 2 === 0 ? 1 : -1) + fieldIndex * 0.7;
+      ctx.strokeStyle = index % 2 === 0 ? "rgba(211, 178, 235, 0.58)" : "rgba(104, 190, 205, 0.4)";
+      ctx.lineWidth = 1.3 + (visual.rippleCount - index) * 0.18;
+      ctx.setLineDash([18 - index * 2, 10 + index * 2]);
+      ctx.lineDashOffset = rotation * 18;
+      ctx.beginPath();
+      ctx.arc(field.x, field.y, rippleRadius, rotation, rotation + Math.PI * 1.55);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = "rgba(8, 8, 18, 0.92)";
+    ctx.strokeStyle = "rgba(228, 197, 244, 0.82)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(field.x, field.y, field.coreRadius, 0, TAU);
+    ctx.fill();
     ctx.stroke();
   }
-  ctx.setLineDash([]);
-  ctx.fillStyle = "rgba(8, 8, 18, 0.92)";
-  ctx.strokeStyle = "rgba(228, 197, 244, 0.82)";
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.arc(region.center.x, region.center.y, Math.max(8, radius * 0.12), 0, TAU);
-  ctx.fill();
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -489,6 +526,12 @@ function drawTerrainDebugBoundary(ctx, region) {
     ctx.beginPath();
     ctx.roundRect(-length / 2, -width / 2, length, width, width / 2);
     ctx.stroke();
+  } else if (region.shape === "compound") {
+    for (const field of terrainFields(region)) {
+      ctx.beginPath();
+      ctx.arc(field.x, field.y, field.radius, 0, TAU);
+      ctx.stroke();
+    }
   } else {
     ctx.beginPath();
     ctx.arc(region.center.x, region.center.y, Number(region.radius) || 60, 0, TAU);
@@ -1070,7 +1113,11 @@ export function buildTerritoryMinimapState(state = {}) {
       })),
       edges: (map.navigationGraph?.edges || []).map((edge) => ({ ...edge })),
     },
-    terrain: (map.terrainRegions || []).map((region) => ({ ...region })),
+    terrain: (map.terrainRegions || []).map((region) => ({
+      ...region,
+      center: region?.center ? { ...region.center } : region?.center,
+      fields: (region?.fields || []).map((field) => ({ ...field })),
+    })),
     controls: (map.controlPoints || []).map((point) => ({ ...point })),
     spawns: (map.spawnAreas || []).map((area) => ({ ...area })),
     resources: [
@@ -1168,10 +1215,10 @@ export function renderTerritoryMinimapOverlay(ctx, state, { rect } = {}) {
   }
   for (const obstacle of model.obstacles) drawProjectedObstacle(obstacle);
   for (const region of model.terrain) {
-    const center = point(region.center);
     ctx.strokeStyle = region.type === "speed_lane" ? "#68deee88" : region.type === "gravity_mire" ? "#b593da88" : "#aeb7c288";
     ctx.lineWidth = 1;
     if (region.shape === "capsule") {
+      const center = point(region.center);
       ctx.save();
       ctx.translate(center.x, center.y);
       ctx.rotate(Number(region.angle) || 0);
@@ -1179,7 +1226,18 @@ export function renderTerritoryMinimapOverlay(ctx, state, { rect } = {}) {
       ctx.roundRect(-radius(region.length) / 2, -radius(region.width) / 2, radius(region.length), radius(region.width), radius(region.width) / 2);
       ctx.stroke();
       ctx.restore();
+    } else if (region.shape === "compound") {
+      for (const field of region.fields || []) {
+        const center = point(field);
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, radius(field.radius), 0, TAU);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, radius(field.coreRadius), 0, TAU);
+        ctx.stroke();
+      }
     } else {
+      const center = point(region.center);
       ctx.beginPath();
       ctx.arc(center.x, center.y, radius(region.radius), 0, TAU);
       ctx.stroke();

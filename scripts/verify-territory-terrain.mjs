@@ -2,12 +2,17 @@ import { DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, MatchSimulation, TICK_DT, clo
 import {
   TERRAIN_MOVEMENT_MULTIPLIERS,
   pointInTerrainRegion,
+  terrainIntensityAtPoint,
   updateTerritoryTerrainModifiers,
 } from "../shared/gameplay/territory-terrain.js";
 import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
+}
+
+function approximatelyEqual(actual, expected, message) {
+  assert(Math.abs(actual - expected) < 1e-6, `${message}: expected ${expected}, got ${actual}`);
 }
 
 function makeSimulation() {
@@ -42,8 +47,91 @@ const capsule = { shape: "capsule", center: { x: 100, y: 100 }, length: 120, wid
 assert(pointInTerrainRegion({ x: 150, y: 100 }, capsule), "capsule terrain contains lane point");
 assert(!pointInTerrainRegion({ x: 100, y: 135 }, capsule), "capsule terrain rejects side point");
 
-let sim = makeSimulation();
-let state = makeState();
+let sim;
+let state;
+let result;
+
+const compound = {
+  id: "compound",
+  type: "asteroid_belt",
+  shape: "compound",
+  center: { x: 360, y: 330 },
+  radius: 260,
+  fields: [
+    { x: 300, y: 300, radius: 180, coreRadius: 70 },
+    { x: 420, y: 300, radius: 170, coreRadius: 65 },
+    { x: 360, y: 410, radius: 160, coreRadius: 60 },
+  ],
+};
+const outsideIntensity = terrainIntensityAtPoint({ x: 40, y: 40 }, compound);
+const edgeIntensity = terrainIntensityAtPoint({ x: 125, y: 300 }, compound);
+const middleIntensity = terrainIntensityAtPoint({ x: 210, y: 300 }, compound);
+const coreIntensity = terrainIntensityAtPoint({ x: 300, y: 300 }, compound);
+assert(
+  outsideIntensity === 0 && edgeIntensity > 0 && edgeIntensity < middleIntensity && middleIntensity < coreIntensity && coreIntensity === 1,
+  `compound terrain intensity should rise smoothly from edge to core: ${outsideIntensity}, ${edgeIntensity}, ${middleIntensity}, ${coreIntensity}`,
+);
+
+sim = makeSimulation();
+state = makeState(808);
+state.map.terrainRegions = [compound];
+const compoundShip = sim.fleetBySeat("A").shipByKey("main");
+compoundShip.angle = 0;
+const compoundBase = {
+  speed: compoundShip.baseSpeed(),
+  acceleration: compoundShip.baseAcceleration(),
+  turn: compoundShip.baseTurnRate(),
+};
+for (const [name, position, intensity] of [
+  ["edge", { x: 125, y: 300 }, edgeIntensity],
+  ["middle", { x: 210, y: 300 }, middleIntensity],
+  ["core", { x: 300, y: 300 }, coreIntensity],
+]) {
+  compoundShip.x = position.x;
+  compoundShip.y = position.y;
+  result = updateTerritoryTerrainModifiers({ modeState: state, simulation: sim });
+  state = result.modeState;
+  approximatelyEqual(
+    compoundShip.baseSpeed() / compoundBase.speed,
+    1 + (TERRAIN_MOVEMENT_MULTIPLIERS.asteroid_belt.speedMultiplier - 1) * intensity,
+    `compound ${name} speed should interpolate by terrain intensity`,
+  );
+  approximatelyEqual(
+    compoundShip.baseAcceleration() / compoundBase.acceleration,
+    1 + (TERRAIN_MOVEMENT_MULTIPLIERS.asteroid_belt.accelerationMultiplier - 1) * intensity,
+    `compound ${name} acceleration should interpolate by terrain intensity`,
+  );
+  approximatelyEqual(
+    compoundShip.baseTurnRate() / compoundBase.turn,
+    1 + (TERRAIN_MOVEMENT_MULTIPLIERS.asteroid_belt.turnMultiplier - 1) * intensity,
+    `compound ${name} turn rate should interpolate by terrain intensity`,
+  );
+}
+assert(
+  state.terrainMemory["A:main"]?.ids?.includes(compound.id)
+    && state.terrainMemory["A:main"]?.intensities?.[compound.id] === 1,
+  `compound terrain memory should retain ids and intensities: ${JSON.stringify(state.terrainMemory)}`,
+);
+
+const generatedTerrain = makeState(909).map.terrainRegions;
+assert(generatedTerrain.length >= 3 && generatedTerrain.length <= 5, `terrain generator should create three to five regions: ${generatedTerrain.length}`);
+const generatedCompounds = generatedTerrain.filter((region) => region.shape === "compound");
+assert(generatedCompounds.length >= 1, `terrain generator should include a compound region: ${JSON.stringify(generatedTerrain)}`);
+for (const region of generatedCompounds) {
+  assert(
+    region.fields?.length >= 3 && region.radius >= 220 && region.radius <= 360,
+    `compound terrain should expose a large three-field envelope: ${JSON.stringify(region)}`,
+  );
+}
+for (const region of generatedTerrain.filter((entry) => entry.type === "speed_lane")) {
+  assert(
+    region.length >= 600 && region.length <= 1000 && region.width >= 220 && region.width <= 320,
+    `speed lane terrain should be a large tactical corridor: ${JSON.stringify(region)}`,
+  );
+}
+
+sim = makeSimulation();
+state = makeState();
 const asteroid = state.map.terrainRegions.find((region) => region.type === "asteroid_belt") || state.map.terrainRegions[0];
 asteroid.type = "asteroid_belt";
 asteroid.shape = "circle";
@@ -55,7 +143,7 @@ ship.angle = 0;
 const baseSpeed = ship.baseSpeed();
 const baseTurn = ship.baseTurnRate();
 const baseAccel = ship.baseAcceleration();
-let result = updateTerritoryTerrainModifiers({ modeState: state, simulation: sim });
+result = updateTerritoryTerrainModifiers({ modeState: state, simulation: sim });
 state = result.modeState;
 assert(result.events.some((event) => event.type === "terrain_entered"), "terrain entered event emitted");
 assert(ship.baseSpeed() < baseSpeed && Math.abs(ship.baseSpeed() / baseSpeed - 0.78) < 1e-6, "terrain speed modifier applied");
@@ -83,6 +171,7 @@ lane.shape = "capsule";
 lane.angle = 0;
 lane.length = 240;
 lane.width = 80;
+state.map.terrainRegions = [lane];
 const laneShip = sim.fleetBySeat("A").shipByKey("main");
 laneShip.x = lane.center.x;
 laneShip.y = lane.center.y;

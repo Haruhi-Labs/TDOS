@@ -20,6 +20,7 @@ function wait(ms) {
 
 function createRecordingContext() {
   const texts = [];
+  const textPositions = [];
   const arcs = [];
   const moves = [];
   const lines = [];
@@ -28,6 +29,7 @@ function createRecordingContext() {
   const target = {
     canvas: { width: 1200, height: 1200 },
     texts,
+    textPositions,
     arcs,
     moves,
     lines,
@@ -36,8 +38,9 @@ function createRecordingContext() {
     measureText(text) {
       return { width: String(text || "").length * 12 };
     },
-    fillText(text) {
+    fillText(text, x, y) {
       texts.push(String(text));
+      textPositions.push({ text: String(text), x, y });
     },
     arc(...args) {
       arcs.push(args);
@@ -949,6 +952,41 @@ function verifyTerrainPresentationState() {
   assert(topologyContext.arcs.length >= 1, `compound obstacle circles should render: ${JSON.stringify(topologyContext.arcs)}`);
   assert(topologyContext.lines.length >= 4, `lanes, connectors, obstacles, and local routes should render connected paths: ${JSON.stringify(topologyContext.lines)}`);
   assert(topologyContext.fills.length >= 1 && topologyContext.strokes.length >= 4, "V2 topology should render filled obstacles and stroked paths");
+
+  const compoundTerrain = {
+    id: "compound-gravity",
+    type: "gravity_mire",
+    shape: "compound",
+    center: { x: 700, y: 300 },
+    radius: 260,
+    fields: [
+      { x: 620, y: 280, radius: 160, coreRadius: 60 },
+      { x: 770, y: 290, radius: 150, coreRadius: 58 },
+      { x: 700, y: 400, radius: 145, coreRadius: 54 },
+    ],
+  };
+  const compoundTerrainContext = createRecordingContext();
+  territoryPresentation.renderTerritoryMap(compoundTerrainContext, {
+    terrainRegions: [compoundTerrain],
+    spawnAreas: [],
+    controlPoints: [],
+    resourceSpawnNodes: [],
+    skillSpawnNodes: [],
+  });
+  assert(
+    compoundTerrain.fields.every((field) => compoundTerrainContext.arcs.some(([x, y]) => x === field.x && y === field.y)),
+    `compound terrain should render each intensity field: ${JSON.stringify(compoundTerrainContext.arcs)}`,
+  );
+  assert(
+    compoundTerrain.fields.every((field) => (
+      compoundTerrainContext.arcs.some(([x, y, radius]) => x === field.x && y === field.y && radius === field.coreRadius)
+    )),
+    `compound gravity core radius should match the shared intensity core: ${JSON.stringify(compoundTerrainContext.arcs)}`,
+  );
+  assert(
+    compoundTerrainContext.textPositions.every((entry) => entry.y > compoundTerrain.center.y + compoundTerrain.radius),
+    `top-edge compound captions should render below the terrain envelope: ${JSON.stringify(compoundTerrainContext.textPositions)}`,
+  );
 }
 
 function verifyGraphRouteHandleAuthority() {
@@ -2166,9 +2204,14 @@ async function main() {
         {
           id: "showcase-asteroid",
           type: "asteroid_belt",
-          shape: "circle",
+          shape: "compound",
           center: { x: centerX - spacing, y: centerY },
-          radius: 82,
+          radius: 128,
+          fields: [
+            { x: centerX - spacing - 42, y: centerY - 14, radius: 76, coreRadius: 28 },
+            { x: centerX - spacing + 42, y: centerY - 6, radius: 72, coreRadius: 27 },
+            { x: centerX - spacing, y: centerY + 52, radius: 68, coreRadius: 25 },
+          ],
           blocksPath: false,
         },
         {
@@ -2184,16 +2227,30 @@ async function main() {
         {
           id: "showcase-gravity",
           type: "gravity_mire",
-          shape: "circle",
+          shape: "compound",
           center: { x: centerX + spacing, y: centerY },
-          radius: 86,
+          radius: 132,
+          fields: [
+            { x: centerX + spacing - 40, y: centerY - 12, radius: 78, coreRadius: 29 },
+            { x: centerX + spacing + 43, y: centerY - 4, radius: 74, coreRadius: 28 },
+            { x: centerX + spacing, y: centerY + 54, radius: 70, coreRadius: 26 },
+          ],
           blocksPath: false,
         },
       ];
       runtime.resume();
-      return state.map.terrainRegions.map((region) => region.type);
+      return state.map.terrainRegions.map((region) => ({
+        type: region.type,
+        shape: region.shape,
+        fieldCount: region.fields?.length || 0,
+      }));
     });
-    assert(terrainShowcase.join(",") === "asteroid_belt,speed_lane,gravity_mire", `terrain showcase state missing types: ${terrainShowcase.join(",")}`);
+    assert(
+      terrainShowcase.map((region) => region.type).join(",") === "asteroid_belt,speed_lane,gravity_mire"
+        && terrainShowcase[0].shape === "compound" && terrainShowcase[0].fieldCount === 3
+        && terrainShowcase[2].shape === "compound" && terrainShowcase[2].fieldCount === 3,
+      `terrain showcase state missing compound fields: ${JSON.stringify(terrainShowcase)}`,
+    );
     await wait(180);
     await page.screenshot({ path: "artifacts/stellar-territory-loop9-terrain-showcase.png", fullPage: true });
 
