@@ -213,6 +213,15 @@ function applyAction(action) {
   return app.runtime.applyAction(action, localSeat());
 }
 
+function handleMinimapTap(event) {
+  if (!camera) return false;
+  const screen = camera.screenPointFromEvent(event);
+  const world = camera.minimapWorldPointFromScreenPoint(screen.x, screen.y);
+  if (!world) return false;
+  camera.centerCameraOn(world.x, world.y, true);
+  return true;
+}
+
 function inspectPrototypeState() {
   const view = camera?.currentViewState?.() || null;
   const ship = selectedShip();
@@ -220,6 +229,8 @@ function inspectPrototypeState() {
   return {
     modeId: app?.modeDefinition?.id || null,
     worldSize: Number(snap?.world?.size) || null,
+    cameraWorldSize: camera?.getWorldSize?.() || null,
+    minimapRect: camera?.minimapRect?.() || null,
     localSeat: localSeat(),
     selectedShipKey: app?.selectedShipKey || null,
     pendingSubSkillAim: app?.pendingSubSkillAim ? { ...app.pendingSubSkillAim } : null,
@@ -307,6 +318,10 @@ function createPresentationForCurrentMode() {
 function createRuntimeForCurrentMode(restartOptions = null) {
   const mode = app.modeDefinition;
   if (!mode) return null;
+  const requestedWorldSize = Number(mode.runtimePreset?.worldSize);
+  const worldSize = Number.isFinite(requestedWorldSize) && requestedWorldSize > 0
+    ? requestedWorldSize
+    : DEFAULT_WORLD_SIZE;
   const hasRandomSeedOverride = Boolean(restartOptions) && Object.prototype.hasOwnProperty.call(restartOptions, "randomSeed");
   const previousRandomSeed = app.runtime?.getRandomSeed?.();
   let requestedRandomSeed = hasRandomSeedOverride
@@ -326,6 +341,7 @@ function createRuntimeForCurrentMode(restartOptions = null) {
   const runtime = createPrototypeRuntime({
     modeDefinition: mode,
     runtimePreset: mode.runtimePreset || {},
+    worldSize,
     teamLoadouts: { A: app.loadoutA, B: app.loadoutB },
     gameplayRules: app.gameplayRules,
     modeParameters: app.modeParameters,
@@ -333,6 +349,7 @@ function createRuntimeForCurrentMode(restartOptions = null) {
     randomSeed: requestedRandomSeed,
   });
   runtime.start();
+  camera.setWorldSize(worldSize, worldSize);
   app.runtime = runtime;
   if (typeof window !== "undefined") {
     window.__TDOS_PROTOTYPE_RUNTIME__ = runtime;
@@ -531,6 +548,7 @@ function renderFrame() {
   const own = ownTeam();
   const ownAllianceId = own?.allianceId || "A";
   const enemyAllianceId = ownAllianceId === "B" ? "A" : "B";
+  const runtimeWorldSize = Number(snap?.world?.size) || DEFAULT_WORLD_SIZE;
   const frame = {
     state: snap,
     ownTeam: own,
@@ -542,6 +560,8 @@ function renderFrame() {
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
     mobileMode: app.mobileMode,
+    showMinimap: app.mobileMode || Boolean(app.modeDefinition?.runtimePreset?.persistentMinimap),
+    worldSize: { width: runtimeWorldSize, height: runtimeWorldSize },
     stars: [],
     destructionEffects: app.destructionEffects,
     selectedZoneId: app.selectedZoneId,
@@ -770,6 +790,8 @@ function bindUi() {
     if (app.mobileMode || app.runtime?.isFinished?.()) return;
     const ship = selectedShip();
     if (event.button === 0) {
+      const screen = camera.screenPointFromEvent(event);
+      if (camera.minimapWorldPointFromScreenPoint(screen.x, screen.y)) return;
       if (!ship?.alive || !ship.canControl) return;
       const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
@@ -812,6 +834,7 @@ function bindUi() {
 
   canvas.addEventListener("click", (event) => {
     if (event.button !== 0 || app.runtime?.isFinished?.()) return;
+    if (handleMinimapTap(event)) return;
     if (app.suppressMapClick) {
       app.suppressMapClick = false;
       return;
@@ -922,6 +945,7 @@ export function mount(root) {
   camera = createBattleCamera({
     canvas,
     isMobile: () => app.mobileMode,
+    showMinimap: () => app.mobileMode || Boolean(app.modeDefinition?.runtimePreset?.persistentMinimap),
     getTrackedShip: () => selectedShip(),
     onZoomChanged: () => updateHud(),
   });

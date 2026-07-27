@@ -990,33 +990,39 @@ async function main() {
     assert(!sameSeedState.inspection?.resultShown && sameSeedState.overlayHidden, `same-seed restart should clear the result overlay: ${JSON.stringify(sameSeedState)}`);
     assert(sameSeedState.tacticalAiming === "false", `same-seed restart should clear tactical aim: ${JSON.stringify(sameSeedState)}`);
     assert(Math.abs(sameSeedState.inspection.camera.zoom - initialSeedState.inspection.camera.zoom) <= 1e-9, `same-seed restart should restore initial camera zoom: ${JSON.stringify(sameSeedState)}`);
+    assert(sameSeedState.inspection.worldSize === 2160, `same-seed restart should retain the 2160 world: ${JSON.stringify(sameSeedState)}`);
+    assert(sameSeedState.inspection.cameraWorldSize?.width === 2160, `same-seed restart should reapply camera world bounds: ${JSON.stringify(sameSeedState)}`);
 
     await page.getByRole("button", { name: "新地图重开", exact: true }).click();
     const newSeedState = await eventually(async () => {
       const current = await page.evaluate(() => {
         const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
-        return { seed: runtime?.getRandomSeed?.(), map: JSON.stringify(runtime?.getModeState?.()?.map) };
+        return { seed: runtime?.getRandomSeed?.(), map: JSON.stringify(runtime?.getModeState?.()?.map), inspection: window.__TDOS_PROTOTYPE_INSPECT__?.() };
       });
       return current.seed !== initialSeedState.seed ? current : null;
     }, 3000);
     assert(newSeedState.map !== initialSeedState.map, "new-map restart should change random map features");
+    assert(newSeedState.inspection?.worldSize === 2160 && newSeedState.inspection?.cameraWorldSize?.width === 2160, `new-map restart should retain runtime and camera world size: ${JSON.stringify(newSeedState)}`);
 
     await seedInput.fill(String(initialSeedState.seed));
     await page.getByRole("button", { name: "载入种子", exact: true }).click();
     const replayedSeedState = await eventually(async () => {
       const current = await page.evaluate(() => {
         const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
-        return { seed: runtime?.getRandomSeed?.(), map: JSON.stringify(runtime?.getModeState?.()?.map) };
+        return { seed: runtime?.getRandomSeed?.(), map: JSON.stringify(runtime?.getModeState?.()?.map), inspection: window.__TDOS_PROTOTYPE_INSPECT__?.() };
       });
       return current.seed === initialSeedState.seed ? current : null;
     }, 3000);
     assert(replayedSeedState.map === initialSeedState.map, "loading a seed should replay the original map exactly");
+    assert(replayedSeedState.inspection?.worldSize === 2160 && replayedSeedState.inspection?.cameraWorldSize?.width === 2160, `seed replay should retain runtime and camera world size: ${JSON.stringify(replayedSeedState)}`);
 
     const viewInspection = await page.evaluate(() => window.__TDOS_PROTOTYPE_INSPECT__?.());
     assert(viewInspection, "prototype should expose a generic browser inspection snapshot");
     assert(viewInspection.localSeat === "A1", `inspection should report A1 local seat: ${JSON.stringify(viewInspection)}`);
     assert(viewInspection.selectedShipKey === "main", `inspection should report the selected A1 main ship: ${JSON.stringify(viewInspection)}`);
-    assert(viewInspection.worldSize > 0, `inspection should report the runtime world size: ${JSON.stringify(viewInspection)}`);
+    assert(viewInspection.worldSize === 2160, `inspection should report the 2160 runtime world: ${JSON.stringify(viewInspection)}`);
+    assert(viewInspection.cameraWorldSize?.width === 2160 && viewInspection.cameraWorldSize?.height === 2160, `inspection should report matching camera bounds: ${JSON.stringify(viewInspection)}`);
+    assert(viewInspection.minimapRect?.x > 720 && viewInspection.minimapRect?.y > 720, `desktop minimap should be persistent in the lower-right: ${JSON.stringify(viewInspection)}`);
     assert(viewInspection.camera.zoom >= 1.6, `territory should open with a focused camera: ${JSON.stringify(viewInspection)}`);
     const expectedCameraX = Math.max(
       viewInspection.camera.width / 2,
@@ -1058,12 +1064,14 @@ async function main() {
         { x: fleet?.ships?.main?.x, y: fleet?.ships?.main?.y },
       ]));
       return {
+        worldSize: snap?.world?.size,
         aSeats: snap?.alliances?.A?.fleetSeats || [],
         bSeats: snap?.alliances?.B?.fleetSeats || [],
         shipCount: Object.values(snap?.fleets || {}).reduce((sum, fleet) => sum + Object.keys(fleet?.ships || {}).length, 0),
         fleetPositions,
       };
     });
+    assert(snapshotInfo.worldSize === 2160, `territory snapshot should use a 2160 world: ${JSON.stringify(snapshotInfo)}`);
     assert(snapshotInfo.aSeats.length === 3, `snapshot should expose three A fleets: ${JSON.stringify(snapshotInfo)}`);
     assert(snapshotInfo.bSeats.length === 3, `snapshot should expose three B fleets: ${JSON.stringify(snapshotInfo)}`);
     assert(snapshotInfo.shipCount === 18, `snapshot should expose 18 basic ships: ${JSON.stringify(snapshotInfo)}`);
@@ -1086,6 +1094,41 @@ async function main() {
     const canvas = page.locator("#gameCanvas");
     const canvasBox = await canvas.boundingBox();
     assert(canvasBox?.width > 0 && canvasBox?.height > 0, `canvas box missing: ${JSON.stringify(canvasBox)}`);
+    const desktopMinimapPixels = await canvas.evaluate((surface, minimapRect) => {
+      const scale = surface.width / 1440;
+      const inset = 4;
+      const left = Math.floor((minimapRect.x + inset) * scale);
+      const top = Math.floor((minimapRect.y + inset) * scale);
+      const width = Math.max(1, Math.floor((minimapRect.width - inset * 2) * scale));
+      const height = Math.max(1, Math.floor((minimapRect.height - inset * 2) * scale));
+      const data = surface.getContext("2d").getImageData(left, top, width, height).data;
+      let colored = 0;
+      for (let index = 0; index < data.length; index += 4) {
+        const red = data[index];
+        const green = data[index + 1];
+        const blue = data[index + 2];
+        if (Math.max(red, green, blue) - Math.min(red, green, blue) > 18 && Math.max(red, green, blue) > 55) colored += 1;
+      }
+      return { colored, pixels: data.length / 4 };
+    }, viewInspection.minimapRect);
+    assert(desktopMinimapPixels.colored > 30, `territory desktop minimap pixels missing: ${JSON.stringify(desktopMinimapPixels)}`);
+    await canvas.click({
+      position: {
+        x: canvasBox.width * ((viewInspection.minimapRect.x + viewInspection.minimapRect.width * 0.94) / 1440),
+        y: canvasBox.height * ((viewInspection.minimapRect.y + viewInspection.minimapRect.height * 0.94) / 1440),
+      },
+    });
+    const expandedCamera = await eventually(async () => {
+      const inspection = await page.evaluate(() => window.__TDOS_PROTOTYPE_INSPECT__?.());
+      return inspection?.camera?.centerX > 1440 && inspection?.camera?.centerY > 1440 ? inspection : null;
+    }, 3000);
+    assert(expandedCamera.camera.centerX <= 2160 && expandedCamera.camera.centerY <= 2160, `minimap navigation should remain inside the 2160 world: ${JSON.stringify(expandedCamera)}`);
+    await canvas.click({
+      position: {
+        x: canvasBox.width * ((viewInspection.minimapRect.x + viewInspection.minimapRect.width * (viewInspection.localShip.x / 2160)) / 1440),
+        y: canvasBox.height * ((viewInspection.minimapRect.y + viewInspection.minimapRect.height * (viewInspection.localShip.y / 2160)) / 1440),
+      },
+    });
     await canvas.click({
       button: "right",
       position: { x: canvasBox.width * 0.62, y: canvasBox.height * 0.42 },
@@ -1654,7 +1697,7 @@ async function main() {
       const minimapSize = Math.max(180, Math.min(230, logical * 0.145));
       const scale = canvas.width / logical;
       const left = Math.floor((logical - minimapSize - 18) * scale);
-      const top = Math.floor(18 * scale);
+      const top = Math.floor((logical - minimapSize - 18) * scale);
       const size = Math.floor(minimapSize * scale);
       const data = canvas.getContext("2d").getImageData(left, top, size, size).data;
       let opaque = 0;

@@ -18,6 +18,7 @@ import {
 import { standardEliminationMode } from "../shared/modes/standard-elimination.js";
 import { validationSurvivalMode } from "../shared/modes/validation-survival.js";
 import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
+import { createBattleCamera } from "../src/battle/camera.js";
 import { drawBattleWorld, drawMinimap } from "../src/battle/render.js";
 import * as battleRender from "../src/battle/render.js";
 import {
@@ -54,8 +55,12 @@ function shipKeyFields(state) {
 
 function createRecordingCanvasContext() {
   const calls = [];
+  const fillRects = [];
+  const strokeRects = [];
   const target = {
     calls,
+    fillRects,
+    strokeRects,
     canvas: { width: 1200, height: 1200 },
     createLinearGradient() {
       calls.push("createLinearGradient");
@@ -70,6 +75,14 @@ function createRecordingCanvasContext() {
     },
     getImageData() {
       return { data: new Uint8ClampedArray(4) };
+    },
+    fillRect(...args) {
+      calls.push("fillRect");
+      fillRects.push(args);
+    },
+    strokeRect(...args) {
+      calls.push("strokeRect");
+      strokeRects.push(args);
     },
   };
   return new Proxy(target, {
@@ -86,6 +99,51 @@ function createRecordingCanvasContext() {
     },
   });
 }
+
+// --- dynamic camera world contract ---
+const cameraCanvas = {
+  width: 1440,
+  height: 1440,
+  clientWidth: 720,
+  getBoundingClientRect: () => ({ left: 0, top: 0, width: 720, height: 720 }),
+};
+const dynamicCamera = createBattleCamera({
+  canvas: cameraCanvas,
+  isMobile: () => false,
+  showMinimap: () => true,
+  worldSize: { width: 2160, height: 2160 },
+});
+dynamicCamera.reset({ x: 2100, y: 2100, zoom: 2 });
+const dynamicView = dynamicCamera.currentViewState();
+assert(approxEqual(dynamicView.width, 720), `screen viewport width stays logical: ${dynamicView.width}`);
+assert(dynamicView.left + dynamicView.width <= 2160 + 1e-6, `camera clamps to runtime world: ${JSON.stringify(dynamicView)}`);
+assert(dynamicView.left + dynamicView.width > 1440, `camera should reach the expanded world: ${JSON.stringify(dynamicView)}`);
+const screenCorner = dynamicCamera.screenPointFromEvent({ clientX: 720, clientY: 720 });
+assert(approxEqual(screenCorner.x, 1440) && approxEqual(screenCorner.y, 1440), `screen coordinates remain 1440: ${JSON.stringify(screenCorner)}`);
+const pointerCorner = dynamicCamera.pointerFromEvent({ clientX: 720, clientY: 720 });
+assert(approxEqual(pointerCorner.x, 2160) && approxEqual(pointerCorner.y, 2160), `pointer should reach runtime world bounds: ${JSON.stringify(pointerCorner)}`);
+const dynamicMinimap = dynamicCamera.minimapRect();
+assert(dynamicMinimap && dynamicMinimap.y > 720, `desktop minimap should occupy lower-right: ${JSON.stringify(dynamicMinimap)}`);
+const worldCorner = dynamicCamera.minimapWorldPointFromScreenPoint(
+  dynamicMinimap.x + dynamicMinimap.width,
+  dynamicMinimap.y + dynamicMinimap.height,
+);
+assert(approxEqual(worldCorner.x, 2160) && approxEqual(worldCorner.y, 2160), `minimap should project runtime world: ${JSON.stringify(worldCorner)}`);
+
+const fallbackCamera = createBattleCamera({ canvas: cameraCanvas, isMobile: () => false });
+fallbackCamera.reset({ x: 2100, y: 2100, zoom: 2 });
+let fallbackView = fallbackCamera.currentViewState();
+assert(approxEqual(fallbackView.left + fallbackView.width, 1440), `default camera should retain 1440 bounds: ${JSON.stringify(fallbackView)}`);
+fallbackCamera.setWorldSize(2160, 2160);
+fallbackCamera.reset({ x: 2100, y: 2100, zoom: 2 });
+assert(fallbackCamera.currentViewState().left + fallbackCamera.currentViewState().width > 1440, "setWorldSize should expand camera bounds");
+fallbackCamera.setWorldSize(Number.NaN, 0);
+fallbackView = fallbackCamera.currentViewState();
+assert(approxEqual(fallbackView.left + fallbackView.width, 1440), `invalid dimensions should restore 1440 bounds: ${JSON.stringify(fallbackView)}`);
+assert(
+  JSON.stringify(fallbackCamera.getWorldSize()) === JSON.stringify({ width: 1440, height: 1440 }),
+  `invalid dimensions should normalize world size: ${JSON.stringify(fallbackCamera.getWorldSize())}`,
+);
 
 // --- registry ---
 resetPrototypeRegistry();
@@ -398,6 +456,20 @@ assert(
   order.join(",") === "after-background,before-ships,after-ships",
   `drawBattleWorld should expose deterministic world layer callbacks, got ${order.join(",") || "none"}`,
 );
+const expandedWorldCtx = createRecordingCanvasContext();
+drawBattleWorld(expandedWorldCtx, {
+  state: { elapsed: 0, phase: "running", zones: [], projectiles: [], bursts: [], floatingTexts: [], fleets: {} },
+  ownTeam: null,
+  enemyTeam: null,
+  friendlyTeams: [],
+  enemyTeams: [],
+  stars: [],
+  worldSize: { width: 2160, height: 2160 },
+});
+assert(
+  expandedWorldCtx.fillRects.some(([x, y, width, height]) => x === 0 && y === 0 && width === 2160 && height === 2160),
+  `background should cover runtime world extents: ${JSON.stringify(expandedWorldCtx.fillRects)}`,
+);
 assert(typeof battleRender.resolveFleetDrawColor === "function", "shared renderer should expose fleet pulse color resolution");
 const localFleet = { seat: "A1", allianceId: "A", color: "#123456" };
 const alliedFleet = { seat: "A2", allianceId: "A", color: "#345678" };
@@ -477,6 +549,25 @@ drawMinimap(drawCtx, {
 }, { x: 20, y: 20, width: 180, height: 180 }, { left: 0, top: 0, width: 720, height: 720 });
 assert(minimapLayers.join(",") === "mode-layer", `shared minimap should expose a generic mode layer callback: ${minimapLayers.join(",") || "none"}`);
 
+const expandedMinimapCtx = createRecordingCanvasContext();
+drawMinimap(expandedMinimapCtx, {
+  state: { phase: "running", zones: [] },
+  ownTeam: null,
+  enemyTeam: null,
+  friendlyTeams: [],
+  enemyTeams: [],
+  mobileMode: false,
+  showMinimap: true,
+  worldSize: { width: 2160, height: 2160 },
+  visibleEnemyIds: new Set(),
+}, { x: 20, y: 20, width: 180, height: 180 }, { left: 1440, top: 1440, width: 720, height: 720 });
+assert(
+  expandedMinimapCtx.strokeRects.some(([x, y, width, height]) => (
+    approxEqual(x, 140) && approxEqual(y, 140) && approxEqual(width, 60) && approxEqual(height, 60)
+  )),
+  `minimap viewport should project against runtime world dimensions: ${JSON.stringify(expandedMinimapCtx.strokeRects)}`,
+);
+
 // --- static extension checks: platform core must not hardcode mode ids ---
 const coreFiles = [
   "src/prototype/index.js",
@@ -504,6 +595,13 @@ const indexSource = await readFile("src/prototype/index.js", "utf8");
 assert(indexSource.includes("export function mount"), "prototype index must export mount");
 assert(indexSource.includes("MatchSimulation") || indexSource.includes("createPrototypeRuntime"), "prototype must use shared runtime/sim");
 assert(indexSource.includes("drawBattleWorld"), "prototype must reuse battle render");
+assert(indexSource.includes("worldSize,"), "prototype runtime creation should receive the active preset world size");
+assert(indexSource.includes("camera.setWorldSize(worldSize, worldSize)"), "prototype creation and restart should set camera world size before reset");
+assert(
+  indexSource.indexOf("camera.setWorldSize(worldSize, worldSize)") < indexSource.indexOf("camera.reset({"),
+  "prototype should set camera world size before reset",
+);
+assert(indexSource.includes("persistentMinimap"), "prototype frame should support a generic persistent minimap preset");
 assert(indexSource.includes("presentationFactory") || indexSource.includes("createPresentationForCurrentMode"), "prototype must support presentation hooks");
 assert(indexSource.includes("function localSeat()"), "prototype must resolve local control through runtime fleet layout");
 assert(!indexSource.includes('return app.runtime.applyAction(action, "A");'), "prototype must not send local actions through legacy A alias");
@@ -534,6 +632,8 @@ assert(validationSurvivalMode.status === MODE_STATUS.EXPERIMENTAL, "survival sta
 validateModeDefinition(stellarTerritoryMode);
 assert(stellarTerritoryMode.id === "stellar-territory", "stellar territory mode id");
 assert(stellarTerritoryMode.status === MODE_STATUS.EXPERIMENTAL, "stellar territory status");
+assert(stellarTerritoryPreset.runtimePreset.worldSize === 2160, "territory preset should request 2160 world");
+assert(stellarTerritoryPreset.runtimePreset.persistentMinimap === true, "territory preset should request persistent minimap");
 const stellarParams = normalizeModeParameters(stellarTerritoryMode.parameterSchema, {});
 assert(stellarParams.initialTickets === 120, "stellar default initial tickets");
 assert(!stellarTerritoryMode.parameterSchema.some((field) => field.key === "controlPointCount"), "fixed control points should not expose an ineffective count parameter");

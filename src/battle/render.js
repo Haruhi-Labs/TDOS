@@ -106,17 +106,20 @@ function teamAllShips(team) {
 // 背景渐变不随帧变化,按 ctx 缓存,省去每帧重建
 const backgroundGradientCache = new WeakMap();
 
-export function drawBackground(ctx, stars, elapsed) {
-  let gradient = backgroundGradientCache.get(ctx);
-  if (!gradient) {
-    gradient = ctx.createLinearGradient(0, 0, LOGICAL, LOGICAL);
+export function drawBackground(ctx, stars, elapsed, worldSize = null) {
+  const width = Math.max(1, Number(worldSize?.width) || LOGICAL);
+  const height = Math.max(1, Number(worldSize?.height) || LOGICAL);
+  let cached = backgroundGradientCache.get(ctx);
+  if (!cached || cached.width !== width || cached.height !== height) {
+    const gradient = ctx.createLinearGradient(0, 0, width, height);
     gradient.addColorStop(0, "#040d18");
     gradient.addColorStop(0.5, "#071423");
     gradient.addColorStop(1, "#050b14");
-    backgroundGradientCache.set(ctx, gradient);
+    cached = { gradient, width, height };
+    backgroundGradientCache.set(ctx, cached);
   }
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, LOGICAL, LOGICAL);
+  ctx.fillStyle = cached.gradient;
+  ctx.fillRect(0, 0, width, height);
 
   for (const star of stars || []) {
     const alpha = 0.24 + Math.sin(elapsed * 1.6 + star.p) * 0.24 + 0.34;
@@ -840,9 +843,12 @@ export function drawSubSkillAimHint(ctx, team, pendingAim, pointer) {
 // rect 来自各模式的 minimapRect(),view 来自 currentViewState(),均为屏幕/逻辑坐标。
 export function drawMinimap(ctx, frame, rect, view) {
   const { state, ownTeam, enemyTeam, spectating = false } = frame;
-  if (!frame.mobileMode || !state || !rect || !view) {
+  const showMinimap = frame.showMinimap ?? frame.mobileMode;
+  if (!showMinimap || !state || !rect || !view) {
     return;
   }
+  const worldWidth = Math.max(1, Number(frame.worldSize?.width) || LOGICAL);
+  const worldHeight = Math.max(1, Number(frame.worldSize?.height) || LOGICAL);
   const selectedKeyForTeam = frame.selectedKeyForTeam || (() => null);
   const visibleEnemyIds = frame.visibleEnemyIds || new Set();
   const revealAll = spectating || state.phase === "finished";
@@ -858,10 +864,10 @@ export function drawMinimap(ctx, frame, rect, view) {
 
   if (frame.showLegacyZones !== false && Array.isArray(state.zones)) {
     for (const zone of state.zones) {
-      const zx = rect.x + (zone.x / LOGICAL) * rect.width;
-      const zy = rect.y + (zone.y / LOGICAL) * rect.height;
-      const zw = (zone.width / LOGICAL) * rect.width;
-      const zh = (zone.height / LOGICAL) * rect.height;
+      const zx = rect.x + (zone.x / worldWidth) * rect.width;
+      const zy = rect.y + (zone.y / worldHeight) * rect.height;
+      const zw = (zone.width / worldWidth) * rect.width;
+      const zh = (zone.height / worldHeight) * rect.height;
       ctx.strokeStyle = zone.id === frame.selectedZoneId ? "#6fd9ff" : "#2d5d884f";
       ctx.lineWidth = zone.id === frame.selectedZoneId ? 1.6 : 1;
       ctx.strokeRect(zx, zy, zw, zh);
@@ -876,8 +882,8 @@ export function drawMinimap(ctx, frame, rect, view) {
     if (!ship || !ship.alive) {
       return;
     }
-    const x = rect.x + (ship.x / LOGICAL) * rect.width;
-    const y = rect.y + (ship.y / LOGICAL) * rect.height;
+    const x = rect.x + (ship.x / worldWidth) * rect.width;
+    const y = rect.y + (ship.y / worldHeight) * rect.height;
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(x, y, 3.2, 0, TAU);
@@ -903,10 +909,10 @@ export function drawMinimap(ctx, frame, rect, view) {
   ctx.strokeStyle = "#ffe08a";
   ctx.lineWidth = 1.6;
   ctx.strokeRect(
-    rect.x + (view.left / LOGICAL) * rect.width,
-    rect.y + (view.top / LOGICAL) * rect.height,
-    (view.width / LOGICAL) * rect.width,
-    (view.height / LOGICAL) * rect.height,
+    rect.x + (view.left / worldWidth) * rect.width,
+    rect.y + (view.top / worldHeight) * rect.height,
+    (view.width / worldWidth) * rect.width,
+    (view.height / worldHeight) * rect.height,
   );
 
   ctx.fillStyle = "#d2ecff";
@@ -1013,7 +1019,7 @@ export function drawBattleWorld(ctx, frame) {
   const enemyTeams = frame.enemyTeams || (enemyTeam ? [enemyTeam] : []);
   const friendlySeats = new Set(friendlyTeams.map((team) => team?.seat).filter(Boolean));
 
-  drawBackground(ctx, frame.stars, elapsed);
+  drawBackground(ctx, frame.stars, elapsed, frame.worldSize);
   if (typeof frame.worldLayerAfterBackground === "function") {
     frame.worldLayerAfterBackground(ctx, frame);
   }

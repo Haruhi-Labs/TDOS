@@ -7,7 +7,7 @@
 //   onZoomChanged()     → 缩放变化后的 HUD 同步(单人=updateUi,在线=updateBattleStatus)
 import { DEFAULT_WORLD_SIZE, clamp } from "../../shared/game-core.js";
 
-const LOGICAL = DEFAULT_WORLD_SIZE;
+const SCREEN_LOGICAL = DEFAULT_WORLD_SIZE;
 
 export const CAMERA_ZOOM_MIN = 1;
 export const CAMERA_ZOOM_MAX = 2.6;
@@ -21,13 +21,24 @@ export function prefersMobileBattleMode() {
 export function createBattleCamera({
   canvas,
   isMobile,
+  showMinimap = isMobile,
+  worldSize = { width: DEFAULT_WORLD_SIZE, height: DEFAULT_WORLD_SIZE },
   mobileZoomEnabled = () => true,
   overviewWhenIdle = () => false,
   getTrackedShip = () => null,
   onZoomChanged = () => {},
 }) {
-  let centerX = LOGICAL * 0.5;
-  let centerY = LOGICAL * 0.5;
+  function normalizeWorldDimension(value) {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) && numeric > 0
+      ? Math.max(SCREEN_LOGICAL, numeric)
+      : DEFAULT_WORLD_SIZE;
+  }
+
+  let worldWidth = normalizeWorldDimension(worldSize?.width);
+  let worldHeight = normalizeWorldDimension(worldSize?.height);
+  let centerX = worldWidth * 0.5;
+  let centerY = worldHeight * 0.5;
   let zoomRatio = 1;
   let manualUntil = 0;
 
@@ -37,17 +48,25 @@ export function createBattleCamera({
   }
 
   function clampCameraCenter(cx, cy, zoom = effectiveViewZoom()) {
-    const width = LOGICAL / zoom;
-    const height = LOGICAL / zoom;
+    const width = SCREEN_LOGICAL / zoom;
+    const height = SCREEN_LOGICAL / zoom;
     const halfW = width * 0.5;
     const halfH = height * 0.5;
     return {
-      x: clamp(cx, halfW, LOGICAL - halfW),
-      y: clamp(cy, halfH, LOGICAL - halfH),
+      x: clamp(cx, halfW, worldWidth - halfW),
+      y: clamp(cy, halfH, worldHeight - halfH),
       width,
       height,
       zoom,
     };
+  }
+
+  function setWorldSize(width, height = width) {
+    worldWidth = normalizeWorldDimension(width);
+    worldHeight = normalizeWorldDimension(height);
+    const centered = clampCameraCenter(centerX, centerY);
+    centerX = centered.x;
+    centerY = centered.y;
   }
 
   function currentViewState() {
@@ -64,19 +83,19 @@ export function createBattleCamera({
 
   function screenPointFromEvent(event) {
     const rect = canvas.getBoundingClientRect();
-    const x = (event.clientX - rect.left) * (LOGICAL / rect.width);
-    const y = (event.clientY - rect.top) * (LOGICAL / rect.height);
+    const x = (event.clientX - rect.left) * (SCREEN_LOGICAL / rect.width);
+    const y = (event.clientY - rect.top) * (SCREEN_LOGICAL / rect.height);
     return {
-      x: clamp(x, 0, LOGICAL),
-      y: clamp(y, 0, LOGICAL),
+      x: clamp(x, 0, SCREEN_LOGICAL),
+      y: clamp(y, 0, SCREEN_LOGICAL),
     };
   }
 
   function worldPointFromScreenPoint(x, y) {
     const view = currentViewState();
     return {
-      x: clamp(view.left + x / view.zoom, 0, LOGICAL),
-      y: clamp(view.top + y / view.zoom, 0, LOGICAL),
+      x: clamp(view.left + x / view.zoom, 0, worldWidth),
+      y: clamp(view.top + y / view.zoom, 0, worldHeight),
     };
   }
 
@@ -86,13 +105,14 @@ export function createBattleCamera({
   }
 
   function minimapRect() {
-    if (!isMobile()) {
+    const visible = typeof showMinimap === "function" ? showMinimap() : Boolean(showMinimap);
+    if (!visible) {
       return null;
     }
-    const size = clamp(LOGICAL * 0.145, 180, 230);
+    const size = clamp(SCREEN_LOGICAL * 0.145, 180, 230);
     return {
-      x: LOGICAL - size - 18,
-      y: 18,
+      x: SCREEN_LOGICAL - size - 18,
+      y: SCREEN_LOGICAL - size - 18,
       width: size,
       height: size,
     };
@@ -107,8 +127,8 @@ export function createBattleCamera({
       return null;
     }
     return {
-      x: clamp(((screenX - rect.x) / rect.width) * LOGICAL, 0, LOGICAL),
-      y: clamp(((screenY - rect.y) / rect.height) * LOGICAL, 0, LOGICAL),
+      x: clamp(((screenX - rect.x) / rect.width) * worldWidth, 0, worldWidth),
+      y: clamp(((screenY - rect.y) / rect.height) * worldHeight, 0, worldHeight),
     };
   }
 
@@ -132,19 +152,19 @@ export function createBattleCamera({
     let cy = prevView.top + prevView.height * 0.5;
 
     if (focusScreen) {
-      const worldX = clamp(prevView.left + focusScreen.x / prevView.zoom, 0, LOGICAL);
-      const worldY = clamp(prevView.top + focusScreen.y / prevView.zoom, 0, LOGICAL);
+      const worldX = clamp(prevView.left + focusScreen.x / prevView.zoom, 0, worldWidth);
+      const worldY = clamp(prevView.top + focusScreen.y / prevView.zoom, 0, worldHeight);
       const zoom = effectiveViewZoom(nextRatio);
-      const width = LOGICAL / zoom;
-      const height = LOGICAL / zoom;
+      const width = SCREEN_LOGICAL / zoom;
+      const height = SCREEN_LOGICAL / zoom;
       cx = worldX - focusScreen.x / zoom + width * 0.5;
       cy = worldY - focusScreen.y / zoom + height * 0.5;
     }
 
     zoomRatio = nextRatio;
     if (!isMobile() && nextRatio <= CAMERA_ZOOM_MIN + 1e-3) {
-      centerX = LOGICAL * 0.5;
-      centerY = LOGICAL * 0.5;
+      centerX = worldWidth * 0.5;
+      centerY = worldHeight * 0.5;
       manualUntil = 0;
     } else {
       centerCameraOn(cx, cy, Boolean(focusScreen));
@@ -162,14 +182,14 @@ export function createBattleCamera({
     const zoomedIn = zoomRatio > CAMERA_ZOOM_MIN + 1e-3;
     // 观战全景:未手动放大时固定看全图,不跟随任何舰
     if (overviewWhenIdle() && !zoomedIn) {
-      centerX = LOGICAL * 0.5;
-      centerY = LOGICAL * 0.5;
+      centerX = worldWidth * 0.5;
+      centerY = worldHeight * 0.5;
       return;
     }
     const shouldTrack = isMobile() || zoomedIn;
     if (!shouldTrack) {
-      centerX = LOGICAL * 0.5;
-      centerY = LOGICAL * 0.5;
+      centerX = worldWidth * 0.5;
+      centerY = worldHeight * 0.5;
       return;
     }
     const ship = getTrackedShip();
@@ -183,8 +203,8 @@ export function createBattleCamera({
     const lead = clamp((ship.speed || 0) * 3.2, 34, 92);
     const targetX = ship.x + Math.cos(ship.angle || 0) * lead;
     const targetY = ship.y + Math.sin(ship.angle || 0) * lead;
-    centerX = clamp(centerX + (targetX - centerX) * 0.14, 0, LOGICAL);
-    centerY = clamp(centerY + (targetY - centerY) * 0.14, 0, LOGICAL);
+    centerX = clamp(centerX + (targetX - centerX) * 0.14, 0, worldWidth);
+    centerY = clamp(centerY + (targetY - centerY) * 0.14, 0, worldHeight);
   }
 
   // 把 backing store(画布物理像素)对齐到显示区域的设备像素,告别固定缓冲被放大产生的模糊。
@@ -193,11 +213,11 @@ export function createBattleCamera({
       return;
     }
     const rect = canvas.getBoundingClientRect();
-    const cssW = rect.width || canvas.clientWidth || LOGICAL;
-    // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [LOGICAL, 2880]:
+    const cssW = rect.width || canvas.clientWidth || SCREEN_LOGICAL;
+    // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [SCREEN_LOGICAL, 2880]:
     // 不低于原始逻辑尺寸(绝不劣化),不超 2880(控住超大屏/高 DPR 的内存与填充开销)。
     const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    const backing = Math.max(LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
+    const backing = Math.max(SCREEN_LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
     if (canvas.width !== backing) {
       canvas.width = backing;
       canvas.height = backing;
@@ -207,7 +227,7 @@ export function createBattleCamera({
   function reset({ x, y, zoom = 1 } = {}) {
     zoomRatio = clamp(Number(zoom) || 1, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
     manualUntil = 0;
-    const centered = clampCameraCenter(Number.isFinite(x) ? x : LOGICAL * 0.5, Number.isFinite(y) ? y : LOGICAL * 0.5);
+    const centered = clampCameraCenter(Number.isFinite(x) ? x : worldWidth * 0.5, Number.isFinite(y) ? y : worldHeight * 0.5);
     centerX = centered.x;
     centerY = centered.y;
   }
@@ -216,6 +236,8 @@ export function createBattleCamera({
     get zoom() {
       return zoomRatio;
     },
+    setWorldSize,
+    getWorldSize: () => ({ width: worldWidth, height: worldHeight }),
     effectiveViewZoom,
     currentViewState,
     screenPointFromEvent,

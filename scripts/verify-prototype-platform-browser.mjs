@@ -163,6 +163,30 @@ async function main() {
       ? "#mobileZoomOutBtn"
       : "#zoomOutBtn");
     for (let index = 0; index < 4; index += 1) await page.click(zoomOutSelector);
+    const minimapTarget = await page.evaluate(() => {
+      const pickup = window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.skillPickups?.[0];
+      const inspection = window.__TDOS_PROTOTYPE_INSPECT__?.();
+      const rect = inspection?.minimapRect;
+      const worldSize = inspection?.worldSize;
+      if (!pickup?.position || !rect || !worldSize) return null;
+      return {
+        x: rect.x + (pickup.position.x / worldSize) * rect.width,
+        y: rect.y + (pickup.position.y / worldSize) * rect.height,
+      };
+    });
+    assert(minimapTarget, "expanded territory world should expose a minimap target for the announced skill pickup");
+    const canvas = page.locator("#gameCanvas");
+    const canvasBox = await canvas.boundingBox();
+    assert(canvasBox?.width > 0 && canvasBox?.height > 0, `prototype canvas box missing: ${JSON.stringify(canvasBox)}`);
+    await canvas.evaluate((surface, target) => {
+      const bounds = surface.getBoundingClientRect();
+      surface.dispatchEvent(new MouseEvent("click", {
+        bubbles: true,
+        button: 0,
+        clientX: bounds.left + bounds.width * (target.x / 1440),
+        clientY: bounds.top + bounds.height * (target.y / 1440),
+      }));
+    }, minimapTarget);
     await eventually(async () => page.evaluate(() => {
       const pickup = window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.skillPickups?.[0];
       const view = window.__TDOS_PROTOTYPE_INSPECT__?.()?.camera;
@@ -173,25 +197,28 @@ async function main() {
       const bottom = view.centerY + view.height / 2;
       return pickup.position.x >= left && pickup.position.x <= right && pickup.position.y >= top && pickup.position.y <= bottom;
     }), 3000);
-    const entityPixels = await page.locator("#gameCanvas").evaluate((canvas) => {
-      const ctx = canvas.getContext("2d");
-      const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      let resourceLike = 0;
-      let skillLike = 0;
-      for (let i = 0; i < sample.length; i += 4) {
-        const r = sample[i];
-        const g = sample[i + 1];
-        const b = sample[i + 2];
-        if (g > 150 && r < 150 && b < 180) resourceLike += 1;
-        if (r > 150 && b > 180 && g < 170) skillLike += 1;
-      }
-      return {
-        resourceLike,
-        skillLike,
-        skillPickups: window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.skillPickups || [],
-        view: window.__TDOS_PROTOTYPE_INSPECT__?.()?.camera || null,
-      };
-    });
+    const entityPixels = await eventually(async () => {
+      const pixels = await page.locator("#gameCanvas").evaluate((canvas) => {
+        const ctx = canvas.getContext("2d");
+        const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+        let resourceLike = 0;
+        let skillLike = 0;
+        for (let i = 0; i < sample.length; i += 4) {
+          const r = sample[i];
+          const g = sample[i + 1];
+          const b = sample[i + 2];
+          if (g > 150 && r < 150 && b < 180) resourceLike += 1;
+          if (r > 150 && b > 180 && g < 170) skillLike += 1;
+        }
+        return {
+          resourceLike,
+          skillLike,
+          skillPickups: window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.skillPickups || [],
+          view: window.__TDOS_PROTOTYPE_INSPECT__?.()?.camera || null,
+        };
+      });
+      return pixels.skillLike > 40 ? pixels : null;
+    }, 3000);
     assert(entityPixels.resourceLike > 40, `resource entity should draw green pixels: ${JSON.stringify(entityPixels)}`);
     assert(entityPixels.skillLike > 40, `skill entity should draw violet pixels: ${JSON.stringify(entityPixels)}`);
 

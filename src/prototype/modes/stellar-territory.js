@@ -23,6 +23,8 @@ export const stellarTerritoryPreset = {
   name: "星域争夺战",
   description: "资源、控制区、战术技能与复活驱动的新玩法骨架。",
   runtimePreset: {
+    worldSize: 2160,
+    persistentMinimap: true,
     controlA: "human",
     controlB: "ai",
     teamNameA: "星域 A 阵营",
