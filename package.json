@@ -19,6 +19,7 @@
     "test:prototype-platform": "node scripts/verify-prototype-platform.mjs",
     "test:prototype-browser": "node scripts/verify-prototype-platform-browser.mjs",
     "test:territory-map": "node scripts/verify-territory-map.mjs",
+    "test:territory-obstacles": "node scripts/verify-territory-obstacles.mjs",
     "test:territory-resources": "node scripts/verify-territory-resources.mjs",
     "test:territory-control": "node scripts/verify-territory-control.mjs",
     "test:territory-terrain": "node scripts/verify-territory-terrain.mjs",
