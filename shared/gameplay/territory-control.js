@@ -8,6 +8,24 @@ function distance(a, b) {
   return Math.hypot(dx, dy);
 }
 
+export function pointInsideControlPoint(point, controlPoint) {
+  if (!point || !controlPoint?.center) return false;
+  const radius = Math.max(0, Number(point.radius) || 0);
+  if (controlPoint.shape === "rect") {
+    const width = Math.max(0, Number(controlPoint.width) || 0);
+    const height = Math.max(0, Number(controlPoint.height) || 0);
+    const x = Number(point.x);
+    const y = Number(point.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y) || width <= 0 || height <= 0) return false;
+    const left = Number(controlPoint.x ?? controlPoint.center.x - width / 2) - radius;
+    const right = Number(controlPoint.x ?? controlPoint.center.x - width / 2) + width + radius;
+    const top = Number(controlPoint.y ?? controlPoint.center.y - height / 2) - radius;
+    const bottom = Number(controlPoint.y ?? controlPoint.center.y - height / 2) + height + radius;
+    return x >= left && x <= right && y >= top && y <= bottom;
+  }
+  return distance(controlPoint.center, point) <= (Number(controlPoint.radius) || 0) + radius;
+}
+
 function allianceIdForSeat(seat) {
   return String(seat || "A").toUpperCase().startsWith("B") ? "B" : "A";
 }
@@ -24,7 +42,7 @@ function livingBasicShipsInPoint(simulation, point) {
     const allianceId = allianceIdForSeat(seat);
     for (const ship of Object.values(fleet?.ships || {})) {
       if (!ship?.alive) continue;
-      if (distance(point.center, ship) <= (point.radius || 0) + (ship.radius || 0)) {
+      if (pointInsideControlPoint(ship, point)) {
         occupants[allianceId].push({ seat, shipKey: ship.key || ship.slotKey, shipId: ship.id });
       }
     }
@@ -82,16 +100,27 @@ function updatePoint(point, occupants, dt, captureSeconds) {
   return next;
 }
 
-export function updateTerritoryControl({ modeState, simulation, dt, parameters = {} } = {}) {
-  const next = cloneJson(modeState);
+export function updateTerritoryControl({ modeState, simulation, dt, parameters = {}, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
   const captureSeconds = Number(parameters.captureSeconds) || 6;
   const events = [];
   next.map = {
     ...(next.map || {}),
     controlPoints: (next.map?.controlPoints || []).map((point) => {
       const beforeOwner = point.ownerAllianceId || null;
+      const beforeContested = Boolean(point.contested);
       const occupants = livingBasicShipsInPoint(simulation, point);
       const updated = updatePoint(point, occupants, dt, captureSeconds);
+      if (!beforeContested && updated.contested) {
+        events.push({
+          type: "control_point_contested",
+          position: { ...updated.center },
+          allianceId: null,
+          payload: {
+            controlPointId: updated.id,
+          },
+        });
+      }
       if ((updated.ownerAllianceId || null) !== beforeOwner) {
         events.push({
           type: "control_point_owner_changed",
@@ -124,11 +153,19 @@ function drainInfo(controlPoints) {
   return { loser, interval };
 }
 
-export function updateTerritoryTickets({ modeState, dt } = {}) {
-  const next = cloneJson(modeState);
+function drainRates(info) {
+  return {
+    A: info?.loser === "A" ? 1 / info.interval : 0,
+    B: info?.loser === "B" ? 1 / info.interval : 0,
+  };
+}
+
+export function updateTerritoryTickets({ modeState, dt, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
   const events = [];
   const controlPoints = next.map?.controlPoints || [];
   const info = drainInfo(controlPoints);
+  next.ticketDrainRates = next.result?.finished ? { A: 0, B: 0 } : drainRates(info);
   next.ticketTimers = next.ticketTimers || { A: 0, B: 0 };
   if (!info || next.result?.finished) {
     return { modeState: next, events };

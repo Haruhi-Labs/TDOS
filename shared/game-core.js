@@ -1515,6 +1515,9 @@ class Ship {
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
 
+    if (Number(this.spawnProtectionUntil) > Number(match.elapsed || 0)) {
+      this.spawnProtectionUntil = 0;
+    }
     match.projectiles.push(
       new Projectile({
         team: this.team,
@@ -1547,6 +1550,9 @@ class Ship {
 
   takeDamage(amount, _source = null, match = null, share = true) {
     if (!this.alive) {
+      return;
+    }
+    if (match && Number(this.spawnProtectionUntil) > Number(match.elapsed || 0)) {
       return;
     }
     if (this.team.effects.taxiInvulnUntil > this.team.match.elapsed) {
@@ -1621,6 +1627,7 @@ class Ship {
       reviveCharges: this.reviveCharges,
       braking: this.isEmergencyBraking(),
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
+      spawnProtectionRemaining: Math.max(0, Number(this.spawnProtectionUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       nameRevealed: this.nameRevealed, // 名字是否已永久暴露(敌方施放技能被看见后置真)
       buffs: this.team.listShipBuffs(this),
@@ -4636,7 +4643,7 @@ export class BotController {
       this.scoutTimer = Math.min(this.scoutTimer, this.profile.aggressiveScoutWindow);
     }
 
-    if (this.moveTimer <= 0 || this.stuckTimer > this.profile.stuckTrigger) {
+    if (this.navigationEnabled !== false && (this.moveTimer <= 0 || this.stuckTimer > this.profile.stuckTrigger)) {
       this.issueMovement(this.currentContext);
       this.moveTimer = randomInRange(this.profile.moveReplanMin, this.profile.moveReplanMax) * (this.replanMult || 1);
       this.stuckTimer = 0;
@@ -6076,6 +6083,7 @@ export class MatchSimulation {
 
     this.mode = mode;
     this.isTwoVsTwo = isTwoVsTwo;
+    this.usesAllianceLayout = Boolean(fleetLayout) || isTwoVsTwo;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
     this.aiAutoBeam = aiAutoBeam;
@@ -6090,6 +6098,7 @@ export class MatchSimulation {
     this.winnerSeat = null;
     this.winnerAllianceId = null;
     this.victoryPolicy = options.victoryPolicy === "external" ? "external" : "internal";
+    this.aiNavigationOwner = options.aiNavigationOwner === "mode" ? "mode" : "core";
     this.environmentModifiers = new Map();
 
     const centerY = worldSize * 0.5;
@@ -6182,6 +6191,7 @@ export class MatchSimulation {
     for (const seat of this.aiSeats) {
       const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
       bot.legacy = legacyAiSeats.includes(seat);
+      bot.navigationEnabled = this.aiNavigationOwner === "core";
       bot.setDifficulty(aiDifficulty);
       this.bots[seat] = bot;
     }
@@ -6324,11 +6334,23 @@ export class MatchSimulation {
 
   fleetGroupForAlliance(allianceId) {
     const fleets = this.fleetsForAlliance(allianceId);
+    const primaryFleet = fleets[0] || null;
     return {
       seat: allianceId,
       allianceId,
+      ships: primaryFleet?.ships || {},
+      get scouts() {
+        return fleets.flatMap((fleet) => fleet.scouts || []);
+      },
       getEntities: () => fleets.flatMap((fleet) => fleet.getEntities()),
       getAllShips: () => fleets.flatMap((fleet) => fleet.getAllShips()),
+      hasKyonFlagship: () => fleets.some((fleet) => fleet.hasKyonFlagship()),
+      hullRatio: () => {
+        const ships = fleets.flatMap((fleet) => fleet.getAllShips());
+        const hp = ships.reduce((sum, ship) => sum + Math.max(0, ship.hp), 0);
+        const max = ships.reduce((sum, ship) => sum + ship.maxHp, 0);
+        return max <= 0 ? 0 : hp / max;
+      },
       clearActiveSkillBuffs: () => {
         for (const fleet of fleets) {
           fleet.clearActiveSkillBuffs();
@@ -6347,7 +6369,7 @@ export class MatchSimulation {
   }
 
   enemyTeamBySeat(seat) {
-    if (this.isTwoVsTwo) {
+    if (this.usesAllianceLayout) {
       return this.fleetGroupForAlliance(enemyAllianceId(allianceIdForSeat(seat)));
     }
     return seat === "A" ? this.teamB : this.teamA;
@@ -6641,7 +6663,7 @@ export class MatchSimulation {
     if (this.victoryPolicy === "external") {
       return;
     }
-    if (this.isTwoVsTwo) {
+    if (this.usesAllianceLayout) {
       const aAlive = this.fleetsForAlliance("A").some((fleet) => fleet.hasLivingShips());
       const bAlive = this.fleetsForAlliance("B").some((fleet) => fleet.hasLivingShips());
       if (aAlive && bAlive) {
@@ -6746,7 +6768,7 @@ export class MatchSimulation {
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();
     this.resolveScoutClashes();
-    if (this.isTwoVsTwo) {
+    if (this.usesAllianceLayout) {
       this.computeAllianceVisibility();
     } else {
       this.teamA.computeVisibility(this.teamB);

@@ -18,6 +18,8 @@ import {
 import { standardEliminationMode } from "../shared/modes/standard-elimination.js";
 import { validationSurvivalMode } from "../shared/modes/validation-survival.js";
 import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
+import { drawBattleWorld, drawMinimap } from "../src/battle/render.js";
+import * as battleRender from "../src/battle/render.js";
 import {
   registerPrototypeMode,
   getPrototypeMode,
@@ -25,6 +27,7 @@ import {
   resetPrototypeRegistry,
 } from "../src/prototype/registry.js";
 import { registerBuiltInPrototypeModes, resetBuiltInPrototypeRegistrationFlag } from "../src/prototype/modes/index.js";
+import { stellarTerritoryPreset } from "../src/prototype/modes/stellar-territory.js";
 import { createPrototypeRuntime } from "../src/prototype/runtime.js";
 
 function assert(condition, message) {
@@ -47,6 +50,41 @@ function shipKeyFields(state) {
     alive: ship.alive,
     phase: state.phase,
   };
+}
+
+function createRecordingCanvasContext() {
+  const calls = [];
+  const target = {
+    calls,
+    canvas: { width: 1200, height: 1200 },
+    createLinearGradient() {
+      calls.push("createLinearGradient");
+      return { addColorStop() {} };
+    },
+    createRadialGradient() {
+      calls.push("createRadialGradient");
+      return { addColorStop() {} };
+    },
+    measureText(text) {
+      return { width: String(text || "").length * 8 };
+    },
+    getImageData() {
+      return { data: new Uint8ClampedArray(4) };
+    },
+  };
+  return new Proxy(target, {
+    get(obj, prop) {
+      if (prop in obj) return obj[prop];
+      if (typeof prop === "symbol") return undefined;
+      return (..._args) => {
+        calls.push(String(prop));
+      };
+    },
+    set(obj, prop, value) {
+      obj[prop] = value;
+      return true;
+    },
+  });
 }
 
 // --- registry ---
@@ -324,6 +362,121 @@ assert(presentationDestroyed, "presentation destroy should run");
 hookRuntime.destroy();
 assert(hookRuntime.consumeModeEvents().length === 0, "destroy clears mode events");
 
+// --- shared renderer layer callbacks ---
+const drawCtx = createRecordingCanvasContext();
+const order = [];
+drawBattleWorld(drawCtx, {
+  state: {
+    elapsed: 1,
+    phase: "running",
+    zones: [{ id: 5, x: 100, y: 100, width: 140, height: 140 }],
+    projectiles: [],
+    bursts: [],
+    floatingTexts: [],
+    fleets: {},
+  },
+  ownTeam: { seat: "A1", allianceId: "A", color: "#65d9ff", ships: {} },
+  enemyTeam: { seat: "B1", allianceId: "B", color: "#ff8692", ships: {} },
+  stars: [],
+  selectedZoneId: 5,
+  selectedKeyForTeam: () => null,
+  worldLayerAfterBackground() {
+    order.push("after-background");
+  },
+  worldLayerBeforeShips() {
+    order.push("before-ships");
+  },
+  worldLayerAfterShips() {
+    order.push("after-ships");
+  },
+});
+const fillIndex = drawCtx.calls.indexOf("fillRect");
+const firstTextIndex = drawCtx.calls.indexOf("fillText");
+assert(fillIndex >= 0, "drawBattleWorld should draw shared background");
+assert(firstTextIndex > fillIndex, "fixture should draw shared zones after background");
+assert(
+  order.join(",") === "after-background,before-ships,after-ships",
+  `drawBattleWorld should expose deterministic world layer callbacks, got ${order.join(",") || "none"}`,
+);
+assert(typeof battleRender.resolveFleetDrawColor === "function", "shared renderer should expose fleet pulse color resolution");
+const localFleet = { seat: "A1", allianceId: "A", color: "#123456" };
+const alliedFleet = { seat: "A2", allianceId: "A", color: "#345678" };
+const localColorA = battleRender.resolveFleetDrawColor(localFleet, { localControlSeat: "A1" }, localFleet.color, 0);
+const localColorB = battleRender.resolveFleetDrawColor(localFleet, { localControlSeat: "A1" }, localFleet.color, 0.4);
+const alliedColor = battleRender.resolveFleetDrawColor(alliedFleet, { localControlSeat: "A1" }, alliedFleet.color, 0.4);
+assert(localColorA !== localColorB, `A1 local color should pulse over time: ${localColorA}/${localColorB}`);
+assert(alliedColor === alliedFleet.color, `A2 allied color should remain solid: ${alliedColor}`);
+
+const legacyZoneState = {
+  elapsed: 1,
+  phase: "running",
+  zones: [{ id: 5, x: 100, y: 100, width: 140, height: 140 }],
+  projectiles: [],
+  bursts: [],
+  floatingTexts: [],
+  fleets: {},
+};
+const legacyZoneFrame = {
+  state: legacyZoneState,
+  ownTeam: localFleet,
+  enemyTeam: null,
+  friendlyTeams: [],
+  enemyTeams: [],
+  mobileMode: true,
+  visibleEnemyIds: new Set(),
+  selectedKeyForTeam: () => null,
+  stars: [],
+};
+const visibleWorldCtx = createRecordingCanvasContext();
+drawBattleWorld(visibleWorldCtx, legacyZoneFrame);
+const hiddenWorldCtx = createRecordingCanvasContext();
+drawBattleWorld(hiddenWorldCtx, { ...legacyZoneFrame, showLegacyZones: false });
+
+const minimapRect = { x: 20, y: 20, width: 180, height: 180 };
+const minimapView = { left: 0, top: 0, width: 720, height: 720 };
+const visibleMinimapCtx = createRecordingCanvasContext();
+drawMinimap(visibleMinimapCtx, legacyZoneFrame, minimapRect, minimapView);
+const hiddenMinimapCtx = createRecordingCanvasContext();
+drawMinimap(hiddenMinimapCtx, { ...legacyZoneFrame, showLegacyZones: false }, minimapRect, minimapView);
+
+const legacyZoneContractFailures = [];
+const visibleWorldZoneTexts = visibleWorldCtx.calls.filter((call) => call === "fillText").length;
+const hiddenWorldZoneTexts = hiddenWorldCtx.calls.filter((call) => call === "fillText").length;
+if (visibleWorldZoneTexts < 1) legacyZoneContractFailures.push("default world zones are not visible");
+if (hiddenWorldZoneTexts !== 0) legacyZoneContractFailures.push("hidden world still draws zone labels");
+const visibleMinimapRects = visibleMinimapCtx.calls.filter((call) => call === "strokeRect").length;
+const hiddenMinimapRects = hiddenMinimapCtx.calls.filter((call) => call === "strokeRect").length;
+if (visibleMinimapRects !== hiddenMinimapRects + 1) legacyZoneContractFailures.push("hidden minimap still draws zone borders");
+if (stellarTerritoryPreset.runtimePreset?.showLegacyZones !== false) legacyZoneContractFailures.push("territory preset does not hide zones");
+if (typeof battleRender.resolveLegacyZoneVisibility !== "function") {
+  legacyZoneContractFailures.push("platform has no generic aiming visibility resolver");
+} else {
+  if (!battleRender.resolveLegacyZoneVisibility({}, null)) legacyZoneContractFailures.push("default modes hide zones");
+  if (battleRender.resolveLegacyZoneVisibility({ showLegacyZones: false }, null)) legacyZoneContractFailures.push("hidden preset ignored");
+  if (!battleRender.resolveLegacyZoneVisibility({ showLegacyZones: false }, { shipKey: "sub1" })) {
+    legacyZoneContractFailures.push("zone aiming does not reveal zones");
+  }
+}
+assert(
+  legacyZoneContractFailures.length === 0,
+  `legacy zone visibility contract: ${legacyZoneContractFailures.join("; ")}`,
+);
+
+const minimapLayers = [];
+drawMinimap(drawCtx, {
+  state: { phase: "running", zones: [] },
+  ownTeam: localFleet,
+  enemyTeam: null,
+  friendlyTeams: [],
+  enemyTeams: [],
+  mobileMode: true,
+  visibleEnemyIds: new Set(),
+  minimapLayerAfterBackground() {
+    minimapLayers.push("mode-layer");
+  },
+}, { x: 20, y: 20, width: 180, height: 180 }, { left: 0, top: 0, width: 720, height: 720 });
+assert(minimapLayers.join(",") === "mode-layer", `shared minimap should expose a generic mode layer callback: ${minimapLayers.join(",") || "none"}`);
+
 // --- static extension checks: platform core must not hardcode mode ids ---
 const coreFiles = [
   "src/prototype/index.js",
@@ -352,8 +505,25 @@ assert(indexSource.includes("export function mount"), "prototype index must expo
 assert(indexSource.includes("MatchSimulation") || indexSource.includes("createPrototypeRuntime"), "prototype must use shared runtime/sim");
 assert(indexSource.includes("drawBattleWorld"), "prototype must reuse battle render");
 assert(indexSource.includes("presentationFactory") || indexSource.includes("createPresentationForCurrentMode"), "prototype must support presentation hooks");
+assert(indexSource.includes("function localSeat()"), "prototype must resolve local control through runtime fleet layout");
+assert(!indexSource.includes('return app.runtime.applyAction(action, "A");'), "prototype must not send local actions through legacy A alias");
+assert(!indexSource.includes("snap?.fleets?.A || snap?.teams?.A"), "prototype must not read local fleet through legacy A fields");
+assert(indexSource.includes("friendlyTeams:"), "prototype must pass all friendly fleets to shared renderer");
+assert(
+  indexSource.includes("showLegacyZones: resolveLegacyZoneVisibility("),
+  "prototype frame should derive legacy-zone visibility from the generic preset and aiming state",
+);
+assert(indexSource.includes("enemyTeams:"), "prototype must pass all enemy fleets to shared renderer");
+assert(indexSource.includes("presentation?.handleKeyDown"), "prototype should expose generic mode key handling");
+assert(indexSource.includes("presentation?.handleWorldClick"), "prototype should expose generic mode world-target handling");
+assert(indexSource.includes("presentation?.cancelInteraction"), "prototype should expose generic mode cancellation handling");
+assert(indexSource.includes('event.code === "KeyZ"'), "prototype should reserve Z for scout launch without removing legacy fallback controls");
 assert(!indexSource.includes("class MatchSimulation"), "prototype must not copy MatchSimulation");
 assert(!indexSource.includes("CHARACTER_DEFS ="), "prototype must not redefine CHARACTER_DEFS");
+
+const battleTemplateSource = await readFile("src/battle/template.js", "utf8");
+assert(battleTemplateSource.includes('id="tacticalSkillBtn"'), "shared battle controls should provide a desktop tactical skill button");
+assert(battleTemplateSource.includes('id="mobileTacticalSkillBtn"'), "shared battle controls should provide a mobile tactical skill button");
 
 validateModeDefinition(standardEliminationMode);
 validateModeDefinition(validationSurvivalMode);
@@ -366,10 +536,13 @@ assert(stellarTerritoryMode.id === "stellar-territory", "stellar territory mode 
 assert(stellarTerritoryMode.status === MODE_STATUS.EXPERIMENTAL, "stellar territory status");
 const stellarParams = normalizeModeParameters(stellarTerritoryMode.parameterSchema, {});
 assert(stellarParams.initialTickets === 120, "stellar default initial tickets");
-assert(stellarParams.controlPointCount === 3, "stellar default control point count");
+assert(!stellarTerritoryMode.parameterSchema.some((field) => field.key === "controlPointCount"), "fixed control points should not expose an ineffective count parameter");
+assert(!Object.prototype.hasOwnProperty.call(stellarTerritoryMode.defaultParameters, "controlPointCount"), "fixed control-point defaults should omit the ineffective count parameter");
 assert(stellarParams.captureSeconds === 6, "stellar default capture seconds");
-assert(stellarParams.resourceSpawnInterval === 26, "stellar default resource interval");
-assert(stellarParams.skillSpawnInterval === 55, "stellar default skill interval");
+assert(stellarParams.commonResourceSpawnSeconds === 52, "stellar default common resource interval");
+assert(stellarParams.rareResourceSpawnSeconds === 120, "stellar default rare resource interval");
+assert(!("resourceSpawnInterval" in stellarParams), "stellar parameters should not expose the ineffective legacy resource interval");
+assert(stellarParams.skillSpawnInterval === 75, "stellar default skill interval");
 assert(stellarParams.respawnEnabled === true, "stellar default respawn enabled");
 assert(stellarParams.mapTemplate === "three-lane-v1", "stellar default map template");
 
@@ -387,6 +560,13 @@ assert(Array.isArray(stellarState.map.controlPoints), "stellar control points ar
 assert(Array.isArray(stellarState.pickups), "stellar pickups array");
 assert(Array.isArray(stellarState.activeSkillEffects), "stellar active skill effects array");
 assert(Array.isArray(stellarState.respawnQueue), "stellar respawn queue array");
+
+const customTicketState = stellarTerritoryMode.createInitialModeState({
+  parameters: { ...stellarParams, initialTickets: 230 },
+  randomSeed: 424242,
+});
+assert(customTicketState.initialTickets === 230, "custom initial tickets should be recorded authoritatively");
+assert(customTicketState.alliances.A.tickets === 230 && customTicketState.alliances.B.tickets === 230, "custom initial tickets should initialize both alliances");
 
 const serializedStellar = stellarTerritoryMode.serializeModeState(stellarState);
 assert(serializedStellar !== stellarState, "stellar serialize returns copy");
@@ -417,5 +597,36 @@ assert(stellarRuntime.getModeState()?.elapsed >= TICK_DT, "stellar mode steps wh
 assert(stellarRuntime.serialize().modeState.seed === 13579, "stellar runtime serializes mode state");
 assert(stellarRuntime.getDiagnostics()["模式ID"] === "stellar-territory", "stellar runtime diagnostics mode id");
 stellarRuntime.destroy();
+
+const generatedSeeds = [7001, 7002];
+const restartSeedRuntime = createPrototypeRuntime({
+  modeDefinition: getPrototypeMode("stellar-territory"),
+  runtimePreset: { controlA: "ai", controlB: "ai" },
+  teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
+  randomSeed: null,
+  randomSeedFactory: () => generatedSeeds.shift(),
+});
+restartSeedRuntime.start();
+const initialGeneratedSeed = restartSeedRuntime.getRandomSeed();
+const initialGeneratedMap = JSON.stringify(restartSeedRuntime.getModeState()?.map);
+assert(initialGeneratedSeed === 7001, `missing seed should allocate a concrete random seed: ${initialGeneratedSeed}`);
+assert(restartSeedRuntime.getModeState()?.seed === initialGeneratedSeed, "mode state should record the allocated runtime seed");
+
+restartSeedRuntime.getPresentationState();
+restartSeedRuntime.getPresentationState();
+restartSeedRuntime.restart();
+assert(restartSeedRuntime.getRandomSeed() === initialGeneratedSeed, "plain restart should preserve the current seed");
+assert(JSON.stringify(restartSeedRuntime.getModeState()?.map) === initialGeneratedMap, "same-seed restart should reproduce the map exactly");
+
+restartSeedRuntime.restart({ randomSeed: null });
+const nextGeneratedSeed = restartSeedRuntime.getRandomSeed();
+const nextGeneratedMap = JSON.stringify(restartSeedRuntime.getModeState()?.map);
+assert(nextGeneratedSeed === 7002, `new-map restart should allocate the next seed: ${nextGeneratedSeed}`);
+assert(nextGeneratedMap !== initialGeneratedMap, "new-map restart should regenerate random map features");
+
+restartSeedRuntime.restart({ randomSeed: initialGeneratedSeed });
+assert(restartSeedRuntime.getRandomSeed() === initialGeneratedSeed, "explicit seed restart should load the requested seed");
+assert(JSON.stringify(restartSeedRuntime.getModeState()?.map) === initialGeneratedMap, "explicit seed restart should replay the original map");
+restartSeedRuntime.destroy();
 
 console.log("prototype platform verification passed");

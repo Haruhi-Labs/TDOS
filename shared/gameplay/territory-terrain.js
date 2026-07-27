@@ -94,8 +94,8 @@ function previousTerrainMemory(modeState) {
   return modeState.terrainMemory && typeof modeState.terrainMemory === "object" ? modeState.terrainMemory : {};
 }
 
-export function updateTerritoryTerrainModifiers({ modeState, simulation } = {}) {
-  const next = cloneJson(modeState);
+export function updateTerritoryTerrainModifiers({ modeState, simulation, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
   const events = [];
   const map = next.map || {};
   const terrainRegions = Array.isArray(map.terrainRegions) ? map.terrainRegions : [];

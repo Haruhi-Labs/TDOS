@@ -18,8 +18,30 @@ function distance(a, b) {
   return Math.hypot(dx, dy);
 }
 
+function nodeRadius(node) {
+  if (Number.isFinite(Number(node?.radius))) return Number(node.radius);
+  if (node?.shape === "rect") {
+    return Math.max(Number(node.width) || 0, Number(node.height) || 0) / 2;
+  }
+  return 0;
+}
+
 function circleOverlap(a, b, padding = 0) {
-  return distance(a.center, b.center) < Number(a.radius || 0) + Number(b.radius || 0) + padding;
+  return distance(a.center, b.center) < nodeRadius(a) + nodeRadius(b) + padding;
+}
+
+function circleRectOverlap(circle, rect, padding = 0) {
+  if (!circle?.center || !rect?.center) return false;
+  const radius = Math.max(0, Number(circle.radius) || 0) + Math.max(0, Number(padding) || 0);
+  const width = Math.max(0, Number(rect.width) || 0);
+  const height = Math.max(0, Number(rect.height) || 0);
+  const left = Number(rect.x ?? rect.center.x - width / 2);
+  const top = Number(rect.y ?? rect.center.y - height / 2);
+  const closestX = clamp(circle.center.x, left, left + width);
+  const closestY = clamp(circle.center.y, top, top + height);
+  const dx = circle.center.x - closestX;
+  const dy = circle.center.y - closestY;
+  return dx * dx + dy * dy < radius * radius;
 }
 
 function withinBounds(center, radius, bounds) {
@@ -36,6 +58,25 @@ function makeNode(id, x, y, extra = {}) {
     id,
     center: point(x, y),
     radius: extra.radius || 34,
+    ...extra,
+  };
+}
+
+function makeControlPoint(id, label, x, y, width, height, extra = {}) {
+  return {
+    id,
+    label,
+    shape: "rect",
+    center: point(x, y),
+    x: Math.round(x - width / 2),
+    y: Math.round(y - height / 2),
+    width: Math.round(width),
+    height: Math.round(height),
+    ownerAllianceId: null,
+    capturingAllianceId: null,
+    captureProgress: 0,
+    contested: false,
+    occupants: { A: [], B: [] },
     ...extra,
   };
 }
@@ -57,10 +98,10 @@ function buildSafeTemplate({ seed, worldSize, teamSize }) {
   const size = normalizedWorldSize(worldSize);
   const laneY = [size.height * 0.28, size.height * 0.5, size.height * 0.72];
   const safeBounds = {
-    x: 60,
-    y: 60,
-    width: size.width - 120,
-    height: size.height - 120,
+    x: 0,
+    y: 0,
+    width: size.width,
+    height: size.height,
   };
   const spawnRadius = clamp(82 + (Number(teamSize) - 1) * 10, 82, 112);
 
@@ -71,13 +112,13 @@ function buildSafeTemplate({ seed, worldSize, teamSize }) {
     worldSize: size,
     safeBounds,
     spawnAreas: [
-      { id: "spawn-A", allianceId: "A", center: point(size.width * 0.15, size.height * 0.5), radius: spawnRadius },
-      { id: "spawn-B", allianceId: "B", center: point(size.width * 0.85, size.height * 0.5), radius: spawnRadius },
+      { id: "spawn-A", allianceId: "A", center: point(size.width * 0.09, size.height * 0.86), radius: spawnRadius },
+      { id: "spawn-B", allianceId: "B", center: point(size.width * 0.91, size.height * 0.14), radius: spawnRadius },
     ],
     controlPoints: [
-      { id: "alpha", center: point(size.width * 0.36, laneY[0]), radius: 62, ownerAllianceId: null },
-      { id: "beta", center: point(size.width * 0.5, laneY[1]), radius: 70, ownerAllianceId: null },
-      { id: "gamma", center: point(size.width * 0.64, laneY[2]), radius: 62, ownerAllianceId: null },
+      makeControlPoint("alpha", "A", size.width * 0.32, size.height * 0.68, 300, 220, { laneIndex: 0 }),
+      makeControlPoint("beta", "B", size.width * 0.5, size.height * 0.5, 300, 220, { laneIndex: 1 }),
+      makeControlPoint("gamma", "C", size.width * 0.68, size.height * 0.32, 300, 220, { laneIndex: 2 }),
     ],
     terrainRegions: [
       {
@@ -121,9 +162,9 @@ function buildSafeTemplate({ seed, worldSize, teamSize }) {
       makeNode("skill-south-mid", size.width * 0.5, size.height * 0.82, { radius: 40 }),
     ],
     lanes: [
-      { id: "north", from: "spawn-A", through: ["alpha"], to: "spawn-B" },
+      { id: "southwest", from: "spawn-A", through: ["alpha"], to: "spawn-B" },
       { id: "middle", from: "spawn-A", through: ["beta"], to: "spawn-B" },
-      { id: "south", from: "spawn-A", through: ["gamma"], to: "spawn-B" },
+      { id: "northeast", from: "spawn-A", through: ["gamma"], to: "spawn-B" },
     ],
     fallback: true,
   };
@@ -131,26 +172,13 @@ function buildSafeTemplate({ seed, worldSize, teamSize }) {
 
 function buildCandidateMap({ seed, worldSize, teamSize, attempt }) {
   const size = normalizedWorldSize(worldSize);
-  const rng = createSeededRng(seed).fork(`map:${attempt}`);
   const terrainRng = createSeededRng(seed).fork(`terrain:${attempt}`);
   const nodeRng = createSeededRng(seed).fork(`nodes:${attempt}`);
   const safe = buildSafeTemplate({ seed, worldSize: size, teamSize });
-  const laneJitter = size.height * 0.035;
-  const lateralJitter = size.width * 0.025;
-
-  const controlPoints = safe.controlPoints.map((cp, index) => ({
+  const controlPoints = safe.controlPoints.map((cp) => ({
     ...cp,
-    center: point(
-      cp.center.x + rng.nextInt(-Math.round(lateralJitter), Math.round(lateralJitter)),
-      cp.center.y + rng.nextInt(-Math.round(laneJitter), Math.round(laneJitter)),
-    ),
-    radius: cp.radius + rng.nextInt(-6, 6),
-    ownerAllianceId: null,
-    capturingAllianceId: null,
-    captureProgress: 0,
-    contested: false,
-    occupants: [],
-    laneIndex: index,
+    center: { ...cp.center },
+    occupants: { A: [], B: [] },
   }));
 
   const terrainTypes = terrainRng.shuffle(TERRAIN_TYPES).concat(terrainRng.pick(TERRAIN_TYPES));
@@ -189,14 +217,15 @@ function buildCandidateMap({ seed, worldSize, teamSize, attempt }) {
     [0.5, 0.35, "rare", "upper-center"],
     [0.5, 0.65, "rare", "lower-center"],
   ];
-  const resourceSpawnNodes = nodeRng.shuffle(resourceCandidates).map(([x, y, rarity, label], index) =>
-    makeNode(
-      `res-${rarity}-${label}`,
+  const resourceSpawnNodes = nodeRng.shuffle(resourceCandidates).map(([x, y, rarity, label], index) => {
+    const side = x < 0.5 ? "a" : x > 0.5 ? "b" : "center";
+    return makeNode(
+      `res-${rarity}-${side}-${label}`,
       size.width * x + nodeRng.nextInt(-24, 24),
       size.height * y + nodeRng.nextInt(-22, 22),
       { rarity, radius: rarity === "rare" ? 38 : 34, order: index },
-    ),
-  );
+    );
+  });
 
   const skillSpawnNodes = [
     makeNode("skill-north-mid", size.width * 0.5 + nodeRng.nextInt(-34, 34), size.height * 0.2, { radius: 40 }),
@@ -240,7 +269,7 @@ export function validateTerritoryMap(map) {
   if (skillNodes.length < 2) errors.push("expected at least two skill nodes");
   if (terrainRegions.length < 3 || terrainRegions.length > 4) errors.push("expected 3-4 terrain regions");
 
-  const circularNodes = [...spawnAreas, ...controlPoints, ...resourceNodes, ...skillNodes];
+  const circularNodes = [...spawnAreas, ...resourceNodes, ...skillNodes];
   for (const node of circularNodes) {
     if (!node?.id) errors.push("node id missing");
     if (!node?.center || !Number.isFinite(node.center.x) || !Number.isFinite(node.center.y)) {
@@ -254,9 +283,37 @@ export function validateTerritoryMap(map) {
     }
   }
 
+  for (const point of controlPoints) {
+    if (!point?.id) errors.push("control point id missing");
+    if (!point?.center || !Number.isFinite(point.center.x) || !Number.isFinite(point.center.y)) {
+      errors.push(`${point?.id || "control point"} center invalid`);
+      continue;
+    }
+    if (point.shape !== "rect") errors.push(`${point.id} shape must be rect`);
+    const width = Number(point.width) || 0;
+    const height = Number(point.height) || 0;
+    if (width < 280 || width > 340) errors.push(`${point.id} width invalid`);
+    if (height < 200 || height > 260) errors.push(`${point.id} height invalid`);
+    if (!point.occupants || !Array.isArray(point.occupants.A) || !Array.isArray(point.occupants.B)) {
+      errors.push(`${point.id} occupants invalid`);
+    }
+    if (bounds) {
+      const left = Number(point.x ?? point.center.x - width / 2);
+      const top = Number(point.y ?? point.center.y - height / 2);
+      if (
+        left < bounds.x ||
+        top < bounds.y ||
+        left + width > bounds.x + bounds.width ||
+        top + height > bounds.y + bounds.height
+      ) {
+        errors.push(`${point.id} outside safe bounds`);
+      }
+    }
+  }
+
   for (const spawn of spawnAreas) {
     for (const cp of controlPoints) {
-      if (circleOverlap(spawn, cp, 28)) {
+      if (circleRectOverlap(spawn, cp, 28)) {
         errors.push(`spawn overlaps control: ${spawn.id}/${cp.id}`);
       }
     }

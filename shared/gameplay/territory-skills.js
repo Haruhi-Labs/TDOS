@@ -67,9 +67,10 @@ export const ALLOWED_TACTICAL_SKILLS = Object.freeze([
   }),
 ]);
 
-const SKILL_PICKUP_LIFETIME_SECONDS = 35;
 const SKILL_WARNING_SECONDS = 8;
-const SKILL_SPAWN_INTERVAL = Object.freeze({ min: 45, max: 65 });
+const SKILL_INTERVAL_JITTER = 0.2;
+const DEFAULT_SKILL_SPAWN_INTERVAL = 75;
+const MAX_SKILL_PICKUPS = 2;
 const SKILL_PICKUP_RADIUS = 30;
 const SKILL_MODIFIER_SOURCE = "territory-skills";
 
@@ -111,18 +112,30 @@ function inWorld(point, simulation) {
   return Number(point?.x) >= 0 && Number(point?.y) >= 0 && point.x <= size && point.y <= size;
 }
 
-function skillRuntime(modeState) {
+function nextSkillInterval(rng, parameters) {
+  const configured = Number(parameters?.skillSpawnInterval);
+  const base = Number.isFinite(configured) && configured > 0
+    ? configured
+    : DEFAULT_SKILL_SPAWN_INTERVAL;
+  return base * (1 - SKILL_INTERVAL_JITTER + rng.next() * SKILL_INTERVAL_JITTER * 2);
+}
+
+function skillRuntime(modeState, parameters = {}) {
   if (!modeState.skillRuntime) {
     const seed = createSeededRng(modeState.seed || 0).fork("skill");
     modeState.skillRuntime = {
       seed: seed.seed,
-      nextSkillAt: seed.nextInt(SKILL_SPAWN_INTERVAL.min, SKILL_SPAWN_INTERVAL.max),
+      nextSkillAt: nextSkillInterval(seed, parameters),
       warned: false,
+      reservation: null,
       spawnSequence: 0,
       nodeSequence: 0,
       bagSequence: 0,
       bag: [],
     };
+  }
+  if (!("reservation" in modeState.skillRuntime)) {
+    modeState.skillRuntime.reservation = null;
   }
   return modeState.skillRuntime;
 }
@@ -138,11 +151,21 @@ function drawSkillId(runtime) {
   return runtime.bag.shift();
 }
 
-function chooseSkillNode(modeState, runtime, nodeId = null) {
-  const nodes = modeState.map?.skillSpawnNodes || [];
-  if (nodeId) return nodes.find((node) => node.id === nodeId) || null;
-  if (!nodes.length) return null;
+function occupiedSkillNodeIds(modeState, runtime, ignoreReservation = false) {
   const occupied = new Set((modeState.skillPickups || []).map((pickup) => pickup.nodeId));
+  if (!ignoreReservation && runtime?.reservation?.nodeId) {
+    occupied.add(runtime.reservation.nodeId);
+  }
+  return occupied;
+}
+
+function chooseSkillNode(modeState, runtime, nodeId = null, ignoreReservation = false) {
+  const nodes = modeState.map?.skillSpawnNodes || [];
+  const occupied = occupiedSkillNodeIds(modeState, runtime, ignoreReservation);
+  if (nodeId) {
+    return occupied.has(nodeId) ? null : nodes.find((node) => node.id === nodeId) || null;
+  }
+  if (!nodes.length) return null;
   const rng = createSeededRng(runtime.seed).fork(`skill-node:${runtime.nodeSequence || 0}`);
   runtime.nodeSequence = (runtime.nodeSequence || 0) + 1;
   return rng.shuffle(nodes).find((node) => !occupied.has(node.id)) || null;
@@ -161,54 +184,94 @@ function skillEvent(type, pickup, extra = {}) {
   };
 }
 
-export function spawnTerritorySkillPickup({ modeState, skillId = null, nodeId = null } = {}) {
+export function spawnTerritorySkillPickup({
+  modeState,
+  skillId = null,
+  nodeId = null,
+  reservation = null,
+  parameters = {},
+} = {}) {
   const next = cloneJson(modeState);
-  const runtime = skillRuntime(next);
-  const node = chooseSkillNode(next, runtime, nodeId);
+  const runtime = skillRuntime(next, parameters);
+  const activeCount = (next.skillPickups || []).length;
+  if (reservation ? activeCount >= MAX_SKILL_PICKUPS : activeCount + (runtime.reservation ? 1 : 0) >= MAX_SKILL_PICKUPS) {
+    return { modeState: next, pickups: [], events: [] };
+  }
+  const reservedNodeId = reservation?.nodeId || null;
+  const node = reservedNodeId
+    ? chooseSkillNode(next, runtime, reservedNodeId, true)
+    : chooseSkillNode(next, runtime, nodeId);
   if (!node) return { modeState: next, pickups: [], events: [] };
-  const safeSkillId = SKILL_BY_ID.has(skillId) ? skillId : drawSkillId(runtime);
+  const requestedSkillId = reservation?.skillId || skillId;
+  const safeSkillId = SKILL_BY_ID.has(requestedSkillId) ? requestedSkillId : drawSkillId(runtime);
   runtime.spawnSequence += 1;
   const pickup = {
     id: `skill-${runtime.spawnSequence}`,
     skillId: safeSkillId,
     nodeId: node.id,
-    position: { ...node.center },
+    position: reservation?.position ? { ...reservation.position } : { ...node.center },
     radius: SKILL_PICKUP_RADIUS,
-    spawnedAt: Number(next.elapsed) || 0,
-    expiresAt: (Number(next.elapsed) || 0) + SKILL_PICKUP_LIFETIME_SECONDS,
+    spawnedAt: Number.isFinite(Number(reservation?.spawnAt))
+      ? Number(reservation.spawnAt)
+      : Number(next.elapsed) || 0,
   };
   next.skillPickups = [...(next.skillPickups || []), pickup];
   return { modeState: next, pickups: [pickup], events: [skillEvent("skill_spawned", pickup)] };
 }
 
-function scheduleNextSkill(runtime, now) {
-  const rng = createSeededRng(runtime.seed).fork(`skill-interval:${runtime.spawnSequence}:${now}`);
-  runtime.nextSkillAt = now + rng.nextInt(SKILL_SPAWN_INTERVAL.min, SKILL_SPAWN_INTERVAL.max);
-  runtime.warned = false;
+function createSkillReservation(modeState, runtime, spawnAt) {
+  if ((modeState.skillPickups || []).length >= MAX_SKILL_PICKUPS) return null;
+  const node = chooseSkillNode(modeState, runtime);
+  if (!node) return null;
+  return {
+    skillId: drawSkillId(runtime),
+    nodeId: node.id,
+    position: { ...node.center },
+    spawnAt,
+  };
 }
 
-export function updateTerritorySkillLifecycle({ modeState, dt } = {}) {
-  const next = cloneJson(modeState);
-  next.elapsed = Number(next.elapsed || 0) + Math.max(0, Number(dt) || 0);
-  const runtime = skillRuntime(next);
+function scheduleNextSkill(runtime, now, parameters) {
+  const rng = createSeededRng(runtime.seed).fork(`skill-interval:${runtime.spawnSequence}:${now}`);
+  runtime.nextSkillAt = now + nextSkillInterval(rng, parameters);
+  runtime.warned = false;
+  runtime.reservation = null;
+}
+
+export function updateTerritorySkillLifecycle({
+  modeState,
+  dt,
+  now = null,
+  simulation = null,
+  parameters = {},
+  mutate = false,
+} = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
+  let runtime = skillRuntime(next, parameters);
   const events = [];
-  const now = Number(next.elapsed) || 0;
-  const remaining = [];
-  for (const pickup of next.skillPickups || []) {
-    if (now >= Number(pickup.expiresAt)) events.push(skillEvent("skill_expired", pickup));
-    else remaining.push(pickup);
+  const currentTime = Number.isFinite(Number(now)) ? Number(now) : Number(next.elapsed) || 0;
+  if (!runtime.reservation && currentTime + SKILL_WARNING_SECONDS >= runtime.nextSkillAt) {
+    const spawnAt = runtime.nextSkillAt <= currentTime + 1e-9
+      ? currentTime + SKILL_WARNING_SECONDS
+      : runtime.nextSkillAt;
+    const reservation = createSkillReservation(next, runtime, spawnAt);
+    if (reservation) {
+      runtime.nextSkillAt = reservation.spawnAt;
+      runtime.reservation = reservation;
+      runtime.warned = true;
+      events.push(skillEvent("skill_warning", reservation, { spawnAt: reservation.spawnAt }));
+    }
   }
-  next.skillPickups = remaining;
-  if (!runtime.warned && now + SKILL_WARNING_SECONDS >= runtime.nextSkillAt) {
-    events.push(skillEvent("skill_warning", null, { spawnAt: runtime.nextSkillAt }));
-    runtime.warned = true;
-  }
-  if (now + 1e-9 >= runtime.nextSkillAt) {
-    const spawned = spawnTerritorySkillPickup({ modeState: next });
-    next.skillPickups = spawned.modeState.skillPickups;
-    next.skillRuntime = spawned.modeState.skillRuntime;
-    events.push(...spawned.events);
-    scheduleNextSkill(next.skillRuntime, now);
+  const reservation = runtime.reservation;
+  if (reservation && currentTime + 1e-9 >= reservation.spawnAt) {
+    const spawned = spawnTerritorySkillPickup({ modeState: next, reservation, parameters, simulation });
+    if (spawned.pickups.length > 0) {
+      next.skillPickups = spawned.modeState.skillPickups;
+      next.skillRuntime = spawned.modeState.skillRuntime;
+      runtime = next.skillRuntime;
+      events.push(...spawned.events);
+      scheduleNextSkill(runtime, currentTime, parameters);
+    }
   }
   next.spawnTimers = {
     ...(next.spawnTimers || {}),
@@ -232,8 +295,8 @@ function skillContactCandidates(pickup, simulation) {
   return out.sort((a, b) => a.distance - b.distance || String(a.shipId).localeCompare(String(b.shipId)));
 }
 
-export function collectTerritorySkillPickups({ modeState, simulation } = {}) {
-  const next = cloneJson(modeState);
+export function collectTerritorySkillPickups({ modeState, simulation, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
   const events = [];
   const remaining = [];
   for (const pickup of next.skillPickups || []) {
@@ -278,6 +341,11 @@ function livingBasicShips(fleet) {
   return Object.values(fleet?.ships || {}).filter((ship) => ship?.alive);
 }
 
+function livingFleetAnchor(fleet) {
+  const main = fleet?.shipByKey?.("main");
+  return main?.alive ? main : livingBasicShips(fleet)[0] || null;
+}
+
 function validateTarget(skill, modeState, simulation, seat, action) {
   if (!skill) return { ok: false, reason: "missing_skill" };
   if (skill.targetType === "none") return { ok: true };
@@ -288,7 +356,7 @@ function validateTarget(skill, modeState, simulation, seat, action) {
     }
     if (skill.id === "short_warp") {
       const fleet = ownFleetForAction(simulation, seat, action);
-      const main = fleet?.shipByKey?.("main") || livingBasicShips(fleet)[0];
+      const main = livingFleetAnchor(fleet);
       if (!main) return { ok: false, reason: "target_fleet_dead" };
       if (distance(main, point) > (skill.maxDistance || 260)) return { ok: false, reason: "range" };
     }
@@ -346,7 +414,7 @@ function applyImmediateSkillEffect(skill, next, simulation, seat, action) {
     const fleet = ownFleetForAction(simulation, seat, action);
     const ships = livingBasicShips(fleet);
     if (!ships.length) return null;
-    const anchor = fleet.shipByKey?.("main") || ships[0];
+    const anchor = livingFleetAnchor(fleet);
     const dx = Number(action.targetX) - anchor.x;
     const dy = Number(action.targetY) - anchor.y;
     const size = Number(simulation?.worldSize) || 1440;
@@ -454,17 +522,18 @@ export function applyTerritorySkillEnvironmentModifiers({ modeState, simulation 
   return true;
 }
 
-export function updateTerritorySkillEffects({ modeState, simulation, dt } = {}) {
-  const next = cloneJson(modeState);
-  next.elapsed = Number(next.elapsed || 0) + Math.max(0, Number(dt) || 0);
+export function updateTerritorySkillEffects({ modeState, simulation, dt, now = null, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
+  const currentTime = Number.isFinite(Number(now)) ? Number(now) : Number(next.elapsed) || 0;
   const events = [];
   const remaining = [];
+  const expired = [];
   for (const effect of next.activeSkillEffects || []) {
     if (effect.skillId === "repair_drones") {
       updateRepairDrone(effect, simulation, dt);
     }
-    if (next.elapsed + 1e-9 >= Number(effect.endsAt)) {
-      clearExpiredShield(effect, simulation);
+    if (currentTime + 1e-9 >= Number(effect.endsAt)) {
+      expired.push(effect);
       events.push({
         type: "skill_effect_ended",
         position: effect.position || null,
@@ -477,6 +546,14 @@ export function updateTerritorySkillEffects({ modeState, simulation, dt } = {}) 
     }
   }
   next.activeSkillEffects = remaining;
+  for (const effect of expired) {
+    const hasActiveAllianceShield = effect.skillId === "all_fleet_shield" && remaining.some((activeEffect) => (
+      activeEffect.skillId === "all_fleet_shield" && activeEffect.allianceId === effect.allianceId
+    ));
+    if (!hasActiveAllianceShield) {
+      clearExpiredShield(effect, simulation);
+    }
+  }
   applyTerritorySkillEnvironmentModifiers({ modeState: next, simulation });
   return { modeState: next, events };
 }

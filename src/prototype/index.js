@@ -28,7 +28,12 @@ import {
   syncMobileHud,
   updateSkillButtons,
 } from "../battle/hud.js";
-import { drawBattleWorld, drawMinimap, drawPauseOverlay } from "../battle/render.js";
+import {
+  drawBattleWorld,
+  drawMinimap,
+  drawPauseOverlay,
+  resolveLegacyZoneVisibility,
+} from "../battle/render.js";
 import {
   createShipDestructionEffects,
   resetShipDestructionEffects,
@@ -38,7 +43,7 @@ import { t } from "../i18n.js";
 
 import { registerBuiltInPrototypeModes } from "./modes/index.js";
 import { listPrototypeModes, getPrototypeMode } from "./registry.js";
-import { createPrototypeRuntime } from "./runtime.js";
+import { createPrototypeRandomSeed, createPrototypeRuntime } from "./runtime.js";
 import { renderParameterPanel, readParameterPanel } from "./parameter-panel.js";
 import { renderDiagnostics } from "./diagnostics.js";
 import { prototypeShellHTML } from "./template.js";
@@ -172,14 +177,30 @@ function currentSnapshot() {
   return app?.runtime?.getSnapshot?.() || null;
 }
 
+function localSeat() {
+  return app?.runtime?.getFleetLayout?.()?.localSeat || "A";
+}
+
+function fleetForSeat(snap, seat) {
+  const safe = String(seat || "").trim().toUpperCase();
+  return snap?.fleets?.[safe] || snap?.teams?.[safe] || null;
+}
+
 function ownTeam() {
   const snap = currentSnapshot();
-  return snap?.fleets?.A || snap?.teams?.A || null;
+  return fleetForSeat(snap, localSeat());
 }
 
 function enemyTeam() {
   const snap = currentSnapshot();
-  return snap?.fleets?.B || snap?.teams?.B || null;
+  const allianceId = ownTeam()?.allianceId === "B" ? "A" : "B";
+  const seat = snap?.alliances?.[allianceId]?.fleetSeats?.[0] || allianceId;
+  return fleetForSeat(snap, seat);
+}
+
+function fleetsForAlliance(snap, allianceId) {
+  const seats = snap?.alliances?.[allianceId]?.fleetSeats || [];
+  return seats.map((seat) => fleetForSeat(snap, seat)).filter(Boolean);
 }
 
 function selectedShip() {
@@ -189,7 +210,32 @@ function selectedShip() {
 
 function applyAction(action) {
   if (!app?.runtime) return false;
-  return app.runtime.applyAction(action, "A");
+  return app.runtime.applyAction(action, localSeat());
+}
+
+function inspectPrototypeState() {
+  const view = camera?.currentViewState?.() || null;
+  const ship = selectedShip();
+  const snap = currentSnapshot();
+  return {
+    modeId: app?.modeDefinition?.id || null,
+    worldSize: Number(snap?.world?.size) || null,
+    localSeat: localSeat(),
+    selectedShipKey: app?.selectedShipKey || null,
+    pendingSubSkillAim: app?.pendingSubSkillAim ? { ...app.pendingSubSkillAim } : null,
+    destructionEffectCount: app?.destructionEffects?.bursts?.length || 0,
+    resultShown: Boolean(app?.resultShown),
+    localShip: ship ? { id: ship.id, x: ship.x, y: ship.y, alive: ship.alive } : null,
+    camera: view
+      ? {
+          centerX: view.left + view.width / 2,
+          centerY: view.top + view.height / 2,
+          width: view.width,
+          height: view.height,
+          zoom: view.zoom,
+        }
+      : null,
+  };
 }
 
 function readLoadoutFromDom(side) {
@@ -250,6 +296,7 @@ function createPresentationForCurrentMode() {
       reducedMotion: typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches,
       modeDefinition: app.modeDefinition,
       runtime: app.runtime,
+      restartHost: (options) => createRuntimeForCurrentMode(options),
     }) || null;
   } catch (_error) {
     app.presentation = null;
@@ -257,9 +304,20 @@ function createPresentationForCurrentMode() {
   return app.presentation;
 }
 
-function createRuntimeForCurrentMode() {
+function createRuntimeForCurrentMode(restartOptions = null) {
   const mode = app.modeDefinition;
   if (!mode) return null;
+  const hasRandomSeedOverride = Boolean(restartOptions) && Object.prototype.hasOwnProperty.call(restartOptions, "randomSeed");
+  const previousRandomSeed = app.runtime?.getRandomSeed?.();
+  let requestedRandomSeed = hasRandomSeedOverride
+    ? restartOptions.randomSeed
+    : mode.runtimePreset?.randomSeed ?? null;
+  if (hasRandomSeedOverride && requestedRandomSeed == null) {
+    requestedRandomSeed = createPrototypeRandomSeed();
+    if (requestedRandomSeed === previousRandomSeed) {
+      requestedRandomSeed = (requestedRandomSeed + 1) >>> 0 || 1;
+    }
+  }
   destroyPresentation();
   if (app.runtime) {
     app.runtime.destroy();
@@ -272,12 +330,13 @@ function createRuntimeForCurrentMode() {
     gameplayRules: app.gameplayRules,
     modeParameters: app.modeParameters,
     aiDifficulty: mode.runtimePreset?.aiDifficulty || "normal",
-    randomSeed: mode.runtimePreset?.randomSeed ?? null,
+    randomSeed: requestedRandomSeed,
   });
   runtime.start();
   app.runtime = runtime;
   if (typeof window !== "undefined") {
     window.__TDOS_PROTOTYPE_RUNTIME__ = runtime;
+    window.__TDOS_PROTOTYPE_INSPECT__ = inspectPrototypeState;
   }
   app.resultShown = false;
   app.selectedShipKey = "main";
@@ -287,8 +346,14 @@ function createRuntimeForCurrentMode() {
   resetShipDestructionEffects(app.destructionEffects);
   createPresentationForCurrentMode();
   const snap = runtime.getSnapshot();
-  const main = snap?.fleets?.A?.ships?.main || snap?.teams?.A?.ships?.main;
-  if (main && camera) camera.reset({ x: main.x, y: main.y });
+  const main = fleetForSeat(snap, localSeat())?.ships?.main;
+  if (main && camera) {
+    camera.reset({
+      x: main.x,
+      y: main.y,
+      zoom: mode.runtimePreset?.initialCameraZoom,
+    });
+  }
   hideResult();
   startBattleBgm();
   return runtime;
@@ -464,13 +529,16 @@ function renderFrame() {
     -view.top * view.zoom * scale,
   );
   const own = ownTeam();
+  const ownAllianceId = own?.allianceId || "A";
+  const enemyAllianceId = ownAllianceId === "B" ? "A" : "B";
   const frame = {
     state: snap,
     ownTeam: own,
     enemyTeam: enemyTeam(),
     spectating: false,
-    // 实验台玩家默认控 A：编制舰浅蓝↔深蓝脉动，便于验收后再接到 2v2 local seat
-    localControlSeat: own?.seat || "A",
+    friendlyTeams: fleetsForAlliance(snap, ownAllianceId),
+    enemyTeams: fleetsForAlliance(snap, enemyAllianceId),
+    localControlSeat: localSeat(),
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
     mobileMode: app.mobileMode,
@@ -478,6 +546,10 @@ function renderFrame() {
     destructionEffects: app.destructionEffects,
     selectedZoneId: app.selectedZoneId,
     pendingSubSkillAim: app.pendingSubSkillAim,
+    showLegacyZones: resolveLegacyZoneVisibility(
+      app.modeDefinition?.runtimePreset,
+      app.pendingSubSkillAim,
+    ),
     pointer: app.pointer,
   };
   const presentation = app.presentation;
@@ -493,12 +565,27 @@ function renderFrame() {
     });
   }
   if (presentation?.renderWorldBefore) {
-    presentation.renderWorldBefore(ctx, { snapshot: snap, presentationState, frame });
+    frame.worldLayerAfterBackground = (layerCtx, layerFrame) => {
+      presentation.renderWorldBefore(layerCtx, { snapshot: snap, presentationState, frame: layerFrame });
+    };
+  }
+  if (presentation?.renderWorldAfter) {
+    frame.worldLayerAfterShips = (layerCtx, layerFrame) => {
+      presentation.renderWorldAfter(layerCtx, { snapshot: snap, presentationState, frame: layerFrame });
+    };
+  }
+  if (presentation?.renderMinimap) {
+    frame.minimapLayerAfterBackground = (layerCtx, layerFrame, rect, minimapView) => {
+      presentation.renderMinimap(layerCtx, {
+        snapshot: snap,
+        presentationState,
+        frame: layerFrame,
+        rect,
+        view: minimapView,
+      });
+    };
   }
   drawBattleWorld(ctx, frame);
-  if (presentation?.renderWorldAfter) {
-    presentation.renderWorldAfter(ctx, { snapshot: snap, presentationState, frame });
-  }
   ctx.restore();
   drawMinimap(ctx, frame, camera.minimapRect(), view);
   if (presentation?.renderScreen) {
@@ -692,6 +779,7 @@ function bindUi() {
     }
     if (event.button === 2) {
       event.preventDefault();
+      if (app.presentation?.cancelInteraction?.({ reason: "secondary", event })) return;
       if (!ship?.alive || !ship.canControl) return;
       const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
@@ -730,6 +818,7 @@ function bindUi() {
     }
     const pos = camera.pointerFromEvent(event);
     app.pointer = pos;
+    if (app.presentation?.handleWorldClick?.({ point: pos, event })) return;
     if (app.pendingSubSkillAim) {
       applyAction({
         type: "cast_sub_skill",
@@ -759,6 +848,10 @@ function bindUi() {
     if (active && (active.tagName === "INPUT" || active.tagName === "SELECT" || active.tagName === "TEXTAREA" || active.isContentEditable)) {
       return;
     }
+    if (app.presentation?.handleKeyDown?.({ code: event.code, event })) {
+      event.preventDefault();
+      return;
+    }
     const shipMap = { Digit1: "main", Digit2: "sub1", Digit3: "sub2" };
     if (shipMap[event.code]) {
       setSelectedShip(shipMap[event.code]);
@@ -778,6 +871,11 @@ function bindUi() {
     if (event.code === "KeyV") {
       event.preventDefault();
       useSubSkill();
+      return;
+    }
+    if (event.code === "KeyZ") {
+      event.preventDefault();
+      applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
       return;
     }
     if (event.code === "KeyX") {
@@ -855,6 +953,7 @@ function unmount() {
   }
   if (typeof window !== "undefined") {
     window.__TDOS_PROTOTYPE_RUNTIME__ = null;
+    window.__TDOS_PROTOTYPE_INSPECT__ = null;
   }
   if (ac) ac.abort();
   ac = null;

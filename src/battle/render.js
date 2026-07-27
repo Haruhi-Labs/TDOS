@@ -85,10 +85,14 @@ function isLocalControlledFleet(team, frame) {
   return String(local).trim() === seat;
 }
 
-function resolveFleetDrawColor(team, frame, fallbackColor, elapsed) {
+export function resolveFleetDrawColor(team, frame, fallbackColor, elapsed) {
   const base = team?.color || fallbackColor;
   if (!isLocalControlledFleet(team, frame)) return base;
   return pulseAllianceColor(allianceIdOfTeam(team), elapsed);
+}
+
+export function resolveLegacyZoneVisibility(runtimePreset = {}, pendingSubSkillAim = null) {
+  return runtimePreset?.showLegacyZones !== false || Boolean(pendingSubSkillAim);
 }
 
 // 队伍的全部舰船:三条编制舰 + 技能产生的额外舰(如双子舰),额外舰同样可选中/有航线
@@ -852,7 +856,7 @@ export function drawMinimap(ctx, frame, rect, view) {
   ctx.lineWidth = 2;
   ctx.strokeRect(rect.x, rect.y, rect.width, rect.height);
 
-  if (Array.isArray(state.zones)) {
+  if (frame.showLegacyZones !== false && Array.isArray(state.zones)) {
     for (const zone of state.zones) {
       const zx = rect.x + (zone.x / LOGICAL) * rect.width;
       const zy = rect.y + (zone.y / LOGICAL) * rect.height;
@@ -862,6 +866,10 @@ export function drawMinimap(ctx, frame, rect, view) {
       ctx.lineWidth = zone.id === frame.selectedZoneId ? 1.6 : 1;
       ctx.strokeRect(zx, zy, zw, zh);
     }
+  }
+
+  if (typeof frame.minimapLayerAfterBackground === "function") {
+    frame.minimapLayerAfterBackground(ctx, frame, rect, view);
   }
 
   const plotShip = (ship, color) => {
@@ -983,6 +991,9 @@ export function drawPauseOverlay(ctx) {
 //   mobileMode         移动端:不画航线曲度旋钮
 //   localControlSeat   本机操控席位(如 "A" / "A1");仅该席编制舰船体+名牌做联盟色浅深脉动
 //   localControlSeats  多席本机控制(少见);优先于 localControlSeat
+//   worldLayerAfterBackground(ctx, frame) 背景之上、九宫格战区之下的模式世界层
+//   worldLayerBeforeShips(ctx, frame)     航线/投射物之上、舰船之下的模式世界层
+//   worldLayerAfterShips(ctx, frame)      舰船/实体之上、火力扇区之下的模式世界层
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer
 export function drawBattleWorld(ctx, frame) {
   const { state, ownTeam, enemyTeam, spectating = false } = frame;
@@ -1003,7 +1014,12 @@ export function drawBattleWorld(ctx, frame) {
   const friendlySeats = new Set(friendlyTeams.map((team) => team?.seat).filter(Boolean));
 
   drawBackground(ctx, frame.stars, elapsed);
-  drawZones(ctx, state, frame.selectedZoneId);
+  if (typeof frame.worldLayerAfterBackground === "function") {
+    frame.worldLayerAfterBackground(ctx, frame);
+  }
+  if (frame.showLegacyZones !== false) {
+    drawZones(ctx, state, frame.selectedZoneId);
+  }
 
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制
   syncShipDestructionEffects(frame.destructionEffects, [
@@ -1071,6 +1087,10 @@ export function drawBattleWorld(ctx, frame) {
     }
   }
 
+  if (typeof frame.worldLayerBeforeShips === "function") {
+    frame.worldLayerBeforeShips(ctx, frame);
+  }
+
   const ownSelectedKey = selectedKeyForTeam(ownTeam);
   for (const team of friendlyTeams) {
     const selectedKey = selectedKeyForTeam(team);
@@ -1132,6 +1152,9 @@ export function drawBattleWorld(ctx, frame) {
     for (const label of state.floatingTexts) {
       drawFloatingText(ctx, label);
     }
+  }
+  if (typeof frame.worldLayerAfterShips === "function") {
+    frame.worldLayerAfterShips(ctx, frame);
   }
   for (const event of frame.teamComms || []) {
     drawTeamCommMarker(ctx, event);

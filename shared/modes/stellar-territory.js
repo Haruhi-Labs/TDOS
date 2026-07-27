@@ -24,6 +24,7 @@ import {
   updateTerritoryRespawns,
 } from "../gameplay/territory-respawn.js";
 import { chooseTerritoryAiAction } from "../gameplay/territory-ai.js";
+import { getTerritoryInitialDeployments } from "../gameplay/territory-spawns.js";
 
 export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
   {
@@ -36,13 +37,6 @@ export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
     default: 120,
   },
   {
-    key: "controlPointCount",
-    label: "控制区数量",
-    type: "select",
-    default: 3,
-    options: [1, 3],
-  },
-  {
     key: "captureSeconds",
     label: "基础占领时间",
     type: "number",
@@ -52,13 +46,22 @@ export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
     default: 6,
   },
   {
-    key: "resourceSpawnInterval",
-    label: "资源生成间隔",
+    key: "commonResourceSpawnSeconds",
+    label: "普通资源生成间隔",
     type: "number",
-    min: 10,
-    max: 60,
+    min: 30,
+    max: 120,
     step: 1,
-    default: 26,
+    default: 52,
+  },
+  {
+    key: "rareResourceSpawnSeconds",
+    label: "稀有资源生成间隔",
+    type: "number",
+    min: 60,
+    max: 240,
+    step: 5,
+    default: 120,
   },
   {
     key: "skillSpawnInterval",
@@ -67,7 +70,7 @@ export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
     min: 25,
     max: 120,
     step: 5,
-    default: 55,
+    default: 75,
   },
   {
     key: "respawnEnabled",
@@ -86,10 +89,10 @@ export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
 
 export const STELLAR_TERRITORY_DEFAULT_PARAMETERS = Object.freeze({
   initialTickets: 120,
-  controlPointCount: 3,
   captureSeconds: 6,
-  resourceSpawnInterval: 26,
-  skillSpawnInterval: 55,
+  commonResourceSpawnSeconds: 52,
+  rareResourceSpawnSeconds: 120,
+  skillSpawnInterval: 75,
   respawnEnabled: true,
   mapTemplate: "three-lane-v1",
 });
@@ -101,6 +104,24 @@ function normalizeSeed(randomSeed) {
 
 function cloneJson(value) {
   return JSON.parse(JSON.stringify(value));
+}
+
+function buildAiDiagnostics(state) {
+  const rows = {};
+  const now = Number(state?.elapsed || 0);
+  for (const allianceId of ["A", "B"]) {
+    const assignments = state?.aiCoordinator?.[allianceId]?.assignments || {};
+    for (const [seat, assignment] of Object.entries(assignments).sort(([left], [right]) => left.localeCompare(right))) {
+      const score = Number(assignment?.score || 0).toFixed(1);
+      const lockRemaining = Math.max(0, Number(assignment?.lockUntil || 0) - now).toFixed(1);
+      rows[`AI任务 ${seat}`] = `${assignment?.objectiveType || "-"} · ${assignment?.targetId || "-"} · 分数 ${score} · 锁定 ${lockRemaining}秒`;
+    }
+  }
+  return rows;
+}
+
+function allianceIdForSeat(seat) {
+  return String(seat || "A").toUpperCase().startsWith("B") ? "B" : "A";
 }
 
 function createEmptyMap(parameters = {}) {
@@ -120,6 +141,23 @@ function teamSizeFromFleetLayout(fleetLayout) {
   return Math.max(1, a, b);
 }
 
+function applyInitialDeployments(simulation, deployments) {
+  for (const [seat, ships] of Object.entries(deployments || {})) {
+    const fleet = simulation?.fleetBySeat?.(seat);
+    if (!fleet) continue;
+    for (const [shipKey, deployment] of Object.entries(ships || {})) {
+      const ship = fleet.shipByKey?.(shipKey);
+      if (!ship) continue;
+      ship.x = deployment.x;
+      ship.y = deployment.y;
+      ship.angle = deployment.angle;
+      ship.command = { x: deployment.x, y: deployment.y };
+      ship.route = null;
+      ship.speed = 0;
+    }
+  }
+}
+
 export const stellarTerritoryMode = {
   id: "stellar-territory",
   name: "星域争夺战",
@@ -129,7 +167,7 @@ export const stellarTerritoryMode = {
   parameterSchema: STELLAR_TERRITORY_PARAMETER_SCHEMA,
   defaultParameters: STELLAR_TERRITORY_DEFAULT_PARAMETERS,
 
-  createInitialModeState({ parameters = {}, randomSeed = null, fleetLayout = null } = {}) {
+  createInitialModeState({ parameters = {}, randomSeed = null, fleetLayout = null, worldSize = null } = {}) {
     const initialTickets = Number(parameters.initialTickets) || STELLAR_TERRITORY_DEFAULT_PARAMETERS.initialTickets;
     const seed = normalizeSeed(randomSeed);
     return {
@@ -137,6 +175,7 @@ export const stellarTerritoryMode = {
       seed,
       phase: "opening",
       elapsed: 0,
+      initialTickets,
       alliances: {
         A: {
           tickets: initialTickets,
@@ -150,6 +189,7 @@ export const stellarTerritoryMode = {
       map: generateTerritoryMap({
         seed,
         templateId: parameters.mapTemplate || STELLAR_TERRITORY_DEFAULT_PARAMETERS.mapTemplate,
+        worldSize,
         teamSize: teamSizeFromFleetLayout(fleetLayout),
       }),
       pickups: [],
@@ -157,11 +197,20 @@ export const stellarTerritoryMode = {
       activeSkillEffects: [],
       respawnQueue: [],
       shipHistory: {},
+      fleetWipeState: {},
+      aiCoordinator: {
+        A: { assignments: {} },
+        B: { assignments: {} },
+      },
       spawnTimers: {
         nextResourceAt: 0,
         nextSkillAt: 0,
       },
       ticketTimers: {
+        A: 0,
+        B: 0,
+      },
+      ticketDrainRates: {
         A: 0,
         B: 0,
       },
@@ -174,54 +223,69 @@ export const stellarTerritoryMode = {
     };
   },
 
+  prepareSimulation({ simulation, modeState, fleetLayout }) {
+    const deployments = getTerritoryInitialDeployments({ modeState, fleetLayout });
+    applyInitialDeployments(simulation, deployments);
+    return { modeState };
+  },
+
   beforeSimulationStep({ modeState, simulation }) {
-    const terrain = updateTerritoryTerrainModifiers({ modeState, simulation });
+    const terrain = updateTerritoryTerrainModifiers({ modeState, simulation, mutate: true });
     applyTerritorySkillEnvironmentModifiers({ modeState: terrain.modeState, simulation });
     return terrain;
   },
 
   updateModeState({ modeState, parameters, dt, simulation }) {
     let next = modeState ? cloneJson(modeState) : this.createInitialModeState({ parameters });
+    const now = Number(next.elapsed || 0) + Math.max(0, Number(dt) || 0);
+    next.elapsed = now;
     const control = updateTerritoryControl({
       modeState: next,
       simulation,
       dt,
       parameters,
+      mutate: true,
     });
     next = control.modeState;
-    const tickets = updateTerritoryTickets({ modeState: next, dt });
+    const tickets = updateTerritoryTickets({ modeState: next, dt, mutate: true });
     next = tickets.modeState;
     const lifecycle = updateTerritoryResourceLifecycle({
       modeState: next,
       dt,
+      now,
       simulation,
       parameters,
+      mutate: true,
     });
     next = lifecycle.modeState;
-    const collected = collectTerritoryPickups({ modeState: next, simulation });
+    const collected = collectTerritoryPickups({ modeState: next, simulation, mutate: true });
     next = collected.modeState;
     const skillLifecycle = updateTerritorySkillLifecycle({
       modeState: next,
       dt,
+      now,
       simulation,
       parameters,
+      mutate: true,
     });
     next = skillLifecycle.modeState;
     const skillEffects = updateTerritorySkillEffects({
       modeState: next,
       simulation,
       dt,
+      now,
+      mutate: true,
     });
     next = skillEffects.modeState;
-    const skillCollect = collectTerritorySkillPickups({ modeState: next, simulation });
+    const skillCollect = collectTerritorySkillPickups({ modeState: next, simulation, mutate: true });
     next = skillCollect.modeState;
     const queuedRespawns = parameters?.respawnEnabled === false
       ? { modeState: next, events: [] }
-      : queueTerritoryRespawns({ modeState: next, simulation });
+      : queueTerritoryRespawns({ modeState: next, simulation, mutate: true });
     next = queuedRespawns.modeState;
     const respawns = parameters?.respawnEnabled === false
       ? { modeState: next, events: [] }
-      : updateTerritoryRespawns({ modeState: next, simulation, dt });
+      : updateTerritoryRespawns({ modeState: next, simulation, dt, mutate: true });
     next = respawns.modeState;
     if (next.phase === "opening" && next.elapsed > 0) {
       next.phase = "running";
@@ -244,14 +308,24 @@ export const stellarTerritoryMode = {
 
   handleAction({ action, seat, modeState, simulation }) {
     const type = action?.type;
-    applyRespawnProtectionRules({ simulation, action, seat });
     if (type === "use_tactical_skill") {
       const result = useTerritoryTacticalSkill({ modeState, simulation, seat, action });
+      if (result.accepted) applyRespawnProtectionRules({ simulation, action, seat });
       return {
         handled: true,
         accepted: result.accepted,
         modeState: result.modeState,
         events: result.events,
+      };
+    }
+    if (type === "cast_flagship_skill" || type === "cast_sub_skill") {
+      const accepted = simulation?.applyActionForSeat?.(seat, action) === true;
+      if (accepted) applyRespawnProtectionRules({ simulation, action, seat });
+      return {
+        handled: true,
+        accepted,
+        modeState,
+        events: [],
       };
     }
     if (type === "debug_spawn_resource") {
@@ -292,8 +366,16 @@ export const stellarTerritoryMode = {
     return { handled: false };
   },
 
-  buildAiAction({ seat, modeState, simulation }) {
-    return chooseTerritoryAiAction({ seat, modeState, simulation });
+  buildAiAction({ seat, modeState, simulation, runtime }) {
+    const allianceId = allianceIdForSeat(seat);
+    const allianceLayout = runtime?.getFleetLayout?.()?.alliances?.[allianceId] || [];
+    const allianceHasHuman = allianceLayout.some((entry) => entry?.control === "human");
+    return chooseTerritoryAiAction({
+      seat,
+      modeState,
+      simulation,
+      allowTacticalSkills: !allianceHasHuman,
+    });
   },
 
   resolveOutcome({ modeState }) {
@@ -321,6 +403,7 @@ export const stellarTerritoryMode = {
       复活队列: state.respawnQueue?.length || 0,
       地形内舰船数量: Object.keys(state.terrainMemory || {}).length,
       模式阶段: state.phase || "-",
+      ...buildAiDiagnostics(state),
     };
   },
 
@@ -330,12 +413,15 @@ export const stellarTerritoryMode = {
       seed: state.seed,
       phase: state.phase,
       elapsed: state.elapsed,
+      initialTickets: Number(state.initialTickets) || Number(parameters?.initialTickets) || STELLAR_TERRITORY_DEFAULT_PARAMETERS.initialTickets,
       alliances: cloneJson(state.alliances),
+      ticketDrainRates: cloneJson(state.ticketDrainRates || { A: 0, B: 0 }),
       map: cloneJson(state.map),
       pickups: cloneJson(state.pickups),
       skillPickups: cloneJson(state.skillPickups),
       activeSkillEffects: cloneJson(state.activeSkillEffects),
       respawnQueue: cloneJson(state.respawnQueue),
+      result: cloneJson(state.result),
     };
   },
 

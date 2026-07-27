@@ -204,8 +204,8 @@ export function createBattleCamera({
     }
   }
 
-  function reset({ x, y } = {}) {
-    zoomRatio = 1;
+  function reset({ x, y, zoom = 1 } = {}) {
+    zoomRatio = clamp(Number(zoom) || 1, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
     manualUntil = 0;
     const centered = clampCameraCenter(Number.isFinite(x) ? x : LOGICAL * 0.5, Number.isFinite(y) ? y : LOGICAL * 0.5);
     centerX = centered.x;

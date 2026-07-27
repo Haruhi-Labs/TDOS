@@ -11,6 +11,22 @@ import { normalizeModeParameters, createEmptyOutcome } from "../../shared/modes/
 
 const MODE_EVENT_QUEUE_LIMIT = 128;
 
+function normalizeRandomSeed(value) {
+  if (value == null || value === "") return null;
+  const seed = Number(value);
+  return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : null;
+}
+
+export function createPrototypeRandomSeed() {
+  const values = new Uint32Array(1);
+  if (globalThis.crypto?.getRandomValues) {
+    globalThis.crypto.getRandomValues(values);
+  } else {
+    values[0] = (Date.now() ^ Math.floor(Math.random() * 0x100000000)) >>> 0;
+  }
+  return values[0] || 1;
+}
+
 function countAliveShips(fleet) {
   if (!fleet?.ships) return 0;
   return Object.values(fleet.ships).filter((ship) => ship && ship.alive).length;
@@ -82,6 +98,7 @@ export function createPrototypeRuntime({
   gameplayRules = null,
   modeParameters = null,
   randomSeed = null,
+  randomSeedFactory = createPrototypeRandomSeed,
   worldSize = DEFAULT_WORLD_SIZE,
   aiDifficulty = "normal",
 } = {}) {
@@ -89,6 +106,14 @@ export function createPrototypeRuntime({
     throw new Error("createPrototypeRuntime requires modeDefinition");
   }
 
+  function allocateRandomSeed(previousSeed = null) {
+    const generated = normalizeRandomSeed(randomSeedFactory?.());
+    let nextSeed = generated == null || generated === 0 ? createPrototypeRandomSeed() : generated;
+    if (nextSeed === previousSeed) nextSeed = (nextSeed + 1) >>> 0;
+    return nextSeed || 1;
+  }
+
+  const requestedSeed = normalizeRandomSeed(randomSeed);
   const state = {
     modeDefinition,
     runtimePreset,
@@ -107,7 +132,7 @@ export function createPrototypeRuntime({
       ...(modeDefinition.defaultParameters || {}),
       ...(modeParameters || {}),
     }),
-    randomSeed: randomSeed == null || randomSeed === "" ? null : Number(randomSeed),
+    randomSeed: requestedSeed == null ? allocateRandomSeed() : requestedSeed,
     teamLoadouts: {
       A: normalizeLoadout(teamLoadouts.A || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT),
       B: normalizeLoadout(teamLoadouts.B || DEFAULT_AI_LOADOUT, DEFAULT_AI_LOADOUT),
@@ -149,6 +174,7 @@ export function createPrototypeRuntime({
       aiDifficulty: state.aiDifficulty,
       gameplayRules: state.gameplayRules,
       victoryPolicy: state.runtimePreset.victoryPolicy,
+      aiNavigationOwner: state.runtimePreset.aiNavigationOwner,
       fleetLayout: state.fleetLayout,
     });
   }
@@ -241,7 +267,25 @@ export function createPrototypeRuntime({
       teamLoadouts: state.teamLoadouts,
       randomSeed: state.randomSeed,
       fleetLayout: state.fleetLayout,
+      worldSize: { width: state.worldSize, height: state.worldSize },
     });
+    if (typeof state.modeDefinition.prepareSimulation === "function") {
+      const prepared = state.modeDefinition.prepareSimulation({
+        simulation: state.simulation,
+        modeState: state.modeState,
+        parameters: state.modeParameters,
+        runtimePreset: state.runtimePreset,
+        teamLoadouts: state.teamLoadouts,
+        fleetLayout: state.fleetLayout,
+        runtime: publicApi,
+      });
+      if (prepared && typeof prepared === "object" && Object.prototype.hasOwnProperty.call(prepared, "modeState")) {
+        state.modeState = prepared.modeState;
+      }
+      if (prepared?.events) {
+        pushModeEvents(state.modeEvents, prepared.events, state);
+      }
+    }
     state.result = createEmptyOutcome();
     state.elapsedTicks = 0;
     state.timeBudget = 0;
@@ -271,7 +315,8 @@ export function createPrototypeRuntime({
     }
     if (next.aiDifficulty) state.aiDifficulty = next.aiDifficulty;
     if (next.randomSeed !== undefined) {
-      state.randomSeed = next.randomSeed == null || next.randomSeed === "" ? null : Number(next.randomSeed);
+      const requested = normalizeRandomSeed(next.randomSeed);
+      state.randomSeed = requested == null ? allocateRandomSeed(state.randomSeed) : requested;
     }
     if (next.fleetLayout) {
       state.fleetLayout = normalizeRuntimeFleetLayout(next.fleetLayout, state.teamLoadouts);

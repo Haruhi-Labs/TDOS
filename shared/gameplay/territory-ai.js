@@ -21,7 +21,10 @@ function fleetHullRatio(fleet) {
 
 function mainShip(simulation, seat) {
   const fleet = simulation?.fleetBySeat?.(seat);
-  return fleet?.shipByKey?.("main") || fleet?.getAllShips?.().find((ship) => ship?.alive) || null;
+  const main = fleet?.shipByKey?.("main");
+  if (main?.alive) return main;
+  const living = (fleet?.getAllShips?.() || []).filter((ship) => ship?.alive);
+  return living.find((ship) => ship?.canControl?.()) || living[0] || null;
 }
 
 function safeAreaTarget(modeState, simulation, allianceId) {
@@ -38,7 +41,7 @@ function routeAction(ship, target, reason, score) {
   if (!ship || !target) return null;
   return {
     type: "set_route",
-    shipKey: "main",
+    shipKey: ship.key || "main",
     endX: Number(target.x),
     endY: Number(target.y),
     throttle: reason === "retreat" ? 1.18 : 1.05,
@@ -47,16 +50,56 @@ function routeAction(ship, target, reason, score) {
   };
 }
 
-function nearestEnemyShip(simulation, seat) {
+function enemyShips(simulation, seat) {
   const own = mainShip(simulation, seat);
   const enemies = simulation?.fleetsForAlliance?.(enemyAllianceId(allianceIdForSeat(seat))) || [];
   const ships = enemies.flatMap((fleet) => fleet.getAllShips?.() || []).filter((ship) => ship?.alive);
-  return ships.sort((a, b) => distance(own, a) - distance(own, b))[0] || null;
+  return ships.sort((a, b) => distance(own, a) - distance(own, b));
+}
+
+function nearestEnemyShip(simulation, seat) {
+  return enemyShips(simulation, seat)[0] || null;
 }
 
 function scoreDistance(ship, target, nearScale = 720) {
   if (!ship || !target) return 0;
   return Math.max(0, nearScale - distance(ship, target)) / Math.max(1, nearScale);
+}
+
+function objectiveTargetId(objective, allianceId) {
+  const target = objective?.target;
+  if (objective?.type === "retreat") return `spawn-${allianceId}`;
+  return String(target?.id || target?.nodeId || "unknown");
+}
+
+function objectiveCapacity(objective, allianceId) {
+  if (objective?.type === "collect_resource" || objective?.type === "collect_skill") return 1;
+  if (objective?.type === "defend_control_point") return 1;
+  if (objective?.type === "capture_control_point") {
+    return objective.target?.ownerAllianceId && objective.target.ownerAllianceId !== allianceId ? 2 : 1;
+  }
+  if (objective?.type === "attack_enemy") return 2;
+  return Number.POSITIVE_INFINITY;
+}
+
+function objectiveKey(objective, allianceId) {
+  return `${objective?.type || "unknown"}:${objectiveTargetId(objective, allianceId)}`;
+}
+
+function allianceCoordinator(modeState, allianceId) {
+  if (!modeState || typeof modeState !== "object") return null;
+  modeState.aiCoordinator = modeState.aiCoordinator || {};
+  modeState.aiCoordinator[allianceId] = modeState.aiCoordinator[allianceId] || { assignments: {} };
+  modeState.aiCoordinator[allianceId].assignments = modeState.aiCoordinator[allianceId].assignments || {};
+  return modeState.aiCoordinator[allianceId];
+}
+
+function openingRoleBonus({ objective, seat, modeState } = {}) {
+  if (Number(modeState?.elapsed || 0) > 6 || !String(seat || "").toUpperCase().endsWith("3")) return 0;
+  if (objective?.type === "collect_resource" || objective?.type === "collect_skill") return 90;
+  if (objective?.type === "attack_enemy") return 80;
+  if (objective?.type === "defend_control_point") return 45;
+  return 0;
 }
 
 export function scoreTerritoryObjective({ objective, seat, simulation, modeState } = {}) {
@@ -174,24 +217,65 @@ function candidateObjectives({ seat, simulation, modeState }) {
       target: point,
     });
   }
-  const enemy = nearestEnemyShip(simulation, seat);
-  if (enemy) objectives.push({ type: "attack_enemy", target: enemy });
+  for (const enemy of enemyShips(simulation, seat)) {
+    objectives.push({ type: "attack_enemy", target: enemy });
+  }
   return objectives;
 }
 
-export function chooseTerritoryAiAction({ seat, simulation, modeState } = {}) {
-  const skillAction = tacticalSkillAction({ seat, simulation, modeState });
-  if (skillAction) return skillAction;
+export function chooseTerritoryAiAction({ seat, simulation, modeState, allowTacticalSkills = true } = {}) {
+  const allianceId = allianceIdForSeat(seat);
+  const coordinator = allianceCoordinator(modeState, allianceId);
   const ship = mainShip(simulation, seat);
-  if (!ship?.alive) return null;
-  const scored = candidateObjectives({ seat, simulation, modeState })
+  if (!ship?.alive) {
+    if (coordinator?.assignments) delete coordinator.assignments[seat];
+    return null;
+  }
+  const skillAction = allowTacticalSkills ? tacticalSkillAction({ seat, simulation, modeState }) : null;
+  if (skillAction) return skillAction;
+  const otherAssignments = Object.entries(coordinator?.assignments || {})
+    .filter(([assignedSeat]) => assignedSeat !== seat)
+    .map(([, assignment]) => assignment);
+  const candidates = candidateObjectives({ seat, simulation, modeState })
     .map((objective) => ({
       objective,
-      score: scoreTerritoryObjective({ objective, seat, simulation, modeState }),
-    }))
+      score: scoreTerritoryObjective({ objective, seat, simulation, modeState })
+        + openingRoleBonus({ objective, seat, modeState }),
+      targetId: objectiveTargetId(objective, allianceId),
+      objectiveKey: objectiveKey(objective, allianceId),
+    }));
+  const now = Number(modeState?.elapsed || 0);
+  const currentAssignment = coordinator?.assignments?.[seat] || null;
+  const hasCapacity = (candidate) => {
+    const reserved = otherAssignments.filter((assignment) => assignment.objectiveKey === candidate.objectiveKey).length;
+    return reserved < objectiveCapacity(candidate.objective, allianceId);
+  };
+  const lockedCandidate = currentAssignment && Number(currentAssignment.lockUntil || 0) > now
+    ? candidates.find((candidate) => (
+        candidate.objectiveKey === currentAssignment.objectiveKey
+        && candidate.score > 0
+        && hasCapacity(candidate)
+      ))
+    : null;
+  const emergencyCandidate = candidates.find((candidate) => candidate.objective.type === "retreat" && candidate.score > 0) || null;
+  const available = candidates
+    .filter(hasCapacity)
     .sort((a, b) => b.score - a.score);
-  const best = scored[0];
-  if (!best || best.score <= 0) return null;
+  const continuingLocked = !emergencyCandidate && lockedCandidate;
+  const best = emergencyCandidate || continuingLocked || available[0];
+  if (!best || best.score <= 0) {
+    if (coordinator?.assignments) delete coordinator.assignments[seat];
+    return null;
+  }
+  if (coordinator) {
+    coordinator.assignments[seat] = {
+      objectiveType: best.objective.type,
+      targetId: best.targetId,
+      objectiveKey: best.objectiveKey,
+      score: best.score,
+      lockUntil: continuingLocked ? currentAssignment.lockUntil : now + 4,
+    };
+  }
   const target = best.objective.target?.center || best.objective.target?.position || best.objective.target;
   return routeAction(ship, target, best.objective.type === "retreat" ? "retreat" : best.objective.type, best.score);
 }

@@ -1,3 +1,5 @@
+import { territorySpawnDeployment } from "./territory-spawns.js";
+
 const RESPAWN_SECONDS = Object.freeze({
   main: 24,
   sub1: 16,
@@ -16,11 +18,6 @@ function cloneJson(value) {
 
 function allianceIdForSeat(seat) {
   return String(seat || "A").toUpperCase().startsWith("B") ? "B" : "A";
-}
-
-function spawnAreaForSeat(modeState, seat) {
-  const allianceId = allianceIdForSeat(seat);
-  return (modeState.map?.spawnAreas || []).find((area) => area.allianceId === allianceId) || null;
 }
 
 function queueKey(seat, shipKey) {
@@ -51,20 +48,53 @@ function deductTickets(next, allianceId, amount) {
       label: `${winnerAllianceId} 阵营战争点数获胜`,
     };
   }
+  return Math.max(0, current - after);
 }
 
-export function queueTerritoryRespawns({ modeState, simulation } = {}) {
-  const next = cloneJson(modeState);
+function updateRespawnProtection({ modeState, simulation } = {}) {
+  const events = [];
+  const now = Number(simulation?.elapsed) || 0;
+  for (const seat of simulation?.fleetSeats || []) {
+    const allianceId = allianceIdForSeat(seat);
+    const spawn = (modeState?.map?.spawnAreas || []).find((area) => area.allianceId === allianceId);
+    const fleet = simulation?.fleetBySeat?.(seat);
+    for (const shipKey of ["main", "sub1", "sub2"]) {
+      const ship = fleet?.shipByKey?.(shipKey);
+      const deadline = Number(ship?.spawnProtectionUntil) || 0;
+      if (!ship?.alive || deadline <= 0) continue;
+      let reason = null;
+      if (deadline <= now) {
+        reason = "timeout";
+      } else if (spawn?.center && Number(spawn.radius) > 0) {
+        const distance = Math.hypot(ship.x - spawn.center.x, ship.y - spawn.center.y);
+        if (distance > Number(spawn.radius)) reason = "left_spawn";
+      }
+      if (!reason) continue;
+      ship.spawnProtectionUntil = 0;
+      events.push({
+        type: "respawn_protection_ended",
+        position: { x: ship.x, y: ship.y },
+        allianceId,
+        seat,
+        payload: { shipKey, reason },
+      });
+    }
+  }
+  return events;
+}
+
+export function queueTerritoryRespawns({ modeState, simulation, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
   const events = [];
   next.respawnQueue = next.respawnQueue || [];
   next.shipHistory = next.shipHistory || {};
   next.deathLedger = next.deathLedger || {};
+  next.fleetWipeState = next.fleetWipeState || {};
   const queued = new Set(next.respawnQueue.map((item) => queueKey(item.seat, item.shipKey)));
 
   for (const seat of simulation?.fleetSeats || ["A", "B"]) {
     const fleet = simulation?.fleetBySeat?.(seat);
     const allianceId = allianceIdForSeat(seat);
-    let newlyDeadBasic = 0;
     for (const shipKey of ["main", "sub1", "sub2"]) {
       const ship = fleet?.shipByKey?.(shipKey);
       if (!ship || ship.alive) continue;
@@ -76,41 +106,48 @@ export function queueTerritoryRespawns({ modeState, simulation } = {}) {
       next.shipHistory[key] = history;
       next.deathLedger[ledgerKey] = true;
       const remaining = deathDelay(shipKey, history);
+      const spawn = territorySpawnDeployment({ modeState: next, seat, shipKey });
       next.respawnQueue.push({
         seat,
         shipKey,
         allianceId,
+        deathLedgerKey: ledgerKey,
+        spawnPosition: spawn ? { x: spawn.x, y: spawn.y } : null,
         remaining,
         total: remaining,
         deathCount: history.deaths,
       });
       queued.add(key);
-      newlyDeadBasic += 1;
-      deductTickets(next, allianceId, DEATH_TICKET_COST[shipKey] || 0);
+      const ticketCost = deductTickets(next, allianceId, DEATH_TICKET_COST[shipKey] || 0);
       events.push({
         type: "respawn_queued",
         position: { x: ship.x, y: ship.y },
         allianceId,
         seat,
-        payload: { shipKey, remaining, ticketCost: DEATH_TICKET_COST[shipKey] || 0 },
+        payload: { shipKey, remaining, ticketCost },
       });
     }
-    if (newlyDeadBasic >= 3) {
-      deductTickets(next, allianceId, 3);
+    const allBasicShipsDead = ["main", "sub1", "sub2"].every((shipKey) => {
+      const ship = fleet?.shipByKey?.(shipKey);
+      return ship && !ship.alive;
+    });
+    if (allBasicShipsDead && !next.fleetWipeState[seat]) {
+      const amount = deductTickets(next, allianceId, 3);
       events.push({
         type: "fleet_wiped_ticket_penalty",
         allianceId,
         seat,
-        payload: { amount: 3 },
+        payload: { amount },
       });
     }
+    next.fleetWipeState[seat] = allBasicShipsDead;
   }
 
   return { modeState: next, events };
 }
 
-export function updateTerritoryRespawns({ modeState, simulation, dt } = {}) {
-  const next = cloneJson(modeState);
+export function updateTerritoryRespawns({ modeState, simulation, dt, mutate = false } = {}) {
+  const next = mutate ? modeState : cloneJson(modeState);
   const events = [];
   const remaining = [];
   for (const item of next.respawnQueue || []) {
@@ -119,18 +156,29 @@ export function updateTerritoryRespawns({ modeState, simulation, dt } = {}) {
       remaining.push(updated);
       continue;
     }
-    const spawn = spawnAreaForSeat(next, updated.seat);
+    const spawn = updated.spawnPosition || territorySpawnDeployment({
+      modeState: next,
+      seat: updated.seat,
+      shipKey: updated.shipKey,
+    });
     const ok = simulation?.respawnShipForSeat?.(updated.seat, updated.shipKey, {
-      x: spawn?.center?.x,
-      y: spawn?.center?.y,
+      x: spawn?.x,
+      y: spawn?.y,
       hpRatio: 1,
       energyRatio: 0.5,
       protectionSeconds: 3,
     });
     if (ok) {
+      const ledgerKey = updated.deathLedgerKey || deathKey(
+        updated.seat,
+        updated.shipKey,
+        simulation?.fleetBySeat?.(updated.seat)?.shipByKey?.(updated.shipKey),
+      );
+      if (next.deathLedger) delete next.deathLedger[ledgerKey];
+      if (next.fleetWipeState) next.fleetWipeState[updated.seat] = false;
       events.push({
         type: "ship_respawned",
-        position: spawn?.center ? { ...spawn.center } : null,
+        position: spawn ? { x: spawn.x, y: spawn.y } : null,
         allianceId: updated.allianceId,
         seat: updated.seat,
         payload: { shipKey: updated.shipKey },
@@ -140,14 +188,24 @@ export function updateTerritoryRespawns({ modeState, simulation, dt } = {}) {
     }
   }
   next.respawnQueue = remaining;
+  events.push(...updateRespawnProtection({ modeState: next, simulation }));
   return { modeState: next, events };
 }
 
 export function applyRespawnProtectionRules({ simulation, action, seat } = {}) {
   if (!action || !seat) return false;
-  const activeTypes = new Set(["set_route", "cast_flagship_skill", "cast_sub_skill", "use_tactical_skill", "emergency_brake"]);
+  const activeTypes = new Set(["cast_flagship_skill", "cast_sub_skill", "use_tactical_skill"]);
   if (!activeTypes.has(action.type)) return false;
   const fleet = simulation?.fleetBySeat?.(seat);
+  if (action.type === "use_tactical_skill") {
+    let cleared = false;
+    for (const ship of fleet?.getAllShips?.() || []) {
+      if (!ship?.alive || !ship.spawnProtectionUntil) continue;
+      ship.spawnProtectionUntil = 0;
+      cleared = true;
+    }
+    return cleared;
+  }
   const shipKey = action.shipKey || "main";
   const ship = fleet?.shipByKey?.(shipKey);
   if (!ship || !ship.spawnProtectionUntil) return false;

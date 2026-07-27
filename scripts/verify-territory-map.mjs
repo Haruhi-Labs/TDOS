@@ -52,12 +52,47 @@ const mapC = generateTerritoryMap({
   teamSize: 1,
 });
 assert(stableJson(mapA) !== stableJson(mapC), "different seed should change part of the map");
+assert(
+  stableJson(mapA.controlPoints) === stableJson(mapC.controlPoints),
+  "control points must stay fixed across random seeds",
+);
 
 const validation = validateTerritoryMap(mapA);
 assert(validation.valid, `generated map should be valid: ${validation.errors.join("; ")}`);
 assert(mapA.templateId === "three-lane-v1", "map template recorded");
 assert(mapA.spawnAreas.length === 2, "map has A and B spawn areas");
+const spawnA = mapA.spawnAreas.find((area) => area.allianceId === "A");
+const spawnB = mapA.spawnAreas.find((area) => area.allianceId === "B");
+assert(spawnA, "map has A spawn area");
+assert(spawnB, "map has B spawn area");
+assert(spawnA.center.x < mapA.worldSize.width * 0.16, "A spawn should be in the lower-left corner");
+assert(spawnA.center.y > mapA.worldSize.height * 0.84, "A spawn should be in the lower-left corner");
+assert(spawnB.center.x > mapA.worldSize.width * 0.84, "B spawn should be in the upper-right corner");
+assert(spawnB.center.y < mapA.worldSize.height * 0.16, "B spawn should be in the upper-right corner");
 assert(mapA.controlPoints.length === 3, "map has three control points");
+const expectedControlPoints = [
+  ["alpha", "A", 0.32, 0.68],
+  ["beta", "B", 0.5, 0.5],
+  ["gamma", "C", 0.68, 0.32],
+];
+for (let index = 0; index < expectedControlPoints.length; index += 1) {
+  const [id, label, xRatio, yRatio] = expectedControlPoints[index];
+  const point = mapA.controlPoints[index];
+  assert(point.id === id, `control point ${index} id should be ${id}`);
+  assert(point.label === label, `control point ${id} label should be ${label}`);
+  assert(point.shape === "rect", `control point ${id} should be rectangular`);
+  assert(Math.abs(point.center.x - mapA.worldSize.width * xRatio) <= 1, `control point ${id} x should be fixed`);
+  assert(Math.abs(point.center.y - mapA.worldSize.height * yRatio) <= 1, `control point ${id} y should be fixed`);
+  assert(point.width >= 280 && point.width <= 340, `control point ${id} width should be large, got ${point.width}`);
+  assert(point.height >= 200 && point.height <= 260, `control point ${id} height should be large, got ${point.height}`);
+  assert(!("radius" in point), `control point ${id} must not use legacy radius`);
+  assert(point.ownerAllianceId === null, `control point ${id} starts neutral`);
+  assert(point.capturingAllianceId === null, `control point ${id} starts with no capturer`);
+  assert(point.captureProgress === 0, `control point ${id} starts at zero capture`);
+  assert(point.contested === false, `control point ${id} starts uncontested`);
+  assert(Array.isArray(point.occupants?.A), `control point ${id} tracks A occupants`);
+  assert(Array.isArray(point.occupants?.B), `control point ${id} tracks B occupants`);
+}
 assert(mapA.resourceSpawnNodes.some((node) => node.rarity === "common"), "map has common resource nodes");
 assert(mapA.resourceSpawnNodes.some((node) => node.rarity === "rare"), "map has rare resource nodes");
 assert(mapA.skillSpawnNodes.length >= 2, "map has skill spawn nodes");
@@ -68,7 +103,7 @@ assert(mapA.safeBounds && mapA.safeBounds.width > 0 && mapA.safeBounds.height > 
 const invalid = validateTerritoryMap({
   ...mapA,
   spawnAreas: [
-    { ...mapA.spawnAreas[0], center: { ...mapA.controlPoints[0].center }, radius: mapA.controlPoints[0].radius },
+    { ...mapA.spawnAreas[0], center: { ...mapA.controlPoints[0].center }, radius: Math.max(mapA.controlPoints[0].width, mapA.controlPoints[0].height) / 2 },
     mapA.spawnAreas[1],
   ],
 });

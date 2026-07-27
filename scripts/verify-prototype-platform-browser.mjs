@@ -151,12 +151,28 @@ async function main() {
       return bright;
     });
     assert(mapPixels > 200, `stellar map presentation should draw visible non-background pixels, got ${mapPixels}`);
+    await page.locator('#protoModeTools input[data-territory-seed-input]').fill("0");
+    await page.getByRole("button", { name: "载入种子", exact: true }).click();
     await page.getByRole("button", { name: "生成维修包" }).click();
     await page.getByRole("button", { name: "生成技能包" }).click();
     await eventually(async () => {
-      const hud = await page.locator("#protoModeHud").innerText();
-      return hud.includes("资源实体") && hud.includes("1") && hud.includes("技能包");
+      const state = await page.evaluate(() => window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.());
+      return state?.pickups?.length === 1 && state?.skillPickups?.length === 1;
     }, 5000);
+    const zoomOutSelector = await page.evaluate(() => document.querySelector("#mobileZoomOutBtn")?.offsetParent
+      ? "#mobileZoomOutBtn"
+      : "#zoomOutBtn");
+    for (let index = 0; index < 4; index += 1) await page.click(zoomOutSelector);
+    await eventually(async () => page.evaluate(() => {
+      const pickup = window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.skillPickups?.[0];
+      const view = window.__TDOS_PROTOTYPE_INSPECT__?.()?.camera;
+      if (!pickup?.position || !view) return false;
+      const left = view.centerX - view.width / 2;
+      const right = view.centerX + view.width / 2;
+      const top = view.centerY - view.height / 2;
+      const bottom = view.centerY + view.height / 2;
+      return pickup.position.x >= left && pickup.position.x <= right && pickup.position.y >= top && pickup.position.y <= bottom;
+    }), 3000);
     const entityPixels = await page.locator("#gameCanvas").evaluate((canvas) => {
       const ctx = canvas.getContext("2d");
       const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
@@ -169,7 +185,12 @@ async function main() {
         if (g > 150 && r < 150 && b < 180) resourceLike += 1;
         if (r > 150 && b > 180 && g < 170) skillLike += 1;
       }
-      return { resourceLike, skillLike };
+      return {
+        resourceLike,
+        skillLike,
+        skillPickups: window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.skillPickups || [],
+        view: window.__TDOS_PROTOTYPE_INSPECT__?.()?.camera || null,
+      };
     });
     assert(entityPixels.resourceLike > 40, `resource entity should draw green pixels: ${JSON.stringify(entityPixels)}`);
     assert(entityPixels.skillLike > 40, `skill entity should draw violet pixels: ${JSON.stringify(entityPixels)}`);

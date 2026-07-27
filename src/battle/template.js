@@ -82,6 +82,7 @@ export function battleViewTemplate({
             <div class="btn-grid">
               <button id="flagshipBtn">${t("旗舰技能")}</button>
               <button id="subSkillBtn">${t("分舰技能")}</button>
+              <button id="tacticalSkillBtn" type="button" hidden>${t("战术技能")}</button>
               <button id="scoutBtn">${t("派出侦查机")}</button>
               <button id="autoScoutBtn" type="button">${t("自动侦查：{state}", { state: t("关") })}</button>
               <button id="brakeBtn" type="button" class="span-2">${t("急刹")}</button>
@@ -119,6 +120,7 @@ ${fleetRowHTML("sub2", t("副二"))}
             <button id="mobileBrakeBtn" type="button">${t("急刹")}</button>
             <button id="mobileFlagshipBtn" type="button">${t("旗舰技")}</button>
             <button id="mobileSubSkillBtn" type="button">${t("分舰技")}</button>
+            <button id="mobileTacticalSkillBtn" type="button" hidden>${t("战术技")}</button>
             <button id="mobileScoutBtn" type="button">${t("侦察")}</button>
             <button id="mobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
             <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
