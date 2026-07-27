@@ -274,6 +274,17 @@ assert(
   positionClearOfObstacles(safelyDeployedMain, safelyDeployedMain.radius, blockedDeploymentState.map.obstacleRegions),
   "initial deployment should move away from a blocked fixed slot",
 );
+const safelyDeployedFleet = Object.values(blockedDeploymentSim.fleetBySeat("A").ships);
+for (let firstIndex = 0; firstIndex < safelyDeployedFleet.length; firstIndex += 1) {
+  for (let secondIndex = firstIndex + 1; secondIndex < safelyDeployedFleet.length; secondIndex += 1) {
+    const first = safelyDeployedFleet[firstIndex];
+    const second = safelyDeployedFleet[secondIndex];
+    assert(
+      Math.hypot(first.x - second.x, first.y - second.y) >= first.radius + second.radius,
+      `initial fallback deployments must not overlap: ${JSON.stringify({ first: first.key, second: second.key })}`,
+    );
+  }
+}
 
 let staleRespawnState = makeState(4343);
 const staleRespawnSim = makeSimulation({ victoryPolicy: "external" });
@@ -283,6 +294,15 @@ staleRespawnMain.takeDamage(staleRespawnMain.maxHp * 10, null, staleRespawnSim, 
 staleRespawnState = queueTerritoryRespawns({ modeState: staleRespawnState, simulation: staleRespawnSim }).modeState;
 const staleRespawnItem = staleRespawnState.respawnQueue.find((item) => item.seat === "A" && item.shipKey === "main");
 const blockedRespawnPoint = staleRespawnState.map.obstacleRegions[0].center;
+const occupiedFallback = territorySpawnDeployment({
+  modeState: staleRespawnState,
+  simulation: staleRespawnSim,
+  seat: "A",
+  shipKey: "main",
+});
+const occupyingShip = staleRespawnSim.fleetBySeat("A").shipByKey("sub1");
+occupyingShip.x = occupiedFallback.x;
+occupyingShip.y = occupiedFallback.y;
 staleRespawnItem.spawnPosition = { ...blockedRespawnPoint };
 staleRespawnItem.remaining = 0;
 staleRespawnState = updateTerritoryRespawns({
@@ -294,6 +314,37 @@ assert(staleRespawnMain.alive, "stale blocked respawn reservation should recover
 assert(
   positionClearOfObstacles(staleRespawnMain, staleRespawnMain.radius, staleRespawnState.map.obstacleRegions),
   "respawn fallback should remain obstacle-clear",
+);
+assert(
+  Math.hypot(staleRespawnMain.x - occupyingShip.x, staleRespawnMain.y - occupyingShip.y)
+    >= staleRespawnMain.radius + occupyingShip.radius,
+  "respawn fallback should not overlap a living ship",
+);
+
+let occupiedReservationState = makeState(4444);
+const occupiedReservationSim = makeSimulation({ victoryPolicy: "external" });
+stellarTerritoryMode.prepareSimulation({ simulation: occupiedReservationSim, modeState: occupiedReservationState });
+const occupiedReservationMain = occupiedReservationSim.fleetBySeat("A").shipByKey("main");
+occupiedReservationMain.takeDamage(occupiedReservationMain.maxHp * 10, null, occupiedReservationSim, false);
+occupiedReservationState = queueTerritoryRespawns({
+  modeState: occupiedReservationState,
+  simulation: occupiedReservationSim,
+}).modeState;
+const occupiedReservationItem = occupiedReservationState.respawnQueue.find((item) => item.seat === "A" && item.shipKey === "main");
+const reservationOccupier = occupiedReservationSim.fleetBySeat("A").shipByKey("sub1");
+reservationOccupier.x = occupiedReservationItem.spawnPosition.x;
+reservationOccupier.y = occupiedReservationItem.spawnPosition.y;
+occupiedReservationItem.remaining = 0;
+occupiedReservationState = updateTerritoryRespawns({
+  modeState: occupiedReservationState,
+  simulation: occupiedReservationSim,
+  dt: 0,
+}).modeState;
+assert(occupiedReservationMain.alive, "occupied respawn reservation should recover through deterministic fallback");
+assert(
+  Math.hypot(occupiedReservationMain.x - reservationOccupier.x, occupiedReservationMain.y - reservationOccupier.y)
+    >= occupiedReservationMain.radius + reservationOccupier.radius,
+  "respawn must revalidate living-ship occupancy when a reservation becomes due",
 );
 
 console.log("territory respawn verification passed");

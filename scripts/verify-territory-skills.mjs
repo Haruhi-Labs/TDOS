@@ -14,9 +14,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function makeSimulation() {
+function makeSimulation({ worldSize = null } = {}) {
   return new MatchSimulation({
     mode: "ai",
+    ...(worldSize ? { worldSize } : {}),
     teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
     aiSeats: [],
   });
@@ -84,6 +85,33 @@ const blockedSkillSpawn = spawnTerritorySkillPickup({
 });
 assert(blockedSkillSpawn.pickups.length === 0, "blocked skill reservation must not spawn inside an obstacle");
 
+const outOfBoundsSkillState = makeState(4044);
+const outOfBoundsSkillNode = outOfBoundsSkillState.map.skillSpawnNodes[0];
+const outOfBoundsSkillSpawn = spawnTerritorySkillPickup({
+  modeState: outOfBoundsSkillState,
+  reservation: {
+    skillId: "all_fleet_shield",
+    nodeId: outOfBoundsSkillNode.id,
+    position: { x: 2300, y: 2300 },
+    spawnAt: 10,
+  },
+});
+assert(outOfBoundsSkillSpawn.pickups.length === 0, "skill reservation must remain inside radius-aware safe bounds");
+
+let staleBlockedSkillState = stepSkillLifecycle(blockedSkillState, 0).modeState;
+staleBlockedSkillState.skillRuntime.nextSkillAt = 10;
+staleBlockedSkillState.skillRuntime.warned = true;
+staleBlockedSkillState.skillRuntime.reservation = {
+  skillId: "all_fleet_shield",
+  nodeId: blockedSkillNode.id,
+  position: { ...blockedSkillNode.center },
+  spawnAt: 10,
+};
+const staleBlockedSkillLifecycle = stepSkillLifecycle(staleBlockedSkillState, 10);
+assert(!staleBlockedSkillLifecycle.events.some((event) => event.type === "skill_spawned"), "blocked due skill should not spawn");
+assert(staleBlockedSkillLifecycle.modeState.skillRuntime.reservation === null, "blocked due skill reservation should be cleared");
+assert(staleBlockedSkillLifecycle.modeState.skillRuntime.nextSkillAt > 10, "blocked due skill should reschedule a future lifecycle");
+
 const blockedWarpState = makeState(4042);
 const blockedWarpSim = new MatchSimulation({ mode: "pvp", worldSize: stellarTerritoryMode.worldSize });
 stellarTerritoryMode.prepareSimulation({ simulation: blockedWarpSim, modeState: blockedWarpState });
@@ -117,6 +145,63 @@ assert(blockedWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "r
 assert(
   blockedWarpShips.every((ship, index) => ship.x === blockedWarpPositions[index].x && ship.y === blockedWarpPositions[index].y),
   "rejected blocked warp must not move any fleet ship",
+);
+
+const edgeWarpState = makeState(4043);
+const edgeWarpSim = new MatchSimulation({ mode: "pvp", worldSize: stellarTerritoryMode.worldSize });
+stellarTerritoryMode.prepareSimulation({ simulation: edgeWarpSim, modeState: edgeWarpState });
+const edgeWarpShips = Object.values(edgeWarpSim.fleetBySeat("A").ships);
+for (let index = 0; index < edgeWarpShips.length; index += 1) {
+  edgeWarpShips[index].x = 170 - index * 10;
+  edgeWarpShips[index].y = 170 - index * 10;
+  edgeWarpShips[index].command = { x: edgeWarpShips[index].x, y: edgeWarpShips[index].y };
+  edgeWarpShips[index].route = null;
+}
+edgeWarpState.alliances.A.skillSlot = { skillId: "short_warp", acquiredAt: 0 };
+const edgeWarpPositions = edgeWarpShips.map((ship) => ({ x: ship.x, y: ship.y }));
+const edgeWarp = useTerritoryTacticalSkill({
+  modeState: edgeWarpState,
+  simulation: edgeWarpSim,
+  seat: "A",
+  action: {
+    type: "use_tactical_skill",
+    targetType: "point",
+    targetSeat: "A",
+    targetX: 0,
+    targetY: 0,
+  },
+});
+assert(!edgeWarp.accepted, "short warp should reject a fleet landing that crosses radius-aware world bounds");
+assert(edgeWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "invalid edge warp should preserve the skill");
+assert(
+  edgeWarpShips.every((ship, index) => ship.x === edgeWarpPositions[index].x && ship.y === edgeWarpPositions[index].y),
+  "invalid edge warp should preserve every fleet position atomically",
+);
+
+const occupiedWarpState = makeState(4045);
+const occupiedWarpSim = new MatchSimulation({ mode: "pvp", worldSize: stellarTerritoryMode.worldSize });
+stellarTerritoryMode.prepareSimulation({ simulation: occupiedWarpSim, modeState: occupiedWarpState });
+const occupiedWarpFleet = occupiedWarpSim.fleetBySeat("A");
+const occupiedWarpAnchor = occupiedWarpFleet.shipByKey("main");
+const occupiedWarpTarget = { x: occupiedWarpAnchor.x + 100, y: occupiedWarpAnchor.y };
+const blockingWarpShip = occupiedWarpSim.fleetBySeat("B").shipByKey("main");
+blockingWarpShip.x = occupiedWarpTarget.x;
+blockingWarpShip.y = occupiedWarpTarget.y;
+occupiedWarpState.alliances.A.skillSlot = { skillId: "short_warp", acquiredAt: 0 };
+const occupiedWarpPositions = Object.values(occupiedWarpFleet.ships).map((ship) => ({ x: ship.x, y: ship.y }));
+const occupiedWarp = useTerritoryTacticalSkill({
+  modeState: occupiedWarpState,
+  simulation: occupiedWarpSim,
+  seat: "A",
+  action: { type: "use_tactical_skill", targetSeat: "A", targetX: occupiedWarpTarget.x, targetY: occupiedWarpTarget.y },
+});
+assert(!occupiedWarp.accepted, "short warp should reject a landing occupied by another living fleet");
+assert(occupiedWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "occupied warp should preserve the skill");
+assert(
+  Object.values(occupiedWarpFleet.ships).every((ship, index) => (
+    ship.x === occupiedWarpPositions[index].x && ship.y === occupiedWarpPositions[index].y
+  )),
+  "occupied warp rejection should preserve the fleet atomically",
 );
 
 let state = makeState(818);
@@ -316,7 +401,8 @@ assert(livingAnchorWarp.accepted, "short warp should use the first living ship w
 assert(livingWarpSub.x === 720 && livingWarpSub.y === 600, "short warp should land its living anchor exactly on the selected point");
 
 state = makeState(920);
-sim = makeSimulation();
+sim = makeSimulation({ worldSize: stellarTerritoryMode.worldSize });
+stellarTerritoryMode.prepareSimulation({ simulation: sim, modeState: state });
 const protectedWarpShip = sim.fleetBySeat("A").shipByKey("main");
 protectedWarpShip.spawnProtectionUntil = 99;
 state.alliances.A.skillSlot = { skillId: "short_warp", acquiredAt: state.elapsed };

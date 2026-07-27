@@ -74,7 +74,59 @@ function deploymentCandidates(intended, spawn, facing) {
   return candidates;
 }
 
-export function territorySpawnDeployment({ modeState, simulation = null, seat, shipKey = "main", fleetIndex = null } = {}) {
+function livingShipOccupancies(simulation, excludedSeat, excludedShipKey) {
+  const occupancies = [];
+  for (const seat of simulation?.fleetSeats || ["A", "B"]) {
+    const fleet = simulation?.fleetBySeat?.(seat);
+    for (const ship of fleet?.getAllShips?.() || Object.values(fleet?.ships || {})) {
+      if (!ship?.alive || (seat === excludedSeat && ship.key === excludedShipKey)) continue;
+      occupancies.push({ x: ship.x, y: ship.y, radius: Number(ship.radius) || 0 });
+    }
+  }
+  return occupancies;
+}
+
+function overlapsOccupiedPosition(position, radius, occupancies) {
+  return occupancies.some((occupied) => (
+    Number.isFinite(occupied?.x)
+    && Number.isFinite(occupied?.y)
+    && Math.hypot(position.x - occupied.x, position.y - occupied.y)
+      < radius + Math.max(0, Number(occupied.radius) || 0)
+  ));
+}
+
+export function territoryDeploymentPositionClear({
+  modeState,
+  simulation = null,
+  seat,
+  shipKey = "main",
+  position,
+  radius = null,
+  reservedPositions = [],
+  avoidLivingShips = true,
+} = {}) {
+  if (!Number.isFinite(position?.x) || !Number.isFinite(position?.y)) return false;
+  const safeRadius = radius == null
+    ? shipCollisionRadius(simulation, seat, shipKey)
+    : Math.max(1, Number(radius) || 1);
+  const occupancies = [
+    ...(Array.isArray(reservedPositions) ? reservedPositions : []),
+    ...(avoidLivingShips ? livingShipOccupancies(simulation, seat, shipKey) : []),
+  ];
+  return withinSafeBounds(position, safeRadius, modeState?.map?.safeBounds)
+    && positionClearOfObstacles(position, safeRadius, modeState?.map?.obstacleRegions || [])
+    && !overlapsOccupiedPosition(position, safeRadius, occupancies);
+}
+
+export function territorySpawnDeployment({
+  modeState,
+  simulation = null,
+  seat,
+  shipKey = "main",
+  fleetIndex = null,
+  reservedPositions = [],
+  avoidLivingShips = true,
+} = {}) {
   const allianceId = allianceIdForSeat(seat);
   const spawn = spawnAreaForAlliance(modeState, allianceId);
   if (!spawn?.center) return null;
@@ -86,12 +138,17 @@ export function territorySpawnDeployment({ modeState, simulation = null, seat, s
     x: spawn.center.x + anchorOffset.x + shipOffset.x,
     y: spawn.center.y + anchorOffset.y + shipOffset.y,
   };
-  const obstacles = modeState?.map?.obstacleRegions || [];
   const radius = shipCollisionRadius(simulation, seat, shipKey);
-  const position = deploymentCandidates(intended, spawn, facing).find((candidate) => (
-    withinSafeBounds(candidate, radius, modeState?.map?.safeBounds)
-    && positionClearOfObstacles(candidate, radius, obstacles)
-  ));
+  const position = deploymentCandidates(intended, spawn, facing).find((candidate) => territoryDeploymentPositionClear({
+    modeState,
+    simulation,
+    seat,
+    shipKey,
+    position: candidate,
+    radius,
+    reservedPositions,
+    avoidLivingShips,
+  }));
   return position ? { ...position, angle: facing } : null;
 }
 
@@ -101,6 +158,7 @@ export function getTerritoryInitialDeployments({ modeState, simulation = null, f
     ? [...(fleetLayout.alliances?.A || []), ...(fleetLayout.alliances?.B || [])]
     : [{ seat: "A" }, { seat: "B" }];
   const allianceIndexes = { A: 0, B: 0 };
+  const reservedPositions = [];
 
   for (const entry of entries) {
     const seat = String(entry?.seat || "").trim().toUpperCase();
@@ -108,12 +166,26 @@ export function getTerritoryInitialDeployments({ modeState, simulation = null, f
     const allianceId = allianceIdForSeat(seat);
     const fleetIndex = allianceIndexes[allianceId] || 0;
     allianceIndexes[allianceId] = fleetIndex + 1;
-    deployments[seat] = Object.fromEntries(
-      ["main", "sub1", "sub2"].map((shipKey) => [
+    deployments[seat] = {};
+    for (const shipKey of ["main", "sub1", "sub2"]) {
+      const deployment = territorySpawnDeployment({
+        modeState,
+        simulation,
+        seat,
         shipKey,
-        territorySpawnDeployment({ modeState, simulation, seat, shipKey, fleetIndex }),
-      ]),
-    );
+        fleetIndex,
+        reservedPositions,
+        avoidLivingShips: false,
+      });
+      deployments[seat][shipKey] = deployment;
+      if (deployment) {
+        reservedPositions.push({
+          x: deployment.x,
+          y: deployment.y,
+          radius: shipCollisionRadius(simulation, seat, shipKey),
+        });
+      }
+    }
   }
 
   return deployments;

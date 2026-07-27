@@ -1,4 +1,3 @@
-import { clamp } from "../game-core.js";
 import { createSeededRng } from "./seeded-rng.js";
 import { positionClearOfObstacles } from "./territory-obstacles.js";
 
@@ -161,7 +160,17 @@ function occupiedSkillNodeIds(modeState, runtime, ignoreReservation = false) {
 }
 
 function skillPositionClear(modeState, position, radius = SKILL_PICKUP_RADIUS) {
-  return positionClearOfObstacles(position, radius, modeState?.map?.obstacleRegions || []);
+  const bounds = modeState?.map?.safeBounds;
+  const safeRadius = Math.max(0, Number(radius) || 0);
+  const insideBounds = !bounds || (
+    Number.isFinite(position?.x)
+    && Number.isFinite(position?.y)
+    && position.x - safeRadius >= bounds.x
+    && position.y - safeRadius >= bounds.y
+    && position.x + safeRadius <= bounds.x + bounds.width
+    && position.y + safeRadius <= bounds.y + bounds.height
+  );
+  return insideBounds && positionClearOfObstacles(position, safeRadius, modeState?.map?.obstacleRegions || []);
 }
 
 function chooseSkillNode(modeState, runtime, nodeId = null, ignoreReservation = false) {
@@ -284,7 +293,7 @@ export function updateTerritorySkillLifecycle({
       runtime = next.skillRuntime;
       events.push(...spawned.events);
       scheduleNextSkill(runtime, currentTime, parameters);
-    }
+    } else scheduleNextSkill(runtime, currentTime, parameters);
   }
   next.spawnTimers = {
     ...(next.spawnTimers || {}),
@@ -359,6 +368,63 @@ function livingFleetAnchor(fleet) {
   return main?.alive ? main : livingBasicShips(fleet)[0] || null;
 }
 
+function warpLandingWithinBounds(position, radius, modeState, simulation) {
+  const bounds = modeState?.map?.safeBounds;
+  if (bounds) {
+    return position.x - radius >= bounds.x
+      && position.y - radius >= bounds.y
+      && position.x + radius <= bounds.x + bounds.width
+      && position.y + radius <= bounds.y + bounds.height;
+  }
+  const size = Number(simulation?.worldSize) || 1440;
+  return position.x - radius >= 0
+    && position.y - radius >= 0
+    && position.x + radius <= size
+    && position.y + radius <= size;
+}
+
+function shortWarpLandingPlan(modeState, simulation, fleet, point) {
+  const ships = livingBasicShips(fleet);
+  const anchor = livingFleetAnchor(fleet);
+  if (!anchor || ships.length === 0) return null;
+  const dx = point.x - anchor.x;
+  const dy = point.y - anchor.y;
+  const landings = ships.map((ship) => ({
+    ship,
+    position: { x: ship.x + dx, y: ship.y + dy },
+    radius: Math.max(0, Number(ship.radius) || 0),
+  }));
+
+  for (const landing of landings) {
+    if (!warpLandingWithinBounds(landing.position, landing.radius, modeState, simulation)) return null;
+    if (simulation?.canOccupyEnvironment?.(landing.position, landing.radius, {
+      entity: landing.ship,
+      kind: "short_warp",
+    }) === false) return null;
+  }
+  for (let firstIndex = 0; firstIndex < landings.length; firstIndex += 1) {
+    for (let secondIndex = firstIndex + 1; secondIndex < landings.length; secondIndex += 1) {
+      const first = landings[firstIndex];
+      const second = landings[secondIndex];
+      const currentDistance = distance(first.ship, second.ship);
+      const minimumDistance = Math.min(currentDistance, first.radius + second.radius);
+      if (distance(first.position, second.position) + 1e-9 < minimumDistance) return null;
+    }
+  }
+
+  const movingShips = new Set(ships);
+  for (const seat of simulation?.fleetSeats || ["A", "B"]) {
+    const otherFleet = simulation?.fleetBySeat?.(seat);
+    for (const other of otherFleet?.getAllShips?.() || Object.values(otherFleet?.ships || {})) {
+      if (!other?.alive || movingShips.has(other)) continue;
+      const otherRadius = Math.max(0, Number(other.radius) || 0);
+      if (landings.some((landing) => distance(landing.position, other) < landing.radius + otherRadius)) return null;
+    }
+  }
+
+  return landings;
+}
+
 function validateTarget(skill, modeState, simulation, seat, action) {
   if (!skill) return { ok: false, reason: "missing_skill" };
   if (skill.targetType === "none") return { ok: true };
@@ -372,20 +438,9 @@ function validateTarget(skill, modeState, simulation, seat, action) {
       const main = livingFleetAnchor(fleet);
       if (!main) return { ok: false, reason: "target_fleet_dead" };
       if (distance(main, point) > (skill.maxDistance || 260)) return { ok: false, reason: "range" };
-      const dx = point.x - main.x;
-      const dy = point.y - main.y;
-      const size = Number(simulation?.worldSize) || 1440;
-      const blocked = livingBasicShips(fleet).some((ship) => {
-        const position = {
-          x: clamp(ship.x + dx, 8, size - 8),
-          y: clamp(ship.y + dy, 8, size - 8),
-        };
-        return simulation?.canOccupyEnvironment?.(position, ship.radius, {
-          entity: ship,
-          kind: "short_warp",
-        }) === false;
-      });
-      if (blocked) return { ok: false, reason: "blocked" };
+      const landingPlan = shortWarpLandingPlan(modeState, simulation, fleet, point);
+      if (!landingPlan) return { ok: false, reason: "blocked" };
+      return { ok: true, landingPlan };
     }
     return { ok: true };
   }
@@ -417,7 +472,7 @@ function addEffect(next, skill, seat, action, payload = {}) {
   return effect;
 }
 
-function applyImmediateSkillEffect(skill, next, simulation, seat, action) {
+function applyImmediateSkillEffect(skill, next, simulation, seat, action, validation = {}) {
   const allianceId = allianceIdForSeat(seat);
   const alliedFleets = simulation?.fleetsForAlliance?.(allianceId) || [];
   if (skill.id === "all_fleet_shield") {
@@ -438,16 +493,10 @@ function applyImmediateSkillEffect(skill, next, simulation, seat, action) {
     return addEffect(next, skill, seat, action, { healedRatio: 0 });
   }
   if (skill.id === "short_warp") {
-    const fleet = ownFleetForAction(simulation, seat, action);
-    const ships = livingBasicShips(fleet);
-    if (!ships.length) return null;
-    const anchor = livingFleetAnchor(fleet);
-    const dx = Number(action.targetX) - anchor.x;
-    const dy = Number(action.targetY) - anchor.y;
-    const size = Number(simulation?.worldSize) || 1440;
-    for (const ship of ships) {
-      ship.x = clamp(ship.x + dx, 8, size - 8);
-      ship.y = clamp(ship.y + dy, 8, size - 8);
+    for (const landing of validation.landingPlan || []) {
+      const { ship, position } = landing;
+      ship.x = position.x;
+      ship.y = position.y;
       ship.command.x = ship.x;
       ship.command.y = ship.y;
       ship.route = null;
@@ -467,7 +516,7 @@ export function useTerritoryTacticalSkill({ modeState, simulation, seat, action 
   }
   const next = cloneJson(modeState);
   next.alliances[allianceId].skillSlot = null;
-  const effect = applyImmediateSkillEffect(skill, next, simulation, seat, action || {});
+  const effect = applyImmediateSkillEffect(skill, next, simulation, seat, action || {}, validation);
   return {
     accepted: true,
     modeState: next,

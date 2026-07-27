@@ -66,6 +66,43 @@ const blockedResourceSpawn = spawnTerritoryResource({
 });
 assert(blockedResourceSpawn.pickups.length === 0, "blocked resource reservation must not spawn inside an obstacle");
 
+const outOfBoundsResourceState = makeModeState(4042);
+const outOfBoundsResourceNode = outOfBoundsResourceState.map.resourceSpawnNodes.find((node) => node.rarity === "common");
+const outOfBoundsResourceSpawn = spawnTerritoryResource({
+  modeState: outOfBoundsResourceState,
+  rarity: "common",
+  reservation: {
+    rarity: "common",
+    resourceType: "repair",
+    nodeId: outOfBoundsResourceNode.id,
+    position: { x: -100, y: -100 },
+    spawnAt: 10,
+  },
+});
+assert(outOfBoundsResourceSpawn.pickups.length === 0, "resource reservation must remain inside radius-aware safe bounds");
+
+let staleBlockedResourceState = stepResourceLifecycle(blockedResourceState, 0).modeState;
+staleBlockedResourceState.resourceRuntime.nextCommonAt = 10;
+staleBlockedResourceState.resourceRuntime.nextRareAt = 10_000;
+staleBlockedResourceState.resourceRuntime.warned.common = true;
+staleBlockedResourceState.resourceRuntime.reservations.common = {
+  rarity: "common",
+  resourceType: "repair",
+  nodeId: blockedResourceNode.id,
+  position: { ...blockedResourceNode.center },
+  spawnAt: 10,
+};
+const staleBlockedResourceLifecycle = stepResourceLifecycle(staleBlockedResourceState, 10);
+assert(!staleBlockedResourceLifecycle.events.some((event) => event.type === "resource_spawned"), "blocked due resource should not spawn");
+assert(
+  staleBlockedResourceLifecycle.modeState.resourceRuntime.reservations.common === null,
+  "blocked due resource reservation should be cleared",
+);
+assert(
+  staleBlockedResourceLifecycle.modeState.resourceRuntime.nextCommonAt > 10,
+  "blocked due resource should reschedule a future lifecycle",
+);
+
 const lifecycleA = createTerritoryResourceRuntime({ seed: 444, parameters: stellarTerritoryMode.defaultParameters });
 const lifecycleB = createTerritoryResourceRuntime({ seed: 444, parameters: stellarTerritoryMode.defaultParameters });
 const lifecycleC = createTerritoryResourceRuntime({ seed: 445, parameters: stellarTerritoryMode.defaultParameters });

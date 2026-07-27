@@ -27,9 +27,28 @@ import { chooseTerritoryAiAction } from "../gameplay/territory-ai.js";
 import { getTerritoryInitialDeployments } from "../gameplay/territory-spawns.js";
 import {
   firstObstacleHit,
+  freezeObstacleGeometry,
   positionClearOfObstacles,
   resolveMovementAgainstObstacles,
 } from "../gameplay/territory-obstacles.js";
+
+const INSTALLED_TERRITORY_OBSTACLES = new WeakMap();
+
+function installTerritoryCollisionProvider(simulation, modeState) {
+  const obstacles = freezeObstacleGeometry(modeState?.map?.obstacleRegions || []);
+  if (!simulation || INSTALLED_TERRITORY_OBSTACLES.get(simulation) === obstacles) return;
+  simulation?.setEnvironmentCollisionProvider?.({
+    resolveMovement: ({ entity, previousPosition, nextPosition }) => resolveMovementAgainstObstacles({
+      previousPosition,
+      nextPosition,
+      radius: Number(entity?.radius) || 0,
+      obstacles,
+    }),
+    traceSegment: ({ start, end, radius = 0 }) => firstObstacleHit(start, end, obstacles, radius),
+    canOccupy: ({ position, radius = 0 }) => positionClearOfObstacles(position, radius, obstacles),
+  });
+  INSTALLED_TERRITORY_OBSTACLES.set(simulation, obstacles);
+}
 
 export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
   {
@@ -231,30 +250,28 @@ export const stellarTerritoryMode = {
   },
 
   prepareSimulation({ simulation, modeState, fleetLayout }) {
-    const obstacles = modeState?.map?.obstacleRegions || [];
-    simulation?.setEnvironmentCollisionProvider?.({
-      resolveMovement: ({ entity, previousPosition, nextPosition }) => resolveMovementAgainstObstacles({
-        previousPosition,
-        nextPosition,
-        radius: Number(entity?.radius) || 0,
-        obstacles,
-      }),
-      traceSegment: ({ start, end, radius = 0 }) => firstObstacleHit(start, end, obstacles, radius),
-      canOccupy: ({ position, radius = 0 }) => positionClearOfObstacles(position, radius, obstacles),
-    });
+    installTerritoryCollisionProvider(simulation, modeState);
     const deployments = getTerritoryInitialDeployments({ modeState, simulation, fleetLayout });
     applyInitialDeployments(simulation, deployments);
     return { modeState };
   },
 
   beforeSimulationStep({ modeState, simulation }) {
+    installTerritoryCollisionProvider(simulation, modeState);
     const terrain = updateTerritoryTerrainModifiers({ modeState, simulation, mutate: true });
     applyTerritorySkillEnvironmentModifiers({ modeState: terrain.modeState, simulation });
     return terrain;
   },
 
   updateModeState({ modeState, parameters, dt, simulation }) {
-    let next = modeState ? cloneJson(modeState) : this.createInitialModeState({ parameters });
+    let next;
+    if (modeState) {
+      const { map, ...dynamicState } = modeState;
+      freezeObstacleGeometry(map?.obstacleRegions || []);
+      next = { ...cloneJson(dynamicState), map };
+    } else {
+      next = this.createInitialModeState({ parameters });
+    }
     const now = Number(next.elapsed || 0) + Math.max(0, Number(dt) || 0);
     next.elapsed = now;
     const control = updateTerritoryControl({

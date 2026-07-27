@@ -59,7 +59,17 @@ function pickupPositionBlockedByShip(node, simulation) {
 }
 
 function pickupPositionClear(modeState, position, radius = PICKUP_RADIUS) {
-  return positionClearOfObstacles(position, radius, modeState?.map?.obstacleRegions || []);
+  const bounds = modeState?.map?.safeBounds;
+  const safeRadius = Math.max(0, Number(radius) || 0);
+  const insideBounds = !bounds || (
+    Number.isFinite(position?.x)
+    && Number.isFinite(position?.y)
+    && position.x - safeRadius >= bounds.x
+    && position.y - safeRadius >= bounds.y
+    && position.x + safeRadius <= bounds.x + bounds.width
+    && position.y + safeRadius <= bounds.y + bounds.height
+  );
+  return insideBounds && positionClearOfObstacles(position, safeRadius, modeState?.map?.obstacleRegions || []);
 }
 
 function ensureResourceRuntime(modeState, parameters = {}) {
@@ -260,7 +270,7 @@ export function updateTerritoryResourceLifecycle({
         runtime = next.resourceRuntime;
         events.push(...result.events);
         scheduleNext(runtime, currentTime, rarity, parameters);
-      }
+      } else scheduleNext(runtime, currentTime, rarity, parameters);
     }
   }
 

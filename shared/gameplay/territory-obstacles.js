@@ -2,6 +2,7 @@ const EPSILON = 1e-9;
 const SWEEP_BACKOFF = 1e-4;
 const CLEARANCE_NUDGE = 1e-6;
 const OBSTACLE_BOUNDS_CACHE = new WeakMap();
+const IMMUTABLE_OBSTACLE_GEOMETRY = new WeakSet();
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -81,6 +82,19 @@ function compoundPrimitives(obstacle) {
   return Array.isArray(values) ? values : [];
 }
 
+function freezeObstacleValue(value) {
+  if (!value || typeof value !== "object" || IMMUTABLE_OBSTACLE_GEOMETRY.has(value)) return value;
+  for (const child of Array.isArray(value) ? value : Object.values(value)) freezeObstacleValue(child);
+  Object.freeze(value);
+  IMMUTABLE_OBSTACLE_GEOMETRY.add(value);
+  return value;
+}
+
+export function freezeObstacleGeometry(obstacles) {
+  if (!Array.isArray(obstacles)) return Object.freeze([]);
+  return freezeObstacleValue(obstacles);
+}
+
 function polygonPoints(obstacle) {
   return Array.isArray(obstacle?.points) ? obstacle.points.map(pointValue) : [];
 }
@@ -135,6 +149,7 @@ function calculateObstacleBounds(obstacle) {
 
 function obstacleBounds(obstacle) {
   if (!obstacle || typeof obstacle !== "object") return null;
+  if (!IMMUTABLE_OBSTACLE_GEOMETRY.has(obstacle)) return calculateObstacleBounds(obstacle);
   if (OBSTACLE_BOUNDS_CACHE.has(obstacle)) return OBSTACLE_BOUNDS_CACHE.get(obstacle);
   const bounds = calculateObstacleBounds(obstacle);
   OBSTACLE_BOUNDS_CACHE.set(obstacle, bounds);

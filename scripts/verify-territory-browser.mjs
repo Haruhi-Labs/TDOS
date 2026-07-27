@@ -1262,10 +1262,41 @@ async function main() {
     await page.keyboard.press("x");
     const warpTarget = await page.evaluate(() => {
       const inspection = window.__TDOS_PROTOTYPE_INSPECT__?.();
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
       const view = inspection.camera;
+      const simulation = runtime?.getSimulation?.();
+      const bounds = runtime?.getModeState?.()?.map?.safeBounds;
+      const fleet = simulation?.fleetBySeat?.("A1");
+      const ships = fleet?.getAllShips?.().filter((ship) => ship.alive) || [];
+      const anchor = fleet?.shipByKey?.("main");
+      const movingShips = new Set(ships);
+      const otherShips = (simulation?.fleetSeats || []).flatMap((seat) => (
+        simulation.fleetBySeat(seat).getAllShips().filter((ship) => ship.alive && !movingShips.has(ship))
+      ));
+      const offsets = [
+        { x: -100, y: 0 }, { x: 0, y: -100 }, { x: 0, y: 100 }, { x: 100, y: 0 },
+        { x: -70, y: -70 }, { x: -70, y: 70 }, { x: 70, y: -70 }, { x: 70, y: 70 },
+      ];
+      const offset = offsets.find(({ x: dx, y: dy }) => ships.every((ship) => {
+        const position = { x: ship.x + dx, y: ship.y + dy };
+        const radius = Math.max(0, Number(ship.radius) || 0);
+        const insideBounds = !bounds || (
+          position.x - radius >= bounds.x
+          && position.y - radius >= bounds.y
+          && position.x + radius <= bounds.x + bounds.width
+          && position.y + radius <= bounds.y + bounds.height
+        );
+        return insideBounds
+          && simulation?.canOccupyEnvironment?.(position, radius, { entity: ship, kind: "short_warp_test" }) !== false
+          && otherShips.every((other) => (
+            Math.hypot(position.x - other.x, position.y - other.y) >= radius + Math.max(0, Number(other.radius) || 0)
+          ));
+      }));
+      if (!offset || !anchor) throw new Error("browser fixture could not find a clear short-warp target");
+      const target = { x: anchor.x + offset.x, y: anchor.y + offset.y };
       return {
-        xRatio: (inspection.localShip.x + 100 - (view.centerX - view.width / 2)) / view.width,
-        yRatio: (inspection.localShip.y - (view.centerY - view.height / 2)) / view.height,
+        xRatio: (target.x - (view.centerX - view.width / 2)) / view.width,
+        yRatio: (target.y - (view.centerY - view.height / 2)) / view.height,
       };
     });
     await canvas.click({

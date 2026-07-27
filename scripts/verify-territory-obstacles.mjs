@@ -193,6 +193,18 @@ assert(!positionClearOfObstacles({ x: 130, y: 120 }, 6, [polygon, compound]), "p
 assert(!positionClearOfObstacles({ x: 430, y: 120 }, 6, [polygon, compound]), "compound overlap rejected");
 assert(positionClearOfObstacles({ x: 40, y: 40 }, 6, null), "missing obstacle list is clear");
 
+const mutableObstacle = { id: "mutable", shape: "circle", center: { x: 20, y: 20 }, radius: 10 };
+assert(!positionClearOfObstacles({ x: 20, y: 20 }, 1, [mutableObstacle]), "mutable obstacle fixture should prime bounds");
+mutableObstacle.center.x = 120;
+assert(
+  !positionClearOfObstacles({ x: 120, y: 20 }, 1, [mutableObstacle]),
+  "mutable obstacle bounds must follow in-place geometry changes",
+);
+assert(
+  firstObstacleHit({ x: 90, y: 20 }, { x: 150, y: 20 }, [mutableObstacle], 1)?.obstacle === mutableObstacle,
+  "segment broad phase must follow in-place obstacle changes",
+);
+
 function environmentCollisionProviderIntegrationCheck() {
   const simulation = new MatchSimulation({
     mode: "pvp",
@@ -307,8 +319,9 @@ function environmentCollisionProviderIntegrationCheck() {
   beamShip.route = null;
   beamShip.energy = beamShip.maxEnergy;
   teamA.cooldowns.sub2 = 0;
-  projectileTarget.x = 550;
+  projectileTarget.x = 515;
   projectileTarget.y = 1000;
+  projectileTarget.radius = 12.8;
   const targetHpBeforeBeam = projectileTarget.hp;
   assert(teamA.castSubSkill("sub2", { targetX: 800, targetY: 1000 }), "beam collision fixture should cast");
   const beam = teamA.beams.at(-1);
@@ -358,6 +371,24 @@ function environmentCollisionProviderIntegrationCheck() {
     )?.obstacle,
     "Stellar Territory should install obstacle segment tracing on the generic provider",
   );
+  const replacementObstacle = { id: "replacement", shape: "circle", center: { x: 1080, y: 1080 }, radius: 80 };
+  territoryState.map.obstacleRegions = [replacementObstacle];
+  stellarTerritoryMode.beforeSimulationStep({ simulation: territorySimulation, modeState: territoryState });
+  assert(
+    !territorySimulation.canOccupyEnvironment(replacementObstacle.center, 1),
+    "Territory provider should refresh replaced obstacle geometry before simulation movement",
+  );
+  const updatedTerritoryState = stellarTerritoryMode.updateModeState({
+    modeState: territoryState,
+    parameters: stellarTerritoryMode.defaultParameters,
+    simulation: territorySimulation,
+    dt: 0.05,
+  });
+  assert(
+    updatedTerritoryState.map.obstacleRegions === territoryState.map.obstacleRegions,
+    "fixed Territory obstacle topology should retain one immutable reference across ticks",
+  );
+  assert(Object.isFrozen(updatedTerritoryState.map.obstacleRegions), "provider-owned obstacle geometry should remain immutable");
 }
 
 environmentCollisionProviderIntegrationCheck();

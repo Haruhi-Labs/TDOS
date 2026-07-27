@@ -1,5 +1,7 @@
-import { territorySpawnDeployment } from "./territory-spawns.js";
-import { positionClearOfObstacles } from "./territory-obstacles.js";
+import {
+  territoryDeploymentPositionClear,
+  territorySpawnDeployment,
+} from "./territory-spawns.js";
 
 const RESPAWN_SECONDS = Object.freeze({
   main: 24,
@@ -159,10 +161,16 @@ export function updateTerritoryRespawns({ modeState, simulation, dt, mutate = fa
     }
     const ship = simulation?.fleetBySeat?.(updated.seat)?.shipByKey?.(updated.shipKey);
     const radius = Math.max(1, Number(ship?.radius) || 18);
-    const obstacles = next.map?.obstacleRegions || [];
     const reservedPosition = updated.spawnPosition;
     const reservationClear = reservedPosition
-      && positionClearOfObstacles(reservedPosition, radius, obstacles)
+      && territoryDeploymentPositionClear({
+        modeState: next,
+        simulation,
+        seat: updated.seat,
+        shipKey: updated.shipKey,
+        position: reservedPosition,
+        radius,
+      })
       && simulation?.canOccupyEnvironment?.(reservedPosition, radius, { entity: ship, kind: "respawn" }) !== false;
     const spawn = reservationClear ? reservedPosition : territorySpawnDeployment({
       modeState: next,

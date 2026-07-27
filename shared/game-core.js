@@ -666,12 +666,14 @@ function linePointDistance(x1, y1, x2, y2, px, py) {
   const wy = py - y1;
   const c1 = vx * wx + vy * wy;
   const c2 = vx * vx + vy * vy;
-  const t = c2 <= 0 ? 0 : clamp(c1 / c2, 0, 1);
+  const rawT = c2 <= 0 ? 0 : c1 / c2;
+  const t = clamp(rawT, 0, 1);
   const projX = x1 + vx * t;
   const projY = y1 + vy * t;
   return {
     dist: distance(px, py, projX, projY),
     t,
+    rawT,
   };
 }
 
@@ -2885,7 +2887,7 @@ class Team {
           continue;
         }
         const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
-        if (probe.dist > target.radius + BEAM_HIT_RADIUS || probe.t < 0 || probe.t > 1) {
+        if (probe.dist > target.radius + BEAM_HIT_RADIUS || probe.rawT < 0 || probe.rawT > 1) {
           continue;
         }
         const damage = target.maxHp * BEAM_DAMAGE_RATIO;
