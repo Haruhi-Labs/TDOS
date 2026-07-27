@@ -1,5 +1,6 @@
 const EPSILON = 1e-9;
 const SWEEP_BACKOFF = 1e-4;
+const CLEARANCE_NUDGE = 1e-6;
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -221,12 +222,20 @@ function contactHit(time, position, point, normal, obstacle, primitive = obstacl
   };
 }
 
+function initialContactBlocks(distance, expandedRadius, normal, movement) {
+  if (distance < expandedRadius - EPSILON) return true;
+  if (distance > expandedRadius + EPSILON) return false;
+  if (lengthSquared(movement) <= EPSILON) return true;
+  return dot(movement, normal) < -EPSILON;
+}
+
 function sweepPointAgainstCircle(start, end, center, expandedRadius, obstacle, primitive, baseRadius) {
   const movement = subtract(end, start);
   const relative = subtract(start, center);
   const distance = Math.hypot(relative.x, relative.y);
-  if (distance <= expandedRadius + EPSILON) {
-    const normal = normalize(relative, normalize(scale(movement, -1)));
+  const initialNormal = normalize(relative, normalize(scale(movement, -1)));
+  if (initialContactBlocks(distance, expandedRadius, initialNormal, movement)) {
+    const normal = initialNormal;
     return contactHit(0, start, add(center, scale(normal, baseRadius)), normal, obstacle, primitive);
   }
 
@@ -241,6 +250,7 @@ function sweepPointAgainstCircle(start, end, center, expandedRadius, obstacle, p
   if (time < -EPSILON || time > 1 + EPSILON) return noHit(end, obstacle);
   const position = add(start, scale(movement, clamp(time, 0, 1)));
   const normal = normalize(subtract(position, center), normalize(scale(movement, -1)));
+  if (time <= EPSILON && dot(movement, normal) >= -EPSILON) return noHit(end, obstacle);
   return contactHit(time, position, add(center, scale(normal, baseRadius)), normal, obstacle, primitive);
 }
 
@@ -256,8 +266,9 @@ function earliestHit(hits, end, obstacle) {
 function sweepPointAgainstCapsule(start, end, axisStart, axisEnd, expandedRadius, obstacle, primitive, baseRadius) {
   const initial = distanceToSegment(start, axisStart, axisEnd);
   const movement = subtract(end, start);
-  if (initial.distance <= expandedRadius + EPSILON) {
-    const normal = normalize(subtract(start, initial.closest), normalize(scale(movement, -1)));
+  const initialNormal = normalize(subtract(start, initial.closest), normalize(scale(movement, -1)));
+  if (initialContactBlocks(initial.distance, expandedRadius, initialNormal, movement)) {
+    const normal = initialNormal;
     return contactHit(0, start, add(initial.closest, scale(normal, baseRadius)), normal, obstacle, primitive);
   }
 
@@ -282,6 +293,7 @@ function sweepPointAgainstCapsule(start, end, axisStart, axisEnd, expandedRadius
         if (projection < -EPSILON || projection > axisLength + EPSILON) continue;
         const axisPoint = add(axisStart, scale(unit, clamp(projection, 0, axisLength)));
         const normal = scale(perpendicular, side);
+        if (dot(movement, normal) >= -EPSILON) continue;
         hits.push(contactHit(time, position, add(axisPoint, scale(normal, baseRadius)), normal, obstacle, primitive));
       }
     }
@@ -319,9 +331,12 @@ function sweepAgainstPrimitive(start, end, radius, obstacle, rootObstacle = obst
   if (shape === "polygon") {
     const points = polygonPoints(obstacle);
     if (points.length < 3) return noHit(end, rootObstacle);
-    if (circleIntersectsPrimitive(start, radius, obstacle)) {
-      const normal = polygonContactNormal(start, points);
-      const nearest = nearestPolygonEdge(start, points);
+    const nearest = nearestPolygonEdge(start, points);
+    const onBoundary = Boolean(nearest && nearest.distance <= EPSILON);
+    const inside = pointInPolygon(start, points) && !onBoundary;
+    const normal = polygonContactNormal(start, points);
+    const movement = subtract(end, start);
+    if (inside || (nearest && initialContactBlocks(nearest.distance, radius, normal, movement))) {
       return contactHit(0, start, nearest?.closest || start, normal, rootObstacle, obstacle);
     }
     const hits = [];
@@ -419,9 +434,16 @@ export function resolveMovementAgainstObstacles({
     if (slideIndex >= slideLimit) break;
   }
 
+  for (let attempt = 0; attempt < 4 && !positionClearOfObstacles(position, radius, obstacles); attempt += 1) {
+    const contact = firstObstacleHit(position, position, obstacles, radius);
+    if (!contact?.normal) break;
+    position = add(position, scale(contact.normal, CLEARANCE_NUDGE));
+  }
+
   return {
     position,
     collided: hits.length > 0,
+    normal: hits.at(-1)?.normal || null,
     hits,
   };
 }

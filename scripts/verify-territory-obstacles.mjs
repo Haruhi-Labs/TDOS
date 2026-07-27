@@ -114,8 +114,77 @@ const unobstructed = resolveMovementAgainstObstacles({
   obstacles: [polygon, compound],
 });
 assert(!unobstructed.collided, "clear movement is not reported as a collision");
+assert(unobstructed.normal === null, "clear movement reports a null contact normal");
 closeTo(unobstructed.position.x, 60, 1e-9, "clear movement preserves x");
 closeTo(unobstructed.position.y, 40, 1e-9, "clear movement preserves y");
+
+const tangentCapsule = {
+  id: "tangent-capsule",
+  shape: "capsule",
+  start: { x: 100, y: 80 },
+  end: { x: 100, y: 140 },
+  radius: 20,
+};
+const parallelTangent = resolveMovementAgainstObstacles({
+  previousPosition: { x: 125, y: 90 },
+  nextPosition: { x: 125, y: 130 },
+  radius: 5,
+  obstacles: [tangentCapsule],
+});
+assert(!parallelTangent.collided, `parallel tangent movement should remain free: ${JSON.stringify(parallelTangent)}`);
+assert(
+  parallelTangent.position.x > 125 && parallelTangent.position.x < 125.001,
+  `parallel tangent movement only receives a microscopic outward nudge: ${JSON.stringify(parallelTangent)}`,
+);
+closeTo(parallelTangent.position.y, 130, 1e-9, "parallel tangent movement reaches target y");
+assert(positionClearOfObstacles(parallelTangent.position, 5, [tangentCapsule]), "exact tangent position is clear");
+assert(
+  !sweepCircleAgainstObstacle({
+    previousPosition: { x: 125, y: 90 },
+    nextPosition: { x: 125, y: 130 },
+    radius: 5,
+    obstacle: tangentCapsule,
+  }).hit,
+  "parallel time-zero contact is not a blocking sweep",
+);
+
+const tangentCircle = { id: "tangent-circle", shape: "circle", center: { x: 100, y: 100 }, radius: 20 };
+const separatingTangent = resolveMovementAgainstObstacles({
+  previousPosition: { x: 125, y: 100 },
+  nextPosition: { x: 140, y: 100 },
+  radius: 5,
+  obstacles: [tangentCircle],
+});
+assert(!separatingTangent.collided, `separating tangent movement should remain free: ${JSON.stringify(separatingTangent)}`);
+closeTo(separatingTangent.position.x, 140, 1e-9, "separating tangent movement reaches target");
+assert(
+  !sweepCircleAgainstObstacle({
+    previousPosition: { x: 125, y: 100 },
+    nextPosition: { x: 140, y: 100 },
+    radius: 5,
+    obstacle: tangentCircle,
+  }).hit,
+  "separating time-zero contact is not a blocking sweep",
+);
+
+const enteringTangent = resolveMovementAgainstObstacles({
+  previousPosition: { x: 125, y: 100 },
+  nextPosition: { x: 110, y: 100 },
+  radius: 5,
+  obstacles: [tangentCircle],
+});
+assert(enteringTangent.collided, "inward movement from tangent contact remains blocked");
+assert(enteringTangent.normal?.x > 0.99, `blocked movement exposes outward normal: ${JSON.stringify(enteringTangent)}`);
+assert(positionClearOfObstacles(enteringTangent.position, 5, [tangentCircle]), "blocked tangent movement stays clear");
+assert(
+  sweepCircleAgainstObstacle({
+    previousPosition: { x: 125, y: 100 },
+    nextPosition: { x: 110, y: 100 },
+    radius: 5,
+    obstacle: tangentCircle,
+  }).hit,
+  "inward movement from time-zero contact remains a blocking sweep",
+);
 
 assert(positionClearOfObstacles({ x: 40, y: 40 }, 6, [polygon, compound]), "clear position accepted");
 assert(!positionClearOfObstacles({ x: 130, y: 120 }, 6, [polygon, compound]), "polygon overlap rejected");
