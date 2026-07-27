@@ -49,6 +49,7 @@ function makeState(seed = 1111) {
 
 let sim = makeSimulation();
 let state = makeState();
+state.elapsed = 25.1;
 const bMain = sim.fleetBySeat("B").shipByKey("main");
 const targetPoint = state.map.controlPoints[0];
 bMain.x = targetPoint.center.x + 360;
@@ -76,6 +77,7 @@ assert(Math.hypot(action.endX - targetPoint.center.x, action.endY - targetPoint.
 assert(state.map.controlPoints[0].ownerAllianceId === "A", "AI action selection must not mutate control-point state");
 
 state = makeState(2222);
+state.elapsed = 25.1;
 sim = makeSimulation();
 const resourceNode = state.map.resourceSpawnNodes.find((node) => node.rarity === "common") || state.map.resourceSpawnNodes[0];
 state.pickups = [
@@ -156,9 +158,11 @@ action = stellarTerritoryMode.buildAiAction({
   runtime: { getFleetLayout: () => mixedControlLayout },
 });
 assert(action?.type === "use_tactical_skill", "all-AI alliance should retain tactical skill authority");
+assert(state.aiCoordinator.B.assignments.B2?.laneId === "top", "a tactical opening action should retain its assigned lane");
+assert(state.aiCoordinator.B.assignments.B2?.lockUntil === 25, "a tactical opening action should retain the full opening lock");
 
 state = makeState(5151);
-state.elapsed = 1;
+state.elapsed = 25.1;
 sim = makeThreeVsThreeSimulation();
 const sharedResourceNode = state.map.resourceSpawnNodes.find((node) => node.rarity === "common") || state.map.resourceSpawnNodes[0];
 state.pickups = [{
@@ -182,7 +186,7 @@ assert(allianceAssignments.filter((assignment) => assignment.targetId === "resou
 assert(new Set(allianceAssignments.map((assignment) => `${assignment.objectiveType}:${assignment.targetId}`)).size === 3, "capacity-aware fleets should spread across distinct available objectives");
 
 state = makeState(6161);
-state.elapsed = 0.5;
+state.elapsed = 25.1;
 sim = makeSimulation();
 chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 const initialLockedAssignment = { ...state.aiCoordinator.B.assignments.B };
@@ -197,7 +201,7 @@ state.pickups = [{
   radius: 28,
   spawnedAt: state.elapsed,
 }];
-state.elapsed = 1;
+state.elapsed = 25.6;
 action = chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 assert(state.aiCoordinator.B.assignments.B.objectiveKey === initialLockedAssignment.objectiveKey, "a valid objective should remain locked when a stronger routine target appears");
 assert(state.aiCoordinator.B.assignments.B.lockUntil > state.elapsed, "AI assignments should expose positive lock time during the minimum task window");
@@ -207,7 +211,7 @@ chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 assert(state.aiCoordinator.B.assignments.B.targetId === "resource-lock-challenger", "an expired task lock should allow a higher-scoring objective switch");
 
 state = makeState(6162);
-state.elapsed = 1;
+state.elapsed = 25.1;
 state.map.controlPoints = [];
 state.pickups = [];
 state.skillPickups = [];
@@ -230,7 +234,7 @@ closerChallenger.y = 600;
 chooseTerritoryAiAction({ seat: "A1", simulation: sim, modeState: state });
 const attackLock = { ...state.aiCoordinator.A.assignments.A1 };
 assert(attackLock.objectiveType === "attack_enemy" && attackLock.targetId === String(lockedEnemy.id), "attack-lock fixture should begin on the nearest enemy");
-state.elapsed = 2;
+state.elapsed = 25.6;
 closerChallenger.x = 620;
 chooseTerritoryAiAction({ seat: "A1", simulation: sim, modeState: state });
 assert(attackLock.lockUntil > state.elapsed, "nearest-enemy churn fixture should remain inside the original lock window");
@@ -238,7 +242,7 @@ assert(state.aiCoordinator.A.assignments.A1.targetId === String(lockedEnemy.id),
 assert(state.aiCoordinator.A.assignments.A1.lockUntil === attackLock.lockUntil, "nearest-enemy churn should not restart the attack lock");
 
 state = makeState(6163);
-state.elapsed = 1;
+state.elapsed = 25.1;
 state.pickups = [];
 state.skillPickups = [];
 sim = makeThreeVsThreeSimulation();
@@ -247,6 +251,7 @@ state.map.controlPoints = [capacityPoint];
 capacityPoint.ownerAllianceId = "B";
 capacityPoint.capturingAllianceId = null;
 capacityPoint.captureProgress = 0;
+capacityPoint.contested = true;
 for (const seat of ["A1", "A2"]) {
   const ship = sim.fleetBySeat(seat).shipByKey("main");
   ship.x = capacityPoint.center.x + (seat === "A1" ? -12 : 12);
@@ -260,40 +265,112 @@ for (const seat of ["B1", "B2", "B3"]) {
 }
 chooseTerritoryAiAction({ seat: "A1", simulation: sim, modeState: state });
 chooseTerritoryAiAction({ seat: "A2", simulation: sim, modeState: state });
-assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === capacityPoint.id).length === 2, "an enemy-owned point should accept two capture assignments");
-capacityPoint.ownerAllianceId = null;
-state.elapsed = 2;
+assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === capacityPoint.id).length === 2, "a contested point should accept two capture assignments");
+capacityPoint.contested = false;
+state.elapsed = 25.6;
 chooseTerritoryAiAction({ seat: "A1", simulation: sim, modeState: state });
 chooseTerritoryAiAction({ seat: "A2", simulation: sim, modeState: state });
-assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === capacityPoint.id).length === 1, "a neutralized point should reconcile locked assignments to capacity one");
+assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === capacityPoint.id).length === 1, "an uncontested capture should reconcile locked assignments to capacity one");
+
+state = makeState(6164);
+state.elapsed = 25.1;
+state.pickups = [];
+state.skillPickups = [];
+sim = makeThreeVsThreeSimulation();
+const defendedPoint = state.map.controlPoints[0];
+state.map.controlPoints = [defendedPoint];
+defendedPoint.ownerAllianceId = "A";
+defendedPoint.capturingAllianceId = null;
+for (const seat of ["A1", "A2", "A3"]) {
+  const ship = sim.fleetBySeat(seat).shipByKey("main");
+  ship.x = defendedPoint.center.x;
+  ship.y = defendedPoint.center.y;
+}
+for (const seat of ["B1", "B2", "B3"]) {
+  for (const ship of sim.fleetBySeat(seat).getAllShips()) {
+    ship.x = 2100;
+    ship.y = 2100;
+  }
+}
+for (const seat of ["A1", "A2", "A3"]) {
+  chooseTerritoryAiAction({ seat, simulation: sim, modeState: state });
+}
+assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === defendedPoint.id).length === 1, "an ordinary defense should accept one assignment");
+state.aiCoordinator.A.assignments = {};
+defendedPoint.capturingAllianceId = "B";
+for (const seat of ["A1", "A2", "A3"]) {
+  chooseTerritoryAiAction({ seat, simulation: sim, modeState: state });
+}
+assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === defendedPoint.id).length === 3, "an emergency defense should accept three assignments");
 
 state = makeState(6262);
-state.elapsed = 0.5;
+state.elapsed = 25.1;
 sim = makeSimulation();
 chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 const routineAssignment = { ...state.aiCoordinator.B.assignments.B };
 for (const ship of sim.fleetBySeat("B").getAllShips()) {
   ship.hp = ship.maxHp * 0.18;
 }
-state.elapsed = 1;
+state.elapsed = 25.6;
 action = chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 assert(routineAssignment.lockUntil > state.elapsed, "emergency-retreat fixture should still be inside its routine task lock");
 assert(action.reason === "retreat", "low hull should preempt a locked routine objective");
 assert(state.aiCoordinator.B.assignments.B.objectiveType === "retreat", "emergency retreat should replace the coordinator assignment immediately");
 
 state = makeState(6363);
-state.elapsed = 0.5;
 sim = makeThreeVsThreeSimulation();
+const expectedOpeningLanes = { A1: "mid", A2: "top", A3: "bottom", B1: "mid", B2: "top", B3: "bottom" };
+for (const [seat, laneId] of Object.entries(expectedOpeningLanes)) {
+  const action = chooseTerritoryAiAction({ seat, simulation: sim, modeState: state });
+  const assignment = state.aiCoordinator[seat[0]].assignments[seat];
+  assert(assignment?.laneId === laneId, `${seat} opening lane should be ${laneId}: ${JSON.stringify(assignment)}`);
+  assert(assignment.lockUntil === 25, `${seat} opening lock should end at 25 seconds`);
+  assert(action?.type === "set_route", `${seat} should receive a route action`);
+}
+const openingChallengeNode = state.map.resourceSpawnNodes.find((node) => node.laneId === "top");
+const openingChallengeShip = sim.fleetBySeat("A2").shipByKey("main");
+state.pickups = [{
+  id: "opening-lock-challenger",
+  resourceType: "energy",
+  rarity: "common",
+  nodeId: openingChallengeNode.id,
+  position: { x: openingChallengeShip.x + 5, y: openingChallengeShip.y },
+  radius: 28,
+  spawnedAt: 0,
+}];
+state.elapsed = 24.9;
+for (const [seat, laneId] of Object.entries(expectedOpeningLanes)) {
+  const action = chooseTerritoryAiAction({ seat, simulation: sim, modeState: state });
+  const assignment = state.aiCoordinator[seat[0]].assignments[seat];
+  assert(assignment?.laneId === laneId, `${seat} should retain the ${laneId} opening lane through 24.9 seconds`);
+  assert(assignment.lockUntil === 25, `${seat} opening lock should not be shortened by a routine challenger`);
+  assert(action?.type === "set_route", `${seat} should retain an opening route through 24.9 seconds`);
+}
+state.elapsed = 25.1;
+state.pickups = [];
+state.skillPickups = [];
+const midPoint = state.map.controlPoints.find((point) => point.laneId === "mid");
+state.map.controlPoints = [midPoint];
+midPoint.ownerAllianceId = "A";
+midPoint.capturingAllianceId = "B";
+for (const seat of ["A1", "A2", "A3"]) {
+  const ship = sim.fleetBySeat(seat).shipByKey("main");
+  ship.x = midPoint.center.x;
+  ship.y = midPoint.center.y;
+}
+for (const seat of ["B1", "B2", "B3"]) {
+  for (const ship of sim.fleetBySeat(seat).getAllShips()) {
+    ship.x = 2100;
+    ship.y = 2100;
+  }
+}
 for (const seat of ["A1", "A2", "A3"]) {
   chooseTerritoryAiAction({ seat, simulation: sim, modeState: state });
 }
-assert(state.aiCoordinator.A.assignments.A1.objectiveType === "capture_control_point", "opening seat A1 should take a neutral capture task");
-assert(state.aiCoordinator.A.assignments.A2.objectiveType === "capture_control_point", "opening seat A2 should take a second neutral capture task");
-assert(state.aiCoordinator.A.assignments.A1.targetId !== state.aiCoordinator.A.assignments.A2.targetId, "neutral capture capacity should distribute A1 and A2");
-assert(["collect_resource", "collect_skill", "attack_enemy", "defend_control_point"].includes(state.aiCoordinator.A.assignments.A3.objectiveType), "opening seat A3 should support or seek pickups rather than duplicate a neutral capture");
+assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === midPoint.id).length === 3, "post-lock emergency support should be able to reassign across lanes");
 
 state = makeState(6464);
-state.elapsed = 0.5;
+state.elapsed = 25.1;
 sim = makeSimulation();
 const disappearingShip = sim.fleetBySeat("B").shipByKey("main");
 state.pickups = [{
@@ -309,7 +386,7 @@ chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 const disappearingAssignment = { ...state.aiCoordinator.B.assignments.B };
 assert(disappearingAssignment.targetId === "resource-disappearing", "disappearing-target fixture should begin with the pickup assignment");
 state.pickups = [];
-state.elapsed = 1;
+state.elapsed = 25.6;
 chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 assert(disappearingAssignment.lockUntil > state.elapsed, "disappearing-target fixture should remain inside the original lock window");
 assert(state.aiCoordinator.B.assignments.B.targetId !== "resource-disappearing", "a vanished pickup should release its assignment before lock expiry");
@@ -346,6 +423,7 @@ const runtime = createPrototypeRuntime({
 });
 runtime.start();
 const runtimeState = runtime.getModeState();
+runtimeState.elapsed = 25.1;
 const runtimePoint = runtimeState.map.controlPoints[0];
 const runtimeBMain = runtime.getSimulation().fleetBySeat("B").shipByKey("main");
 runtimeBMain.x = runtimePoint.center.x + 340;

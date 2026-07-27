@@ -139,6 +139,8 @@ function makeEvent(type, pickup, extra = {}) {
       resourceType: pickup?.resourceType || null,
       rarity: pickup?.rarity || null,
       nodeId: pickup?.nodeId || null,
+      laneId: pickup?.laneId || null,
+      regionId: pickup?.regionId || null,
       ...extra,
     },
   };
@@ -200,6 +202,8 @@ export function spawnTerritoryResource({
     resourceType: type,
     rarity,
     nodeId: node.id,
+    laneId: node.laneId || null,
+    regionId: node.regionId || null,
     position,
     radius: PICKUP_RADIUS,
     spawnedAt: Number.isFinite(Number(reservation?.spawnAt))
@@ -221,6 +225,8 @@ function createReservation(modeState, runtime, rarity, simulation, spawnAt) {
     rarity,
     resourceType: drawResourceType(runtime),
     nodeId: node.id,
+    laneId: node.laneId || null,
+    regionId: node.regionId || null,
     position: { ...node.center },
     spawnAt,
   };
@@ -369,6 +375,9 @@ export function applyTerritoryResourcePickup({
         payload: {
           pickupId: pickup.id,
           resourceType: pickup.resourceType,
+          nodeId: pickup.nodeId || null,
+          laneId: pickup.laneId || null,
+          regionId: pickup.regionId || null,
           shipKey,
           ...feedback,
         },

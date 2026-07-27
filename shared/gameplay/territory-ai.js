@@ -73,14 +73,27 @@ function objectiveTargetId(objective, allianceId) {
   return String(target?.id || target?.nodeId || "unknown");
 }
 
+const OPENING_LANE_LOCK_SECONDS = 25;
+const OPENING_LANE_BY_SUFFIX = Object.freeze({ "1": "mid", "2": "top", "3": "bottom" });
+
+function openingLaneForSeat(seat, modeState) {
+  if (Number(modeState?.elapsed || 0) >= OPENING_LANE_LOCK_SECONDS) return null;
+  return OPENING_LANE_BY_SUFFIX[String(seat).slice(-1)] || "mid";
+}
+
+function emergencyDefense(target, allianceId) {
+  if (target?.ownerAllianceId !== allianceId) return false;
+  const enemyId = enemyAllianceId(allianceId);
+  return target?.capturingAllianceId === enemyId || Boolean(target?.contested && target?.occupants?.[enemyId]?.length);
+}
+
 function objectiveCapacity(objective, allianceId) {
   if (objective?.type === "collect_resource" || objective?.type === "collect_skill") return 1;
-  if (objective?.type === "defend_control_point") return 1;
+  if (objective?.type === "defend_control_point") return emergencyDefense(objective.target, allianceId) ? 3 : 1;
   if (objective?.type === "capture_control_point") {
-    return objective.target?.ownerAllianceId && objective.target.ownerAllianceId !== allianceId ? 2 : 1;
+    return objective.target?.contested ? 2 : 1;
   }
-  if (objective?.type === "attack_enemy") return 2;
-  return Number.POSITIVE_INFINITY;
+  return objective?.type === "retreat" ? Number.POSITIVE_INFINITY : 1;
 }
 
 function objectiveKey(objective, allianceId) {
@@ -232,6 +245,66 @@ export function chooseTerritoryAiAction({ seat, simulation, modeState, allowTact
     if (coordinator?.assignments) delete coordinator.assignments[seat];
     return null;
   }
+  const now = Number(modeState?.elapsed || 0);
+  const emergencyObjective = {
+    type: "retreat",
+    target: safeAreaTarget(modeState, simulation, allianceId),
+  };
+  const emergencyScore = scoreTerritoryObjective({
+    objective: emergencyObjective,
+    seat,
+    simulation,
+    modeState,
+  });
+  if (emergencyScore > 0) {
+    if (coordinator) {
+      coordinator.assignments[seat] = {
+        objectiveType: emergencyObjective.type,
+        targetId: objectiveTargetId(emergencyObjective, allianceId),
+        objectiveKey: objectiveKey(emergencyObjective, allianceId),
+        laneId: null,
+        score: emergencyScore,
+        lockUntil: now + 4,
+      };
+    }
+    return routeAction(
+      ship,
+      emergencyObjective.target,
+      "retreat",
+      emergencyScore,
+      objectiveKey(emergencyObjective, allianceId),
+    );
+  }
+  const openingLaneId = openingLaneForSeat(seat, modeState);
+  if (openingLaneId) {
+    const target = (modeState?.map?.controlPoints || []).find((point) => point?.laneId === openingLaneId) || null;
+    if (target) {
+      const objective = {
+        type: target.ownerAllianceId === allianceId ? "defend_control_point" : "capture_control_point",
+        target,
+      };
+      const score = scoreTerritoryObjective({ objective, seat, simulation, modeState });
+      if (coordinator) {
+        coordinator.assignments[seat] = {
+          objectiveType: objective.type,
+          targetId: objectiveTargetId(objective, allianceId),
+          objectiveKey: objectiveKey(objective, allianceId),
+          laneId: openingLaneId,
+          score,
+          lockUntil: OPENING_LANE_LOCK_SECONDS,
+        };
+      }
+      const skillAction = allowTacticalSkills ? tacticalSkillAction({ seat, simulation, modeState }) : null;
+      if (skillAction) return skillAction;
+      return routeAction(
+        ship,
+        target.center || target,
+        objective.type,
+        score,
+        objectiveKey(objective, allianceId),
+      );
+    }
+  }
   const skillAction = allowTacticalSkills ? tacticalSkillAction({ seat, simulation, modeState }) : null;
   if (skillAction) return skillAction;
   const otherAssignments = Object.entries(coordinator?.assignments || {})
@@ -245,7 +318,6 @@ export function chooseTerritoryAiAction({ seat, simulation, modeState, allowTact
       targetId: objectiveTargetId(objective, allianceId),
       objectiveKey: objectiveKey(objective, allianceId),
     }));
-  const now = Number(modeState?.elapsed || 0);
   const currentAssignment = coordinator?.assignments?.[seat] || null;
   const hasCapacity = (candidate) => {
     const reserved = otherAssignments.filter((assignment) => assignment.objectiveKey === candidate.objectiveKey).length;
@@ -258,12 +330,11 @@ export function chooseTerritoryAiAction({ seat, simulation, modeState, allowTact
         && hasCapacity(candidate)
       ))
     : null;
-  const emergencyCandidate = candidates.find((candidate) => candidate.objective.type === "retreat" && candidate.score > 0) || null;
   const available = candidates
     .filter(hasCapacity)
     .sort((a, b) => b.score - a.score);
-  const continuingLocked = !emergencyCandidate && lockedCandidate;
-  const best = emergencyCandidate || continuingLocked || available[0];
+  const continuingLocked = lockedCandidate;
+  const best = continuingLocked || available[0];
   if (!best || best.score <= 0) {
     if (coordinator?.assignments) delete coordinator.assignments[seat];
     return null;
@@ -273,6 +344,7 @@ export function chooseTerritoryAiAction({ seat, simulation, modeState, allowTact
       objectiveType: best.objective.type,
       targetId: best.targetId,
       objectiveKey: best.objectiveKey,
+      laneId: best.objective.target?.laneId || null,
       score: best.score,
       lockUntil: continuingLocked ? currentAssignment.lockUntil : now + 4,
     };

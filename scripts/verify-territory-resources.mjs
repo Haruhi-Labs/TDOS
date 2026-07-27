@@ -45,6 +45,20 @@ for (const type of ["repair", "energy", "fleet_supply", "respawn_accelerator"]) 
 }
 assert(!RESOURCE_PICKUP_TYPES.includes("tickets"), "resources must not restore war tickets");
 
+const distributedResourceState = makeModeState(4046);
+for (const laneId of ["top", "mid", "bottom"]) {
+  assert(
+    distributedResourceState.map.resourceSpawnNodes.filter((node) => node.rarity === "common" && node.laneId === laneId).length === 2,
+    `${laneId} should expose two common resource candidates`,
+  );
+}
+for (const regionId of ["upper-wild", "lower-wild"]) {
+  assert(
+    distributedResourceState.map.resourceSpawnNodes.some((node) => node.rarity === "rare" && node.regionId === regionId),
+    `${regionId} should expose a rare resource candidate`,
+  );
+}
+
 const blockedResourceState = makeModeState(4040);
 const blockedResourceNode = blockedResourceState.map.resourceSpawnNodes.find((node) => node.rarity === "common");
 blockedResourceState.map.obstacleRegions.push({
@@ -125,17 +139,24 @@ let state = makeModeState(444);
 const firstCommonAt = createTerritoryResourceRuntime({ seed: state.seed, parameters: stellarTerritoryMode.defaultParameters }).nextCommonAt;
 let events = [];
 let now = 0;
+let firstCommonReservation = null;
 while (now + TICK_DT < firstCommonAt - 5.9) {
   now += TICK_DT;
   const result = stepResourceLifecycle(state, now);
   state = result.modeState;
   events.push(...result.events);
+  if (!firstCommonReservation && result.events.some((event) => event.type === "resource_warning" && event.payload?.rarity === "common")) {
+    firstCommonReservation = { ...result.modeState.resourceRuntime.reservations.common };
+  }
 }
 while (!events.some((event) => event.type === "resource_warning") && now < firstCommonAt + 1) {
   now += TICK_DT;
   const result = stepResourceLifecycle(state, now);
   state = result.modeState;
   events.push(...result.events);
+  if (!firstCommonReservation && result.events.some((event) => event.type === "resource_warning" && event.payload?.rarity === "common")) {
+    firstCommonReservation = { ...result.modeState.resourceRuntime.reservations.common };
+  }
 }
 assert(events.some((event) => event.type === "resource_warning"), "resource warning should appear before spawn");
 const warning = events.find((event) => event.type === "resource_warning" && event.payload.rarity === "common");
@@ -143,6 +164,10 @@ assert(warning?.position && Number.isFinite(warning.position.x) && Number.isFini
 assert(RESOURCE_PICKUP_TYPES.includes(warning?.payload?.resourceType), `resource warning should include type: ${JSON.stringify(warning)}`);
 assert(warning?.payload?.nodeId, `resource warning should include node: ${JSON.stringify(warning)}`);
 assert(Number(warning?.payload?.spawnAt) > now, `resource warning should include future spawn time: ${JSON.stringify(warning)}`);
+const warnedResourceNode = state.map.resourceSpawnNodes.find((node) => node.id === warning.payload.nodeId);
+assert(warning?.payload?.laneId === warnedResourceNode?.laneId || (warning?.payload?.laneId == null && warnedResourceNode?.laneId == null), `resource warning should include node lane: ${JSON.stringify(warning)}`);
+assert(warning?.payload?.regionId === warnedResourceNode?.regionId, `resource warning should include node region: ${JSON.stringify(warning)}`);
+assert(firstCommonReservation?.regionId === warnedResourceNode?.regionId, "resource reservation should retain node region");
 
 while (!events.some((event) => event.type === "resource_spawned") && now < warning.payload.spawnAt + 1) {
   now += TICK_DT;
@@ -159,6 +184,7 @@ assert(firstPickup.resourceType === warning.payload.resourceType, "spawn should 
 assert(firstPickup.position.x === warning.position.x && firstPickup.position.y === warning.position.y, "spawn should use the warned position");
 assert(firstPickup.spawnedAt === warning.payload.spawnAt, "spawn should use the warned spawn time");
 assert(!state.map.spawnAreas.some((area) => firstPickup.nodeId === area.id), "resource must not spawn in spawn area");
+assert(firstPickup.regionId === warnedResourceNode.regionId, "resource pickup should retain its node region");
 
 const persistentPickupId = firstPickup.id;
 const expiryEventCount = events.filter((event) => event.type === "resource_expired").length;

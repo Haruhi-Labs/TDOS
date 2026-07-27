@@ -65,6 +65,9 @@ for (const skill of ALLOWED_TACTICAL_SKILLS) {
 }
 assert(ALLOWED_TACTICAL_SKILLS.every((skill) => skill.type === "active"), "all tactical skills must be active");
 
+const distributedSkillState = makeState(4046);
+assert(new Set(distributedSkillState.map.skillSpawnNodes.map((node) => node.regionId)).size === 5, "skills should expose five strategy groups");
+
 const blockedSkillState = makeState(4041);
 const blockedSkillNode = blockedSkillState.map.skillSpawnNodes[0];
 blockedSkillState.map.obstacleRegions.push({
@@ -212,10 +215,14 @@ initialized = stepSkillLifecycle(makeState(818), 0, customSkillParameters);
 assert(initialized.modeState.skillRuntime.nextSkillAt >= 80 && initialized.modeState.skillRuntime.nextSkillAt <= 120, `custom skill interval should control jitter: ${initialized.modeState.skillRuntime.nextSkillAt}`);
 
 let events = [];
+let firstSkillReservation = null;
 for (let i = 0; i < Math.ceil(100 / TICK_DT); i += 1) {
   const result = stepSkillLifecycle(state);
   state = result.modeState;
   events.push(...result.events);
+  if (!firstSkillReservation && result.events.some((event) => event.type === "skill_warning")) {
+    firstSkillReservation = { ...result.modeState.skillRuntime.reservation };
+  }
 }
 assert(events.some((event) => event.type === "skill_warning"), "skill warning should appear before spawn");
 assert(events.some((event) => event.type === "skill_spawned"), "skill pickup should spawn");
@@ -225,10 +232,15 @@ const firstSkillPickup = state.skillPickups[0];
 assert(skillWarning?.position && Number.isFinite(skillWarning.position.x) && Number.isFinite(skillWarning.position.y), `skill warning should include position: ${JSON.stringify(skillWarning)}`);
 assert(ALLOWED_TACTICAL_SKILLS.some((skill) => skill.id === skillWarning?.payload?.skillId), `skill warning should include type: ${JSON.stringify(skillWarning)}`);
 assert(skillWarning?.payload?.nodeId, `skill warning should include node: ${JSON.stringify(skillWarning)}`);
+const warnedSkillNode = state.map.skillSpawnNodes.find((node) => node.id === skillWarning.payload.nodeId);
+assert(skillWarning?.payload?.laneId === warnedSkillNode?.laneId || (skillWarning?.payload?.laneId == null && warnedSkillNode?.laneId == null), `skill warning should include node lane: ${JSON.stringify(skillWarning)}`);
+assert(skillWarning?.payload?.regionId === warnedSkillNode?.regionId, `skill warning should include node region: ${JSON.stringify(skillWarning)}`);
+assert(firstSkillReservation?.regionId === warnedSkillNode?.regionId, "skill reservation should retain node region");
 assert(firstSkillPickup.nodeId === skillWarning.payload.nodeId, "skill spawn should use warned node");
 assert(firstSkillPickup.skillId === skillWarning.payload.skillId, "skill spawn should use warned type");
 assert(firstSkillPickup.position.x === skillWarning.position.x && firstSkillPickup.position.y === skillWarning.position.y, "skill spawn should use warned position");
 assert(firstSkillPickup.spawnedAt === skillWarning.payload.spawnAt, "skill spawn should use warned time");
+assert(firstSkillPickup.regionId === warnedSkillNode.regionId, "skill pickup should retain its node region");
 assert(!("expiresAt" in firstSkillPickup), `persistent skill must not have expiresAt: ${JSON.stringify(firstSkillPickup)}`);
 
 const persistentSkillId = firstSkillPickup.id;

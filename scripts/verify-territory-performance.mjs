@@ -8,6 +8,23 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
+function distanceToSegment(point, start, end) {
+  const dx = Number(end?.x || 0) - Number(start?.x || 0);
+  const dy = Number(end?.y || 0) - Number(start?.y || 0);
+  const lengthSquared = dx * dx + dy * dy;
+  if (lengthSquared <= 1e-9) return Math.hypot(Number(point?.x || 0) - Number(start?.x || 0), Number(point?.y || 0) - Number(start?.y || 0));
+  const ratio = Math.max(0, Math.min(1, ((Number(point?.x || 0) - Number(start?.x || 0)) * dx + (Number(point?.y || 0) - Number(start?.y || 0)) * dy) / lengthSquared));
+  return Math.hypot(Number(point?.x || 0) - (Number(start?.x || 0) + dx * ratio), Number(point?.y || 0) - (Number(start?.y || 0) + dy * ratio));
+}
+
+function shipOccupiesLane(ship, lane, spawnAreas) {
+  const radius = Math.max(0, Number(ship?.radius) || 0);
+  if ((spawnAreas || []).some((spawn) => Math.hypot(ship.x - spawn.center.x, ship.y - spawn.center.y) <= Number(spawn.radius || 0) + radius)) return false;
+  const threshold = Math.max(0, Number(lane?.width) || 0) / 2 + radius;
+  const path = lane?.path || [];
+  return path.slice(2, -1).some((end, index) => distanceToSegment(ship, path[index + 1], end) <= threshold);
+}
+
 function makeFleetLayout() {
   return {
     alliances: {
@@ -24,6 +41,16 @@ function makeFleetLayout() {
     },
     localSeat: "A1",
   };
+}
+
+const occupancyMap = stellarTerritoryMode.createInitialModeState({
+  randomSeed: 7799,
+  parameters: stellarTerritoryMode.defaultParameters,
+}).map;
+const sharedExitShip = { x: 225, y: 1780, radius: 20 };
+for (const laneId of ["top", "bottom"]) {
+  const lane = occupancyMap.laneCorridors.find((candidate) => candidate.id === laneId);
+  assert(!shipOccupiesLane(sharedExitShip, lane, occupancyMap.spawnAreas), `shared spawn exit must not count as ${laneId} occupancy`);
 }
 
 function runMatch(seed) {
@@ -46,9 +73,24 @@ function runMatch(seed) {
     let resourceEvents = 0;
     let skillEvents = 0;
     let respawnEvents = 0;
+    const occupiedLaneIds = new Set();
     const started = performance.now();
     for (let tick = 0; tick < maxTicks && !runtime.isFinished(); tick += 1) {
       runtime.step(TICK_DT);
+      const tickModeState = runtime.getModeState();
+      if (Number(tickModeState?.elapsed || 0) < 30) {
+        const simulation = runtime.getSimulation();
+        for (const lane of tickModeState?.map?.laneCorridors || []) {
+          if (lane?.id !== "top" && lane?.id !== "bottom") continue;
+          for (const seat of simulation?.fleetSeats || []) {
+            const fleet = simulation.fleetBySeat?.(seat);
+            if ((fleet?.getAllShips?.() || []).some((ship) => ship?.alive && shipOccupiesLane(ship, lane, tickModeState.map.spawnAreas))) {
+              occupiedLaneIds.add(lane.id);
+              break;
+            }
+          }
+        }
+      }
       for (const event of runtime.consumeModeEvents()) {
         if (event.type === "resource_collected") resourceEvents += 1;
         if (event.type === "skill_used") skillEvents += 1;
@@ -73,6 +115,7 @@ function runMatch(seed) {
       ticketsA: Number(modeState?.alliances?.A?.tickets || 0),
       ticketsB: Number(modeState?.alliances?.B?.tickets || 0),
       controlOwners: (modeState?.map?.controlPoints || []).map((point) => point.ownerAllianceId || "-").join(""),
+      occupiedLaneIds: [...occupiedLaneIds].sort(),
     };
   } finally {
     Math.random = originalRandom;
@@ -165,14 +208,15 @@ console.log(JSON.stringify({
   respawns: totalRespawns,
   avgWallMs: Number(avgStepMs.toFixed(1)),
   matchWallMs: results.map((item) => Number(item.elapsedMs.toFixed(1))),
-  outcomes: results.map((item) => ({
+    outcomes: results.map((item) => ({
     seed: item.seed,
     finished: item.finished,
     duration: Number(item.duration.toFixed(1)),
     ticketsA: item.ticketsA,
     ticketsB: item.ticketsB,
-    controlOwners: item.controlOwners,
-    respawns: item.respawnEvents,
+      controlOwners: item.controlOwners,
+      openingOccupancy: item.occupiedLaneIds,
+      respawns: item.respawnEvents,
   })),
 }, null, 2));
 
@@ -182,4 +226,5 @@ assert(longMatches.length <= Math.ceil(results.length * 0.5), `too many long mat
 assert(totalResources > results.length * 2, `resource collection too low: ${totalResources}`);
 assert(totalSkills > 0, "AI should use at least one tactical skill in batch simulation");
 assert(totalRespawns > 0, "respawns should occur in batch simulation");
+assert(results.every((item) => item.occupiedLaneIds.includes("top") && item.occupiedLaneIds.includes("bottom")), `top and bottom lanes should be occupied before 30 seconds: ${JSON.stringify(results.map((item) => item.occupiedLaneIds))}`);
 assert(avgStepMs < 9000, `headless match wall time too high: ${avgStepMs.toFixed(1)}ms average`);

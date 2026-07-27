@@ -197,6 +197,8 @@ function skillEvent(type, pickup, extra = {}) {
       pickupId: pickup?.id || null,
       skillId: pickup?.skillId || null,
       nodeId: pickup?.nodeId || null,
+      laneId: pickup?.laneId || null,
+      regionId: pickup?.regionId || null,
       ...extra,
     },
   };
@@ -231,6 +233,8 @@ export function spawnTerritorySkillPickup({
     id: `skill-${runtime.spawnSequence}`,
     skillId: safeSkillId,
     nodeId: node.id,
+    laneId: node.laneId || null,
+    regionId: node.regionId || null,
     position,
     radius: SKILL_PICKUP_RADIUS,
     spawnedAt: Number.isFinite(Number(reservation?.spawnAt))
@@ -248,6 +252,8 @@ function createSkillReservation(modeState, runtime, spawnAt) {
   return {
     skillId: drawSkillId(runtime),
     nodeId: node.id,
+    laneId: node.laneId || null,
+    regionId: node.regionId || null,
     position: { ...node.center },
     spawnAt,
   };
@@ -345,6 +351,8 @@ export function collectTerritorySkillPickups({ modeState, simulation, mutate = f
         pickupId: pickup.id,
         skillId: pickup.skillId,
         nodeId: pickup.nodeId,
+        laneId: pickup.laneId || null,
+        regionId: pickup.regionId || null,
         shipKey: winner.shipKey,
       },
     });
