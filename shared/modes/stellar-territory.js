@@ -25,6 +25,11 @@ import {
 } from "../gameplay/territory-respawn.js";
 import { chooseTerritoryAiAction } from "../gameplay/territory-ai.js";
 import { getTerritoryInitialDeployments } from "../gameplay/territory-spawns.js";
+import {
+  firstObstacleHit,
+  positionClearOfObstacles,
+  resolveMovementAgainstObstacles,
+} from "../gameplay/territory-obstacles.js";
 
 export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
   {
@@ -147,7 +152,7 @@ function applyInitialDeployments(simulation, deployments) {
     if (!fleet) continue;
     for (const [shipKey, deployment] of Object.entries(ships || {})) {
       const ship = fleet.shipByKey?.(shipKey);
-      if (!ship) continue;
+      if (!ship || !deployment) continue;
       ship.x = deployment.x;
       ship.y = deployment.y;
       ship.angle = deployment.angle;
@@ -226,7 +231,18 @@ export const stellarTerritoryMode = {
   },
 
   prepareSimulation({ simulation, modeState, fleetLayout }) {
-    const deployments = getTerritoryInitialDeployments({ modeState, fleetLayout });
+    const obstacles = modeState?.map?.obstacleRegions || [];
+    simulation?.setEnvironmentCollisionProvider?.({
+      resolveMovement: ({ entity, previousPosition, nextPosition }) => resolveMovementAgainstObstacles({
+        previousPosition,
+        nextPosition,
+        radius: Number(entity?.radius) || 0,
+        obstacles,
+      }),
+      traceSegment: ({ start, end, radius = 0 }) => firstObstacleHit(start, end, obstacles, radius),
+      canOccupy: ({ position, radius = 0 }) => positionClearOfObstacles(position, radius, obstacles),
+    });
+    const deployments = getTerritoryInitialDeployments({ modeState, simulation, fleetLayout });
     applyInitialDeployments(simulation, deployments);
     return { modeState };
   },

@@ -45,6 +45,27 @@ for (const type of ["repair", "energy", "fleet_supply", "respawn_accelerator"]) 
 }
 assert(!RESOURCE_PICKUP_TYPES.includes("tickets"), "resources must not restore war tickets");
 
+const blockedResourceState = makeModeState(4040);
+const blockedResourceNode = blockedResourceState.map.resourceSpawnNodes.find((node) => node.rarity === "common");
+blockedResourceState.map.obstacleRegions.push({
+  id: "resource-node-blocker",
+  shape: "circle",
+  center: { ...blockedResourceNode.center },
+  radius: 60,
+});
+const blockedResourceSpawn = spawnTerritoryResource({
+  modeState: blockedResourceState,
+  rarity: "common",
+  reservation: {
+    rarity: "common",
+    resourceType: "repair",
+    nodeId: blockedResourceNode.id,
+    position: { ...blockedResourceNode.center },
+    spawnAt: 10,
+  },
+});
+assert(blockedResourceSpawn.pickups.length === 0, "blocked resource reservation must not spawn inside an obstacle");
+
 const lifecycleA = createTerritoryResourceRuntime({ seed: 444, parameters: stellarTerritoryMode.defaultParameters });
 const lifecycleB = createTerritoryResourceRuntime({ seed: 444, parameters: stellarTerritoryMode.defaultParameters });
 const lifecycleC = createTerritoryResourceRuntime({ seed: 445, parameters: stellarTerritoryMode.defaultParameters });

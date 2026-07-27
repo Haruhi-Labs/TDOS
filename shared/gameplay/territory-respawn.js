@@ -1,4 +1,5 @@
 import { territorySpawnDeployment } from "./territory-spawns.js";
+import { positionClearOfObstacles } from "./territory-obstacles.js";
 
 const RESPAWN_SECONDS = Object.freeze({
   main: 24,
@@ -106,7 +107,7 @@ export function queueTerritoryRespawns({ modeState, simulation, mutate = false }
       next.shipHistory[key] = history;
       next.deathLedger[ledgerKey] = true;
       const remaining = deathDelay(shipKey, history);
-      const spawn = territorySpawnDeployment({ modeState: next, seat, shipKey });
+      const spawn = territorySpawnDeployment({ modeState: next, simulation, seat, shipKey });
       next.respawnQueue.push({
         seat,
         shipKey,
@@ -156,11 +157,23 @@ export function updateTerritoryRespawns({ modeState, simulation, dt, mutate = fa
       remaining.push(updated);
       continue;
     }
-    const spawn = updated.spawnPosition || territorySpawnDeployment({
+    const ship = simulation?.fleetBySeat?.(updated.seat)?.shipByKey?.(updated.shipKey);
+    const radius = Math.max(1, Number(ship?.radius) || 18);
+    const obstacles = next.map?.obstacleRegions || [];
+    const reservedPosition = updated.spawnPosition;
+    const reservationClear = reservedPosition
+      && positionClearOfObstacles(reservedPosition, radius, obstacles)
+      && simulation?.canOccupyEnvironment?.(reservedPosition, radius, { entity: ship, kind: "respawn" }) !== false;
+    const spawn = reservationClear ? reservedPosition : territorySpawnDeployment({
       modeState: next,
+      simulation,
       seat: updated.seat,
       shipKey: updated.shipKey,
     });
+    if (!spawn) {
+      remaining.push(updated);
+      continue;
+    }
     const ok = simulation?.respawnShipForSeat?.(updated.seat, updated.shipKey, {
       x: spawn?.x,
       y: spawn?.y,

@@ -7,6 +7,8 @@ import {
   segmentIntersectsObstacle,
   sweepCircleAgainstObstacle,
 } from "../shared/gameplay/territory-obstacles.js";
+import { MatchSimulation } from "../shared/game-core.js";
+import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -190,5 +192,174 @@ assert(positionClearOfObstacles({ x: 40, y: 40 }, 6, [polygon, compound]), "clea
 assert(!positionClearOfObstacles({ x: 130, y: 120 }, 6, [polygon, compound]), "polygon overlap rejected");
 assert(!positionClearOfObstacles({ x: 430, y: 120 }, 6, [polygon, compound]), "compound overlap rejected");
 assert(positionClearOfObstacles({ x: 40, y: 40 }, 6, null), "missing obstacle list is clear");
+
+function environmentCollisionProviderIntegrationCheck() {
+  const simulation = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "koizumi", sub2: "future1096" },
+      B: { main: "kyon", sub1: "tsuruya", sub2: "yuki" },
+    },
+  });
+  const beforeProvider = JSON.stringify(simulation.serializeState());
+  simulation.setEnvironmentCollisionProvider(null);
+  assert(JSON.stringify(simulation.serializeState()) === beforeProvider, "clearing provider preserves serialized legacy state");
+  const legacyMovement = simulation.resolveEnvironmentMovement(
+    { kind: "ship" },
+    { x: 100, y: 120 },
+    { x: 140, y: 160 },
+  );
+  assert(
+    !legacyMovement.collided && legacyMovement.position.x === 140 && legacyMovement.position.y === 160,
+    `missing provider preserves movement: ${JSON.stringify(legacyMovement)}`,
+  );
+  assert(simulation.traceEnvironmentSegment({ x: 0, y: 0 }, { x: 100, y: 0 }) === null, "missing provider preserves traces");
+  assert(simulation.canOccupyEnvironment({ x: 900, y: 900 }, 20), "missing provider permits occupancy");
+
+  const calls = [];
+  simulation.setEnvironmentCollisionProvider({
+    resolveMovement({ entity, previousPosition, nextPosition }) {
+      calls.push({ kind: entity.kind, previousPosition: { ...previousPosition }, nextPosition: { ...nextPosition } });
+      return nextPosition.x > 500
+        ? { position: { x: 500, y: nextPosition.y }, collided: true, normal: { x: -1, y: 0 } }
+        : { position: nextPosition, collided: false, normal: null };
+    },
+    traceSegment({ start, end, kind }) {
+      calls.push({ kind, start: { ...start }, end: { ...end } });
+      return end.x > 500 ? { point: { x: 500, y: start.y }, time: 0.5, kind } : null;
+    },
+    canOccupy({ position }) {
+      calls.push({ kind: "occupancy", position: { ...position } });
+      return position.x <= 500;
+    },
+  });
+
+  const teamA = simulation.teamA;
+  const teamB = simulation.teamB;
+  const main = teamA.ships.main;
+  main.x = 499;
+  main.y = 600;
+  main.angle = 0;
+  main.speed = 120;
+  main.throttle = 1.4;
+  main.command = { x: 900, y: 600 };
+  main.route = null;
+  main.update(0.05);
+  assert(main.x === 500, `ship movement should stop at provider boundary: ${JSON.stringify(main.serialize())}`);
+
+  const attached = teamA.ships.sub1;
+  assert(attached.isAttached(), "attached-ship fixture should begin attached");
+  main.x = 600;
+  main.y = 680;
+  main.angle = 0;
+  main.speed = 80;
+  attached.x = 499;
+  attached.y = 680;
+  attached.speed = 80;
+  attached.update(0.05);
+  assert(attached.x === 500, `attached ship should stop at provider boundary: ${JSON.stringify(attached.serialize())}`);
+
+  main.x = 499;
+  main.y = 760;
+  main.energy = main.maxEnergy;
+  teamA.cooldowns.scout = 0;
+  assert(teamA.launchScout(6), "scout collision fixture should launch");
+  const scout = teamA.scouts.at(-1);
+  scout.command = { x: 800, y: scout.y };
+  scout.update(0.05);
+  assert(scout.x === 500, `scout should stop at provider boundary: ${JSON.stringify(scout.serialize())}`);
+
+  main.energy = main.maxEnergy;
+  teamA.cooldowns.flagship = 0;
+  assert(teamA.launchWingman(6), "wingman collision fixture should launch");
+  const wingman = teamA.wingmen.at(-1);
+  wingman.command = { x: 800, y: wingman.y };
+  wingman.update(0.05);
+  assert(wingman.x === 500, `wingman should stop at provider boundary: ${JSON.stringify(wingman.serialize())}`);
+
+  main.x = 490;
+  main.y = 900;
+  main.angle = 0;
+  main.cooldown = 0;
+  const projectileTarget = teamB.ships.main;
+  projectileTarget.x = 520;
+  projectileTarget.y = 900;
+  teamA.computeVisibility(teamB);
+  main.tryAttack(simulation, teamB);
+  const projectile = simulation.projectiles.at(-1);
+  assert(projectile, "projectile collision fixture should fire");
+  projectile.x = 490;
+  projectile.y = 900;
+  projectile.targetX = 700;
+  projectile.targetY = 900;
+  const targetHpBeforeProjectile = projectileTarget.hp;
+  projectile.update(0.1, simulation);
+  assert(!projectile.alive && projectile.x === 500, `projectile should die at boundary: ${JSON.stringify(projectile.serialize())}`);
+  assert(projectileTarget.hp === targetHpBeforeProjectile, "obstacle-clipped projectile must not resolve target impact");
+
+  teamA.split(1);
+  teamA.split(2);
+  const beamShip = teamA.ships.sub2;
+  beamShip.x = 400;
+  beamShip.y = 1000;
+  beamShip.command = { x: beamShip.x, y: beamShip.y };
+  beamShip.route = null;
+  beamShip.energy = beamShip.maxEnergy;
+  teamA.cooldowns.sub2 = 0;
+  projectileTarget.x = 550;
+  projectileTarget.y = 1000;
+  const targetHpBeforeBeam = projectileTarget.hp;
+  assert(teamA.castSubSkill("sub2", { targetX: 800, targetY: 1000 }), "beam collision fixture should cast");
+  const beam = teamA.beams.at(-1);
+  assert(beam.x2 === 500, `charging beam should clip at boundary: ${JSON.stringify(beam)}`);
+  beam.life = 0;
+  teamA.resolveChargedBeams(teamB);
+  assert(beam.x2 === 500, `fired beam should remain clipped at boundary: ${JSON.stringify(beam)}`);
+  assert(projectileTarget.hp === targetHpBeforeBeam, "beam target behind environment boundary must not take damage");
+
+  assert(simulation.canOccupyEnvironment({ x: 500, y: 1100 }, 20), "provider accepts legal occupancy");
+  assert(!simulation.canOccupyEnvironment({ x: 501, y: 1100 }, 20), "provider rejects blocked occupancy");
+  const respawnCandidate = teamB.ships.sub1;
+  respawnCandidate.alive = false;
+  respawnCandidate.hp = 0;
+  assert(
+    !simulation.respawnShipForSeat("B", "sub1", { x: 501, y: 1100 }),
+    "generic respawn should reject provider-blocked occupancy",
+  );
+  assert(!respawnCandidate.alive, "rejected generic respawn should keep the ship dead");
+  assert(
+    simulation.respawnShipForSeat("B", "sub1", { x: 500, y: 1100 }),
+    "generic respawn should accept provider-clear occupancy",
+  );
+  assert(calls.some((call) => call.kind === "ship"), "provider records ship and attached-ship movement");
+  assert(calls.some((call) => call.kind === "scout"), "provider records scout movement");
+  assert(calls.some((call) => call.kind === "wingman"), "provider records wingman movement");
+  assert(calls.some((call) => call.kind === "projectile"), "provider records projectile traces");
+  assert(calls.some((call) => call.kind === "beam"), "provider records beam traces");
+
+  const territorySimulation = new MatchSimulation({ mode: "pvp", worldSize: stellarTerritoryMode.worldSize });
+  const territoryState = stellarTerritoryMode.createInitialModeState({
+    parameters: stellarTerritoryMode.defaultParameters,
+    randomSeed: 4141,
+    worldSize: { width: stellarTerritoryMode.worldSize, height: stellarTerritoryMode.worldSize },
+  });
+  stellarTerritoryMode.prepareSimulation({ simulation: territorySimulation, modeState: territoryState });
+  const territoryObstacle = territoryState.map.obstacleRegions[0];
+  assert(
+    !territorySimulation.canOccupyEnvironment(territoryObstacle.center, 1),
+    "Stellar Territory should install obstacle occupancy on the generic provider",
+  );
+  assert(
+    territorySimulation.traceEnvironmentSegment(
+      territoryState.map.spawnAreas[0].center,
+      territoryState.map.spawnAreas[1].center,
+      { kind: "probe" },
+    )?.obstacle,
+    "Stellar Territory should install obstacle segment tracing on the generic provider",
+  );
+}
+
+environmentCollisionProviderIntegrationCheck();
 
 console.log("territory obstacle verification passed");

@@ -1,6 +1,7 @@
 const EPSILON = 1e-9;
 const SWEEP_BACKOFF = 1e-4;
 const CLEARANCE_NUDGE = 1e-6;
+const OBSTACLE_BOUNDS_CACHE = new WeakMap();
 
 function finiteNumber(value, fallback = 0) {
   const number = Number(value);
@@ -82,6 +83,82 @@ function compoundPrimitives(obstacle) {
 
 function polygonPoints(obstacle) {
   return Array.isArray(obstacle?.points) ? obstacle.points.map(pointValue) : [];
+}
+
+function mergeBounds(values) {
+  const bounds = values.filter(Boolean);
+  if (!bounds.length) return null;
+  return {
+    minX: Math.min(...bounds.map((value) => value.minX)),
+    minY: Math.min(...bounds.map((value) => value.minY)),
+    maxX: Math.max(...bounds.map((value) => value.maxX)),
+    maxY: Math.max(...bounds.map((value) => value.maxY)),
+  };
+}
+
+function calculateObstacleBounds(obstacle) {
+  const shape = shapeOf(obstacle);
+  if (shape === "circle") {
+    const center = circleCenter(obstacle);
+    const radius = circleRadius(obstacle);
+    return {
+      minX: center.x - radius,
+      minY: center.y - radius,
+      maxX: center.x + radius,
+      maxY: center.y + radius,
+    };
+  }
+  if (shape === "capsule") {
+    const capsule = capsuleGeometry(obstacle);
+    return {
+      minX: Math.min(capsule.start.x, capsule.end.x) - capsule.radius,
+      minY: Math.min(capsule.start.y, capsule.end.y) - capsule.radius,
+      maxX: Math.max(capsule.start.x, capsule.end.x) + capsule.radius,
+      maxY: Math.max(capsule.start.y, capsule.end.y) + capsule.radius,
+    };
+  }
+  if (shape === "polygon") {
+    const points = polygonPoints(obstacle);
+    if (!points.length) return null;
+    return {
+      minX: Math.min(...points.map((value) => value.x)),
+      minY: Math.min(...points.map((value) => value.y)),
+      maxX: Math.max(...points.map((value) => value.x)),
+      maxY: Math.max(...points.map((value) => value.y)),
+    };
+  }
+  if (shape === "compound") {
+    return mergeBounds(compoundPrimitives(obstacle).map((primitive) => calculateObstacleBounds(primitive)));
+  }
+  return null;
+}
+
+function obstacleBounds(obstacle) {
+  if (!obstacle || typeof obstacle !== "object") return null;
+  if (OBSTACLE_BOUNDS_CACHE.has(obstacle)) return OBSTACLE_BOUNDS_CACHE.get(obstacle);
+  const bounds = calculateObstacleBounds(obstacle);
+  OBSTACLE_BOUNDS_CACHE.set(obstacle, bounds);
+  return bounds;
+}
+
+function segmentMayReachObstacle(start, end, clearance, obstacle) {
+  const bounds = obstacleBounds(obstacle);
+  if (!bounds) return true;
+  const radius = Math.max(0, finiteNumber(clearance));
+  return Math.max(start.x, end.x) + radius >= bounds.minX - EPSILON
+    && Math.min(start.x, end.x) - radius <= bounds.maxX + EPSILON
+    && Math.max(start.y, end.y) + radius >= bounds.minY - EPSILON
+    && Math.min(start.y, end.y) - radius <= bounds.maxY + EPSILON;
+}
+
+function circleMayReachObstacle(center, radius, obstacle) {
+  const bounds = obstacleBounds(obstacle);
+  if (!bounds) return true;
+  const safeRadius = Math.max(0, finiteNumber(radius));
+  return center.x + safeRadius >= bounds.minX - EPSILON
+    && center.x - safeRadius <= bounds.maxX + EPSILON
+    && center.y + safeRadius >= bounds.minY - EPSILON
+    && center.y - safeRadius <= bounds.maxY + EPSILON;
 }
 
 function closestPointOnSegment(point, start, end) {
@@ -383,11 +460,14 @@ export function segmentIntersectsObstacle(start, end, obstacle, clearance = 0) {
 
 export function firstObstacleHit(start, end, obstacles, clearance = 0) {
   if (!Array.isArray(obstacles) || obstacles.length === 0) return null;
+  const segmentStart = pointValue(start);
+  const segmentEnd = pointValue(end);
   let first = null;
   for (const obstacle of obstacles) {
+    if (!segmentMayReachObstacle(segmentStart, segmentEnd, clearance, obstacle)) continue;
     const hit = sweepCircleAgainstObstacle({
-      previousPosition: start,
-      nextPosition: end,
+      previousPosition: segmentStart,
+      nextPosition: segmentEnd,
       radius: clearance,
       obstacle,
     });
@@ -398,7 +478,11 @@ export function firstObstacleHit(start, end, obstacles, clearance = 0) {
 
 export function positionClearOfObstacles(position, radius, obstacles) {
   if (!Array.isArray(obstacles) || obstacles.length === 0) return true;
-  return !obstacles.some((obstacle) => circleIntersectsObstacle(position, radius, obstacle));
+  const center = pointValue(position);
+  return !obstacles.some((obstacle) => (
+    circleMayReachObstacle(center, radius, obstacle)
+    && circleIntersectsObstacle(center, radius, obstacle)
+  ));
 }
 
 export function resolveMovementAgainstObstacles({

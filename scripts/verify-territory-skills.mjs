@@ -64,6 +64,61 @@ for (const skill of ALLOWED_TACTICAL_SKILLS) {
 }
 assert(ALLOWED_TACTICAL_SKILLS.every((skill) => skill.type === "active"), "all tactical skills must be active");
 
+const blockedSkillState = makeState(4041);
+const blockedSkillNode = blockedSkillState.map.skillSpawnNodes[0];
+blockedSkillState.map.obstacleRegions.push({
+  id: "skill-node-blocker",
+  shape: "circle",
+  center: { ...blockedSkillNode.center },
+  radius: 60,
+});
+const blockedSkillSpawn = spawnTerritorySkillPickup({
+  modeState: blockedSkillState,
+  skillId: "all_fleet_shield",
+  reservation: {
+    skillId: "all_fleet_shield",
+    nodeId: blockedSkillNode.id,
+    position: { ...blockedSkillNode.center },
+    spawnAt: 10,
+  },
+});
+assert(blockedSkillSpawn.pickups.length === 0, "blocked skill reservation must not spawn inside an obstacle");
+
+const blockedWarpState = makeState(4042);
+const blockedWarpSim = new MatchSimulation({ mode: "pvp", worldSize: stellarTerritoryMode.worldSize });
+stellarTerritoryMode.prepareSimulation({ simulation: blockedWarpSim, modeState: blockedWarpState });
+const blockedWarpObstacle = blockedWarpState.map.obstacleRegions[0];
+const blockedWarpFleet = blockedWarpSim.fleetBySeat("A");
+const blockedWarpShips = Object.values(blockedWarpFleet.ships);
+for (let index = 0; index < blockedWarpShips.length; index += 1) {
+  const ship = blockedWarpShips[index];
+  ship.x = blockedWarpObstacle.center.x - 150 - index * 24;
+  ship.y = blockedWarpObstacle.center.y + index * 20;
+  ship.command = { x: ship.x, y: ship.y };
+  ship.route = null;
+}
+blockedWarpState.alliances.A.skillSlot = { skillId: "short_warp", acquiredAt: 0 };
+const blockedWarpPositions = blockedWarpShips.map((ship) => ({ x: ship.x, y: ship.y }));
+const blockedWarp = useTerritoryTacticalSkill({
+  modeState: blockedWarpState,
+  simulation: blockedWarpSim,
+  seat: "A",
+  action: {
+    type: "use_tactical_skill",
+    targetType: "point",
+    targetSeat: "A",
+    targetX: blockedWarpObstacle.center.x,
+    targetY: blockedWarpObstacle.center.y,
+  },
+});
+assert(!blockedWarp.accepted, "short warp landing inside an obstacle must be rejected");
+assert(blockedWarp.events.length === 0, "rejected blocked warp must emit no effect event");
+assert(blockedWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "rejected blocked warp must preserve the skill slot");
+assert(
+  blockedWarpShips.every((ship, index) => ship.x === blockedWarpPositions[index].x && ship.y === blockedWarpPositions[index].y),
+  "rejected blocked warp must not move any fleet ship",
+);
+
 let state = makeState(818);
 let initialized = stepSkillLifecycle(state, 0);
 assert(initialized.modeState.skillRuntime.nextSkillAt >= 60 && initialized.modeState.skillRuntime.nextSkillAt <= 90, `default skill interval should be 60-90 seconds: ${initialized.modeState.skillRuntime.nextSkillAt}`);

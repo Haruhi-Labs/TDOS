@@ -1,5 +1,6 @@
 import { clamp } from "../game-core.js";
 import { createSeededRng } from "./seeded-rng.js";
+import { positionClearOfObstacles } from "./territory-obstacles.js";
 
 export const FORBIDDEN_SCOUT_SKILL_TERMS = Object.freeze([
   "scan",
@@ -159,16 +160,24 @@ function occupiedSkillNodeIds(modeState, runtime, ignoreReservation = false) {
   return occupied;
 }
 
+function skillPositionClear(modeState, position, radius = SKILL_PICKUP_RADIUS) {
+  return positionClearOfObstacles(position, radius, modeState?.map?.obstacleRegions || []);
+}
+
 function chooseSkillNode(modeState, runtime, nodeId = null, ignoreReservation = false) {
   const nodes = modeState.map?.skillSpawnNodes || [];
   const occupied = occupiedSkillNodeIds(modeState, runtime, ignoreReservation);
   if (nodeId) {
-    return occupied.has(nodeId) ? null : nodes.find((node) => node.id === nodeId) || null;
+    const node = occupied.has(nodeId) ? null : nodes.find((candidate) => candidate.id === nodeId) || null;
+    return node && skillPositionClear(modeState, node.center, node.radius || SKILL_PICKUP_RADIUS) ? node : null;
   }
   if (!nodes.length) return null;
   const rng = createSeededRng(runtime.seed).fork(`skill-node:${runtime.nodeSequence || 0}`);
   runtime.nodeSequence = (runtime.nodeSequence || 0) + 1;
-  return rng.shuffle(nodes).find((node) => !occupied.has(node.id)) || null;
+  return rng.shuffle(nodes).find((node) => (
+    !occupied.has(node.id)
+    && skillPositionClear(modeState, node.center, node.radius || SKILL_PICKUP_RADIUS)
+  )) || null;
 }
 
 function skillEvent(type, pickup, extra = {}) {
@@ -202,6 +211,10 @@ export function spawnTerritorySkillPickup({
     ? chooseSkillNode(next, runtime, reservedNodeId, true)
     : chooseSkillNode(next, runtime, nodeId);
   if (!node) return { modeState: next, pickups: [], events: [] };
+  const position = reservation?.position ? { ...reservation.position } : { ...node.center };
+  if (!skillPositionClear(next, position, SKILL_PICKUP_RADIUS)) {
+    return { modeState: next, pickups: [], events: [] };
+  }
   const requestedSkillId = reservation?.skillId || skillId;
   const safeSkillId = SKILL_BY_ID.has(requestedSkillId) ? requestedSkillId : drawSkillId(runtime);
   runtime.spawnSequence += 1;
@@ -209,7 +222,7 @@ export function spawnTerritorySkillPickup({
     id: `skill-${runtime.spawnSequence}`,
     skillId: safeSkillId,
     nodeId: node.id,
-    position: reservation?.position ? { ...reservation.position } : { ...node.center },
+    position,
     radius: SKILL_PICKUP_RADIUS,
     spawnedAt: Number.isFinite(Number(reservation?.spawnAt))
       ? Number(reservation.spawnAt)
@@ -359,6 +372,20 @@ function validateTarget(skill, modeState, simulation, seat, action) {
       const main = livingFleetAnchor(fleet);
       if (!main) return { ok: false, reason: "target_fleet_dead" };
       if (distance(main, point) > (skill.maxDistance || 260)) return { ok: false, reason: "range" };
+      const dx = point.x - main.x;
+      const dy = point.y - main.y;
+      const size = Number(simulation?.worldSize) || 1440;
+      const blocked = livingBasicShips(fleet).some((ship) => {
+        const position = {
+          x: clamp(ship.x + dx, 8, size - 8),
+          y: clamp(ship.y + dy, 8, size - 8),
+        };
+        return simulation?.canOccupyEnvironment?.(position, ship.radius, {
+          entity: ship,
+          kind: "short_warp",
+        }) === false;
+      });
+      if (blocked) return { ok: false, reason: "blocked" };
     }
     return { ok: true };
   }

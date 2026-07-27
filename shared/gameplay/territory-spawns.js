@@ -1,3 +1,5 @@
+import { positionClearOfObstacles } from "./territory-obstacles.js";
+
 function allianceIdForSeat(seat) {
   return String(seat || "A").toUpperCase().startsWith("B") ? "B" : "A";
 }
@@ -46,7 +48,33 @@ function indexForSeat(seat, fallback = 0) {
   return suffix ? Math.max(0, Number(suffix) - 1) : Math.max(0, Number(fallback) || 0);
 }
 
-export function territorySpawnDeployment({ modeState, seat, shipKey = "main", fleetIndex = null } = {}) {
+function shipCollisionRadius(simulation, seat, shipKey) {
+  return Math.max(1, Number(simulation?.fleetBySeat?.(seat)?.shipByKey?.(shipKey)?.radius) || 18);
+}
+
+function withinSafeBounds(position, radius, bounds) {
+  if (!bounds) return true;
+  return position.x - radius >= bounds.x
+    && position.y - radius >= bounds.y
+    && position.x + radius <= bounds.x + bounds.width
+    && position.y + radius <= bounds.y + bounds.height;
+}
+
+function deploymentCandidates(intended, spawn, facing) {
+  const candidates = [intended];
+  for (const distance of [72, 96, 120, 160, 220, 300]) {
+    for (let index = 0; index < 16; index += 1) {
+      const angle = facing + (Math.PI * 2 * index) / 16;
+      candidates.push({
+        x: spawn.center.x + Math.cos(angle) * distance,
+        y: spawn.center.y + Math.sin(angle) * distance,
+      });
+    }
+  }
+  return candidates;
+}
+
+export function territorySpawnDeployment({ modeState, simulation = null, seat, shipKey = "main", fleetIndex = null } = {}) {
   const allianceId = allianceIdForSeat(seat);
   const spawn = spawnAreaForAlliance(modeState, allianceId);
   if (!spawn?.center) return null;
@@ -54,14 +82,20 @@ export function territorySpawnDeployment({ modeState, seat, shipKey = "main", fl
   const index = fleetIndex == null ? indexForSeat(seat) : Math.max(0, Number(fleetIndex) || 0);
   const anchorOffset = fleetAnchorOffset(seat, index, facing);
   const shipOffset = shipSpawnOffsetsForFacing(facing)[shipKey] || { x: 0, y: 0 };
-  return {
+  const intended = {
     x: spawn.center.x + anchorOffset.x + shipOffset.x,
     y: spawn.center.y + anchorOffset.y + shipOffset.y,
-    angle: facing,
   };
+  const obstacles = modeState?.map?.obstacleRegions || [];
+  const radius = shipCollisionRadius(simulation, seat, shipKey);
+  const position = deploymentCandidates(intended, spawn, facing).find((candidate) => (
+    withinSafeBounds(candidate, radius, modeState?.map?.safeBounds)
+    && positionClearOfObstacles(candidate, radius, obstacles)
+  ));
+  return position ? { ...position, angle: facing } : null;
 }
 
-export function getTerritoryInitialDeployments({ modeState, fleetLayout } = {}) {
+export function getTerritoryInitialDeployments({ modeState, simulation = null, fleetLayout } = {}) {
   const deployments = {};
   const entries = fleetLayout
     ? [...(fleetLayout.alliances?.A || []), ...(fleetLayout.alliances?.B || [])]
@@ -77,7 +111,7 @@ export function getTerritoryInitialDeployments({ modeState, fleetLayout } = {}) 
     deployments[seat] = Object.fromEntries(
       ["main", "sub1", "sub2"].map((shipKey) => [
         shipKey,
-        territorySpawnDeployment({ modeState, seat, shipKey, fleetIndex }),
+        territorySpawnDeployment({ modeState, simulation, seat, shipKey, fleetIndex }),
       ]),
     );
   }

@@ -5,6 +5,7 @@ import {
   updateTerritoryRespawns,
 } from "../shared/gameplay/territory-respawn.js";
 import { territorySpawnDeployment } from "../shared/gameplay/territory-spawns.js";
+import { positionClearOfObstacles } from "../shared/gameplay/territory-obstacles.js";
 import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
 
 function assert(condition, message) {
@@ -252,5 +253,47 @@ assert(state.alliances.B.tickets === 0, "death ticket deduction floors at zero")
 assert(state.result?.finished && state.result.winnerAllianceId === "A", "death ticket zero resolves external victory");
 const cappedDeathEvent = cappedDeathQueue.events.find((event) => event.type === "respawn_queued" && event.payload?.shipKey === "main");
 assert(cappedDeathEvent?.payload?.ticketCost === 1, `death event should report the actual one-ticket deduction: ${JSON.stringify(cappedDeathEvent)}`);
+
+const blockedDeploymentState = makeState(4242);
+const blockedDeploymentSim = makeSimulation({ victoryPolicy: "external" });
+const requestedDeployment = territorySpawnDeployment({
+  modeState: blockedDeploymentState,
+  simulation: blockedDeploymentSim,
+  seat: "A",
+  shipKey: "main",
+});
+blockedDeploymentState.map.obstacleRegions.push({
+  id: "deployment-blocker",
+  shape: "circle",
+  center: { x: requestedDeployment.x, y: requestedDeployment.y },
+  radius: 54,
+});
+stellarTerritoryMode.prepareSimulation({ simulation: blockedDeploymentSim, modeState: blockedDeploymentState });
+const safelyDeployedMain = blockedDeploymentSim.fleetBySeat("A").shipByKey("main");
+assert(
+  positionClearOfObstacles(safelyDeployedMain, safelyDeployedMain.radius, blockedDeploymentState.map.obstacleRegions),
+  "initial deployment should move away from a blocked fixed slot",
+);
+
+let staleRespawnState = makeState(4343);
+const staleRespawnSim = makeSimulation({ victoryPolicy: "external" });
+stellarTerritoryMode.prepareSimulation({ simulation: staleRespawnSim, modeState: staleRespawnState });
+const staleRespawnMain = staleRespawnSim.fleetBySeat("A").shipByKey("main");
+staleRespawnMain.takeDamage(staleRespawnMain.maxHp * 10, null, staleRespawnSim, false);
+staleRespawnState = queueTerritoryRespawns({ modeState: staleRespawnState, simulation: staleRespawnSim }).modeState;
+const staleRespawnItem = staleRespawnState.respawnQueue.find((item) => item.seat === "A" && item.shipKey === "main");
+const blockedRespawnPoint = staleRespawnState.map.obstacleRegions[0].center;
+staleRespawnItem.spawnPosition = { ...blockedRespawnPoint };
+staleRespawnItem.remaining = 0;
+staleRespawnState = updateTerritoryRespawns({
+  modeState: staleRespawnState,
+  simulation: staleRespawnSim,
+  dt: 0,
+}).modeState;
+assert(staleRespawnMain.alive, "stale blocked respawn reservation should recover to a legal deployment");
+assert(
+  positionClearOfObstacles(staleRespawnMain, staleRespawnMain.radius, staleRespawnState.map.obstacleRegions),
+  "respawn fallback should remain obstacle-clear",
+);
 
 console.log("territory respawn verification passed");

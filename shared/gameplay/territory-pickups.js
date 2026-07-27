@@ -1,5 +1,6 @@
 import { clamp } from "../game-core.js";
 import { createSeededRng } from "./seeded-rng.js";
+import { positionClearOfObstacles } from "./territory-obstacles.js";
 
 export const RESOURCE_PICKUP_TYPES = Object.freeze([
   "repair",
@@ -57,6 +58,10 @@ function pickupPositionBlockedByShip(node, simulation) {
   return false;
 }
 
+function pickupPositionClear(modeState, position, radius = PICKUP_RADIUS) {
+  return positionClearOfObstacles(position, radius, modeState?.map?.obstacleRegions || []);
+}
+
 function ensureResourceRuntime(modeState, parameters = {}) {
   if (!modeState.resourceRuntime) {
     modeState.resourceRuntime = createTerritoryResourceRuntime({ seed: modeState.seed || 0, parameters });
@@ -110,6 +115,7 @@ function chooseNode(modeState, runtime, rarity, simulation) {
   const candidates = rng
     .shuffle(nodes)
     .filter((node) => !occupied.has(node.id))
+    .filter((node) => pickupPositionClear(modeState, node.center, node.radius || PICKUP_RADIUS))
     .filter((node) => !pickupPositionBlockedByShip(node, simulation));
   return candidates[0] || null;
 }
@@ -172,6 +178,10 @@ export function spawnTerritoryResource({
   if (!node) {
     return { modeState: next, pickups: [], events: [] };
   }
+  const position = reservation?.position ? { ...reservation.position } : { ...node.center };
+  if (!pickupPositionClear(next, position, PICKUP_RADIUS)) {
+    return { modeState: next, pickups: [], events: [] };
+  }
   const requestedType = reservation?.resourceType || resourceType;
   const type = RESOURCE_PICKUP_TYPES.includes(requestedType) ? requestedType : drawResourceType(runtime);
   runtime.spawnSequence += 1;
@@ -180,7 +190,7 @@ export function spawnTerritoryResource({
     resourceType: type,
     rarity,
     nodeId: node.id,
-    position: reservation?.position ? { ...reservation.position } : { ...node.center },
+    position,
     radius: PICKUP_RADIUS,
     spawnedAt: Number.isFinite(Number(reservation?.spawnAt))
       ? Number(reservation.spawnAt)

@@ -832,15 +832,31 @@ class Projectile {
     const dy = this.targetY - this.y;
     const remaining = Math.hypot(dx, dy);
     const step = this.speed * dt;
-    if (step >= remaining || remaining < 1) {
-      this.x = this.targetX;
-      this.y = this.targetY;
+    const reachesTarget = step >= remaining || remaining < 1;
+    const nextPosition = reachesTarget
+      ? { x: this.targetX, y: this.targetY }
+      : { x: this.x + (dx / remaining) * step, y: this.y + (dy / remaining) * step };
+    const obstruction = match.traceEnvironmentSegment(
+      { x: this.x, y: this.y },
+      nextPosition,
+      { entity: this, kind: this.kind, radius: this.radius },
+    );
+    if (obstruction) {
+      const contact = obstruction.point || obstruction.position;
+      if (Number.isFinite(contact?.x) && Number.isFinite(contact?.y)) {
+        this.x = contact.x;
+        this.y = contact.y;
+      }
+      this.alive = false;
+      return;
+    }
+    this.x = nextPosition.x;
+    this.y = nextPosition.y;
+    if (reachesTarget) {
       this.resolveImpact(match);
       this.alive = false;
       return;
     }
-    this.x += (dx / remaining) * step;
-    this.y += (dy / remaining) * step;
   }
 
   resolveImpact(match) {
@@ -1417,10 +1433,14 @@ class Ship {
       this.speed = 0;
     }
 
-    this.x += Math.cos(this.angle) * this.speed * dt;
-    this.y += Math.sin(this.angle) * this.speed * dt;
-    this.x = match.clampX(this.x, 8);
-    this.y = match.clampY(this.y, 8);
+    const previousPosition = { x: this.x, y: this.y };
+    const nextPosition = {
+      x: match.clampX(this.x + Math.cos(this.angle) * this.speed * dt, 8),
+      y: match.clampY(this.y + Math.sin(this.angle) * this.speed * dt, 8),
+    };
+    const resolvedMovement = match.resolveEnvironmentMovement(this, previousPosition, nextPosition);
+    this.x = resolvedMovement.position.x;
+    this.y = resolvedMovement.position.y;
 
     if (this.route) {
       const minAdvance = 5;
@@ -1467,15 +1487,19 @@ class Ship {
     const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this) * (compactMode ? 1.8 : 1.3), 0.8, 3.2);
     this.speed = lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
 
-    this.x += Math.cos(this.angle) * this.speed * dt;
-    this.y += Math.sin(this.angle) * this.speed * dt;
-    this.x = match.clampX(this.x, 8);
-    this.y = match.clampY(this.y, 8);
+    const previousPosition = { x: this.x, y: this.y };
+    const nextPosition = {
+      x: match.clampX(this.x + Math.cos(this.angle) * this.speed * dt, 8),
+      y: match.clampY(this.y + Math.sin(this.angle) * this.speed * dt, 8),
+    };
 
     if (compactMode && dist < 11) {
-      this.x = lerp(this.x, tx, clamp(dt * 6, 0, 1));
-      this.y = lerp(this.y, ty, clamp(dt * 6, 0, 1));
+      nextPosition.x = lerp(nextPosition.x, tx, clamp(dt * 6, 0, 1));
+      nextPosition.y = lerp(nextPosition.y, ty, clamp(dt * 6, 0, 1));
     }
+    const resolvedMovement = match.resolveEnvironmentMovement(this, previousPosition, nextPosition);
+    this.x = resolvedMovement.position.x;
+    this.y = resolvedMovement.position.y;
   }
 
   broadsideMultiplier(target) {
@@ -1724,8 +1748,14 @@ class Scout {
     const dy = this.command.y - this.y;
     const d = Math.hypot(dx, dy);
     if (d > 1) {
-      this.x += (dx / d) * this.speed * dt;
-      this.y += (dy / d) * this.speed * dt;
+      const previousPosition = { x: this.x, y: this.y };
+      const nextPosition = {
+        x: this.x + (dx / d) * this.speed * dt,
+        y: this.y + (dy / d) * this.speed * dt,
+      };
+      const resolvedMovement = this.team.match.resolveEnvironmentMovement(this, previousPosition, nextPosition);
+      this.x = resolvedMovement.position.x;
+      this.y = resolvedMovement.position.y;
       this.angle = Math.atan2(dy, dx);
     }
 
@@ -1823,8 +1853,14 @@ class Wingman {
     const dy = this.command.y - this.y;
     const d = Math.hypot(dx, dy);
     if (d > 1) {
-      this.x += (dx / d) * this.speed * dt;
-      this.y += (dy / d) * this.speed * dt;
+      const previousPosition = { x: this.x, y: this.y };
+      const nextPosition = {
+        x: this.x + (dx / d) * this.speed * dt,
+        y: this.y + (dy / d) * this.speed * dt,
+      };
+      const resolvedMovement = this.team.match.resolveEnvironmentMovement(this, previousPosition, nextPosition);
+      this.x = resolvedMovement.position.x;
+      this.y = resolvedMovement.position.y;
       this.angle = Math.atan2(dy, dx);
     }
 
@@ -2467,8 +2503,9 @@ class Team {
         }
         beam.x1 = ship.x;
         beam.y1 = ship.y;
-        beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
-        beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
+        const endpoint = this.beamEndpoint(ship, beam.dirX, beam.dirY, beam.range);
+        beam.x2 = endpoint.x;
+        beam.y2 = endpoint.y;
         beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
       }
       beam.life -= dt;
@@ -2733,16 +2770,15 @@ class Team {
     const dirX = aimDx / aimLen;
     const dirY = aimDy / aimLen;
     const range = BEAM_BASE_RANGE;
-    const x2 = this.match.clampX(ship.x + dirX * range, 0);
-    const y2 = this.match.clampY(ship.y + dirY * range, 0);
+    const endpoint = this.beamEndpoint(ship, dirX, dirY, range);
     this.beams.push({
       id: nextEntityId(),
       shipKey,
       phase: "charge",
       x1: ship.x,
       y1: ship.y,
-      x2,
-      y2,
+      x2: endpoint.x,
+      y2: endpoint.y,
       dirX,
       dirY,
       range,
@@ -2753,6 +2789,21 @@ class Team {
       fired: false,
     });
     return true;
+  }
+
+  beamEndpoint(ship, dirX, dirY, range) {
+    const start = { x: ship.x, y: ship.y };
+    const end = {
+      x: this.match.clampX(ship.x + dirX * range, 0),
+      y: this.match.clampY(ship.y + dirY * range, 0),
+    };
+    const obstruction = this.match.traceEnvironmentSegment(start, end, {
+      entity: ship,
+      kind: "beam",
+      radius: 0,
+    });
+    const contact = obstruction?.point || obstruction?.position;
+    return Number.isFinite(contact?.x) && Number.isFinite(contact?.y) ? { x: contact.x, y: contact.y } : end;
   }
 
   bribeZone(ship, zoneId) {
@@ -2824,8 +2875,9 @@ class Team {
       beam.progress = 1;
       beam.x1 = ship.x;
       beam.y1 = ship.y;
-      beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
-      beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
+      const endpoint = this.beamEndpoint(ship, beam.dirX, beam.dirY, beam.range);
+      beam.x2 = endpoint.x;
+      beam.y2 = endpoint.y;
 
       let hitAny = false;
       for (const target of enemyTeam.getAllShips()) {
@@ -6100,6 +6152,7 @@ export class MatchSimulation {
     this.victoryPolicy = options.victoryPolicy === "external" ? "external" : "internal";
     this.aiNavigationOwner = options.aiNavigationOwner === "mode" ? "mode" : "core";
     this.environmentModifiers = new Map();
+    this.environmentCollisionProvider = null;
 
     const centerY = worldSize * 0.5;
     const leftX = worldSize * 0.35;
@@ -6197,6 +6250,28 @@ export class MatchSimulation {
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;
+  }
+
+  setEnvironmentCollisionProvider(provider = null) {
+    this.environmentCollisionProvider = provider && typeof provider === "object" ? provider : null;
+  }
+
+  resolveEnvironmentMovement(entity, previousPosition, nextPosition) {
+    const resolved = this.environmentCollisionProvider?.resolveMovement?.({
+      entity,
+      previousPosition,
+      nextPosition,
+    });
+    return resolved?.position ? resolved : { position: nextPosition, collided: false, normal: null };
+  }
+
+  traceEnvironmentSegment(start, end, options = {}) {
+    return this.environmentCollisionProvider?.traceSegment?.({ start, end, ...options }) || null;
+  }
+
+  canOccupyEnvironment(position, radius = 0, options = {}) {
+    const result = this.environmentCollisionProvider?.canOccupy?.({ position, radius, ...options });
+    return result !== false;
   }
 
   clampX(x, padding = 0) {
@@ -6386,8 +6461,13 @@ export class MatchSimulation {
     const padding = Math.max(this.mapPadding, ship.radius + 6);
     const x = Number(options.x);
     const y = Number(options.y);
-    ship.x = this.clampX(Number.isFinite(x) ? x : ship.x, padding);
-    ship.y = this.clampY(Number.isFinite(y) ? y : ship.y, padding);
+    const position = {
+      x: this.clampX(Number.isFinite(x) ? x : ship.x, padding),
+      y: this.clampY(Number.isFinite(y) ? y : ship.y, padding),
+    };
+    if (!this.canOccupyEnvironment(position, ship.radius, { entity: ship, kind: "respawn" })) return false;
+    ship.x = position.x;
+    ship.y = position.y;
     ship.command.x = ship.x;
     ship.command.y = ship.y;
     ship.hp = Math.max(1, ship.maxHp * clamp(Number(options.hpRatio ?? 1), 0.01, 1));
