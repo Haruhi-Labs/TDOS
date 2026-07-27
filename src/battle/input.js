@@ -7,13 +7,13 @@ export function zoneFromPoint(state, x, y) {
   return zones.find((zone) => x >= zone.x && x < zone.x + zone.width && y >= zone.y && y < zone.y + zone.height) || null;
 }
 
-export function routeHandleAtPoint(route, x, y) {
+export function routeHandleAtPoint(route, x, y, { allowControl = true } = {}) {
   if (!route) {
     return null;
   }
   // 抓取半径明显大于绘制半径(11),让控制点/端点更好点中、减少"盲区"
   const grab = ROUTE_HANDLE_RADIUS + 15;
-  if (distance(x, y, route.p1.x, route.p1.y) <= grab) {
+  if (allowControl && distance(x, y, route.p1.x, route.p1.y) <= grab) {
     return "control";
   }
   if (distance(x, y, route.p2.x, route.p2.y) <= grab) {

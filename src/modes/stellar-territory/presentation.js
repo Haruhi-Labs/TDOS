@@ -123,6 +123,18 @@ function allianceIdForSeat(seat) {
   return String(seat || "A").toUpperCase().startsWith("B") ? "B" : "A";
 }
 
+function navigationFeedbackVisibleForLocalSeat(feedback, snapshot, frame, localSeat) {
+  if (frame?.spectating) return true;
+  const seat = String(feedback?.seat || "").trim();
+  if (!seat) return false;
+  if (allianceIdForSeat(seat) === allianceIdForSeat(localSeat)) return true;
+  const fleet = snapshot?.fleets?.[seat] || snapshot?.teams?.[seat];
+  const shipKey = feedback?.shipKey || feedback?.payload?.shipKey || "main";
+  const ship = fleet?.ships?.[shipKey];
+  const entityId = feedback?.entityId || feedback?.payload?.entityId || ship?.id;
+  return Boolean(entityId && frame?.visibleEnemyIds?.has?.(entityId));
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -427,7 +439,7 @@ export function createStellarTerritoryPresentation({ root, runtime, restartHost 
   syncTools();
 
   return {
-    sync({ snapshot, presentationState, events = [] }) {
+    sync({ snapshot, presentationState, events = [], frame }) {
       state.presentationState = presentationState || null;
       const nextSlotSkillId = tacticalHudState().skillId || null;
       if (nextSlotSkillId !== state.lastSlotSkillId) {
@@ -440,6 +452,10 @@ export function createStellarTerritoryPresentation({ root, runtime, restartHost 
         presentationState: state.presentationState,
         snapshot,
         events,
+        isNavigationFeedbackVisible: (feedback) => {
+          const { localSeat } = localTacticalContext();
+          return navigationFeedbackVisibleForLocalSeat(feedback, snapshot, frame, localSeat);
+        },
       });
       const tactical = tacticalHudState();
       const hudSignature = JSON.stringify({
@@ -494,20 +510,27 @@ export function createStellarTerritoryPresentation({ root, runtime, restartHost 
     },
 
     renderWorldBefore(ctx, { presentationState }) {
+      const { localSeat } = localTacticalContext();
       renderTerritoryMap(ctx, presentationState?.map, {
         showDebugBounds: state.showDebugBounds,
         showNodes: state.showNodes,
         showTerrainDebug: state.showTerrainDebug,
         effects: state.effects,
+        navigationPlans: presentationState?.navigationPlans,
+        localSeat,
       });
     },
 
     renderWorldAfter(ctx, { snapshot, presentationState, frame }) {
       renderTerritoryEntities(ctx, presentationState);
-      renderTerritoryEventEffects(ctx, state.effects);
+      const { localSeat } = localTacticalContext();
+      renderTerritoryEventEffects(ctx, state.effects, {
+        isNavigationFeedbackVisible: (feedback) => (
+          navigationFeedbackVisibleForLocalSeat(feedback, snapshot, frame, localSeat)
+        ),
+      });
       renderTerritoryRespawnEffects(ctx, state.effects);
       if (state.aimingSkillId) {
-        const { localSeat } = localTacticalContext();
         const fleet = snapshot?.fleets?.[localSeat] || snapshot?.teams?.[localSeat];
         const source = fleet?.ships?.main?.alive
           ? fleet.ships.main

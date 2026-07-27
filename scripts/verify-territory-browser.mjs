@@ -2,7 +2,10 @@ import { spawn } from "node:child_process";
 import { mkdir } from "node:fs/promises";
 import { chromium } from "playwright";
 import * as territoryPresentation from "../src/modes/stellar-territory/presentation.js";
+import { routeHandleAtPoint } from "../src/battle/input.js";
+import { drawBattleWorld } from "../src/battle/render.js";
 import { ALLOWED_TACTICAL_SKILLS } from "../shared/gameplay/territory-skills.js";
+import { firstObstacleHit, positionClearOfObstacles } from "../shared/gameplay/territory-obstacles.js";
 
 const VITE_PORT = 30000 + Math.floor(Math.random() * 1000);
 const APP_URL = `http://127.0.0.1:${VITE_PORT}/prototype`;
@@ -17,14 +20,42 @@ function wait(ms) {
 
 function createRecordingContext() {
   const texts = [];
+  const arcs = [];
+  const moves = [];
+  const lines = [];
+  const fills = [];
+  const strokes = [];
   const target = {
     canvas: { width: 1200, height: 1200 },
     texts,
+    arcs,
+    moves,
+    lines,
+    fills,
+    strokes,
     measureText(text) {
       return { width: String(text || "").length * 12 };
     },
     fillText(text) {
       texts.push(String(text));
+    },
+    arc(...args) {
+      arcs.push(args);
+    },
+    moveTo(...args) {
+      moves.push(args);
+    },
+    lineTo(...args) {
+      lines.push(args);
+    },
+    fill() {
+      fills.push({ fillStyle: target.fillStyle, globalAlpha: target.globalAlpha });
+    },
+    stroke() {
+      strokes.push({ strokeStyle: target.strokeStyle, lineWidth: target.lineWidth, globalAlpha: target.globalAlpha });
+    },
+    createLinearGradient() {
+      return { addColorStop() {} };
     },
   };
   return new Proxy(target, {
@@ -38,6 +69,41 @@ function createRecordingContext() {
       return true;
     },
   });
+}
+
+function findObstacleRouteFixture(map, shipRadius = 18) {
+  const obstacles = map?.obstacleRegions || [];
+  const width = Number(map?.worldSize?.width) || 2160;
+  const height = Number(map?.worldSize?.height) || 2160;
+  for (const obstacle of obstacles) {
+    const primitives = obstacle?.shape === "compound" ? obstacle.primitives || [] : [obstacle];
+    for (const primitive of primitives) {
+      if (primitive?.shape !== "circle" || !primitive.center || !(primitive.radius > 0)) continue;
+      for (const direction of [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: Math.SQRT1_2, y: Math.SQRT1_2 }]) {
+        const offset = primitive.radius + shipRadius + 110;
+        const start = {
+          x: primitive.center.x - direction.x * offset,
+          y: primitive.center.y - direction.y * offset,
+        };
+        const target = {
+          x: primitive.center.x + direction.x * offset,
+          y: primitive.center.y + direction.y * offset,
+        };
+        const inBounds = [start, target].every((point) => (
+          point.x >= shipRadius
+          && point.y >= shipRadius
+          && point.x <= width - shipRadius
+          && point.y <= height - shipRadius
+        ));
+        if (!inBounds) continue;
+        if (!positionClearOfObstacles(start, shipRadius, obstacles)) continue;
+        if (!positionClearOfObstacles(target, shipRadius, obstacles)) continue;
+        if (!firstObstacleHit(start, target, obstacles, shipRadius)) continue;
+        return { start, target, invalidTarget: { ...primitive.center } };
+      }
+    }
+  }
+  return null;
 }
 
 function verifyControlPointPresentationState() {
@@ -740,6 +806,13 @@ function verifyTerrainPresentationState() {
     elapsed: 3,
     map: {
       worldSize: { width: 1440, height: 1440 },
+      laneCorridors: [{ id: "lane-top", path: [{ x: 100, y: 300 }, { x: 1300, y: 300 }], width: 180 }],
+      connectorCorridors: [{ id: "connector-upper", path: [{ x: 500, y: 300 }, { x: 900, y: 700 }], width: 120 }],
+      obstacleRegions: [{ id: "obstacle-mid", shape: "circle", center: { x: 700, y: 700 }, radius: 90 }],
+      navigationGraph: {
+        nodes: [{ id: "nav-a", center: { x: 500, y: 300 } }, { id: "nav-b", center: { x: 900, y: 700 } }],
+        edges: [{ id: "nav-a-b", from: "nav-a", to: "nav-b" }],
+      },
       terrainRegions: [asteroid.region, lane.region, gravity.region],
       controlPoints: [{ id: "alpha", label: "A", ownerAllianceId: "A", center: { x: 500, y: 500 }, x: 450, y: 450, width: 100, height: 100 }],
       spawnAreas: [{ id: "spawn-A", allianceId: "A", center: { x: 120, y: 120 }, radius: 80 }],
@@ -754,9 +827,86 @@ function verifyTerrainPresentationState() {
     events: [{ type: "terrain_entered", position: { x: 300, y: 300 }, payload: { terrainId: "asteroid", terrainType: "asteroid_belt" } }],
   });
   assert(effects.terrain.asteroid.disturbanceStrength > 0, `asteroid entry should disturb fragments: ${JSON.stringify(effects.terrain)}`);
+  const navigationEffects = territoryPresentation.advanceTerritoryPresentationEffects(null, {
+    presentationState,
+    events: [
+      { id: "nav-invalid", type: "invalid_route_target", payload: { target: { x: 700, y: 700 } } },
+      { id: "nav-replanned", type: "navigation_replanned", seat: "B1", position: { x: 500, y: 300 }, payload: { shipKey: "main", entityId: "B1-main" } },
+      { id: "nav-stuck", type: "navigation_stuck", position: { x: 900, y: 700 } },
+      { id: "obstacle-collision", type: "obstacle_collision", position: { x: 640, y: 640 } },
+    ],
+  });
+  assert(
+    navigationEffects.navigationFeedback?.length === 4
+      && navigationEffects.navigationFeedback.some((feedback) => feedback.kind === "invalid" && feedback.position.x === 700)
+      && navigationEffects.navigationFeedback.some((feedback) => feedback.kind === "replanned" && feedback.seat === "B1" && feedback.entityId === "B1-main")
+      && navigationEffects.navigationFeedback.some((feedback) => feedback.kind === "stuck")
+      && navigationEffects.navigationFeedback.some((feedback) => feedback.kind === "collision" && feedback.position.x === 640),
+    `navigation events should create bounded visual feedback: ${JSON.stringify(navigationEffects.navigationFeedback)}`,
+  );
+  const navigationFeedbackContext = createRecordingContext();
+  territoryPresentation.renderTerritoryEventEffects(navigationFeedbackContext, navigationEffects);
+  assert(
+    navigationFeedbackContext.strokes.some((stroke) => stroke.strokeStyle === "#ff5f6d")
+      && navigationFeedbackContext.strokes.some((stroke) => stroke.strokeStyle === "#ff9f6e"),
+    `invalid targets and obstacle contacts should render distinct feedback: ${JSON.stringify(navigationFeedbackContext.strokes)}`,
+  );
+  const hiddenFeedbackContext = createRecordingContext();
+  territoryPresentation.renderTerritoryEventEffects(hiddenFeedbackContext, navigationEffects, {
+    isNavigationFeedbackVisible: (feedback) => feedback.seat !== "B1",
+  });
+  assert(
+    !hiddenFeedbackContext.strokes.some((stroke) => stroke.strokeStyle === "#69d8ff"),
+    `hidden enemy navigation feedback must not be rendered: ${JSON.stringify(hiddenFeedbackContext.strokes)}`,
+  );
+  const expiredNavigationEffects = territoryPresentation.advanceTerritoryPresentationEffects(navigationEffects, {
+    dt: 3,
+    presentationState,
+    events: [],
+  });
+  assert(expiredNavigationEffects.navigationFeedback.length === 0, "navigation visual feedback should expire after a bounded duration");
+  const localFeedbackSurvivesHiddenFlood = territoryPresentation.advanceTerritoryPresentationEffects(null, {
+    presentationState,
+    isNavigationFeedbackVisible: (event) => event.seat !== "B1",
+    events: [
+      { id: "local-invalid", type: "invalid_route_target", seat: "A1", payload: { target: { x: 280, y: 280 } } },
+      ...Array.from({ length: 16 }, (_, index) => ({
+        id: `hidden-collision-${index}`,
+        type: "obstacle_collision",
+        seat: "B1",
+        position: { x: 500 + index, y: 500 },
+        payload: { entityId: `B1-${index}`, shipKey: "main" },
+      })),
+    ],
+  });
+  assert(
+    localFeedbackSurvivesHiddenFlood.navigationFeedback.length === 1
+      && localFeedbackSurvivesHiddenFlood.navigationFeedback[0].kind === "invalid",
+    `hidden enemy feedback must not evict local feedback from the bounded buffer: ${JSON.stringify(localFeedbackSurvivesHiddenFlood.navigationFeedback)}`,
+  );
   const minimap = territoryPresentation.buildTerritoryMinimapState(presentationState);
   assert(minimap.terrain.length === 3 && minimap.controls.length === 1 && minimap.spawns.length === 1, `minimap strategic geometry missing: ${JSON.stringify(minimap)}`);
+  assert(
+    minimap.lanes?.length === 1
+      && minimap.connectors?.length === 1
+      && minimap.obstacles?.length === 1
+      && minimap.navigationGraph?.nodes?.length === 2,
+    `V2 minimap strategic arrays missing: ${JSON.stringify(minimap)}`,
+  );
   assert(minimap.resources.length >= 2 && minimap.skills.length >= 1, `minimap pickups/nodes missing: ${JSON.stringify(minimap)}`);
+  const minimapTopologyContext = createRecordingContext();
+  territoryPresentation.renderTerritoryMinimapOverlay(minimapTopologyContext, presentationState, {
+    rect: { x: 900, y: 900, width: 260, height: 260 },
+  });
+  assert(
+    minimapTopologyContext.strokes.some((stroke) => stroke.strokeStyle === "rgba(111, 198, 207, 0.65)")
+      && minimapTopologyContext.strokes.some((stroke) => stroke.strokeStyle === "rgba(189, 153, 207, 0.65)"),
+    `minimap should draw lane and connector topology: ${JSON.stringify(minimapTopologyContext.strokes)}`,
+  );
+  assert(
+    minimapTopologyContext.fills.some((fill) => fill.fillStyle === "rgba(37, 43, 50, 0.9)"),
+    `minimap should draw obstacle fills: ${JSON.stringify(minimapTopologyContext.fills)}`,
+  );
 
   const ctx = createRecordingContext();
   territoryPresentation.renderTerritoryMap(ctx, presentationState.map, { showTerrainDebug: false, effects });
@@ -764,6 +914,99 @@ function verifyTerrainPresentationState() {
   for (const expected of ["小行星带", "航速降低", "高速航道", "顺向加速", "引力泥沼", "航速与转向降低"]) {
     assert(labels.includes(expected), `formal terrain should render with debug bounds disabled: ${labels}`);
   }
+  const topologyContext = createRecordingContext();
+  territoryPresentation.renderTerritoryMap(topologyContext, {
+    laneCorridors: presentationState.map.laneCorridors,
+    connectorCorridors: presentationState.map.connectorCorridors,
+    obstacleRegions: [{
+      id: "compound-obstacle",
+      shape: "compound",
+      primitives: [
+        { shape: "circle", center: { x: 700, y: 700 }, radius: 90 },
+        { shape: "polygon", points: [{ x: 760, y: 640 }, { x: 850, y: 700 }, { x: 760, y: 760 }] },
+      ],
+    }],
+    terrainRegions: [],
+    spawnAreas: [],
+    controlPoints: [],
+    resourceSpawnNodes: [],
+    skillSpawnNodes: [],
+  }, {
+    localSeat: "A1",
+    navigationPlans: {
+      "A1:main": {
+        seat: "A1",
+        start: { x: 120, y: 120 },
+        waypoints: [{ x: 500, y: 300, nodeId: "nav-a" }, { x: 900, y: 700, nodeId: null }],
+      },
+      "B1:main": {
+        seat: "B1",
+        start: { x: 1300, y: 1300 },
+        waypoints: [{ x: 1000, y: 1000, nodeId: null }],
+      },
+    },
+  });
+  assert(topologyContext.arcs.length >= 1, `compound obstacle circles should render: ${JSON.stringify(topologyContext.arcs)}`);
+  assert(topologyContext.lines.length >= 4, `lanes, connectors, obstacles, and local routes should render connected paths: ${JSON.stringify(topologyContext.lines)}`);
+  assert(topologyContext.fills.length >= 1 && topologyContext.strokes.length >= 4, "V2 topology should render filled obstacles and stroked paths");
+}
+
+function verifyGraphRouteHandleAuthority() {
+  const route = {
+    p0: { x: 100, y: 100 },
+    p1: { x: 200, y: 220 },
+    p2: { x: 320, y: 300 },
+  };
+  assert(routeHandleAtPoint(route, 200, 220) === "control", "direct routes should retain control-handle editing");
+  assert(
+    routeHandleAtPoint(route, 200, 220, { allowControl: false }) === null,
+    "graph routes should suppress manual Bezier control editing",
+  );
+  assert(
+    routeHandleAtPoint(route, 320, 300, { allowControl: false }) === "end",
+    "graph routes should retain endpoint dragging for replanning",
+  );
+}
+
+function verifyGraphRouteControlKnobSuppression() {
+  const graphRoute = {
+    p0: { x: 100, y: 100 },
+    p1: { x: 220, y: 180 },
+    p2: { x: 360, y: 120 },
+    t: 0,
+  };
+  const ship = {
+    id: "A1-main",
+    key: "main",
+    alive: true,
+    canControl: true,
+    x: graphRoute.p0.x,
+    y: graphRoute.p0.y,
+    angle: 0,
+    radius: 18,
+    hull: 100,
+    maxHull: 100,
+    energy: 100,
+    maxEnergy: 100,
+    route: graphRoute,
+  };
+  const team = { seat: "A1", allianceId: "A", color: "#69d8ff", ships: { main: ship } };
+  const context = createRecordingContext();
+  drawBattleWorld(context, {
+    state: { elapsed: 0, fleets: { A1: team }, projectiles: [], bursts: [], floatingTexts: [] },
+    ownTeam: team,
+    enemyTeam: null,
+    friendlyTeams: [team],
+    enemyTeams: [],
+    selectedKeyForTeam: (candidate) => (candidate === team ? "main" : null),
+    routeControlKnobVisibleForShip: () => false,
+    worldSize: { width: 1440, height: 1440 },
+    stars: [],
+  });
+  assert(
+    !context.arcs.some(([x, y]) => x === graphRoute.p1.x && y === graphRoute.p1.y),
+    "graph navigation routes should not render the generic Bezier control knob",
+  );
 }
 
 async function eventually(fn, timeoutMs = 12000, intervalMs = 50) {
@@ -780,6 +1023,44 @@ async function eventually(fn, timeoutMs = 12000, intervalMs = 50) {
   }
   if (lastError) throw lastError;
   throw new Error("Timed out waiting for condition");
+}
+
+function worldPointToCanvasCss(point, inspection, canvasBox) {
+  const camera = inspection?.camera;
+  assert(camera && canvasBox, "world-point projection requires camera and Canvas bounds");
+  return {
+    x: ((point.x - (camera.centerX - camera.width / 2)) * camera.zoom / 1440) * canvasBox.width,
+    y: ((point.y - (camera.centerY - camera.height / 2)) * camera.zoom / 1440) * canvasBox.height,
+  };
+}
+
+async function sampleRedWorldPixels(page, point) {
+  return page.evaluate((worldPoint) => {
+    const surface = document.querySelector("#gameCanvas");
+    const inspection = window.__TDOS_PROTOTYPE_INSPECT__?.();
+    const camera = inspection?.camera;
+    if (!surface || !camera) return { red: 0, maxRed: 0, maxGreen: 0, maxBlue: 0 };
+    const scale = surface.width / 1440;
+    const centerX = (worldPoint.x - (camera.centerX - camera.width / 2)) * camera.zoom * scale;
+    const centerY = (worldPoint.y - (camera.centerY - camera.height / 2)) * camera.zoom * scale;
+    const radius = Math.max(8, Math.ceil(26 * camera.zoom * scale));
+    const left = Math.max(0, Math.floor(centerX - radius));
+    const top = Math.max(0, Math.floor(centerY - radius));
+    const right = Math.min(surface.width, Math.ceil(centerX + radius));
+    const bottom = Math.min(surface.height, Math.ceil(centerY + radius));
+    const data = surface.getContext("2d").getImageData(left, top, Math.max(1, right - left), Math.max(1, bottom - top)).data;
+    let red = 0;
+    let maxRed = 0;
+    let maxGreen = 0;
+    let maxBlue = 0;
+    for (let index = 0; index < data.length; index += 4) {
+      maxRed = Math.max(maxRed, data[index]);
+      maxGreen = Math.max(maxGreen, data[index + 1]);
+      maxBlue = Math.max(maxBlue, data[index + 2]);
+      if (data[index] > 100 && data[index] > data[index + 1] * 1.3 && data[index] > data[index + 2] * 1.08) red += 1;
+    }
+    return { red, maxRed, maxGreen, maxBlue, left, top, right, bottom };
+  }, point);
 }
 
 function startVite() {
@@ -857,6 +1138,8 @@ async function main() {
   verifyTacticalSkillPresentationState();
   verifyRespawnPresentationState();
   verifyTerrainPresentationState();
+  verifyGraphRouteHandleAuthority();
+  verifyGraphRouteControlKnobSuppression();
   const vite = startVite();
   let browser = null;
   try {
@@ -1040,6 +1323,8 @@ async function main() {
     const territoryState = await page.evaluate(() => window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.());
     const controlPoints = territoryState?.map?.controlPoints || [];
     const worldSize = territoryState?.map?.worldSize;
+    assert(territoryState?.navigationPlans && typeof territoryState.navigationPlans === "object", "presentation state should expose copied navigation plans");
+    assert(Object.prototype.hasOwnProperty.call(territoryState || {}, "telemetry"), "presentation state should expose telemetry for diagnostics");
     assert(controlPoints.length === 3, `expected three real control points: ${JSON.stringify(controlPoints)}`);
     assert(worldSize?.width > 0 && worldSize?.height > 0, `territory world size missing: ${JSON.stringify(worldSize)}`);
     const expectedControls = [
@@ -1168,6 +1453,196 @@ async function main() {
       return routes.a1 !== routesBefore.a1 ? routes : null;
     }, 3000);
     assert(routesAfter.a2 === routesBefore.a2, `right-click must not change A2 route: ${JSON.stringify({ routesBefore, routesAfter })}`);
+
+    const obstacleRouteFixture = findObstacleRouteFixture(territoryState.map);
+    assert(obstacleRouteFixture, "real browser map should expose a legal obstacle-crossing route fixture");
+    const centerCameraThroughMinimap = async (point) => {
+      const currentCanvasBox = await canvas.boundingBox();
+      assert(currentCanvasBox, "obstacle fixture requires current Canvas bounds");
+      await page.mouse.move(currentCanvasBox.x + currentCanvasBox.width / 2, currentCanvasBox.y + currentCanvasBox.height / 2);
+      for (let step = 0; step < 6; step += 1) await page.mouse.wheel(0, 1000);
+      await wait(150);
+      const inspection = await page.evaluate(() => ({
+        ...window.__TDOS_PROTOTYPE_INSPECT__?.(),
+        coarse: matchMedia("(pointer: coarse)").matches,
+        narrow: matchMedia("(max-width: 980px)").matches,
+      }));
+      assert(
+        Math.abs((inspection?.camera?.zoom || 0) - 1) < 1e-6
+          && Math.abs(inspection.camera.centerX - 1080) < 2
+          && Math.abs(inspection.camera.centerY - 1080) < 2,
+        `wheel overview fixture did not settle: ${JSON.stringify({ currentCanvasBox, inspection })}`,
+      );
+      const projected = worldPointToCanvasCss(point, inspection, currentCanvasBox);
+      assert(
+        projected.x > 0 && projected.y > 0 && projected.x < currentCanvasBox.width && projected.y < currentCanvasBox.height,
+        `obstacle fixture point should be visible in overview: ${JSON.stringify({ point, projected, inspection })}`,
+      );
+      return inspection;
+    };
+
+    const routeBeforeInvalidTarget = await page.evaluate(() => {
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
+      return {
+        plan: JSON.stringify(runtime?.getModeState?.()?.navigationPlans?.["A1:main"] || null),
+        route: JSON.stringify(runtime?.getSimulation?.()?.fleetBySeat?.("A1")?.shipByKey?.("main")?.route || null),
+      };
+    });
+    assert(routeBeforeInvalidTarget.plan !== "null" && routeBeforeInvalidTarget.route !== "null", "invalid-target fixture requires an existing valid route");
+    let obstacleInspection = await centerCameraThroughMinimap(obstacleRouteFixture.invalidTarget);
+    const invalidTargetCss = worldPointToCanvasCss(obstacleRouteFixture.invalidTarget, obstacleInspection, canvasBox);
+    const redPixelsBeforeInvalid = await sampleRedWorldPixels(page, obstacleRouteFixture.invalidTarget);
+    await canvas.click({ button: "right", position: invalidTargetCss });
+    await wait(120);
+    const routeAfterInvalidTarget = await page.evaluate(() => {
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
+      return {
+        plan: JSON.stringify(runtime?.getModeState?.()?.navigationPlans?.["A1:main"] || null),
+        route: JSON.stringify(runtime?.getSimulation?.()?.fleetBySeat?.("A1")?.shipByKey?.("main")?.route || null),
+      };
+    });
+    assert(
+      routeAfterInvalidTarget.plan === routeBeforeInvalidTarget.plan && routeAfterInvalidTarget.route === routeBeforeInvalidTarget.route,
+      `right-clicking an obstacle interior should preserve the prior route: ${JSON.stringify({ routeBeforeInvalidTarget, routeAfterInvalidTarget })}`,
+    );
+    const redPixelsAfterInvalid = await sampleRedWorldPixels(page, obstacleRouteFixture.invalidTarget);
+    await page.screenshot({ path: "artifacts/stellar-territory-v2-invalid-target-diagnostic.png", fullPage: true });
+    assert(
+      redPixelsAfterInvalid.red > redPixelsBeforeInvalid.red + 6,
+      `obstacle rejection should add red world feedback pixels: ${JSON.stringify({ redPixelsBeforeInvalid, redPixelsAfterInvalid })}`,
+    );
+    await page.screenshot({ path: "artifacts/stellar-territory-v2-invalid-target.png", fullPage: true });
+
+    await page.evaluate(({ start }) => {
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
+      runtime.pause();
+      runtime.applyAction({ type: "clear_route", shipKey: "main" }, "A1");
+      const ship = runtime.getSimulation().fleetBySeat("A1").shipByKey("main");
+      ship.x = start.x;
+      ship.y = start.y;
+      ship.command.x = start.x;
+      ship.command.y = start.y;
+      ship.route = null;
+    }, obstacleRouteFixture);
+    obstacleInspection = await centerCameraThroughMinimap(obstacleRouteFixture.invalidTarget);
+    const detourTargetCss = worldPointToCanvasCss(obstacleRouteFixture.target, obstacleInspection, canvasBox);
+    assert(
+      detourTargetCss.x > 0 && detourTargetCss.y > 0 && detourTargetCss.x < canvasBox.width && detourTargetCss.y < canvasBox.height,
+      `detour target should be visible after centering its obstacle: ${JSON.stringify(detourTargetCss)}`,
+    );
+    await canvas.click({ button: "right", position: detourTargetCss });
+    const detourPlan = await eventually(async () => page.evaluate(() => {
+      const plan = window.__TDOS_PROTOTYPE_RUNTIME__?.getPresentationState?.()?.navigationPlans?.["A1:main"];
+      return plan?.waypoints?.length >= 2 ? plan : null;
+    }), 3000);
+    assert(detourPlan.kind === "graph", `obstacle-crossing right-click should create a graph plan: ${JSON.stringify(detourPlan)}`);
+    const detourCoreRoute = await page.evaluate(() => {
+      const route = window.__TDOS_PROTOTYPE_RUNTIME__?.getSimulation?.()?.fleetBySeat?.("A1")?.shipByKey?.("main")?.route;
+      return route ? { p2: { ...route.p2 } } : null;
+    });
+    assert(
+      detourCoreRoute?.p2?.x === detourPlan.waypoints[0].x && detourCoreRoute?.p2?.y === detourPlan.waypoints[0].y,
+      `core should own only the first A* segment: ${JSON.stringify({ detourCoreRoute, detourPlan })}`,
+    );
+
+    const laterSegment = [detourPlan.waypoints[0], detourPlan.waypoints[1]];
+    const laterMidpoint = {
+      x: (laterSegment[0].x + laterSegment[1].x) / 2,
+      y: (laterSegment[0].y + laterSegment[1].y) / 2,
+    };
+    await centerCameraThroughMinimap(laterMidpoint);
+    await page.evaluate(() => {
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
+      const state = runtime.getModeState();
+      window.__TDOS_ROUTE_PLAN_FIXTURE__ = state.navigationPlans["A1:main"];
+      delete state.navigationPlans["A1:main"];
+    });
+    await wait(100);
+    await page.evaluate(() => {
+      const surface = document.querySelector("#gameCanvas");
+      window.__TDOS_ROUTE_BASELINE__ = surface.getContext("2d").getImageData(0, 0, surface.width, surface.height).data.slice();
+      window.__TDOS_PROTOTYPE_RUNTIME__.getModeState().navigationPlans["A1:main"] = window.__TDOS_ROUTE_PLAN_FIXTURE__;
+    });
+    await wait(100);
+    const plannedRoutePixels = await page.evaluate((segment) => {
+      const surface = document.querySelector("#gameCanvas");
+      const baseline = window.__TDOS_ROUTE_BASELINE__;
+      const inspection = window.__TDOS_PROTOTYPE_INSPECT__?.();
+      const camera = inspection?.camera;
+      if (!surface || !baseline || !camera) return { changedCyan: 0, reason: "missing_surface_baseline_or_camera" };
+      const current = surface.getContext("2d").getImageData(0, 0, surface.width, surface.height).data;
+      const scale = surface.width / 1440;
+      const project = (point) => ({
+        x: (point.x - (camera.centerX - camera.width / 2)) * camera.zoom * scale,
+        y: (point.y - (camera.centerY - camera.height / 2)) * camera.zoom * scale,
+      });
+      const start = project(segment[0]);
+      const end = project(segment[1]);
+      const minX = Math.max(0, Math.floor(Math.min(start.x, end.x) - 8));
+      const maxX = Math.min(surface.width - 1, Math.ceil(Math.max(start.x, end.x) + 8));
+      const minY = Math.max(0, Math.floor(Math.min(start.y, end.y) - 8));
+      const maxY = Math.min(surface.height - 1, Math.ceil(Math.max(start.y, end.y) + 8));
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lengthSquared = Math.max(1, dx * dx + dy * dy);
+      const lineRadius = Math.max(3, 5 * camera.zoom * scale);
+      let changedCyan = 0;
+      let changedPixels = 0;
+      let cyanPixels = 0;
+      let maxRed = 0;
+      let maxGreen = 0;
+      let maxBlue = 0;
+      for (let y = minY; y <= maxY; y += 1) {
+        for (let x = minX; x <= maxX; x += 1) {
+          const t = Math.max(0, Math.min(1, ((x - start.x) * dx + (y - start.y) * dy) / lengthSquared));
+          if (Math.hypot(x - (start.x + dx * t), y - (start.y + dy * t)) > lineRadius) continue;
+          const index = (y * surface.width + x) * 4;
+          const difference = Math.abs(current[index] - baseline[index])
+            + Math.abs(current[index + 1] - baseline[index + 1])
+            + Math.abs(current[index + 2] - baseline[index + 2]);
+          maxRed = Math.max(maxRed, current[index]);
+          maxGreen = Math.max(maxGreen, current[index + 1]);
+          maxBlue = Math.max(maxBlue, current[index + 2]);
+          if (difference > 24) changedPixels += 1;
+          if (current[index + 1] > 100 && current[index + 2] > 125 && current[index] < 145) cyanPixels += 1;
+          if (difference > 24 && current[index + 1] > 145 && current[index + 2] > 175 && current[index] < 175) changedCyan += 1;
+        }
+      }
+      delete window.__TDOS_ROUTE_BASELINE__;
+      delete window.__TDOS_ROUTE_PLAN_FIXTURE__;
+      return { changedCyan, changedPixels, cyanPixels, maxRed, maxGreen, maxBlue, start, end, minX, maxX, minY, maxY, camera };
+    }, laterSegment);
+    await page.screenshot({ path: "artifacts/stellar-territory-v2-a-star-detour.png", fullPage: true });
+    assert(
+      plannedRoutePixels.cyanPixels > 8,
+      `full local A* route should render beyond the core-owned first segment: ${JSON.stringify({ plannedRoutePixels, detourPlan, laterSegment })}`,
+    );
+
+    const graphRouteInput = await page.evaluate(() => {
+      const route = window.__TDOS_PROTOTYPE_RUNTIME__?.getSimulation?.()?.fleetBySeat?.("A1")?.shipByKey?.("main")?.route;
+      return route ? { p1: { ...route.p1 }, p2: { ...route.p2 } } : null;
+    });
+    assert(graphRouteInput?.p1 && graphRouteInput?.p2, "graph route input fixture requires core Bezier handles");
+    const inputCanvasBox = await canvas.boundingBox();
+    const inputInspection = await page.evaluate(() => window.__TDOS_PROTOTYPE_INSPECT__?.());
+    const controlCss = worldPointToCanvasCss(graphRouteInput.p1, inputInspection, inputCanvasBox);
+    const endpointCss = worldPointToCanvasCss(graphRouteInput.p2, inputInspection, inputCanvasBox);
+    await page.mouse.move(inputCanvasBox.x + controlCss.x, inputCanvasBox.y + controlCss.y);
+    await page.mouse.down();
+    await wait(20);
+    const graphControlDrag = await page.evaluate(() => window.__TDOS_PROTOTYPE_INSPECT__?.());
+    await page.mouse.up();
+    assert(
+      Object.prototype.hasOwnProperty.call(graphControlDrag || {}, "dragHandle"),
+      "prototype inspection should expose the active route-drag handle",
+    );
+    assert(graphControlDrag.dragHandle === null, `graph routes should suppress control-handle dragging: ${JSON.stringify(graphControlDrag)}`);
+    await page.mouse.move(inputCanvasBox.x + endpointCss.x, inputCanvasBox.y + endpointCss.y);
+    await page.mouse.down();
+    await wait(20);
+    const graphEndpointDrag = await page.evaluate(() => window.__TDOS_PROTOTYPE_INSPECT__?.());
+    await page.mouse.up();
+    assert(graphEndpointDrag.dragHandle === "end", `graph routes should retain endpoint dragging: ${JSON.stringify(graphEndpointDrag)}`);
 
     const a2SplitBefore = await page.evaluate(() => window.__TDOS_PROTOTYPE_RUNTIME__?.getSnapshot?.()?.fleets?.A2?.splitLevel);
     await page.click("#splitOneBtn");

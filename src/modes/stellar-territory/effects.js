@@ -40,6 +40,50 @@ function freshEvents(previous, events) {
   return { fresh, seenEventIds: Array.from(seen).slice(-256) };
 }
 
+const NAVIGATION_FEEDBACK_DURATION = 3;
+const NAVIGATION_FEEDBACK_LIMIT = 16;
+const NAVIGATION_FEEDBACK_KINDS = Object.freeze({
+  invalid_route_target: "invalid",
+  navigation_replanned: "replanned",
+  navigation_stuck: "stuck",
+  obstacle_collision: "collision",
+});
+
+function finitePosition(value) {
+  const x = Number(value?.x);
+  const y = Number(value?.y);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function advanceNavigationFeedback(previous, events, delta, time, isNavigationFeedbackVisible) {
+  const feedback = (previous?.navigationFeedback || [])
+    .map((item) => ({
+      ...item,
+      strength: Math.max(0, Number(item.strength || 0) - delta / NAVIGATION_FEEDBACK_DURATION),
+    }))
+    .filter((item) => item.strength > 0);
+
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    const kind = NAVIGATION_FEEDBACK_KINDS[event?.type];
+    const position = finitePosition(event?.position || event?.payload?.target);
+    if (!kind || !position) continue;
+    const item = {
+      id: String(event.id ?? `navigation-${time}-${index}`),
+      kind,
+      position,
+      seat: event?.seat == null ? null : String(event.seat),
+      shipKey: event?.payload?.shipKey == null ? null : String(event.payload.shipKey),
+      entityId: event?.payload?.entityId == null ? null : String(event.payload.entityId),
+      strength: 1,
+    };
+    if (typeof isNavigationFeedbackVisible === "function" && !isNavigationFeedbackVisible(item)) continue;
+    feedback.push(item);
+  }
+
+  return feedback.slice(-NAVIGATION_FEEDBACK_LIMIT);
+}
+
 function advanceRespawnEffects(previous, presentationState, events, delta) {
   const respawns = {};
   for (const [key, prior] of Object.entries(previous?.respawns || {})) {
@@ -457,7 +501,14 @@ export function buildControlPointVisualState(point = {}) {
   };
 }
 
-export function advanceTerritoryPresentationEffects(previous, { dt = 0, presentationState = null, snapshot = null, events = [], reset = false } = {}) {
+export function advanceTerritoryPresentationEffects(previous, {
+  dt = 0,
+  presentationState = null,
+  snapshot = null,
+  events = [],
+  reset = false,
+  isNavigationFeedbackVisible,
+} = {}) {
   if (reset) previous = null;
   const delta = Math.max(0, Number(dt) || 0);
   const time = Math.max(0, Number(previous?.time) || 0) + delta;
@@ -546,6 +597,13 @@ export function advanceTerritoryPresentationEffects(previous, { dt = 0, presenta
   const protections = advanceProtectionEffects(previous, snapshot, delta);
   const resources = advanceResourceEffects(previous, presentationState, snapshot, currentEvents, delta);
   const skills = advanceSkillEffects(previous, presentationState, snapshot, currentEvents, delta);
+  const navigationFeedback = advanceNavigationFeedback(
+    previous,
+    currentEvents,
+    delta,
+    time,
+    isNavigationFeedbackVisible,
+  );
   return {
     time,
     controls,
@@ -555,6 +613,7 @@ export function advanceTerritoryPresentationEffects(previous, { dt = 0, presenta
     protections,
     resources,
     skills,
+    navigationFeedback,
     seenEventIds: eventBatch.seenEventIds,
   };
 }

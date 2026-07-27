@@ -38,17 +38,52 @@ import {
 } from "../gameplay/territory-navigation.js";
 
 const INSTALLED_TERRITORY_OBSTACLES = new WeakMap();
+const TERRITORY_COLLISION_EVENTS = new WeakMap();
+const COLLISION_EVENT_COOLDOWN_SECONDS = 0.25;
+
+function recordTerritoryCollision(simulation, entity, result) {
+  if (!result?.collided || !simulation || !entity) return;
+  const state = TERRITORY_COLLISION_EVENTS.get(simulation) || { events: [], lastByEntity: new Map() };
+  const entityId = String(entity.id || `${entity.team?.seat || "unknown"}:${entity.key || "entity"}`);
+  const now = Math.max(0, Number(simulation.elapsed) || 0);
+  const last = Number(state.lastByEntity.get(entityId));
+  if (Number.isFinite(last) && now - last < COLLISION_EVENT_COOLDOWN_SECONDS) return;
+  state.lastByEntity.set(entityId, now);
+  state.events.push({
+    type: "obstacle_collision",
+    seat: entity.team?.seat || null,
+    position: { ...result.position },
+    payload: {
+      entityId,
+      entityKey: entity.key || null,
+      obstacleIds: (result.hits || []).map((hit) => hit?.obstacle?.id).filter(Boolean),
+    },
+  });
+  TERRITORY_COLLISION_EVENTS.set(simulation, state);
+}
+
+function takeTerritoryCollisionEvents(simulation) {
+  const state = TERRITORY_COLLISION_EVENTS.get(simulation);
+  if (!state?.events?.length) return [];
+  const events = state.events;
+  state.events = [];
+  return events;
+}
 
 function installTerritoryCollisionProvider(simulation, modeState) {
   const obstacles = freezeObstacleGeometry(modeState?.map?.obstacleRegions || []);
   if (!simulation || INSTALLED_TERRITORY_OBSTACLES.get(simulation) === obstacles) return;
   simulation?.setEnvironmentCollisionProvider?.({
-    resolveMovement: ({ entity, previousPosition, nextPosition }) => resolveMovementAgainstObstacles({
-      previousPosition,
-      nextPosition,
-      radius: Number(entity?.radius) || 0,
-      obstacles,
-    }),
+    resolveMovement: ({ entity, previousPosition, nextPosition }) => {
+      const result = resolveMovementAgainstObstacles({
+        previousPosition,
+        nextPosition,
+        radius: Number(entity?.radius) || 0,
+        obstacles,
+      });
+      recordTerritoryCollision(simulation, entity, result);
+      return result;
+    },
     traceSegment: ({ start, end, radius = 0 }) => firstObstacleHit(start, end, obstacles, radius),
     canOccupy: ({ position, radius = 0 }) => positionClearOfObstacles(position, radius, obstacles),
   });
@@ -342,7 +377,11 @@ export const stellarTerritoryMode = {
   },
 
   afterSimulationStep({ modeState, simulation, dt }) {
-    return advanceNavigationPlans({ modeState, simulation, dt });
+    const navigation = advanceNavigationPlans({ modeState, simulation, dt });
+    return {
+      ...navigation,
+      events: [...navigation.events, ...takeTerritoryCollisionEvents(simulation)],
+    };
   },
 
   updateModeState({ modeState, parameters, dt, simulation }) {
@@ -607,6 +646,8 @@ export const stellarTerritoryMode = {
       skillPickups: cloneJson(state.skillPickups),
       activeSkillEffects: cloneJson(state.activeSkillEffects),
       respawnQueue: cloneJson(state.respawnQueue),
+      navigationPlans: cloneJson(state.navigationPlans || {}),
+      telemetry: cloneJson(state.telemetry || {}),
       result: cloneJson(state.result),
     };
   },

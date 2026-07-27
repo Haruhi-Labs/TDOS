@@ -994,6 +994,7 @@ export function drawPauseOverlay(ctx) {
 //   visibleEnemyIds    己方可见敌单位 id 集合(Set)
 //   selectedKeyForTeam(team) → 该队高亮舰 key;非观战时敌方应返回 null
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
+//   routeControlKnobVisibleForShip(team, ship, route) → false 时隐藏选中航线的贝塞尔控制柄
 //   mobileMode         移动端:不画航线曲度旋钮
 //   localControlSeat   本机操控席位(如 "A" / "A1");仅该席编制舰船体+名牌做联盟色浅深脉动
 //   localControlSeats  多席本机控制(少见);优先于 localControlSeat
@@ -1011,6 +1012,7 @@ export function drawBattleWorld(ctx, frame) {
   const enemyVisible = (id) => spectating || state.phase === "finished" || visibleEnemyIds.has(id);
   const selectedKeyForTeam = frame.selectedKeyForTeam || (() => null);
   const routeForShip = frame.routeForShip || ((team, ship) => ship.route || null);
+  const routeControlKnobVisibleForShip = frame.routeControlKnobVisibleForShip || (() => true);
   const ownSeat = ownTeam?.seat || "A";
   // 观战与单人/普通对战共用内核队色，不另设观战专用色板。
   const ownColor = ownTeam?.color || "#65d9ff";
@@ -1069,7 +1071,8 @@ export function drawBattleWorld(ctx, frame) {
       if (!route) {
         continue;
       }
-      drawRoute(ctx, route, ship.key === selectedKey, elapsed, !frame.mobileMode);
+      const showKnob = !frame.mobileMode && routeControlKnobVisibleForShip(team, ship, route) !== false;
+      drawRoute(ctx, route, ship.key === selectedKey, elapsed, showKnob);
     }
   }
 

@@ -378,6 +378,49 @@ function environmentCollisionProviderIntegrationCheck() {
     !territorySimulation.canOccupyEnvironment(replacementObstacle.center, 1),
     "Territory provider should refresh replaced obstacle geometry before simulation movement",
   );
+  const collisionEntity = territorySimulation.fleetBySeat("A").shipByKey("main");
+  const collisionResult = territorySimulation.resolveEnvironmentMovement(
+    collisionEntity,
+    { x: 900, y: replacementObstacle.center.y },
+    { x: 1260, y: replacementObstacle.center.y },
+  );
+  const firstCollisionEvents = stellarTerritoryMode.afterSimulationStep({
+    modeState: territoryState,
+    simulation: territorySimulation,
+    dt: 0.05,
+  }).events.filter((event) => event.type === "obstacle_collision");
+  assert(collisionResult.collided && firstCollisionEvents.length === 1, `provider collision should emit one mode event: ${JSON.stringify({ collisionResult, firstCollisionEvents })}`);
+  assert(
+    firstCollisionEvents[0].payload?.entityId === String(collisionEntity.id)
+      && firstCollisionEvents[0].payload?.obstacleIds?.includes(replacementObstacle.id),
+    `collision event should identify the entity and obstacle: ${JSON.stringify(firstCollisionEvents[0])}`,
+  );
+  territorySimulation.resolveEnvironmentMovement(
+    collisionEntity,
+    { x: 900, y: replacementObstacle.center.y },
+    { x: 1260, y: replacementObstacle.center.y },
+  );
+  const throttledCollisionEvents = stellarTerritoryMode.afterSimulationStep({
+    modeState: territoryState,
+    simulation: territorySimulation,
+    dt: 0.05,
+  }).events.filter((event) => event.type === "obstacle_collision");
+  assert(throttledCollisionEvents.length === 0, `same-entity collisions should be throttled: ${JSON.stringify(throttledCollisionEvents)}`);
+  territorySimulation.elapsed += 0.25;
+  territorySimulation.resolveEnvironmentMovement(
+    collisionEntity,
+    { x: 900, y: replacementObstacle.center.y },
+    { x: 1260, y: replacementObstacle.center.y },
+  );
+  const reemittedCollisionEvents = stellarTerritoryMode.afterSimulationStep({
+    modeState: territoryState,
+    simulation: territorySimulation,
+    dt: 0.05,
+  }).events.filter((event) => event.type === "obstacle_collision");
+  assert(
+    reemittedCollisionEvents.length === 1,
+    `same-entity collisions should re-emit after the cooldown window: ${JSON.stringify(reemittedCollisionEvents)}`,
+  );
   const updatedTerritoryState = stellarTerritoryMode.updateModeState({
     modeState: territoryState,
     parameters: stellarTerritoryMode.defaultParameters,

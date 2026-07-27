@@ -233,6 +233,7 @@ function inspectPrototypeState() {
     minimapRect: camera?.minimapRect?.() || null,
     localSeat: localSeat(),
     selectedShipKey: app?.selectedShipKey || null,
+    dragHandle: app?.drag?.handle || null,
     pendingSubSkillAim: app?.pendingSubSkillAim ? { ...app.pendingSubSkillAim } : null,
     destructionEffectCount: app?.destructionEffects?.bursts?.length || 0,
     resultShown: Boolean(app?.resultShown),
@@ -549,6 +550,7 @@ function renderFrame() {
   const ownAllianceId = own?.allianceId || "A";
   const enemyAllianceId = ownAllianceId === "B" ? "A" : "B";
   const runtimeWorldSize = Number(snap?.world?.size) || DEFAULT_WORLD_SIZE;
+  const presentationState = app.runtime?.getPresentationState?.() || null;
   const frame = {
     state: snap,
     ownTeam: own,
@@ -559,6 +561,9 @@ function renderFrame() {
     localControlSeat: localSeat(),
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
+    routeControlKnobVisibleForShip: (team, ship) => (
+      presentationState?.navigationPlans?.[`${team?.seat}:${ship?.key}`]?.kind !== "graph"
+    ),
     mobileMode: app.mobileMode,
     showMinimap: app.mobileMode || Boolean(app.modeDefinition?.runtimePreset?.persistentMinimap),
     worldSize: { width: runtimeWorldSize, height: runtimeWorldSize },
@@ -573,7 +578,6 @@ function renderFrame() {
     pointer: app.pointer,
   };
   const presentation = app.presentation;
-  const presentationState = app.runtime?.getPresentationState?.() || null;
   const modeEvents = app.runtime?.consumeModeEvents?.() || [];
   if (presentation?.sync) {
     presentation.sync({
@@ -616,13 +620,14 @@ function renderFrame() {
 
 function tick(timestamp) {
   if (!running) return;
-  const rawDt = Math.min(0.05, Math.max(0, (timestamp - app.lastFrameTime) / 1000));
+  const presentationDt = Math.max(0, (timestamp - app.lastFrameTime) / 1000);
+  const rawDt = Math.min(0.05, presentationDt);
   app.lastFrameTime = timestamp;
   if (app.runtime) {
     app.runtime.update(rawDt, { maxSteps: 8 });
   }
   if (app.presentation?.update) {
-    app.presentation.update(rawDt, {
+    app.presentation.update(presentationDt, {
       snapshot: currentSnapshot(),
       modeState: app.runtime?.getModeState?.(),
       presentationState: app.runtime?.getPresentationState?.(),
@@ -798,7 +803,12 @@ function bindUi() {
       if (!ship?.alive || !ship.canControl) return;
       const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
-      const handle = routeHandleAtPoint(ship.route, pos.x, pos.y);
+      const navigationPlan = app.runtime?.getPresentationState?.()?.navigationPlans?.[
+        `${localSeat()}:${ship.key || app.selectedShipKey}`
+      ];
+      const handle = routeHandleAtPoint(ship.route, pos.x, pos.y, {
+        allowControl: navigationPlan?.kind !== "graph",
+      });
       if (handle) app.drag = { handle, shipKey: ship.key };
       return;
     }

@@ -516,9 +516,109 @@ function drawBounds(ctx, map) {
   ctx.restore();
 }
 
+function traceCorridorPath(ctx, corridor) {
+  const path = Array.isArray(corridor?.path) ? corridor.path : [];
+  if (path.length < 2) return false;
+  ctx.beginPath();
+  ctx.moveTo(path[0].x, path[0].y);
+  for (const point of path.slice(1)) ctx.lineTo(point.x, point.y);
+  return true;
+}
+
+function drawCorridor(ctx, corridor, { fill, edge, dash = [] } = {}) {
+  if (!traceCorridorPath(ctx, corridor)) return;
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = fill;
+  ctx.lineWidth = Math.max(8, Number(corridor.width) || 80);
+  ctx.stroke();
+  traceCorridorPath(ctx, corridor);
+  ctx.strokeStyle = edge;
+  ctx.lineWidth = 2;
+  ctx.setLineDash(dash);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function traceObstaclePrimitive(ctx, primitive) {
+  if (primitive?.shape === "circle" && primitive.center) {
+    ctx.beginPath();
+    ctx.arc(primitive.center.x, primitive.center.y, Math.max(0, Number(primitive.radius) || 0), 0, TAU);
+    return true;
+  }
+  if (primitive?.shape === "polygon" && Array.isArray(primitive.points) && primitive.points.length >= 3) {
+    ctx.beginPath();
+    ctx.moveTo(primitive.points[0].x, primitive.points[0].y);
+    for (const point of primitive.points.slice(1)) ctx.lineTo(point.x, point.y);
+    ctx.closePath();
+    return true;
+  }
+  if (primitive?.shape === "capsule" && primitive.center) {
+    const length = Math.max(0, Number(primitive.length) || 0);
+    const width = Math.max(0, Number(primitive.width) || Number(primitive.radius) * 2 || 0);
+    ctx.save();
+    ctx.translate(primitive.center.x, primitive.center.y);
+    ctx.rotate(Number(primitive.angle) || 0);
+    ctx.beginPath();
+    ctx.roundRect(-length / 2, -width / 2, length, width, width / 2);
+    return "restore";
+  }
+  return false;
+}
+
+function drawObstaclePrimitive(ctx, primitive) {
+  const traced = traceObstaclePrimitive(ctx, primitive);
+  if (!traced) return;
+  ctx.fillStyle = "rgba(37, 43, 50, 0.92)";
+  ctx.strokeStyle = "rgba(219, 105, 91, 0.9)";
+  ctx.lineWidth = 3;
+  ctx.fill();
+  ctx.stroke();
+  if (traced === "restore") ctx.restore();
+}
+
+function drawObstacleRegion(ctx, obstacle) {
+  if (obstacle?.shape === "compound") {
+    for (const primitive of obstacle.primitives || []) drawObstaclePrimitive(ctx, primitive);
+    return;
+  }
+  drawObstaclePrimitive(ctx, obstacle);
+}
+
+function drawNavigationPlans(ctx, plans = {}, localSeat = null) {
+  if (!localSeat) return;
+  for (const plan of Object.values(plans || {})) {
+    if (plan?.seat !== localSeat || !plan.start || !Array.isArray(plan.waypoints) || !plan.waypoints.length) continue;
+    ctx.save();
+    ctx.strokeStyle = "rgba(105, 216, 255, 0.9)";
+    ctx.fillStyle = "rgba(105, 216, 255, 0.92)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.moveTo(plan.start.x, plan.start.y);
+    for (const waypoint of plan.waypoints) ctx.lineTo(waypoint.x, waypoint.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const waypoint of plan.waypoints) {
+      ctx.beginPath();
+      ctx.arc(waypoint.x, waypoint.y, waypoint.nodeId ? 7 : 10, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 export function renderTerritoryMap(ctx, map, options = {}) {
   if (!map) return;
   if (options.showDebugBounds) drawBounds(ctx, map);
+  for (const corridor of map.laneCorridors || []) {
+    drawCorridor(ctx, corridor, { fill: "rgba(74, 133, 143, 0.12)", edge: "rgba(111, 198, 207, 0.42)", dash: [18, 14] });
+  }
+  for (const corridor of map.connectorCorridors || []) {
+    drawCorridor(ctx, corridor, { fill: "rgba(132, 105, 150, 0.1)", edge: "rgba(189, 153, 207, 0.38)", dash: [8, 12] });
+  }
   for (const terrain of map.terrainRegions || []) {
     drawTerrain(ctx, terrain, {
       debugVisible: options.showTerrainDebug === true,
@@ -526,12 +626,14 @@ export function renderTerritoryMap(ctx, map, options = {}) {
       clock: options.effects?.time || 0,
     });
   }
+  for (const obstacle of map.obstacleRegions || []) drawObstacleRegion(ctx, obstacle);
   for (const area of map.spawnAreas || []) {
     drawSpawnArea(ctx, area);
   }
   for (const point of map.controlPoints || []) {
     drawControlPoint(ctx, point, options.effects?.controls?.[point.id], options.effects?.time || 0);
   }
+  drawNavigationPlans(ctx, options.navigationPlans, options.localSeat);
   if (options.showNodes !== false) {
     for (const node of map.resourceSpawnNodes || []) {
       drawResourceNode(ctx, node);
@@ -586,7 +688,7 @@ export function renderTerritoryTacticalAim(ctx, aim) {
   ctx.restore();
 }
 
-export function renderTerritoryEventEffects(ctx, effects = {}) {
+export function renderTerritoryEventEffects(ctx, effects = {}, { isNavigationFeedbackVisible = () => true } = {}) {
   if (!ctx) return;
   const clock = Number(effects.time) || 0;
   const resources = effects.resources || {};
@@ -813,6 +915,43 @@ export function renderTerritoryEventEffects(ctx, effects = {}) {
     ctx.stroke();
   }
 
+  for (const feedback of effects.navigationFeedback || []) {
+    if (!isNavigationFeedbackVisible(feedback)) continue;
+    const x = Number(feedback.position?.x);
+    const y = Number(feedback.position?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    const strength = clamp01(feedback.strength);
+    const color = feedback.kind === "invalid"
+      ? "#ff5f6d"
+      : feedback.kind === "replanned"
+        ? "#69d8ff"
+        : feedback.kind === "collision"
+          ? "#ff9f6e"
+        : "#f1b95f";
+    const radius = 18 + (1 - strength) * 34;
+    ctx.globalAlpha = strength;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2 + strength * 2;
+    ctx.setLineDash(feedback.kind === "stuck" ? [7, 6] : []);
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, TAU);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    if (feedback.kind === "invalid") {
+      const arm = radius * 0.52;
+      ctx.beginPath();
+      ctx.moveTo(x - arm, y - arm);
+      ctx.lineTo(x + arm, y + arm);
+      ctx.moveTo(x + arm, y - arm);
+      ctx.lineTo(x - arm, y + arm);
+      ctx.stroke();
+    } else if (feedback.kind === "replanned") {
+      ctx.beginPath();
+      ctx.arc(x, y, Math.max(5, radius - 9), 0, TAU);
+      ctx.stroke();
+    }
+  }
+
   ctx.restore();
 }
 
@@ -905,8 +1044,32 @@ export function renderTerritoryRespawnEffects(ctx, effects = {}) {
 
 export function buildTerritoryMinimapState(state = {}) {
   const map = state.map || {};
+  const copyCorridor = (corridor) => ({
+    ...corridor,
+    path: (corridor?.path || []).map((point) => ({ ...point })),
+  });
+  const copyObstacle = (obstacle) => ({
+    ...obstacle,
+    center: obstacle?.center ? { ...obstacle.center } : obstacle?.center,
+    points: (obstacle?.points || []).map((point) => ({ ...point })),
+    primitives: (obstacle?.primitives || []).map((primitive) => ({
+      ...primitive,
+      center: primitive?.center ? { ...primitive.center } : primitive?.center,
+      points: (primitive?.points || []).map((point) => ({ ...point })),
+    })),
+  });
   return {
     worldSize: map.worldSize || { width: 1440, height: 1440 },
+    lanes: (map.laneCorridors || []).map(copyCorridor),
+    connectors: (map.connectorCorridors || []).map(copyCorridor),
+    obstacles: (map.obstacleRegions || []).map(copyObstacle),
+    navigationGraph: {
+      nodes: (map.navigationGraph?.nodes || []).map((node) => ({
+        ...node,
+        center: node?.center ? { ...node.center } : node?.center,
+      })),
+      edges: (map.navigationGraph?.edges || []).map((edge) => ({ ...edge })),
+    },
     terrain: (map.terrainRegions || []).map((region) => ({ ...region })),
     controls: (map.controlPoints || []).map((point) => ({ ...point })),
     spawns: (map.spawnAreas || []).map((area) => ({ ...area })),
@@ -931,8 +1094,79 @@ export function renderTerritoryMinimapOverlay(ctx, state, { rect } = {}) {
     y: rect.y + (Number(position?.y) / worldHeight) * rect.height,
   });
   const radius = (value) => (Number(value) / worldWidth) * rect.width;
+  const tracePath = (path) => {
+    if (!Array.isArray(path) || path.length < 2) return false;
+    const start = point(path[0]);
+    ctx.beginPath();
+    ctx.moveTo(start.x, start.y);
+    for (const entry of path.slice(1)) {
+      const projected = point(entry);
+      ctx.lineTo(projected.x, projected.y);
+    }
+    return true;
+  };
+  const drawProjectedCorridor = (corridor, fill, edge) => {
+    if (!tracePath(corridor?.path)) return;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = Math.max(2, radius(corridor.width));
+    ctx.stroke();
+    tracePath(corridor.path);
+    ctx.strokeStyle = edge;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+  };
+  const drawProjectedObstacle = (obstacle) => {
+    const primitives = obstacle?.shape === "compound" ? obstacle.primitives || [] : [obstacle];
+    for (const primitive of primitives) {
+      let traced = false;
+      let restore = false;
+      if (primitive?.shape === "circle" && primitive.center) {
+        const center = point(primitive.center);
+        ctx.beginPath();
+        ctx.arc(center.x, center.y, radius(primitive.radius), 0, TAU);
+        traced = true;
+      } else if (primitive?.shape === "polygon" && primitive.points?.length >= 3) {
+        const first = point(primitive.points[0]);
+        ctx.beginPath();
+        ctx.moveTo(first.x, first.y);
+        for (const entry of primitive.points.slice(1)) {
+          const projected = point(entry);
+          ctx.lineTo(projected.x, projected.y);
+        }
+        ctx.closePath();
+        traced = true;
+      } else if (primitive?.shape === "capsule" && primitive.center) {
+        const center = point(primitive.center);
+        const width = radius(primitive.width || Number(primitive.radius) * 2);
+        ctx.save();
+        ctx.translate(center.x, center.y);
+        ctx.rotate(Number(primitive.angle) || 0);
+        ctx.beginPath();
+        ctx.roundRect(-radius(primitive.length) / 2, -width / 2, radius(primitive.length), width, width / 2);
+        traced = true;
+        restore = true;
+      }
+      if (traced) {
+        ctx.fillStyle = "rgba(37, 43, 50, 0.9)";
+        ctx.strokeStyle = "rgba(219, 105, 91, 0.9)";
+        ctx.lineWidth = 1.1;
+        ctx.fill();
+        ctx.stroke();
+      }
+      if (restore) ctx.restore();
+    }
+  };
 
   ctx.save();
+  for (const lane of model.lanes) {
+    drawProjectedCorridor(lane, "rgba(74, 133, 143, 0.18)", "rgba(111, 198, 207, 0.65)");
+  }
+  for (const connector of model.connectors) {
+    drawProjectedCorridor(connector, "rgba(132, 105, 150, 0.16)", "rgba(189, 153, 207, 0.65)");
+  }
+  for (const obstacle of model.obstacles) drawProjectedObstacle(obstacle);
   for (const region of model.terrain) {
     const center = point(region.center);
     ctx.strokeStyle = region.type === "speed_lane" ? "#68deee88" : region.type === "gravity_mire" ? "#b593da88" : "#aeb7c288";
