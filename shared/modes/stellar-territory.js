@@ -31,6 +31,11 @@ import {
   positionClearOfObstacles,
   resolveMovementAgainstObstacles,
 } from "../gameplay/territory-obstacles.js";
+import {
+  advanceNavigationPlans,
+  createNavigationPlan,
+  planTerritoryRoute,
+} from "../gameplay/territory-navigation.js";
 
 const INSTALLED_TERRITORY_OBSTACLES = new WeakMap();
 
@@ -48,6 +53,79 @@ function installTerritoryCollisionProvider(simulation, modeState) {
     canOccupy: ({ position, radius = 0 }) => positionClearOfObstacles(position, radius, obstacles),
   });
   INSTALLED_TERRITORY_OBSTACLES.set(simulation, obstacles);
+}
+
+function handleTerritorySetRoute({ action, seat, modeState, simulation }) {
+  const shipKey = String(action?.shipKey || "main");
+  const key = `${seat}:${shipKey}`;
+  const previousPlan = modeState?.navigationPlans?.[key];
+  const fleet = simulation?.fleetBySeat?.(seat);
+  const ship = fleet?.shipByKey?.(shipKey) || fleet?.ships?.[shipKey];
+  const target = { x: Number(action?.endX), y: Number(action?.endY) };
+  const route = planTerritoryRoute({
+    map: modeState?.map,
+    start: ship ? { x: ship.x, y: ship.y } : null,
+    end: target,
+    clearance: Number(ship?.radius) || 0,
+  });
+  if (!ship?.alive || !ship?.canControl?.() || !route.accepted) {
+    return {
+      handled: true,
+      accepted: false,
+      modeState,
+      events: [{
+        type: "invalid_route_target",
+        seat,
+        payload: { shipKey, target, reason: route.reason || "invalid_ship" },
+      }],
+    };
+  }
+
+  const requestedThrottle = Number(action?.throttle);
+  const plan = createNavigationPlan({
+    seat,
+    shipKey,
+    route,
+    now: modeState?.elapsed,
+    reason: action?.reason,
+    throttle: Number.isFinite(requestedThrottle) ? requestedThrottle : ship.throttle,
+    anchorToMain: action?.anchorToMain,
+    navigationKey: action?.navigationKey,
+  });
+  const sameNavigation = action?.preserveWatchdog !== false
+    && action?.navigationKey
+    && previousPlan?.navigationKey === String(action.navigationKey);
+  if (sameNavigation) {
+    plan.createdAt = previousPlan.createdAt;
+    plan.watchdog = { ...(previousPlan.watchdog || plan.watchdog) };
+    const previousIndex = Math.max(0, Math.floor(Number(previousPlan.currentSegment) || 0));
+    const previousWaypoint = previousPlan.waypoints?.[previousIndex];
+    const nextWaypoint = plan.waypoints?.[0];
+    if (!previousWaypoint || !nextWaypoint
+      || Math.hypot(previousWaypoint.x - nextWaypoint.x, previousWaypoint.y - nextWaypoint.y) > 1e-6) {
+      plan.watchdog.lastDistance = nextWaypoint ? Math.hypot(ship.x - nextWaypoint.x, ship.y - nextWaypoint.y) : null;
+    }
+  }
+  const firstWaypoint = plan?.waypoints?.[0];
+  const accepted = Boolean(firstWaypoint) && simulation?.applyActionForSeat?.(seat, {
+    type: "set_route",
+    shipKey,
+    endX: firstWaypoint.x,
+    endY: firstWaypoint.y,
+    throttle: plan.throttle,
+    anchorToMain: action?.anchorToMain,
+  }) === true;
+  if (!accepted) return { handled: true, accepted: false, modeState, events: [] };
+
+  return {
+    handled: true,
+    accepted: true,
+    modeState: {
+      ...modeState,
+      navigationPlans: { ...(modeState?.navigationPlans || {}), [key]: plan },
+    },
+    events: [],
+  };
 }
 
 export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
@@ -263,6 +341,10 @@ export const stellarTerritoryMode = {
     return terrain;
   },
 
+  afterSimulationStep({ modeState, simulation, dt }) {
+    return advanceNavigationPlans({ modeState, simulation, dt });
+  },
+
   updateModeState({ modeState, parameters, dt, simulation }) {
     let next;
     if (modeState) {
@@ -343,6 +425,75 @@ export const stellarTerritoryMode = {
 
   handleAction({ action, seat, modeState, simulation }) {
     const type = action?.type;
+    if (type === "set_route") {
+      return handleTerritorySetRoute({ action, seat, modeState, simulation });
+    }
+    if (type === "route_end") {
+      const shipKey = String(action?.shipKey || "main");
+      const previousPlan = modeState?.navigationPlans?.[`${seat}:${shipKey}`];
+      return handleTerritorySetRoute({
+        action: {
+          ...action,
+          type: "set_route",
+          throttle: action?.throttle ?? previousPlan?.throttle,
+          anchorToMain: action?.anchorToMain ?? previousPlan?.anchorToMain,
+          reason: action?.reason ?? previousPlan?.reason,
+          navigationKey: action?.navigationKey ?? previousPlan?.navigationKey,
+          preserveWatchdog: false,
+        },
+        seat,
+        modeState,
+        simulation,
+      });
+    }
+    if (type === "route_control") {
+      const shipKey = String(action?.shipKey || "main");
+      const plan = modeState?.navigationPlans?.[`${seat}:${shipKey}`];
+      if (plan?.kind !== "direct" || plan?.waypoints?.length !== 1) {
+        return { handled: true, accepted: false, modeState, events: [] };
+      }
+      return {
+        handled: true,
+        accepted: simulation?.applyActionForSeat?.(seat, action) === true,
+        modeState,
+        events: [],
+      };
+    }
+    if (type === "set_throttle") {
+      const shipKey = String(action?.shipKey || "main");
+      const accepted = simulation?.applyActionForSeat?.(seat, action) === true;
+      if (!accepted) return { handled: true, accepted: false, modeState, events: [] };
+      const key = `${seat}:${shipKey}`;
+      const previousPlan = modeState?.navigationPlans?.[key];
+      if (!previousPlan) return { handled: true, accepted: true, modeState, events: [] };
+      const fleet = simulation?.fleetBySeat?.(seat);
+      const ship = fleet?.shipByKey?.(shipKey) || fleet?.ships?.[shipKey];
+      return {
+        handled: true,
+        accepted: true,
+        modeState: {
+          ...modeState,
+          navigationPlans: {
+            ...(modeState?.navigationPlans || {}),
+            [key]: { ...previousPlan, throttle: Number(ship?.throttle) || previousPlan.throttle },
+          },
+        },
+        events: [],
+      };
+    }
+    if (type === "clear_route") {
+      const shipKey = String(action?.shipKey || "main");
+      const accepted = simulation?.applyActionForSeat?.(seat, action) === true;
+      if (!accepted) return { handled: true, accepted: false, modeState, events: [] };
+      const navigationPlans = { ...(modeState?.navigationPlans || {}) };
+      delete navigationPlans[`${seat}:${shipKey}`];
+      return {
+        handled: true,
+        accepted: true,
+        modeState: { ...modeState, navigationPlans },
+        events: [],
+      };
+    }
     if (type === "use_tactical_skill") {
       const result = useTerritoryTacticalSkill({ modeState, simulation, seat, action });
       if (result.accepted) applyRespawnProtectionRules({ simulation, action, seat });

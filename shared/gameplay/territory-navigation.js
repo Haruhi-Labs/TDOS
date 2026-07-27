@@ -4,6 +4,8 @@ import {
 } from "./territory-obstacles.js";
 
 const SCORE_EPSILON = 1e-9;
+const WATCHDOG_PROGRESS_DISTANCE = 1;
+const WATCHDOG_WINDOW_SECONDS = 5;
 
 function finitePoint(value) {
   return Boolean(value && Number.isFinite(value.x) && Number.isFinite(value.y));
@@ -290,7 +292,7 @@ export function planTerritoryRoute({ map, start, end, clearance = 0 } = {}) {
   return routeSuccess("graph", start, end, safeClearance, simplified);
 }
 
-export function createNavigationPlan({ seat, shipKey, route, now = 0, reason = "route", throttle = 1 } = {}) {
+export function createNavigationPlan({ seat, shipKey, route, now = 0, reason = "route", throttle = 1, anchorToMain = true, navigationKey = null } = {}) {
   if (!route?.accepted || !Array.isArray(route.waypoints) || route.waypoints.length === 0) return null;
   const createdAt = Number.isFinite(Number(now)) ? Number(now) : 0;
   const numericThrottle = Number(throttle);
@@ -307,9 +309,11 @@ export function createNavigationPlan({ seat, shipKey, route, now = 0, reason = "
     })),
     currentSegment: 0,
     reason: String(reason || "route"),
+    navigationKey: navigationKey ? String(navigationKey) : null,
     createdAt,
     updatedAt: createdAt,
     throttle: Number.isFinite(numericThrottle) ? Math.min(1.4, Math.max(0.25, numericThrottle)) : 1,
+    anchorToMain: anchorToMain !== false,
     watchdog: {
       elapsed: 0,
       lastDistance: null,
@@ -330,6 +334,7 @@ function issuePlanSegment(simulation, plan, waypoint) {
     endX: waypoint.x,
     endY: waypoint.y,
     throttle: plan.throttle,
+    anchorToMain: plan.anchorToMain,
   }) === true;
 }
 
@@ -351,6 +356,8 @@ export function advanceNavigationPlans({ modeState, simulation, dt = 0 } = {}) {
   }
 
   const nextState = { ...sourceState, navigationPlans };
+  const events = [];
+  const safeDt = Math.max(0, Number(dt) || 0);
   for (const key of Object.keys(navigationPlans).sort((a, b) => a.localeCompare(b))) {
     const plan = navigationPlans[key];
     const ship = shipForPlan(simulation, plan);
@@ -361,9 +368,70 @@ export function advanceNavigationPlans({ modeState, simulation, dt = 0 } = {}) {
       continue;
     }
 
-    plan.updatedAt = Number(plan.updatedAt || plan.createdAt || 0) + Math.max(0, Number(dt) || 0);
-    const reached = distanceBetween(ship, waypoint) <= Math.max(20, normalizeClearance(plan.clearance));
-    if (ship.route && !reached) continue;
+    plan.updatedAt = Number(plan.updatedAt || plan.createdAt || 0) + safeDt;
+    const waypointDistance = distanceBetween(ship, waypoint);
+    const reached = waypointDistance <= Math.max(20, normalizeClearance(plan.clearance));
+    if (ship.route && !reached) {
+      const watchdog = plan.watchdog;
+      if (!Number.isFinite(watchdog.lastDistance)) {
+        watchdog.lastDistance = waypointDistance;
+        watchdog.elapsed = safeDt;
+      } else if (watchdog.lastDistance - waypointDistance >= WATCHDOG_PROGRESS_DISTANCE) {
+        watchdog.elapsed = 0;
+        watchdog.lastDistance = waypointDistance;
+        watchdog.replans = 0;
+      } else {
+        watchdog.elapsed = Math.max(0, Number(watchdog.elapsed) || 0) + safeDt;
+      }
+      if (watchdog.elapsed + SCORE_EPSILON < WATCHDOG_WINDOW_SECONDS) continue;
+
+      if (Math.max(0, Number(watchdog.replans) || 0) >= 1) {
+        simulation?.applyActionForSeat?.(plan.seat, { type: "clear_route", shipKey: plan.shipKey });
+        delete navigationPlans[key];
+        events.push({
+          type: "navigation_stuck",
+          seat: plan.seat,
+          position: { x: ship.x, y: ship.y },
+          payload: { shipKey: plan.shipKey, target: clonePoint(plan.target), reason: plan.reason },
+        });
+        continue;
+      }
+
+      const route = planTerritoryRoute({
+        map: sourceState.map,
+        start: { x: ship.x, y: ship.y },
+        end: plan.target,
+        clearance: plan.clearance,
+      });
+      const replanned = createNavigationPlan({
+        seat: plan.seat,
+        shipKey: plan.shipKey,
+        route,
+        now: plan.updatedAt,
+        reason: plan.reason,
+        throttle: plan.throttle,
+        anchorToMain: plan.anchorToMain,
+        navigationKey: plan.navigationKey,
+      });
+      const firstWaypoint = replanned?.waypoints?.[0];
+      if (replanned && firstWaypoint && issuePlanSegment(simulation, replanned, firstWaypoint)) {
+        replanned.createdAt = plan.createdAt;
+        replanned.watchdog.replans = Math.max(0, Number(watchdog.replans) || 0) + 1;
+        replanned.watchdog.lastDistance = distanceBetween(ship, firstWaypoint);
+        navigationPlans[key] = replanned;
+        events.push({
+          type: "navigation_replanned",
+          seat: plan.seat,
+          position: { x: ship.x, y: ship.y },
+          payload: { shipKey: plan.shipKey, target: clonePoint(plan.target), reason: plan.reason },
+        });
+      } else {
+        watchdog.elapsed = 0;
+        watchdog.lastDistance = waypointDistance;
+        watchdog.replans = 1;
+      }
+      continue;
+    }
 
     const nextSegment = segmentIndex + 1;
     if (nextSegment >= plan.waypoints.length) {
@@ -371,8 +439,15 @@ export function advanceNavigationPlans({ modeState, simulation, dt = 0 } = {}) {
       continue;
     }
     const nextWaypoint = plan.waypoints[nextSegment];
-    if (issuePlanSegment(simulation, plan, nextWaypoint)) plan.currentSegment = nextSegment;
+    if (issuePlanSegment(simulation, plan, nextWaypoint)) {
+      plan.currentSegment = nextSegment;
+      plan.watchdog = {
+        elapsed: 0,
+        lastDistance: distanceBetween(ship, nextWaypoint),
+        replans: 0,
+      };
+    }
   }
 
-  return { modeState: nextState, events: [] };
+  return { modeState: nextState, events };
 }

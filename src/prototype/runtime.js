@@ -259,6 +259,26 @@ export function createPrototypeRuntime({
     }
   }
 
+  function runAfterSimulationStep(dt) {
+    const hook = state.modeDefinition?.afterSimulationStep;
+    if (typeof hook !== "function" || !state.simulation) return;
+    const result = hook({
+      simulation: state.simulation,
+      snapshot: state.snapshot || refreshSnapshot(),
+      modeState: state.modeState,
+      parameters: state.modeParameters,
+      dt,
+      runtime: publicApi,
+    });
+    if (!result || typeof result !== "object") return;
+    if (Object.prototype.hasOwnProperty.call(result, "modeState")) {
+      state.modeState = result.modeState;
+    }
+    if (result.events) {
+      pushModeEvents(state.modeEvents, result.events, state);
+    }
+  }
+
   function runModeAiActions() {
     const hook = state.modeDefinition?.buildAiAction;
     if (typeof hook !== "function" || !state.simulation) return;
@@ -350,9 +370,10 @@ export function createPrototypeRuntime({
     if (state.destroyed || !state.simulation) return publicApi;
     if (state.result?.finished) return publicApi;
     const safeDt = Math.max(0, Math.min(0.05, Number(dt) || TICK_DT));
-    // 固定 Tick 顺序：before → sim → snapshot → updateMode → outcome
+    // Fixed Tick order: before -> simulation -> after -> mode update -> AI.
     runBeforeSimulationStep(safeDt);
     state.simulation.update(safeDt);
+    runAfterSimulationStep(safeDt);
     state.elapsedTicks += 1;
     evaluateMode(safeDt);
     runModeAiActions();

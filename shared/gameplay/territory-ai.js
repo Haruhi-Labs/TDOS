@@ -37,7 +37,7 @@ function safeAreaTarget(modeState, simulation, allianceId) {
   };
 }
 
-function routeAction(ship, target, reason, score) {
+function routeAction(ship, target, reason, score, navigationKey) {
   if (!ship || !target) return null;
   return {
     type: "set_route",
@@ -47,6 +47,7 @@ function routeAction(ship, target, reason, score) {
     throttle: reason === "retreat" ? 1.18 : 1.05,
     reason,
     objectiveScore: score,
+    navigationKey: String(navigationKey || ""),
   };
 }
 
@@ -277,5 +278,11 @@ export function chooseTerritoryAiAction({ seat, simulation, modeState, allowTact
     };
   }
   const target = best.objective.target?.center || best.objective.target?.position || best.objective.target;
-  return routeAction(ship, target, best.objective.type === "retreat" ? "retreat" : best.objective.type, best.score);
+  return routeAction(
+    ship,
+    target,
+    best.objective.type === "retreat" ? "retreat" : best.objective.type,
+    best.score,
+    best.objectiveKey,
+  );
 }

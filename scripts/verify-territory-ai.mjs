@@ -3,6 +3,7 @@ import {
   chooseTerritoryAiAction,
   scoreTerritoryObjective,
 } from "../shared/gameplay/territory-ai.js";
+import { positionClearOfObstacles } from "../shared/gameplay/territory-obstacles.js";
 import { stellarTerritoryMode } from "../shared/modes/stellar-territory.js";
 import { stellarTerritoryPreset } from "../src/prototype/modes/stellar-territory.js";
 import { createPrototypeRuntime } from "../src/prototype/runtime.js";
@@ -70,6 +71,7 @@ assert(captureScore > defendScore + 15, "AI should value enemy control points as
 let action = chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
 assert(action?.type === "set_route", "AI objective layer issues standard route actions");
 assert(action.shipKey === "main", "AI route action controls main ship");
+assert(action.navigationKey === `capture_control_point:${targetPoint.id}`, "AI route actions should expose their stable objective key");
 assert(Math.hypot(action.endX - targetPoint.center.x, action.endY - targetPoint.center.y) < 12, "AI routes toward selected control point");
 assert(state.map.controlPoints[0].ownerAllianceId === "A", "AI action selection must not mutate control-point state");
 
@@ -352,6 +354,20 @@ runtimeState.map.controlPoints[0].ownerAllianceId = "A";
 runtime.step();
 assert(runtimeBMain.route?.p2, "runtime invokes mode AI hook and applies returned route action");
 assert(Math.hypot(runtimeBMain.route.p2.x - runtimePoint.center.x, runtimeBMain.route.p2.y - runtimePoint.center.y) < 40, "runtime-applied AI route targets mode objective");
+const runtimeAiPlan = runtime.getModeState().navigationPlans?.["B:main"];
+assert(runtimeAiPlan?.target, "runtime AI actions should create a mode-owned navigation plan");
+assert(
+  Math.hypot(runtimeAiPlan.target.x - runtimePoint.center.x, runtimeAiPlan.target.y - runtimePoint.center.y) < 40,
+  `runtime AI plan should retain the scored objective as its final target: ${JSON.stringify(runtimeAiPlan)}`,
+);
+assert(
+  runtimeAiPlan.waypoints.every((waypoint) => positionClearOfObstacles(
+    waypoint,
+    runtimeAiPlan.clearance,
+    runtime.getModeState().map.obstacleRegions,
+  )),
+  `runtime AI waypoints should use the shared obstacle-clear planner: ${JSON.stringify(runtimeAiPlan)}`,
+);
 runtime.destroy();
 
 const routeAuthorityRuntime = createPrototypeRuntime({

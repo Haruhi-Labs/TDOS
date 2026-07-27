@@ -338,6 +338,8 @@ assert(
 
 // --- optional mode hooks: handleAction + beforeSimulationStep + presentation ---
 let beforeCalls = 0;
+let afterCalls = 0;
+const simulationHookOrder = [];
 let presentationMounted = false;
 let presentationDestroyed = false;
 const virtualMode = {
@@ -351,9 +353,15 @@ const virtualMode = {
   createInitialModeState() {
     return { counter: 0, lastAction: null };
   },
-  beforeSimulationStep({ modeState }) {
+  beforeSimulationStep({ modeState, simulation }) {
     beforeCalls += 1;
+    simulationHookOrder.push({ hook: "before", simulationElapsed: simulation.elapsed });
     return { modeState: { ...modeState, counter: (modeState?.counter || 0) + 1 } };
+  },
+  afterSimulationStep({ modeState, simulation }) {
+    afterCalls += 1;
+    simulationHookOrder.push({ hook: "after", simulationElapsed: simulation.elapsed });
+    return { modeState: { ...modeState, afterElapsed: simulation.elapsed } };
   },
   handleAction({ action, modeState, seat }) {
     if (!action || action.type !== "virtual_ping") return { handled: false };
@@ -364,7 +372,8 @@ const virtualMode = {
       events: [{ type: "virtual_ping", seat, payload: { value: action.value || null } }],
     };
   },
-  updateModeState({ modeState }) {
+  updateModeState({ modeState, snapshot }) {
+    simulationHookOrder.push({ hook: "update", snapshotElapsed: snapshot.elapsed });
     return modeState || { counter: 0, lastAction: null };
   },
   resolveOutcome() {
@@ -401,9 +410,22 @@ const hookRuntime = createPrototypeRuntime({
 });
 hookRuntime.start();
 const beforeBaseline = beforeCalls;
+const afterBaseline = afterCalls;
+simulationHookOrder.length = 0;
 hookRuntime.step(TICK_DT);
+const firstHookStep = simulationHookOrder.splice(0);
+assert(
+  firstHookStep.map((entry) => entry.hook).join(",") === "before,after,update",
+  `simulation hooks should run before -> after -> update: ${JSON.stringify(firstHookStep)}`,
+);
+assert(
+  approxEqual(firstHookStep[1]?.simulationElapsed, TICK_DT, 1e-4)
+    && approxEqual(firstHookStep[2]?.snapshotElapsed, TICK_DT, 1e-4),
+  `after hook should observe advanced simulation before update reads the refreshed snapshot: ${JSON.stringify(firstHookStep)}`,
+);
 hookRuntime.step(TICK_DT);
 assert(beforeCalls === beforeBaseline + 2, `beforeSimulationStep should run per step (${beforeCalls})`);
+assert(afterCalls === afterBaseline + 2, `afterSimulationStep should run per step (${afterCalls})`);
 assert(hookRuntime.getModeState()?.counter >= 2, "beforeSimulationStep should mutate mode state counter");
 const accepted = hookRuntime.applyAction({ type: "virtual_ping", value: 42 }, "A");
 assert(accepted === true, "handleAction virtual_ping should accept");
