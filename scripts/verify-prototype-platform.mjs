@@ -194,6 +194,7 @@ const runtime = createPrototypeRuntime({
   aiDifficulty: "normal",
 });
 runtime.start();
+assert(runtime.getSimulation().worldSize === 1440, "runtime should retain the legacy 1440 fallback when no size tier is configured");
 const t0 = runtime.getSnapshot().elapsed;
 runtime.pause();
 runtime.update(0.2);
@@ -644,18 +645,18 @@ assert(stellarParams.rareResourceSpawnSeconds === 120, "stellar default rare res
 assert(!("resourceSpawnInterval" in stellarParams), "stellar parameters should not expose the ineffective legacy resource interval");
 assert(stellarParams.skillSpawnInterval === 75, "stellar default skill interval");
 assert(stellarParams.respawnEnabled === true, "stellar default respawn enabled");
-assert(stellarParams.mapTemplate === "three-lane-v1", "stellar default map template");
+assert(stellarParams.mapTemplate === "three-lane-v2", "stellar default map template");
 
 const stellarState = stellarTerritoryMode.createInitialModeState({
   parameters: stellarParams,
   randomSeed: 424242,
 });
-assert(stellarState.version === 1, "stellar state version");
 assert(stellarState.seed === 424242, "stellar state seed");
 assert(stellarState.phase === "opening", "stellar initial phase");
 assert(stellarState.alliances.A.tickets === 120, "stellar A initial tickets");
 assert(stellarState.alliances.B.tickets === 120, "stellar B initial tickets");
-assert(stellarState.map.templateId === "three-lane-v1", "stellar map template recorded");
+assert(stellarState.version === 2, "stellar mode state should use V2 serialization");
+assert(stellarState.map.templateId === "three-lane-v2" && stellarState.map.version === 2, "stellar V2 map template recorded");
 assert(Array.isArray(stellarState.map.controlPoints), "stellar control points array");
 assert(Array.isArray(stellarState.pickups), "stellar pickups array");
 assert(Array.isArray(stellarState.activeSkillEffects), "stellar active skill effects array");
@@ -676,7 +677,7 @@ const stellarDiagnostics = stellarTerritoryMode.buildDiagnostics({
   parameters: stellarParams,
 });
 assert(stellarDiagnostics["随机种子"] === 424242, "stellar diagnostics include seed");
-assert(stellarDiagnostics["地图模板"] === "three-lane-v1", "stellar diagnostics include map template");
+assert(stellarDiagnostics["地图模板"] === "three-lane-v2", "stellar diagnostics include map template");
 assert(stellarDiagnostics["A战争点数"] === 120, "stellar diagnostics include A tickets");
 assert(stellarDiagnostics["B战争点数"] === 120, "stellar diagnostics include B tickets");
 
@@ -684,6 +685,38 @@ resetPrototypeRegistry();
 resetBuiltInPrototypeRegistrationFlag();
 registerBuiltInPrototypeModes();
 assert(getPrototypeMode("stellar-territory")?.id === "stellar-territory", "built-ins register stellar territory");
+const presetWorldRuntime = createPrototypeRuntime({
+  modeDefinition: { ...standardEliminationMode, worldSize: 1720 },
+  runtimePreset: { controlA: "ai", controlB: "ai", worldSize: 1800 },
+});
+presetWorldRuntime.start();
+assert(
+  presetWorldRuntime.getSimulation().worldSize === 1800,
+  `runtime preset world size should override the mode preference: ${presetWorldRuntime.getSimulation().worldSize}`,
+);
+presetWorldRuntime.destroy();
+const explicitWorldRuntime = createPrototypeRuntime({
+  modeDefinition: { ...standardEliminationMode, worldSize: 1720 },
+  runtimePreset: { controlA: "ai", controlB: "ai", worldSize: 1800 },
+  worldSize: 1900,
+});
+explicitWorldRuntime.start();
+assert(
+  explicitWorldRuntime.getSimulation().worldSize === 1900,
+  `explicit world size should override preset and mode preferences: ${explicitWorldRuntime.getSimulation().worldSize}`,
+);
+explicitWorldRuntime.destroy();
+let unsupportedStellarWorldRejected = false;
+try {
+  createPrototypeRuntime({
+    modeDefinition: getPrototypeMode("stellar-territory"),
+    runtimePreset: { controlA: "ai", controlB: "ai" },
+    worldSize: 1440,
+  });
+} catch (error) {
+  unsupportedStellarWorldRejected = error instanceof RangeError && error.message.includes("does not support world size 1440");
+}
+assert(unsupportedStellarWorldRejected, "fixed-size modes should reject explicit unsupported world sizes before simulation creation");
 const stellarRuntime = createPrototypeRuntime({
   modeDefinition: getPrototypeMode("stellar-territory"),
   runtimePreset: { controlA: "ai", controlB: "ai" },
@@ -691,6 +724,10 @@ const stellarRuntime = createPrototypeRuntime({
   randomSeed: 13579,
 });
 stellarRuntime.start();
+assert(
+  stellarRuntime.getSimulation().worldSize === 2160,
+  `stellar runtime should inherit the mode-preferred 2160 world: ${stellarRuntime.getSimulation().worldSize}`,
+);
 stellarRuntime.pause();
 stellarRuntime.step(TICK_DT);
 assert(stellarRuntime.getModeState()?.elapsed >= TICK_DT, "stellar mode steps while paused via explicit single step");

@@ -137,7 +137,7 @@ async function main() {
       return tools.includes("当前种子") && tools.includes("显示调试边界") && hud.includes("A战争点数") && hud.includes("控制区");
     }, 8000);
     const stellarDiag = await page.locator("#protoDiagnostics").textContent();
-    assert(stellarDiag.includes("地图模板") && stellarDiag.includes("three-lane-v1"), `stellar diagnostics missing map: ${stellarDiag}`);
+    assert(stellarDiag.includes("地图模板") && stellarDiag.includes("three-lane-v2"), `stellar diagnostics missing map: ${stellarDiag}`);
     const mapPixels = await page.locator("#gameCanvas").evaluate((canvas) => {
       const ctx = canvas.getContext("2d");
       const sample = ctx.getImageData(0, 0, canvas.width, canvas.height).data;

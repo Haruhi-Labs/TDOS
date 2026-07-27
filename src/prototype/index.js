@@ -788,10 +788,13 @@ function bindUi() {
 
   canvas.addEventListener("mousedown", (event) => {
     if (app.mobileMode || app.runtime?.isFinished?.()) return;
+    const screen = camera.screenPointFromEvent(event);
+    if (camera.minimapWorldPointFromScreenPoint(screen.x, screen.y)) {
+      event.preventDefault();
+      return;
+    }
     const ship = selectedShip();
     if (event.button === 0) {
-      const screen = camera.screenPointFromEvent(event);
-      if (camera.minimapWorldPointFromScreenPoint(screen.x, screen.y)) return;
       if (!ship?.alive || !ship.canControl) return;
       const pos = camera.pointerFromEvent(event);
       app.pointer = pos;

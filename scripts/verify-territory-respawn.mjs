@@ -14,6 +14,7 @@ function assert(condition, message) {
 function makeSimulation(options = {}) {
   return new MatchSimulation({
     mode: "ai",
+    worldSize: stellarTerritoryMode.worldSize,
     teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
     aiSeats: [],
     ...options,

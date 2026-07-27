@@ -1,368 +1,637 @@
 import { createSeededRng } from "./seeded-rng.js";
+import {
+  firstObstacleHit,
+  positionClearOfObstacles,
+} from "./territory-obstacles.js";
 
-export const TERRITORY_MAP_TEMPLATE_ID = "three-lane-v1";
+export const TERRITORY_MAP_TEMPLATE_ID = "three-lane-v2";
 
+const REFERENCE_SIZE = 2160;
 const TERRAIN_TYPES = Object.freeze(["asteroid_belt", "speed_lane", "gravity_mire"]);
+const LANE_LAYOUT = freezeCorridorLayout([
+  {
+    id: "top",
+    width: 340,
+    path: [[210, 1950], [260, 1150], [360, 500], [860, 330], [1580, 300], [1950, 210]],
+  },
+  {
+    id: "mid",
+    width: 380,
+    path: [[210, 1950], [500, 1730], [620, 1200], [1080, 1080], [1540, 960], [1660, 430], [1950, 210]],
+  },
+  {
+    id: "bottom",
+    width: 340,
+    path: [[210, 1950], [580, 1860], [1300, 1830], [1800, 1660], [1900, 1010], [1950, 210]],
+  },
+]);
+const CONNECTOR_LAYOUT = freezeCorridorLayout([
+  { id: "connector-top-mid-west", mirrorId: "connector-mid-bottom-east", fromLaneId: "top", toLaneId: "mid", path: [[300, 850], [620, 1200]], width: 260, risk: false },
+  { id: "connector-top-mid-east", mirrorId: "connector-mid-bottom-west", fromLaneId: "top", toLaneId: "mid", path: [[1750, 350], [1840, 760], [1540, 960]], width: 250, risk: false },
+  { id: "connector-mid-bottom-west", mirrorId: "connector-top-mid-east", fromLaneId: "mid", toLaneId: "bottom", path: [[620, 1200], [320, 1400], [410, 1810]], width: 250, risk: false },
+  { id: "connector-mid-bottom-east", mirrorId: "connector-top-mid-west", fromLaneId: "mid", toLaneId: "bottom", path: [[1540, 960], [1860, 1310]], width: 260, risk: false },
+  { id: "connector-top-mid-risk", mirrorId: "connector-mid-bottom-risk", fromLaneId: "top", toLaneId: "mid", path: [[980, 600], [1020, 900]], width: 190, risk: true },
+  { id: "connector-mid-bottom-risk", mirrorId: "connector-top-mid-risk", fromLaneId: "mid", toLaneId: "bottom", path: [[1140, 1260], [1180, 1560]], width: 190, risk: true },
+]);
+const LANE_IDS = Object.freeze(LANE_LAYOUT.map((lane) => lane.id));
+const ROTATED_LANE_ID = Object.freeze({ top: "bottom", mid: "mid", bottom: "top" });
+const SPAWN_LAYOUT = Object.freeze([
+  { id: "spawn-A", allianceId: "A", x: 210, y: 1950 },
+  { id: "spawn-B", allianceId: "B", x: 1950, y: 210 },
+]);
+const CONTROL_LAYOUT = Object.freeze([
+  { id: "control-top", laneId: "top", x: 860, y: 330, width: 340, height: 240 },
+  { id: "control-mid", laneId: "mid", x: 1080, y: 1080, width: 360, height: 260 },
+  { id: "control-bottom", laneId: "bottom", x: 1300, y: 1830, width: 340, height: 240 },
+]);
+const CONNECTOR_IDS = Object.freeze(CONNECTOR_LAYOUT.map((connector) => connector.id));
+const NAVIGATION_NODE_IDS = Object.freeze([
+  "nav-spawn-a",
+  "nav-top-a-entry",
+  "nav-top-west",
+  "nav-control-top",
+  "nav-top-east",
+  "nav-spawn-b",
+  "nav-mid-a-entry",
+  "nav-mid-west",
+  "nav-control-mid",
+  "nav-mid-east",
+  "nav-mid-b-entry",
+  "nav-bottom-west",
+  "nav-control-bottom",
+  "nav-bottom-east",
+  "nav-bottom-b-entry",
+  "nav-connector-top-mid-west",
+  "nav-connector-top-mid-east",
+  "nav-connector-mid-bottom-west",
+  "nav-connector-mid-bottom-east",
+  "nav-risk-upper-top",
+  "nav-risk-upper-mid",
+  "nav-risk-lower-mid",
+  "nav-risk-lower-bottom",
+]);
+const NAVIGATION_EDGE_IDS = Object.freeze(Array.from({ length: 30 }, (_, index) => `nav-edge-${index + 1}`));
 
 function point(x, y) {
   return { x: Math.round(x), y: Math.round(y) };
 }
 
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
+function freezeCorridorLayout(entries) {
+  return Object.freeze(entries.map((entry) => Object.freeze({
+    ...entry,
+    path: Object.freeze(entry.path.map(([x, y]) => Object.freeze({ x, y }))),
+  })));
 }
 
-function distance(a, b) {
-  const dx = Number(a?.x || 0) - Number(b?.x || 0);
-  const dy = Number(a?.y || 0) - Number(b?.y || 0);
-  return Math.hypot(dx, dy);
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
 }
 
-function nodeRadius(node) {
-  if (Number.isFinite(Number(node?.radius))) return Number(node.radius);
-  if (node?.shape === "rect") {
-    return Math.max(Number(node.width) || 0, Number(node.height) || 0) / 2;
-  }
-  return 0;
+function normalizedWorldSize() {
+  return { width: REFERENCE_SIZE, height: REFERENCE_SIZE };
 }
 
-function circleOverlap(a, b, padding = 0) {
-  return distance(a.center, b.center) < nodeRadius(a) + nodeRadius(b) + padding;
+function rotate180(value, size = { width: REFERENCE_SIZE, height: REFERENCE_SIZE }) {
+  return point(size.width - value.x, size.height - value.y);
 }
 
-function circleRectOverlap(circle, rect, padding = 0) {
-  if (!circle?.center || !rect?.center) return false;
-  const radius = Math.max(0, Number(circle.radius) || 0) + Math.max(0, Number(padding) || 0);
-  const width = Math.max(0, Number(rect.width) || 0);
-  const height = Math.max(0, Number(rect.height) || 0);
-  const left = Number(rect.x ?? rect.center.x - width / 2);
-  const top = Number(rect.y ?? rect.center.y - height / 2);
-  const closestX = clamp(circle.center.x, left, left + width);
-  const closestY = clamp(circle.center.y, top, top + height);
-  const dx = circle.center.x - closestX;
-  const dy = circle.center.y - closestY;
-  return dx * dx + dy * dy < radius * radius;
-}
-
-function withinBounds(center, radius, bounds) {
-  return (
-    center.x - radius >= bounds.x &&
-    center.y - radius >= bounds.y &&
-    center.x + radius <= bounds.x + bounds.width &&
-    center.y + radius <= bounds.y + bounds.height
-  );
+function rotatePath(path, size) {
+  return path.slice().reverse().map((value) => rotate180(value, size));
 }
 
 function makeNode(id, x, y, extra = {}) {
   return {
     id,
     center: point(x, y),
-    radius: extra.radius || 34,
+    radius: Number(extra.radius) || 34,
     ...extra,
   };
 }
 
-function makeControlPoint(id, label, x, y, width, height, extra = {}) {
+function makeControlPoint(id, label, laneId, x, y, width, height) {
   return {
     id,
     label,
+    laneId,
     shape: "rect",
     center: point(x, y),
     x: Math.round(x - width / 2),
     y: Math.round(y - height / 2),
-    width: Math.round(width),
-    height: Math.round(height),
+    width,
+    height,
     ownerAllianceId: null,
     capturingAllianceId: null,
     captureProgress: 0,
     contested: false,
     occupants: { A: [], B: [] },
-    ...extra,
   };
 }
 
-function nodeCollides(node, nodes, padding = 18) {
-  return nodes.some((existing) => circleOverlap(node, existing, padding));
+function rotatePrimitive(primitive, size) {
+  if (primitive.shape === "circle") {
+    return { ...primitive, center: rotate180(primitive.center, size) };
+  }
+  if (primitive.shape === "capsule") {
+    return {
+      ...primitive,
+      start: rotate180(primitive.end, size),
+      end: rotate180(primitive.start, size),
+    };
+  }
+  if (primitive.shape === "polygon") {
+    return { ...primitive, points: rotatePath(primitive.points, size) };
+  }
+  return clone(primitive);
 }
 
-function normalizedWorldSize(worldSize) {
-  const width = Number(worldSize?.width) || 1200;
-  const height = Number(worldSize?.height) || 800;
+function rotateObstacle(obstacle, id, mirrorId, size) {
   return {
-    width: Math.max(900, width),
-    height: Math.max(620, height),
+    ...obstacle,
+    id,
+    mirrorId,
+    points: obstacle.points ? rotatePath(obstacle.points, size) : undefined,
+    primitives: obstacle.primitives?.map((primitive) => rotatePrimitive(primitive, size)),
   };
 }
 
-function buildSafeTemplate({ seed, worldSize, teamSize }) {
-  const size = normalizedWorldSize(worldSize);
-  const laneY = [size.height * 0.28, size.height * 0.5, size.height * 0.72];
-  const safeBounds = {
-    x: 0,
-    y: 0,
-    width: size.width,
-    height: size.height,
+function pointsEqual(a, b) {
+  return Boolean(a && b) && a.x === b.x && a.y === b.y;
+}
+
+function pathsEqual(a, b) {
+  return Array.isArray(a) && Array.isArray(b) && a.length === b.length
+    && a.every((value, index) => pointsEqual(value, b[index]));
+}
+
+function primitiveMatchesRotation(source, target, size) {
+  if (!source || !target || source.shape !== target.shape) return false;
+  const rotated = rotatePrimitive(source, size);
+  if (source.shape === "circle") {
+    return pointsEqual(rotated.center, target.center) && source.radius === target.radius;
+  }
+  if (source.shape === "capsule") {
+    return pointsEqual(rotated.start, target.start)
+      && pointsEqual(rotated.end, target.end)
+      && source.radius === target.radius;
+  }
+  if (source.shape === "polygon") {
+    return pathsEqual(rotated.points, target.points);
+  }
+  return false;
+}
+
+function obstacleMatchesRotation(source, target, size) {
+  if (!source || !target || source.shape !== target.shape || source.type !== target.type) return false;
+  if (source.shape === "polygon") {
+    return pathsEqual(rotatePath(source.points || [], size), target.points || []);
+  }
+  if (source.shape === "compound") {
+    const sourcePrimitives = source.primitives || [];
+    const targetPrimitives = target.primitives || [];
+    return sourcePrimitives.length === targetPrimitives.length
+      && sourcePrimitives.every((primitive, index) => primitiveMatchesRotation(primitive, targetPrimitives[index], size));
+  }
+  return false;
+}
+
+function connectorMatchesRotation(source, target, size) {
+  return Boolean(source && target)
+    && target.mirrorId === source.id
+    && target.fromLaneId === ROTATED_LANE_ID[source.toLaneId]
+    && target.toLaneId === ROTATED_LANE_ID[source.fromLaneId]
+    && Number(target.width) === Number(source.width)
+    && Boolean(target.risk) === Boolean(source.risk)
+    && pathsEqual(rotatePath(source.path || [], size), target.path || []);
+}
+
+function obstacleCenter(obstacle) {
+  if (obstacle?.center) return obstacle.center;
+  const points = obstacle?.points || obstacle?.primitives?.flatMap((primitive) => {
+    if (primitive.center) return [primitive.center];
+    return [primitive.start, primitive.end].filter(Boolean);
+  }) || [];
+  if (!points.length) return null;
+  return point(
+    points.reduce((sum, value) => sum + value.x, 0) / points.length,
+    points.reduce((sum, value) => sum + value.y, 0) / points.length,
+  );
+}
+
+function makeObstacle(id, mirrorId, shape) {
+  return {
+    id,
+    mirrorId,
+    type: id.includes("station") ? "station_wreck" : "asteroid_massif",
+    blocksMovement: true,
+    blocksProjectiles: true,
+    blocksBeam: true,
+    ...shape,
   };
-  const spawnRadius = clamp(82 + (Number(teamSize) - 1) * 10, 82, 112);
+}
+
+function buildFixedGeometry(size, teamSize) {
+  const spawnRadius = Math.max(96, Math.min(122, 92 + Math.max(1, Number(teamSize) || 1) * 8));
+  const spawnA = { id: "spawn-A", allianceId: "A", center: point(210, 1950), radius: spawnRadius };
+  const spawnB = { id: "spawn-B", allianceId: "B", center: rotate180(spawnA.center, size), radius: spawnRadius };
+
+  const upperWest = makeObstacle("obstacle-upper-west", "obstacle-lower-east", {
+    shape: "polygon",
+    points: [
+      point(430, 700), point(520, 590), point(710, 610), point(820, 760),
+      point(760, 900), point(560, 930), point(440, 840),
+    ],
+  });
+  const upperEast = makeObstacle("obstacle-upper-east-station", "obstacle-lower-west-station", {
+    shape: "compound",
+    primitives: [
+      { shape: "capsule", start: point(1180, 550), end: point(1500, 520), radius: 90 },
+      { shape: "circle", center: point(1440, 720), radius: 125 },
+    ],
+  });
+  const obstacleRegions = [
+    upperWest,
+    upperEast,
+    rotateObstacle(upperEast, "obstacle-lower-west-station", upperEast.id, size),
+    rotateObstacle(upperWest, "obstacle-lower-east", upperWest.id, size),
+  ];
+  for (const obstacle of obstacleRegions) obstacle.center = obstacleCenter(obstacle);
+
+  const laneLabels = { top: "\u4e0a\u8def", mid: "\u4e2d\u8def", bottom: "\u4e0b\u8def" };
+  const laneCorridors = LANE_LAYOUT.map((lane) => ({ ...clone(lane), label: laneLabels[lane.id] }));
+  const connectorCorridors = CONNECTOR_LAYOUT.map((connector) => clone(connector));
+
+  const graphNodes = [
+    makeNode("nav-spawn-a", 210, 1950, { kind: "spawn", allianceId: "A", clearance: 30 }),
+    makeNode("nav-top-a-entry", 260, 1150, { kind: "lane", laneId: "top" }),
+    makeNode("nav-top-west", 360, 500, { kind: "lane", laneId: "top" }),
+    makeNode("nav-control-top", 860, 330, { kind: "control", laneId: "top", controlPointId: "control-top" }),
+    makeNode("nav-top-east", 1580, 300, { kind: "lane", laneId: "top" }),
+    makeNode("nav-spawn-b", 1950, 210, { kind: "spawn", allianceId: "B", clearance: 30 }),
+    makeNode("nav-mid-a-entry", 500, 1730, { kind: "lane", laneId: "mid" }),
+    makeNode("nav-mid-west", 620, 1200, { kind: "lane", laneId: "mid" }),
+    makeNode("nav-control-mid", 1080, 1080, { kind: "control", laneId: "mid", controlPointId: "control-mid" }),
+    makeNode("nav-mid-east", 1540, 960, { kind: "lane", laneId: "mid" }),
+    makeNode("nav-mid-b-entry", 1660, 430, { kind: "lane", laneId: "mid" }),
+    makeNode("nav-bottom-west", 580, 1860, { kind: "lane", laneId: "bottom" }),
+    makeNode("nav-control-bottom", 1300, 1830, { kind: "control", laneId: "bottom", controlPointId: "control-bottom" }),
+    makeNode("nav-bottom-east", 1800, 1660, { kind: "lane", laneId: "bottom" }),
+    makeNode("nav-bottom-b-entry", 1900, 1010, { kind: "lane", laneId: "bottom" }),
+    makeNode("nav-connector-top-mid-west", 300, 850, { kind: "connector", connectorId: "connector-top-mid-west" }),
+    makeNode("nav-connector-top-mid-east", 1840, 760, { kind: "connector", connectorId: "connector-top-mid-east" }),
+    makeNode("nav-connector-mid-bottom-west", 320, 1400, { kind: "connector", connectorId: "connector-mid-bottom-west" }),
+    makeNode("nav-connector-mid-bottom-east", 1860, 1310, { kind: "connector", connectorId: "connector-mid-bottom-east" }),
+    makeNode("nav-risk-upper-top", 980, 600, { kind: "connector", connectorId: "connector-top-mid-risk" }),
+    makeNode("nav-risk-upper-mid", 1020, 900, { kind: "connector", connectorId: "connector-top-mid-risk" }),
+    makeNode("nav-risk-lower-mid", 1140, 1260, { kind: "connector", connectorId: "connector-mid-bottom-risk" }),
+    makeNode("nav-risk-lower-bottom", 1180, 1560, { kind: "connector", connectorId: "connector-mid-bottom-risk" }),
+  ];
+  const edgePairs = [
+    ["nav-spawn-a", "nav-top-a-entry"], ["nav-top-a-entry", "nav-top-west"],
+    ["nav-top-west", "nav-control-top"], ["nav-control-top", "nav-top-east"], ["nav-top-east", "nav-spawn-b"],
+    ["nav-spawn-a", "nav-mid-a-entry"], ["nav-mid-a-entry", "nav-mid-west"],
+    ["nav-mid-west", "nav-control-mid"], ["nav-control-mid", "nav-mid-east"],
+    ["nav-mid-east", "nav-mid-b-entry"], ["nav-mid-b-entry", "nav-spawn-b"],
+    ["nav-spawn-a", "nav-bottom-west"], ["nav-bottom-west", "nav-control-bottom"],
+    ["nav-control-bottom", "nav-bottom-east"], ["nav-bottom-east", "nav-bottom-b-entry"],
+    ["nav-bottom-b-entry", "nav-spawn-b"],
+    ["nav-top-west", "nav-connector-top-mid-west"], ["nav-connector-top-mid-west", "nav-mid-west"],
+    ["nav-top-east", "nav-connector-top-mid-east"], ["nav-connector-top-mid-east", "nav-mid-east"],
+    ["nav-mid-west", "nav-connector-mid-bottom-west"], ["nav-connector-mid-bottom-west", "nav-bottom-west"],
+    ["nav-mid-east", "nav-connector-mid-bottom-east"], ["nav-connector-mid-bottom-east", "nav-bottom-b-entry"],
+    ["nav-control-top", "nav-risk-upper-top"], ["nav-risk-upper-top", "nav-risk-upper-mid"],
+    ["nav-risk-upper-mid", "nav-control-mid"], ["nav-control-mid", "nav-risk-lower-mid"],
+    ["nav-risk-lower-mid", "nav-risk-lower-bottom"], ["nav-risk-lower-bottom", "nav-control-bottom"],
+  ];
+
+  const terrainSlots = [
+    makeNode("terrain-slot-top", 1080, 300, { regionId: "top", radius: 48 }),
+    makeNode("terrain-slot-mid", 1080, 1080, { regionId: "mid", radius: 48 }),
+    makeNode("terrain-slot-bottom", 1080, 1860, { regionId: "bottom", radius: 48 }),
+    makeNode("terrain-slot-upper-wild", 980, 760, { regionId: "upper-wild", radius: 48 }),
+    makeNode("terrain-slot-lower-wild", 1180, 1400, { regionId: "lower-wild", radius: 48 }),
+  ];
+
+  const resourceSpawnNodes = [
+    makeNode("res-common-top-west", 520, 360, { rarity: "common", laneId: "top", regionId: "top", mirrorId: "res-common-bottom-east" }),
+    makeNode("res-common-top-east", 1500, 300, { rarity: "common", laneId: "top", regionId: "top", mirrorId: "res-common-bottom-west" }),
+    makeNode("res-common-mid-west", 760, 1160, { rarity: "common", laneId: "mid", regionId: "mid", mirrorId: "res-common-mid-east" }),
+    makeNode("res-common-mid-east", 1400, 1000, { rarity: "common", laneId: "mid", regionId: "mid", mirrorId: "res-common-mid-west" }),
+    makeNode("res-common-bottom-west", 660, 1860, { rarity: "common", laneId: "bottom", regionId: "bottom", mirrorId: "res-common-top-east" }),
+    makeNode("res-common-bottom-east", 1640, 1800, { rarity: "common", laneId: "bottom", regionId: "bottom", mirrorId: "res-common-top-west" }),
+    makeNode("res-rare-upper-wild", 1020, 700, { rarity: "rare", regionId: "upper-wild", radius: 38, mirrorId: "res-rare-lower-wild" }),
+    makeNode("res-rare-lower-wild", 1140, 1460, { rarity: "rare", regionId: "lower-wild", radius: 38, mirrorId: "res-rare-upper-wild" }),
+  ];
+  const skillSpawnNodes = [
+    makeNode("skill-top-strategy", 1080, 220, { laneId: "top", regionId: "top", radius: 40 }),
+    makeNode("skill-mid-strategy", 1080, 1080, { laneId: "mid", regionId: "mid", radius: 40 }),
+    makeNode("skill-bottom-strategy", 1080, 1940, { laneId: "bottom", regionId: "bottom", radius: 40 }),
+    makeNode("skill-upper-wild", 980, 820, { regionId: "upper-wild", radius: 40 }),
+    makeNode("skill-lower-wild", 1180, 1340, { regionId: "lower-wild", radius: 40 }),
+  ];
 
   return {
-    version: 1,
+    spawnAreas: [spawnA, spawnB],
+    controlPoints: [
+      makeControlPoint("control-top", "T", "top", 860, 330, 340, 240),
+      makeControlPoint("control-mid", "M", "mid", 1080, 1080, 360, 260),
+      makeControlPoint("control-bottom", "B", "bottom", 1300, 1830, 340, 240),
+    ],
+    laneCorridors,
+    obstacleRegions,
+    connectorCorridors,
+    navigationGraph: {
+      nodes: graphNodes,
+      edges: edgePairs.map(([from, to], index) => ({ id: `nav-edge-${index + 1}`, from, to, clearance: 18 })),
+    },
+    terrainSlots,
+    resourceSpawnNodes,
+    skillSpawnNodes,
+    lanes: laneCorridors.map((lane) => ({ id: lane.id, path: lane.path, width: lane.width })),
+  };
+}
+
+function buildTerrainRegions(seed, slots) {
+  const rng = createSeededRng(seed).fork("terrain-v2");
+  const types = rng.shuffle(TERRAIN_TYPES);
+  return slots.slice(0, 3).map((slot, index) => {
+    const type = types[index];
+    const center = point(slot.center.x + rng.nextInt(-24, 24), slot.center.y + rng.nextInt(-20, 20));
+    if (type === "speed_lane") {
+      return {
+        id: `terrain-${slot.regionId}`,
+        slotId: slot.id,
+        regionId: slot.regionId,
+        type,
+        shape: "capsule",
+        center,
+        length: 620 + rng.nextInt(-20, 30),
+        width: 220 + rng.nextInt(-10, 18),
+        angle: slot.regionId === "mid" ? -Math.PI / 4 : 0,
+        strength: 0.9 + rng.next() * 0.2,
+        blocksPath: false,
+      };
+    }
+    return {
+      id: `terrain-${slot.regionId}`,
+      slotId: slot.id,
+      regionId: slot.regionId,
+      type,
+      shape: "circle",
+      center,
+      radius: 220 + rng.nextInt(-12, 24),
+      strength: 0.9 + rng.next() * 0.2,
+      blocksPath: false,
+    };
+  });
+}
+
+function buildV2Map({ seed, worldSize, teamSize, fallback = false }) {
+  const size = normalizedWorldSize();
+  const fixed = buildFixedGeometry(size, teamSize);
+  return {
+    version: 2,
     seed: Number(seed) || 0,
     templateId: TERRITORY_MAP_TEMPLATE_ID,
     worldSize: size,
-    safeBounds,
-    spawnAreas: [
-      { id: "spawn-A", allianceId: "A", center: point(size.width * 0.09, size.height * 0.86), radius: spawnRadius },
-      { id: "spawn-B", allianceId: "B", center: point(size.width * 0.91, size.height * 0.14), radius: spawnRadius },
-    ],
-    controlPoints: [
-      makeControlPoint("alpha", "A", size.width * 0.32, size.height * 0.68, 300, 220, { laneIndex: 0 }),
-      makeControlPoint("beta", "B", size.width * 0.5, size.height * 0.5, 300, 220, { laneIndex: 1 }),
-      makeControlPoint("gamma", "C", size.width * 0.68, size.height * 0.32, 300, 220, { laneIndex: 2 }),
-    ],
-    terrainRegions: [
-      {
-        id: "terrain-north",
-        type: "asteroid_belt",
-        shape: "circle",
-        center: point(size.width * 0.5, size.height * 0.24),
-        radius: 78,
-        blocksPath: false,
-      },
-      {
-        id: "terrain-mid",
-        type: "speed_lane",
-        shape: "capsule",
-        center: point(size.width * 0.5, size.height * 0.5),
-        length: Math.round(size.width * 0.32),
-        width: 78,
-        angle: 0,
-        blocksPath: false,
-      },
-      {
-        id: "terrain-south",
-        type: "gravity_mire",
-        shape: "circle",
-        center: point(size.width * 0.5, size.height * 0.76),
-        radius: 82,
-        blocksPath: false,
-      },
-    ],
-    resourceSpawnNodes: [
-      makeNode("res-common-a-north", size.width * 0.28, laneY[0], { rarity: "common", mirrorId: "res-common-b-north" }),
-      makeNode("res-common-b-north", size.width * 0.72, laneY[0], { rarity: "common", mirrorId: "res-common-a-north" }),
-      makeNode("res-common-a-south", size.width * 0.28, laneY[2], { rarity: "common", mirrorId: "res-common-b-south" }),
-      makeNode("res-common-b-south", size.width * 0.72, laneY[2], { rarity: "common", mirrorId: "res-common-a-south" }),
-      makeNode("res-rare-center", size.width * 0.5, size.height * 0.36, { rarity: "rare", radius: 38 }),
-      makeNode("res-rare-low", size.width * 0.5, size.height * 0.64, { rarity: "rare", radius: 38 }),
-    ],
-    skillSpawnNodes: [
-      makeNode("skill-north-mid", size.width * 0.5, size.height * 0.18, { radius: 40 }),
-      makeNode("skill-center-risk", size.width * 0.5, size.height * 0.5, { radius: 40 }),
-      makeNode("skill-south-mid", size.width * 0.5, size.height * 0.82, { radius: 40 }),
-    ],
-    lanes: [
-      { id: "southwest", from: "spawn-A", through: ["alpha"], to: "spawn-B" },
-      { id: "middle", from: "spawn-A", through: ["beta"], to: "spawn-B" },
-      { id: "northeast", from: "spawn-A", through: ["gamma"], to: "spawn-B" },
-    ],
-    fallback: true,
+    safeBounds: { x: 0, y: 0, width: size.width, height: size.height },
+    ...fixed,
+    terrainRegions: buildTerrainRegions(seed, fixed.terrainSlots),
+    fallback,
   };
 }
 
-function buildCandidateMap({ seed, worldSize, teamSize, attempt }) {
-  const size = normalizedWorldSize(worldSize);
-  const terrainRng = createSeededRng(seed).fork(`terrain:${attempt}`);
-  const nodeRng = createSeededRng(seed).fork(`nodes:${attempt}`);
-  const safe = buildSafeTemplate({ seed, worldSize: size, teamSize });
-  const controlPoints = safe.controlPoints.map((cp) => ({
-    ...cp,
-    center: { ...cp.center },
-    occupants: { A: [], B: [] },
-  }));
+function withinBounds(center, radius, bounds) {
+  return Boolean(center && bounds) && center.x - radius >= bounds.x && center.y - radius >= bounds.y
+    && center.x + radius <= bounds.x + bounds.width && center.y + radius <= bounds.y + bounds.height;
+}
 
-  const terrainTypes = terrainRng.shuffle(TERRAIN_TYPES).concat(terrainRng.pick(TERRAIN_TYPES));
-  const terrainRegions = safe.terrainRegions.map((region, index) => ({
-    ...region,
-    type: terrainTypes[index],
-    center: point(
-      region.center.x + terrainRng.nextInt(-45, 45),
-      region.center.y + terrainRng.nextInt(-34, 34),
-    ),
-    radius: region.radius ? region.radius + terrainRng.nextInt(-12, 14) : undefined,
-    length: region.length ? region.length + terrainRng.nextInt(-50, 50) : undefined,
-    width: region.width ? region.width + terrainRng.nextInt(-10, 12) : undefined,
-    angle: region.type === "speed_lane" ? 0 : region.angle,
-    blocksPath: false,
-  }));
+function axisDistance(value, start, end) {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return Math.abs(dx * (start.y - value.y) - (start.x - value.x) * dy) / length;
+}
 
-  if (terrainRng.next() > 0.55) {
-    terrainRegions.push({
-      id: "terrain-flank",
-      type: terrainRng.pick(TERRAIN_TYPES),
-      shape: "circle",
-      center: point(size.width * terrainRng.pick([0.38, 0.62]), size.height * terrainRng.pick([0.36, 0.64])),
-      radius: terrainRng.nextInt(48, 68),
-      blocksPath: false,
-    });
+function graphConnected(graph) {
+  const nodes = Array.isArray(graph?.nodes) ? graph.nodes : [];
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  if (!nodes.length || nodeIds.size !== nodes.length) return false;
+  const adjacency = new Map(nodes.map((node) => [node.id, []]));
+  for (const edge of graph?.edges || []) {
+    if (!nodeIds.has(edge.from) || !nodeIds.has(edge.to)) return false;
+    adjacency.get(edge.from).push(edge.to);
+    adjacency.get(edge.to).push(edge.from);
   }
+  const visited = new Set();
+  const queue = [nodes[0].id];
+  while (queue.length) {
+    const id = queue.shift();
+    if (visited.has(id)) continue;
+    visited.add(id);
+    queue.push(...adjacency.get(id).filter((next) => !visited.has(next)));
+  }
+  return visited.size === nodes.length;
+}
 
-  const resourceCandidates = [
-    [0.25, 0.3, "common", "north"],
-    [0.75, 0.3, "common", "north"],
-    [0.25, 0.7, "common", "south"],
-    [0.75, 0.7, "common", "south"],
-    [0.4, 0.5, "common", "middle-a"],
-    [0.6, 0.5, "common", "middle-b"],
-    [0.5, 0.35, "rare", "upper-center"],
-    [0.5, 0.65, "rare", "lower-center"],
-  ];
-  const resourceSpawnNodes = nodeRng.shuffle(resourceCandidates).map(([x, y, rarity, label], index) => {
-    const side = x < 0.5 ? "a" : x > 0.5 ? "b" : "center";
-    return makeNode(
-      `res-${rarity}-${side}-${label}`,
-      size.width * x + nodeRng.nextInt(-24, 24),
-      size.height * y + nodeRng.nextInt(-22, 22),
-      { rarity, radius: rarity === "rare" ? 38 : 34, order: index },
-    );
-  });
-
-  const skillSpawnNodes = [
-    makeNode("skill-north-mid", size.width * 0.5 + nodeRng.nextInt(-34, 34), size.height * 0.2, { radius: 40 }),
-    makeNode("skill-center-risk", size.width * 0.5 + nodeRng.nextInt(-24, 24), size.height * 0.5, { radius: 40 }),
-    makeNode("skill-south-mid", size.width * 0.5 + nodeRng.nextInt(-34, 34), size.height * 0.8, { radius: 40 }),
-  ];
-
-  return {
-    ...safe,
-    fallback: false,
-    controlPoints,
-    terrainRegions,
-    resourceSpawnNodes,
-    skillSpawnNodes,
-  };
+function validateUniqueIds(values, label, errors) {
+  const ids = new Set();
+  for (const value of values) {
+    if (!value?.id) errors.push(`${label} id missing`);
+    else if (ids.has(value.id)) errors.push(`duplicate ${label} id: ${value.id}`);
+    else ids.add(value.id);
+  }
 }
 
 export function validateTerritoryMap(map) {
+  if (!map || typeof map !== "object") return { valid: false, errors: ["map must be an object"] };
   const errors = [];
-  const bounds = map?.safeBounds;
-  if (!map || typeof map !== "object") {
-    return { valid: false, errors: ["map must be an object"] };
+  const bounds = map.safeBounds;
+  const obstacles = Array.isArray(map.obstacleRegions) ? map.obstacleRegions : [];
+  const spawns = Array.isArray(map.spawnAreas) ? map.spawnAreas : [];
+  const controls = Array.isArray(map.controlPoints) ? map.controlPoints : [];
+  const lanes = Array.isArray(map.laneCorridors) ? map.laneCorridors : [];
+  const connectors = Array.isArray(map.connectorCorridors) ? map.connectorCorridors : [];
+  const resources = Array.isArray(map.resourceSpawnNodes) ? map.resourceSpawnNodes : [];
+  const skills = Array.isArray(map.skillSpawnNodes) ? map.skillSpawnNodes : [];
+  const terrainSlots = Array.isArray(map.terrainSlots) ? map.terrainSlots : [];
+  const terrain = Array.isArray(map.terrainRegions) ? map.terrainRegions : [];
+  const graphNodes = Array.isArray(map.navigationGraph?.nodes) ? map.navigationGraph.nodes : [];
+  const graphEdges = Array.isArray(map.navigationGraph?.edges) ? map.navigationGraph.edges : [];
+  const rotationSize = map.worldSize?.width === REFERENCE_SIZE && map.worldSize?.height === REFERENCE_SIZE
+    ? map.worldSize
+    : { width: REFERENCE_SIZE, height: REFERENCE_SIZE };
+
+  if (map.version !== 2) errors.push("map version must be 2");
+  if (map.templateId !== TERRITORY_MAP_TEMPLATE_ID) errors.push(`unsupported template ${map.templateId}`);
+  if (map.worldSize?.width !== REFERENCE_SIZE || map.worldSize?.height !== REFERENCE_SIZE) errors.push("world size must be 2160");
+  if (!bounds || bounds.x !== 0 || bounds.y !== 0 || bounds.width !== REFERENCE_SIZE || bounds.height !== REFERENCE_SIZE) {
+    errors.push("safe bounds must cover the 2160 world");
   }
-  if (map.templateId !== TERRITORY_MAP_TEMPLATE_ID) {
-    errors.push(`unsupported template ${map.templateId}`);
+  if (spawns.length !== 2) errors.push("expected two spawn areas");
+  if (controls.length !== 3) errors.push("expected three control points");
+  if (lanes.map((lane) => lane.id).join(",") !== LANE_IDS.join(",")) errors.push("expected top,mid,bottom lane corridors");
+  if (connectors.length !== CONNECTOR_IDS.length) errors.push("expected six fixed connectors");
+  if (obstacles.length < 4 || obstacles.length > 6) errors.push("expected 4-6 obstacle regions");
+  if (terrainSlots.length !== 5) errors.push("expected five terrain slots");
+  if (terrain.length < 3 || terrain.length > 5) errors.push("expected 3-5 terrain regions");
+
+  validateUniqueIds(spawns, "spawn", errors);
+  validateUniqueIds(controls, "control", errors);
+  validateUniqueIds(lanes, "lane", errors);
+  validateUniqueIds(connectors, "connector", errors);
+  validateUniqueIds(obstacles, "obstacle", errors);
+  validateUniqueIds(graphNodes, "navigation node", errors);
+  validateUniqueIds(graphEdges, "navigation edge", errors);
+  validateUniqueIds(resources, "resource node", errors);
+  validateUniqueIds(skills, "skill node", errors);
+
+  for (const expected of SPAWN_LAYOUT) {
+    const spawn = spawns.find((candidate) => candidate.id === expected.id);
+    if (!spawn) {
+      errors.push(`required spawn missing: ${expected.id}`);
+      continue;
+    }
+    if (spawn.allianceId !== expected.allianceId || !pointsEqual(spawn.center, point(expected.x, expected.y))) {
+      errors.push(`spawn layout mismatch: ${expected.id}`);
+    }
   }
-  if (!bounds || !Number.isFinite(bounds.width) || !Number.isFinite(bounds.height)) {
-    errors.push("safe bounds missing");
+  if (spawns.length === 2 && Number(spawns[0].radius) !== Number(spawns[1].radius)) errors.push("spawn radii must be rotationally paired");
+
+  for (const expected of CONTROL_LAYOUT) {
+    const control = controls.find((candidate) => candidate.id === expected.id);
+    if (!control) {
+      errors.push(`required control missing: ${expected.id}`);
+      continue;
+    }
+    if (
+      control.laneId !== expected.laneId
+      || !pointsEqual(control.center, point(expected.x, expected.y))
+      || Number(control.width) !== expected.width
+      || Number(control.height) !== expected.height
+      || Number(control.x) !== expected.x - expected.width / 2
+      || Number(control.y) !== expected.y - expected.height / 2
+    ) {
+      errors.push(`control layout mismatch: ${expected.id}`);
+    }
   }
 
-  const spawnAreas = Array.isArray(map.spawnAreas) ? map.spawnAreas : [];
-  const controlPoints = Array.isArray(map.controlPoints) ? map.controlPoints : [];
-  const resourceNodes = Array.isArray(map.resourceSpawnNodes) ? map.resourceSpawnNodes : [];
-  const skillNodes = Array.isArray(map.skillSpawnNodes) ? map.skillSpawnNodes : [];
-  const terrainRegions = Array.isArray(map.terrainRegions) ? map.terrainRegions : [];
+  const connectorIds = new Set(connectors.map((connector) => connector.id));
+  for (const id of CONNECTOR_IDS) {
+    if (!connectorIds.has(id)) errors.push(`required connector missing: ${id}`);
+  }
+  if (connectors.filter((connector) => connector.risk === true).length !== 2) errors.push("expected two risk connectors");
 
-  if (spawnAreas.length !== 2) errors.push("expected two spawn areas");
-  if (controlPoints.length !== 3) errors.push("expected three control points");
-  if (!resourceNodes.some((node) => node.rarity === "common")) errors.push("missing common resource node");
-  if (!resourceNodes.some((node) => node.rarity === "rare")) errors.push("missing rare resource node");
-  if (skillNodes.length < 2) errors.push("expected at least two skill nodes");
-  if (terrainRegions.length < 3 || terrainRegions.length > 4) errors.push("expected 3-4 terrain regions");
+  for (const obstacle of obstacles) {
+    if (!["polygon", "compound"].includes(obstacle.shape)) errors.push(`invalid obstacle shape: ${obstacle.id}`);
+    if (!obstacle.blocksMovement || !obstacle.blocksProjectiles || !obstacle.blocksBeam) errors.push(`obstacle flags invalid: ${obstacle.id}`);
+    const mirror = obstacles.find((candidate) => candidate.id === obstacle.mirrorId);
+    if (!obstacle.mirrorId || !mirror) errors.push(`obstacle mirror missing: ${obstacle.id}`);
+    else if (mirror.mirrorId !== obstacle.id || !obstacleMatchesRotation(obstacle, mirror, rotationSize)) {
+      errors.push(`obstacle rotation mismatch: ${obstacle.id}/${obstacle.mirrorId}`);
+    }
+  }
 
-  const circularNodes = [...spawnAreas, ...resourceNodes, ...skillNodes];
-  for (const node of circularNodes) {
-    if (!node?.id) errors.push("node id missing");
+  const fixedNodes = [...spawns, ...resources, ...skills, ...terrainSlots];
+  for (const node of fixedNodes) {
     if (!node?.center || !Number.isFinite(node.center.x) || !Number.isFinite(node.center.y)) {
       errors.push(`${node?.id || "node"} center invalid`);
       continue;
     }
-    const radius = Number(node.radius) || 0;
-    if (radius <= 0) errors.push(`${node.id} radius invalid`);
-    if (bounds && !withinBounds(node.center, radius, bounds)) {
-      errors.push(`${node.id} outside safe bounds`);
+    const radius = Math.max(1, Number(node.radius) || 1);
+    if (bounds && !withinBounds(node.center, radius, bounds)) errors.push(`${node.id} outside safe bounds`);
+    if (!positionClearOfObstacles(node.center, radius, obstacles)) errors.push(`${node.id} inside obstacle`);
+  }
+
+  for (const control of controls) {
+    if (!control?.center || control.shape !== "rect") errors.push(`${control?.id || "control"} invalid`);
+    if (!LANE_IDS.includes(control?.laneId)) errors.push(`${control?.id || "control"} lane invalid`);
+    if (!control.occupants || !Array.isArray(control.occupants.A) || !Array.isArray(control.occupants.B)) errors.push(`${control?.id || "control"} occupants invalid`);
+    const radius = Math.max(Number(control.width) || 0, Number(control.height) || 0) / 2;
+    if (control.center && !positionClearOfObstacles(control.center, radius, obstacles)) errors.push(`${control.id} inside obstacle`);
+  }
+
+  if (spawns.length === 2) {
+    if (!firstObstacleHit(spawns[0].center, spawns[1].center, obstacles, 0)) errors.push("A-to-B line must be blocked");
+    if (controls.length === 3 && controls.every((control) => axisDistance(control.center, spawns[0].center, spawns[1].center) < 1)) {
+      errors.push("control points remain on A-to-B diagonal");
     }
   }
 
-  for (const point of controlPoints) {
-    if (!point?.id) errors.push("control point id missing");
-    if (!point?.center || !Number.isFinite(point.center.x) || !Number.isFinite(point.center.y)) {
-      errors.push(`${point?.id || "control point"} center invalid`);
+  for (const lane of lanes) {
+    if (!Array.isArray(lane.path) || lane.path.length < 4 || Number(lane.width) < 300) errors.push(`lane corridor invalid: ${lane.id}`);
+  }
+  for (const expected of LANE_LAYOUT) {
+    const lane = lanes.find((candidate) => candidate.id === expected.id);
+    if (!lane || lane.width !== expected.width || !pathsEqual(lane.path, expected.path)) {
+      errors.push(`lane layout mismatch: ${expected.id}`);
+    }
+  }
+  for (const connector of connectors) {
+    const pathValid = Array.isArray(connector.path)
+      && connector.path.length >= 2
+      && connector.path.every((value) => Number.isFinite(value?.x) && Number.isFinite(value?.y));
+    if (!pathValid || connector.fromLaneId === connector.toLaneId) errors.push(`connector invalid: ${connector.id}`);
+    const mirror = connectors.find((candidate) => candidate.id === connector.mirrorId);
+    if (!connector.mirrorId || !mirror) errors.push(`connector mirror missing: ${connector.id}`);
+    else if (pathValid && !connectorMatchesRotation(connector, mirror, rotationSize)) {
+      errors.push(`connector rotation mismatch: ${connector.id}/${connector.mirrorId}`);
+    }
+  }
+  for (const expected of CONNECTOR_LAYOUT) {
+    const connector = connectors.find((candidate) => candidate.id === expected.id);
+    if (
+      !connector
+      || connector.mirrorId !== expected.mirrorId
+      || connector.fromLaneId !== expected.fromLaneId
+      || connector.toLaneId !== expected.toLaneId
+      || connector.width !== expected.width
+      || connector.risk !== expected.risk
+      || !pathsEqual(connector.path, expected.path)
+    ) {
+      errors.push(`connector layout mismatch: ${expected.id}`);
+    }
+  }
+
+  const graphById = new Map(graphNodes.map((node) => [node.id, node]));
+  const graphNodeIds = new Set(graphNodes.map((node) => node.id));
+  const graphEdgeIds = new Set(graphEdges.map((edge) => edge.id));
+  if (graphNodes.length !== NAVIGATION_NODE_IDS.length) errors.push(`navigation node count mismatch: ${graphNodes.length}`);
+  if (graphEdges.length !== NAVIGATION_EDGE_IDS.length) errors.push(`navigation edge count mismatch: ${graphEdges.length}`);
+  for (const id of NAVIGATION_NODE_IDS) {
+    if (!graphNodeIds.has(id)) errors.push(`required navigation node missing: ${id}`);
+  }
+  for (const id of NAVIGATION_EDGE_IDS) {
+    if (!graphEdgeIds.has(id)) errors.push(`required navigation edge missing: ${id}`);
+  }
+  if (!graphConnected(map.navigationGraph)) errors.push("navigation graph disconnected");
+  for (const node of graphNodes) {
+    if (!node?.center || !Number.isFinite(node.center.x) || !Number.isFinite(node.center.y)) {
+      errors.push(`${node?.id || "navigation node"} center invalid`);
       continue;
     }
-    if (point.shape !== "rect") errors.push(`${point.id} shape must be rect`);
-    const width = Number(point.width) || 0;
-    const height = Number(point.height) || 0;
-    if (width < 280 || width > 340) errors.push(`${point.id} width invalid`);
-    if (height < 200 || height > 260) errors.push(`${point.id} height invalid`);
-    if (!point.occupants || !Array.isArray(point.occupants.A) || !Array.isArray(point.occupants.B)) {
-      errors.push(`${point.id} occupants invalid`);
-    }
-    if (bounds) {
-      const left = Number(point.x ?? point.center.x - width / 2);
-      const top = Number(point.y ?? point.center.y - height / 2);
-      if (
-        left < bounds.x ||
-        top < bounds.y ||
-        left + width > bounds.x + bounds.width ||
-        top + height > bounds.y + bounds.height
-      ) {
-        errors.push(`${point.id} outside safe bounds`);
-      }
-    }
+    if (!positionClearOfObstacles(node.center, Number(node.clearance) || 24, obstacles)) errors.push(`navigation node blocked: ${node.id}`);
+  }
+  for (const edge of graphEdges) {
+    const from = graphById.get(edge.from)?.center;
+    const to = graphById.get(edge.to)?.center;
+    if (!from || !to) continue;
+    if (firstObstacleHit(from, to, obstacles, Number(edge.clearance) || 18)) errors.push(`navigation edge blocked: ${edge.id}`);
   }
 
-  for (const spawn of spawnAreas) {
-    for (const cp of controlPoints) {
-      if (circleRectOverlap(spawn, cp, 28)) {
-        errors.push(`spawn overlaps control: ${spawn.id}/${cp.id}`);
-      }
-    }
-    for (const node of resourceNodes) {
-      if (circleOverlap(spawn, node, 12)) {
-        errors.push(`spawn contains resource: ${spawn.id}/${node.id}`);
-      }
-    }
+  for (const laneId of LANE_IDS) {
+    if (resources.filter((node) => node.rarity === "common" && node.laneId === laneId).length !== 2) errors.push(`common resource distribution invalid: ${laneId}`);
   }
+  if (!resources.some((node) => node.rarity === "rare" && node.regionId === "upper-wild")) errors.push("upper wild rare resource missing");
+  if (!resources.some((node) => node.rarity === "rare" && node.regionId === "lower-wild")) errors.push("lower wild rare resource missing");
+  if (new Set(skills.map((node) => node.regionId)).size !== 5) errors.push("skill strategy groups incomplete");
 
-  for (let i = 0; i < controlPoints.length; i += 1) {
-    for (let j = i + 1; j < controlPoints.length; j += 1) {
-      if (distance(controlPoints[i].center, controlPoints[j].center) < 180) {
-        errors.push(`control points too close: ${controlPoints[i].id}/${controlPoints[j].id}`);
-      }
-    }
-  }
-
-  for (let i = 0; i < resourceNodes.length; i += 1) {
-    for (let j = i + 1; j < resourceNodes.length; j += 1) {
-      if (nodeCollides(resourceNodes[i], [resourceNodes[j]], 6)) {
-        errors.push(`resource overlap: ${resourceNodes[i].id}/${resourceNodes[j].id}`);
-      }
-    }
-  }
-  for (let i = 0; i < skillNodes.length; i += 1) {
-    for (let j = i + 1; j < skillNodes.length; j += 1) {
-      if (nodeCollides(skillNodes[i], [skillNodes[j]], 6)) {
-        errors.push(`skill overlap: ${skillNodes[i].id}/${skillNodes[j].id}`);
-      }
-    }
-  }
-
-  const allowedTerrain = new Set(TERRAIN_TYPES);
-  for (const region of terrainRegions) {
-    if (!allowedTerrain.has(region.type)) errors.push(`invalid terrain type: ${region.type}`);
+  for (const region of terrain) {
+    if (!TERRAIN_TYPES.includes(region.type)) errors.push(`invalid terrain type: ${region.type}`);
     if (region.blocksPath) errors.push(`terrain blocks path: ${region.id}`);
-    if (bounds && region.center && !withinBounds(region.center, Number(region.radius || region.width || 40), bounds)) {
-      errors.push(`terrain outside safe bounds: ${region.id}`);
-    }
+    if (!region.center || (bounds && !withinBounds(region.center, Number(region.radius || region.width || 40), bounds))) errors.push(`terrain outside safe bounds: ${region.id}`);
   }
 
-  const laneCount = Array.isArray(map.lanes) ? map.lanes.length : 0;
-  if (laneCount < 3) errors.push("key lanes unreachable");
-
-  return {
-    valid: errors.length === 0,
-    errors,
-  };
+  return { valid: errors.length === 0, errors };
 }
 
 export function generateTerritoryMap({
@@ -370,18 +639,9 @@ export function generateTerritoryMap({
   templateId = TERRITORY_MAP_TEMPLATE_ID,
   worldSize = null,
   teamSize = 1,
-  maxAttempts = 8,
 } = {}) {
-  if (templateId !== TERRITORY_MAP_TEMPLATE_ID) {
-    return buildSafeTemplate({ seed, worldSize, teamSize });
-  }
-
-  const attempts = Math.max(1, Math.floor(Number(maxAttempts) || 1));
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const candidate = buildCandidateMap({ seed, worldSize, teamSize, attempt });
-    if (validateTerritoryMap(candidate).valid) {
-      return candidate;
-    }
-  }
-  return buildSafeTemplate({ seed, worldSize, teamSize });
+  const fallback = templateId !== TERRITORY_MAP_TEMPLATE_ID;
+  const map = buildV2Map({ seed, worldSize, teamSize, fallback });
+  if (validateTerritoryMap(map).valid) return map;
+  return buildV2Map({ seed: 0, worldSize, teamSize, fallback: true });
 }

@@ -14,6 +14,7 @@ function assert(condition, message) {
 function makeSimulation() {
   return new MatchSimulation({
     mode: "ai",
+    worldSize: stellarTerritoryMode.worldSize,
     teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
     aiSeats: ["B"],
     victoryPolicy: "external",
@@ -30,6 +31,7 @@ function makeThreeVsThreeSimulation() {
   };
   return new MatchSimulation({
     mode: "ai",
+    worldSize: stellarTerritoryMode.worldSize,
     teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
     aiSeats: ["A1", "A2", "A3", "B1", "B2", "B3"],
     victoryPolicy: "external",
@@ -283,18 +285,9 @@ sim = makeThreeVsThreeSimulation();
 for (const seat of ["A1", "A2", "A3"]) {
   chooseTerritoryAiAction({ seat, simulation: sim, modeState: state });
 }
-const allianceSpawn = state.map.spawnAreas.find((area) => area.allianceId === "A");
-const openingPoints = [...state.map.controlPoints];
-const nearOpeningPoint = openingPoints.sort((a, b) => (
-  Math.hypot(a.center.x - allianceSpawn.center.x, a.center.y - allianceSpawn.center.y)
-  - Math.hypot(b.center.x - allianceSpawn.center.x, b.center.y - allianceSpawn.center.y)
-))[0];
-const centerOpeningPoint = [...state.map.controlPoints].sort((a, b) => (
-  Math.hypot(a.center.x - sim.worldSize / 2, a.center.y - sim.worldSize / 2)
-  - Math.hypot(b.center.x - sim.worldSize / 2, b.center.y - sim.worldSize / 2)
-))[0];
-assert(state.aiCoordinator.A.assignments.A1.targetId === nearOpeningPoint.id, "opening seat A1 should take the alliance-near control point");
-assert(state.aiCoordinator.A.assignments.A2.targetId === centerOpeningPoint.id, "opening seat A2 should contest the center control point");
+assert(state.aiCoordinator.A.assignments.A1.objectiveType === "capture_control_point", "opening seat A1 should take a neutral capture task");
+assert(state.aiCoordinator.A.assignments.A2.objectiveType === "capture_control_point", "opening seat A2 should take a second neutral capture task");
+assert(state.aiCoordinator.A.assignments.A1.targetId !== state.aiCoordinator.A.assignments.A2.targetId, "neutral capture capacity should distribute A1 and A2");
 assert(["collect_resource", "collect_skill", "attack_enemy", "defend_control_point"].includes(state.aiCoordinator.A.assignments.A3.objectiveType), "opening seat A3 should support or seek pickups rather than duplicate a neutral capture");
 
 state = makeState(6464);

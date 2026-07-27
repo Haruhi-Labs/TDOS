@@ -2028,6 +2028,15 @@ button.toggle-active {
     overflow: hidden;
   }
   .battle-shell .battle-panel { display: none; }
+  .prototype-shell.has-dev-panel {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+  .prototype-shell.has-dev-panel .game-wrap {
+    flex: 0 0 auto;
+    min-height: calc(100dvh - 16px);
+  }
   .battle-shell .game-wrap {
     order: 0;
     flex: 1 1 auto;

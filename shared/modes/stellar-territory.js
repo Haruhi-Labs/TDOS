@@ -82,8 +82,8 @@ export const STELLAR_TERRITORY_PARAMETER_SCHEMA = Object.freeze([
     key: "mapTemplate",
     label: "地图模板",
     type: "select",
-    default: "three-lane-v1",
-    options: [{ value: "three-lane-v1", label: "三路争夺" }],
+    default: "three-lane-v2",
+    options: [{ value: "three-lane-v2", label: "三路争夺 V2" }],
   },
 ]);
 
@@ -94,7 +94,7 @@ export const STELLAR_TERRITORY_DEFAULT_PARAMETERS = Object.freeze({
   rareResourceSpawnSeconds: 120,
   skillSpawnInterval: 75,
   respawnEnabled: true,
-  mapTemplate: "three-lane-v1",
+  mapTemplate: "three-lane-v2",
 });
 
 function normalizeSeed(randomSeed) {
@@ -164,6 +164,8 @@ export const stellarTerritoryMode = {
   description: "资源、控制区、战术技能与复活驱动的星域争夺 Prototype 骨架。",
   status: MODE_STATUS.EXPERIMENTAL,
   version: 1,
+  worldSize: 2160,
+  supportedWorldSizes: Object.freeze([2160]),
   parameterSchema: STELLAR_TERRITORY_PARAMETER_SCHEMA,
   defaultParameters: STELLAR_TERRITORY_DEFAULT_PARAMETERS,
 
@@ -171,7 +173,7 @@ export const stellarTerritoryMode = {
     const initialTickets = Number(parameters.initialTickets) || STELLAR_TERRITORY_DEFAULT_PARAMETERS.initialTickets;
     const seed = normalizeSeed(randomSeed);
     return {
-      version: 1,
+      version: 2,
       seed,
       phase: "opening",
       elapsed: 0,

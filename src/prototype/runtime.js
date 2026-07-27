@@ -17,6 +17,22 @@ function normalizeRandomSeed(value) {
   return Number.isFinite(seed) ? Math.trunc(seed) >>> 0 : null;
 }
 
+function normalizeWorldSize(value) {
+  const size = Number(value);
+  return Number.isFinite(size) && size > 0 ? size : null;
+}
+
+function assertWorldSizeSupported(modeDefinition, worldSize) {
+  if (!Array.isArray(modeDefinition?.supportedWorldSizes)) return;
+  const supported = modeDefinition.supportedWorldSizes
+    .map(normalizeWorldSize)
+    .filter((size, index, values) => size != null && values.indexOf(size) === index);
+  if (!supported.length || supported.includes(worldSize)) return;
+  throw new RangeError(
+    `mode ${modeDefinition.id || "unknown"} does not support world size ${worldSize}; supported: ${supported.join(", ")}`,
+  );
+}
+
 export function createPrototypeRandomSeed() {
   const values = new Uint32Array(1);
   if (globalThis.crypto?.getRandomValues) {
@@ -99,12 +115,18 @@ export function createPrototypeRuntime({
   modeParameters = null,
   randomSeed = null,
   randomSeedFactory = createPrototypeRandomSeed,
-  worldSize = DEFAULT_WORLD_SIZE,
+  worldSize = null,
   aiDifficulty = "normal",
 } = {}) {
   if (!modeDefinition) {
     throw new Error("createPrototypeRuntime requires modeDefinition");
   }
+
+  const resolvedWorldSize = normalizeWorldSize(worldSize)
+    ?? normalizeWorldSize(runtimePreset?.worldSize)
+    ?? normalizeWorldSize(modeDefinition?.worldSize)
+    ?? DEFAULT_WORLD_SIZE;
+  assertWorldSizeSupported(modeDefinition, resolvedWorldSize);
 
   function allocateRandomSeed(previousSeed = null) {
     const generated = normalizeRandomSeed(randomSeedFactory?.());
@@ -137,7 +159,7 @@ export function createPrototypeRuntime({
       A: normalizeLoadout(teamLoadouts.A || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT),
       B: normalizeLoadout(teamLoadouts.B || DEFAULT_AI_LOADOUT, DEFAULT_AI_LOADOUT),
     },
-    worldSize,
+    worldSize: resolvedWorldSize,
     aiDifficulty,
     controlA: runtimePreset.controlA || "human",
     controlB: runtimePreset.controlB || "ai",

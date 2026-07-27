@@ -316,7 +316,11 @@ assert(mapA.connectorCorridors.length >= 4, "at least four cross-lane connectors
 assert(mapA.obstacleRegions.length >= 4 && mapA.obstacleRegions.length <= 6, "four to six hard obstacle groups");
 assert(mapA.navigationGraph.nodes.length > 12 && mapA.navigationGraph.edges.length > 12, "navigation graph covers strategic nodes");
 assert(firstObstacleHit(spawnA.center, spawnB.center, mapA.obstacleRegions, 0), "base-to-base line must be blocked");
-assert(!collinear(mapA.controlPoints.map((point) => point.center)), "control points must not share one diagonal");
+assert(!allPointsOnSegmentAxis(
+  mapA.controlPoints.map((point) => point.center),
+  spawnA.center,
+  spawnB.center,
+), "control points must not all remain on the A-to-B diagonal");
 ```
 
 For seeds 1 through 1000, assert the fixed topology arrays are identical, `validateTerritoryMap()` is valid, every graph node is obstacle-clear, every graph edge is clear, and all required graph nodes are connected.
@@ -373,7 +377,7 @@ Only terrain types, bounded field offsets, field radii, and strength may consume
 
 - [ ] **Step 4: Strengthen map validation**
 
-Validate exact counts/IDs, rotational pairs, lane membership, connector count, obstacle clearance for all spawns/control/resource/skill/terrain slots, graph edge clearance, graph connectivity, and blocked A-to-B line. Unsupported templates return the deterministic V2 safe map.
+Validate exact counts/IDs, rotational pairs, lane membership, connector count, that the control points do not all remain on the A-to-B diagonal, obstacle clearance for all spawns/control/resource/skill/terrain slots, graph edge clearance, graph connectivity, and blocked A-to-B line. Unsupported templates return the deterministic V2 safe map.
 
 - [ ] **Step 5: Verify GREEN**
 

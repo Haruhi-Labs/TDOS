@@ -1042,15 +1042,18 @@ async function main() {
     const worldSize = territoryState?.map?.worldSize;
     assert(controlPoints.length === 3, `expected three real control points: ${JSON.stringify(controlPoints)}`);
     assert(worldSize?.width > 0 && worldSize?.height > 0, `territory world size missing: ${JSON.stringify(worldSize)}`);
-    const expectedControlRatios = [[0.32, 0.68], [0.5, 0.5], [0.68, 0.32]];
+    const expectedControls = [
+      ["control-top", 860, 330, 340, 240],
+      ["control-mid", 1080, 1080, 360, 260],
+      ["control-bottom", 1300, 1830, 340, 240],
+    ];
     for (let index = 0; index < controlPoints.length; index += 1) {
       const point = controlPoints[index];
-      const [xRatio, yRatio] = expectedControlRatios[index];
+      const [id, x, y, width, height] = expectedControls[index];
+      assert(point.id === id, `control point ${index} id should be ${id}: ${point.id}`);
       assert(point.shape === "rect", `control point ${point.id} should be rectangular`);
-      assert(point.width >= 280 && point.width <= 340, `control point ${point.id} width should be large: ${point.width}`);
-      assert(point.height >= 200 && point.height <= 260, `control point ${point.id} height should be large: ${point.height}`);
-      assert(Math.abs(point.center.x / worldSize.width - xRatio) < 0.002, `control point ${point.id} x should be fixed`);
-      assert(Math.abs(point.center.y / worldSize.height - yRatio) < 0.002, `control point ${point.id} y should be fixed`);
+      assert(point.center.x === x && point.center.y === y, `control point ${point.id} position should be fixed: ${JSON.stringify(point.center)}`);
+      assert(point.width === width && point.height === height, `control point ${point.id} size should be fixed: ${point.width}x${point.height}`);
     }
     const realTerrainTypes = new Set((territoryState?.map?.terrainRegions || []).map((region) => region.type));
     for (const terrainType of ["asteroid_belt", "speed_lane", "gravity_mire"]) {
@@ -1123,6 +1126,27 @@ async function main() {
       return inspection?.camera?.centerX > 1440 && inspection?.camera?.centerY > 1440 ? inspection : null;
     }, 3000);
     assert(expandedCamera.camera.centerX <= 2160 && expandedCamera.camera.centerY <= 2160, `minimap navigation should remain inside the 2160 world: ${JSON.stringify(expandedCamera)}`);
+    const routeBeforeMinimapRightClick = await page.evaluate(() => {
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
+      runtime?.applyAction?.({ type: "clear_route", shipKey: "main" }, "A1");
+      return JSON.stringify(runtime?.getSimulation?.()?.fleetBySeat?.("A1")?.shipByKey?.("main")?.route);
+    });
+    assert(routeBeforeMinimapRightClick === "null", `minimap right-click fixture should start without a route: ${routeBeforeMinimapRightClick}`);
+    await canvas.click({
+      button: "right",
+      position: {
+        x: canvasBox.width * ((viewInspection.minimapRect.x + viewInspection.minimapRect.width * 0.5) / 1440),
+        y: canvasBox.height * ((viewInspection.minimapRect.y + viewInspection.minimapRect.height * 0.5) / 1440),
+      },
+    });
+    const routeAfterMinimapRightClick = await page.evaluate(() => {
+      const runtime = window.__TDOS_PROTOTYPE_RUNTIME__;
+      return JSON.stringify(runtime?.getSimulation?.()?.fleetBySeat?.("A1")?.shipByKey?.("main")?.route);
+    });
+    assert(
+      routeAfterMinimapRightClick === routeBeforeMinimapRightClick,
+      `right-clicking the minimap must not issue a route: ${JSON.stringify({ routeBeforeMinimapRightClick, routeAfterMinimapRightClick })}`,
+    );
     await canvas.click({
       position: {
         x: canvasBox.width * ((viewInspection.minimapRect.x + viewInspection.minimapRect.width * (viewInspection.localShip.x / 2160)) / 1440),
@@ -1670,6 +1694,45 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 844 });
     await eventually(async () => page.evaluate(() => window.matchMedia("(max-width: 980px)").matches), 3000);
     await wait(180);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    const mobileMinimapHit = await page.evaluate(() => {
+      const surface = document.querySelector("#gameCanvas");
+      const inspection = window.__TDOS_PROTOTYPE_INSPECT__?.();
+      const minimap = inspection?.minimapRect;
+      if (!surface || !minimap) return null;
+      const bounds = surface.getBoundingClientRect();
+      const clientX = bounds.left + bounds.width * ((minimap.x + minimap.width * 0.9) / 1440);
+      const clientY = bounds.top + bounds.height * ((minimap.y + minimap.height * 0.9) / 1440);
+      const hit = document.elementFromPoint(clientX, clientY);
+      const hudBounds = document.querySelector("#mobileBattleHud")?.getBoundingClientRect();
+      const rect = (value) => value ? {
+        left: value.left,
+        top: value.top,
+        right: value.right,
+        bottom: value.bottom,
+        width: value.width,
+        height: value.height,
+      } : null;
+      return {
+        clientX,
+        clientY,
+        inViewport: clientX >= 0 && clientX <= innerWidth && clientY >= 0 && clientY <= innerHeight,
+        hitsCanvas: hit === surface,
+        hit: hit ? { tag: hit.tagName, id: hit.id, className: String(hit.className || "") } : null,
+        canvasBounds: rect(bounds),
+        hudBounds: rect(hudBounds),
+        camera: inspection.camera,
+      };
+    });
+    assert(
+      mobileMinimapHit?.inViewport && mobileMinimapHit?.hitsCanvas,
+      `mobile minimap should be CSS-visible and pointer-accessible: ${JSON.stringify(mobileMinimapHit)}`,
+    );
+    await page.mouse.click(mobileMinimapHit.clientX, mobileMinimapHit.clientY);
+    await eventually(async () => {
+      const inspection = await page.evaluate(() => window.__TDOS_PROTOTYPE_INSPECT__?.());
+      return inspection?.camera?.centerX > 1440 && inspection?.camera?.centerY > 1440;
+    }, 3000);
     await setPlayerTacticalSkill("all_fleet_shield");
     const mobileTacticalButton = page.locator("#mobileTacticalSkillBtn");
     assert(await mobileTacticalButton.isVisible(), "territory mobile tactical button should be visible");
