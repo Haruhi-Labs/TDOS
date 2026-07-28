@@ -5,6 +5,7 @@ import {
   EMERGENCY_BRAKE_COST,
   MANUAL_SCOUT_COOLDOWN,
   MatchSimulation,
+  SCOUT_LAUNCH_COST,
   THROTTLE_GEAR_VALUES,
   TICK_DT,
   energyRateForThrottle,
@@ -1150,6 +1151,7 @@ function aiWoundedDetachedRetreatCheck() {
 
   assert(sub1TargetDist > mainTargetDist + 48, "残血副舰未明显后撤到主舰后方");
   assert(sub1TargetDist > sub2TargetDist + 36, "残血副舰未比健康副舰保持更安全距离");
+  assert(sub1.throttle === throttleForGear(1), "低能残血副舰后撤时未降至前进1档回能");
 }
 
 function aiSectorEncirclementCheck() {
@@ -1331,7 +1333,11 @@ function aiOverwhelmedEscapeCheck() {
   const targetDist = Math.hypot(sub1.route.p2.x - enemyCenterX, sub1.route.p2.y - enemyCenterY);
 
   assert(targetDist > startDist + 90, "AI被围攻副舰未明显朝远离双火力源的方向脱困");
-  assert(sub1.throttle >= 1.02, "AI被围攻副舰脱困时未提升推进输出");
+  assert(sub1.throttle === throttleForGear(2), "AI被围攻副舰在低能量时未限制到前进2档");
+  assert(
+    energyRateForThrottle(sub1.baseEnergyRegen(), sub1.moveEnergyDrain(), sub1.throttle) > 0,
+    "AI被围攻副舰降档后仍无法回能",
+  );
 
   bot.scoutTimer = 10;
   bot.update(TICK_DT, sim.elapsed + TICK_DT);
@@ -1376,7 +1382,80 @@ function aiEnergyRecoveryModeCheck() {
   bot.issueMovement(context);
 
   assert(bot.mode === "harvest", "AI低能且无紧急接敌时未进入回能模式");
-  assert(aiMain.route && aiMain.throttle <= 0.82, "AI低能回能时主舰油门仍过高");
+  assert(aiMain.route && aiMain.throttle === throttleForGear(1), "AI低能回能时主舰未降至前进1档");
+  const beforeRecovery = aiTeam.availableEnergyForShip(aiMain);
+  aiTeam.updateEnergy(3);
+  assert(aiTeam.availableEnergyForShip(aiMain) > beforeRecovery + 20, "AI降档后舰队能量未明显恢复");
+}
+
+function aiEnergyThrottleHysteresisCheck() {
+  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const aiMain = aiTeam.ships.main;
+  const setFleetEnergyRatio = (ratio) => {
+    for (const ship of aiTeam.getAllShips()) {
+      ship.energy = ship.maxEnergy * ratio;
+    }
+  };
+
+  setFleetEnergyRatio(0.75);
+  aiMain.throttle = throttleForGear(3);
+  assert(bot.energyThrottleGearCap(aiMain) === 4, "AI能量充裕时未允许启动前进4档");
+
+  setFleetEnergyRatio(0.6);
+  aiMain.throttle = throttleForGear(3);
+  assert(bot.energyThrottleGearCap(aiMain) === 3, "AI能量不足启动阈值时仍会新开前进4档");
+  aiMain.throttle = throttleForGear(4);
+  assert(bot.energyThrottleGearCap(aiMain) === 4, "AI前进4档迟滞区间未能稳定保持档位");
+
+  setFleetEnergyRatio(0.5);
+  bot.enforceEnergyThrottleCaps();
+  assert(aiMain.throttle === throttleForGear(3), "AI前进4档降至退出阈值后未及时回到前进3档");
+
+  setFleetEnergyRatio(0.75);
+  aiMain.throttle = throttleForGear(4);
+  let minimumRatio = 1;
+  for (let i = 0; i < 30 / TICK_DT; i += 1) {
+    aiTeam.updateEnergy(TICK_DT);
+    bot.enforceEnergyThrottleCaps();
+    minimumRatio = Math.min(minimumRatio, bot.energyProfile(aiMain).ratio);
+  }
+  assert(minimumRatio > 0.49, "AI持续航行仍会把舰队能量耗尽");
+  assert(bot.energyProfile(aiMain).ratio > minimumRatio, "AI降档后未能自动恢复舰队能量");
+}
+
+function aiScoutEnergyReserveCheck() {
+  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const enemyMain = sim.teamA.ships.main;
+
+  aiTeam.split(1);
+  const scoutSource = aiTeam.ships.sub1;
+  scoutSource.x = 620;
+  scoutSource.y = 720;
+  scoutSource.command.x = scoutSource.x;
+  scoutSource.command.y = scoutSource.y;
+  scoutSource.route = null;
+  scoutSource.energy = SCOUT_LAUNCH_COST + scoutSource.maxEnergy * 0.08;
+  bot.scoutTimer = 0;
+  enemyMain.x = scoutSource.x - 60;
+  enemyMain.y = scoutSource.y;
+  bot.rememberContact(enemyMain, "visible");
+  const context = bot.buildTacticalContext(aiTeam.ships.main, bot.selectEnemyFocus(aiTeam.ships.main));
+  const zoneId = bot.pickScoutZoneId(aiTeam.ships.main, context.focus);
+  const sourceKey = bot.pickScoutSourceKey(zoneId, context.focus);
+
+  assert(sourceKey === "sub1", "侦察能量预算回归未命中低能分离副舰");
+  assert(
+    !bot.allowEnergyCommit(sourceKey, SCOUT_LAUNCH_COST, context, {
+      emergencyFloor: 0.12,
+      normalFloor: 0.18,
+      conserveFloor: 0.28,
+    }),
+    "AI仍会让低能分离副舰为侦察机耗尽能量",
+  );
 }
 
 function aiHighEnergySkillAggressionCheck() {
@@ -1436,7 +1515,7 @@ function aiHighEnergySkillAggressionCheck() {
   assert(aiTeam.ships.sub1.hasEffect("critUntil"), "AI高能接敌时未积极释放分舰技能");
 }
 
-function aiEmergencyEnergyCommitCheck() {
+function aiEmergencyEnergyReserveCheck() {
   const sim = new MatchSimulation({
     mode: "ai",
     worldSize: 1440,
@@ -1479,11 +1558,13 @@ function aiEmergencyEnergyCommitCheck() {
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
   bot.issueMovement(context);
+  assert(aiMain.route && aiMain.throttle === throttleForGear(2), "AI紧急接敌时未按低能量限制前进档位");
   bot.tryFlagshipSkill(context);
+  bot.enforceEnergyThrottleCaps();
 
   assert(bot.mode !== "harvest", "AI接敌紧急时仍错误进入回能模式");
-  assert(aiTeam.effects.taxiUntil > sim.elapsed, "AI接敌紧急时未优先把能量用于压制技能");
-  assert(aiMain.route && aiMain.throttle >= 0.92, "AI接敌紧急时主舰推进仍过于保守");
+  assert(aiTeam.effects.taxiUntil <= sim.elapsed, "AI接敌紧急时仍会为一次技能把舰队能量压到保底以下");
+  assert(aiMain.throttle === throttleForGear(2), "AI保留技能能量后错误降档");
 }
 
 function aiPressureCheck() {
@@ -1610,8 +1691,10 @@ function main() {
   aiBacklineFlankCheck();
   aiOverwhelmedEscapeCheck();
   aiEnergyRecoveryModeCheck();
+  aiEnergyThrottleHysteresisCheck();
+  aiScoutEnergyReserveCheck();
   aiHighEnergySkillAggressionCheck();
-  aiEmergencyEnergyCommitCheck();
+  aiEmergencyEnergyReserveCheck();
   aiPressureCheck();
   aiEdgeRecoveryCheck();
   aiEngageCheck();

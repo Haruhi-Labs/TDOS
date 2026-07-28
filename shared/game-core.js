@@ -3038,6 +3038,15 @@ const HARD_AI_PROFILE = Object.freeze({
   aggressiveScoutWindow: 0.45,
 });
 
+// AI 推进的能量护栏。前进4档只在能量充裕时启动，并用不同的启动/退出阈值避免
+// 3、4档在临界值附近反复切换；低能量时仍保持航行，但强制降档回能。
+const AI_ENERGY_GEAR_POLICY = Object.freeze({
+  criticalRatio: 0.14,
+  lowRatio: 0.32,
+  overdriveStartRatio: 0.72,
+  overdriveStopRatio: 0.52,
+});
+
 // 单人难度:四档同时调三件事——
 //  reactionMult 放大感知延迟(perceptionDelayFor):AI 看到/响应玩家动作更慢;
 //  replanMult   放大改航间隔(moveReplan):AI 调整走位更不勤;
@@ -4041,8 +4050,12 @@ export class BotController {
     const ratio = pool.current / Math.max(pool.max, 1);
     const regen = members.reduce((sum, ship) => sum + ship.baseEnergyRegen(), 0);
     const moveLoad = members.reduce((sum, ship) => sum + ship.moveEnergyDrain(), 0);
-    const sustainCruise = regen - moveLoad * 0.92;
-    const sustainRecover = regen * 1.22 - moveLoad * 0.62;
+    const sustainCruise = members.reduce((sum, ship) => (
+      sum + energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttleForGear(3))
+    ), 0);
+    const sustainRecover = members.reduce((sum, ship) => (
+      sum + energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttleForGear(2))
+    ), 0);
     return {
       current: pool.current,
       max: pool.max,
@@ -4055,6 +4068,42 @@ export class BotController {
       low: ratio <= 0.32,
       critical: ratio <= 0.16,
     };
+  }
+
+  energyThrottleGearCap(shipOrKey) {
+    const profile = this.energyProfile(shipOrKey);
+    if (profile.ratio <= AI_ENERGY_GEAR_POLICY.criticalRatio) {
+      return 1;
+    }
+    if (profile.ratio <= AI_ENERGY_GEAR_POLICY.lowRatio) {
+      return 2;
+    }
+    const ship = typeof shipOrKey === "string" ? this.team.ships[shipOrKey] : shipOrKey;
+    const currentGear = throttleGearForValue(ship?.throttle);
+    const overdriveThreshold = currentGear === 4
+      ? AI_ENERGY_GEAR_POLICY.overdriveStopRatio
+      : AI_ENERGY_GEAR_POLICY.overdriveStartRatio;
+    return profile.ratio >= overdriveThreshold ? 4 : 3;
+  }
+
+  energyAwareThrottleForShip(ship, requestedThrottle) {
+    const intendedGear = requestedThrottle > 1
+      ? 4
+      : throttleGearForValue(requestedThrottle);
+    return throttleForGear(Math.min(intendedGear, this.energyThrottleGearCap(ship)));
+  }
+
+  enforceEnergyThrottleCaps() {
+    for (const ship of Object.values(this.team.ships)) {
+      if (!ship?.alive || ship.isAttached()) {
+        continue;
+      }
+      const currentGear = throttleGearForValue(ship.throttle);
+      const gearCap = this.energyThrottleGearCap(ship);
+      if (currentGear > gearCap) {
+        ship.throttle = throttleForGear(gearCap);
+      }
+    }
   }
 
   energyRatioAfterSpend(shipOrKey, cost) {
@@ -4577,6 +4626,7 @@ export class BotController {
     const focus = main.alive ? this.selectEnemyFocus(main) : null;
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
     this.evaluateSplit(elapsed, this.currentContext);
+    this.enforceEnergyThrottleCaps();
 
     if (
       this.currentContext
@@ -4610,9 +4660,18 @@ export class BotController {
         const scoutAim = peak || focusEst;
         const scoutSourceKey = this.pickScoutSourceKey(zoneId, scoutAim);
         const seekPoint = scoutAim && Number.isFinite(scoutAim.x) ? { x: scoutAim.x, y: scoutAim.y } : null;
-        const launched = this.team.launchScout(zoneId, { fromShipKey: scoutSourceKey, seekPoint });
+        // 侦察机也必须纳入能量预算。尤其是分离副舰，不能只因刚好攒够28点就立即花光，
+        // 否则下一秒既无法机动，也无法使用自保技能。
+        const hasScoutReserve = this.allowEnergyCommit(
+          scoutSourceKey,
+          SCOUT_LAUNCH_COST,
+          this.currentContext,
+          { emergencyFloor: 0.12, normalFloor: 0.18, conserveFloor: 0.28 },
+        );
+        const launched = hasScoutReserve
+          && this.team.launchScout(zoneId, { fromShipKey: scoutSourceKey, seekPoint });
         this.lastScoutDecision = {
-          action: launched ? "launch" : "retry",
+          action: launched ? "launch" : hasScoutReserve ? "retry" : "hold-energy",
           zoneId,
           launched,
           urgent: Boolean(this.currentContext?.emergencyCommit || this.currentContext?.searchRequired || this.currentContext?.trackableIntel),
@@ -4629,7 +4688,11 @@ export class BotController {
             this.scoutTimer = randomInRange(4.5, 6.8);
           }
         } else {
-          this.scoutTimer = this.currentContext?.emergencyCommit ? randomInRange(0.9, 1.8) : randomInRange(1.4, 2.8);
+          this.scoutTimer = !hasScoutReserve
+            ? randomInRange(2.2, 3.8)
+            : this.currentContext?.emergencyCommit
+              ? randomInRange(0.9, 1.8)
+              : randomInRange(1.4, 2.8);
         }
       } else {
         this.lastScoutDecision = {
@@ -4646,6 +4709,8 @@ export class BotController {
     this.tryFlagshipSkill(this.currentContext);
     this.trySubSkill("sub1", this.currentContext);
     this.trySubSkill("sub2", this.currentContext);
+    // 技能可能在本 tick 内显著消耗能量，立即降档，不能等下一轮改航才停止4档消耗。
+    this.enforceEnergyThrottleCaps();
   }
 
   tryFlagshipSkill(context = this.currentContext) {
@@ -5340,7 +5405,7 @@ export class BotController {
     if (!meta || meta.type !== "active") {
       return false; // 被动旗舰(阿虚/有希/1096):没有可主动释放的技能,别空试
     }
-    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.05, normalFloor: 0.14, conserveFloor: 0.26 })) {
+    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.1, normalFloor: 0.16, conserveFloor: 0.26 })) {
       return false;
     }
     const dist = distance(main.x, main.y, estimate.x, estimate.y);
@@ -5367,7 +5432,7 @@ export class BotController {
       return false;
     }
     const meta = skillMetaForCharacter(ship.characterId, "sub");
-    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: 0.03, normalFloor: 0.12, conserveFloor: 0.24 })) {
+    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: 0.08, normalFloor: 0.14, conserveFloor: 0.24 })) {
       return false;
     }
     const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
@@ -5670,9 +5735,7 @@ export class BotController {
     const requestedThrottle = clamp(throttle, 0.45, 1.2);
     // AI 的战术层以 >1 表示明确的超速意图；离散化后应进入前进4档，
     // 不能因为 1.04～1.18 在数值上更靠近标准巡航而丢掉脱困/追击加速。
-    const th = requestedThrottle > 1
-      ? throttleForGear(4)
-      : normalizeThrottleToGear(requestedThrottle);
+    const th = this.energyAwareThrottleForShip(ship, requestedThrottle);
     let update = "new";
 
     if (!ship.route) {
