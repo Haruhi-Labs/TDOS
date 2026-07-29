@@ -653,7 +653,18 @@ function drawNavigationPlans(ctx, plans = {}, localSeat = null) {
   }
 }
 
-export function renderTerritoryMap(ctx, map, options = {}) {
+export function territoryStaticMapCacheKey(map = {}) {
+  const worldSize = map.worldSize || {};
+  return [
+    map.templateId || "unknown",
+    Number(map.version) || 0,
+    Number(map.seed) || 0,
+    Number(worldSize.width) || 0,
+    Number(worldSize.height) || 0,
+  ].join(":");
+}
+
+export function renderTerritoryStaticMap(ctx, map, options = {}) {
   if (!map) return;
   if (options.showDebugBounds) drawBounds(ctx, map);
   for (const corridor of map.laneCorridors || []) {
@@ -673,10 +684,6 @@ export function renderTerritoryMap(ctx, map, options = {}) {
   for (const area of map.spawnAreas || []) {
     drawSpawnArea(ctx, area);
   }
-  for (const point of map.controlPoints || []) {
-    drawControlPoint(ctx, point, options.effects?.controls?.[point.id], options.effects?.time || 0);
-  }
-  drawNavigationPlans(ctx, options.navigationPlans, options.localSeat);
   if (options.showNodes !== false) {
     for (const node of map.resourceSpawnNodes || []) {
       drawResourceNode(ctx, node);
@@ -685,6 +692,73 @@ export function renderTerritoryMap(ctx, map, options = {}) {
       drawSkillNode(ctx, node);
     }
   }
+}
+
+export function renderTerritoryDynamicMap(ctx, map, options = {}) {
+  if (!map) return;
+  for (const point of map.controlPoints || []) {
+    drawControlPoint(ctx, point, options.effects?.controls?.[point.id], options.effects?.time || 0);
+  }
+  drawNavigationPlans(ctx, options.navigationPlans, options.localSeat);
+}
+
+function createDefaultCanvas(width, height) {
+  if (typeof OffscreenCanvas !== "undefined") {
+    return new OffscreenCanvas(width, height);
+  }
+  if (typeof document === "undefined") return null;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+export function createTerritoryStaticMapCache({ maxPixels = 2048, createCanvas = createDefaultCanvas } = {}) {
+  let cacheKey = null;
+  let surface = null;
+  let worldWidth = 0;
+  let worldHeight = 0;
+
+  function rebuild(map) {
+    worldWidth = Math.max(1, Number(map?.worldSize?.width) || 1);
+    worldHeight = Math.max(1, Number(map?.worldSize?.height) || 1);
+    const scale = Math.min(1, Math.max(1, Number(maxPixels) || 2048) / Math.max(worldWidth, worldHeight));
+    const width = Math.max(1, Math.round(worldWidth * scale));
+    const height = Math.max(1, Math.round(worldHeight * scale));
+    surface = createCanvas(width, height);
+    const cacheContext = surface?.getContext?.("2d");
+    if (!cacheContext) {
+      surface = null;
+      return;
+    }
+    cacheContext.setTransform(scale, 0, 0, scale, 0, 0);
+    renderTerritoryStaticMap(cacheContext, map);
+  }
+
+  return {
+    draw(ctx, map) {
+      if (!ctx || !map) return false;
+      const nextKey = territoryStaticMapCacheKey(map);
+      if (nextKey !== cacheKey || !surface) {
+        cacheKey = nextKey;
+        rebuild(map);
+      }
+      if (!surface) return false;
+      ctx.drawImage(surface, 0, 0, surface.width, surface.height, 0, 0, worldWidth, worldHeight);
+      return true;
+    },
+    clear() {
+      cacheKey = null;
+      surface = null;
+      worldWidth = 0;
+      worldHeight = 0;
+    },
+  };
+}
+
+export function renderTerritoryMap(ctx, map, options = {}) {
+  renderTerritoryStaticMap(ctx, map, options);
+  renderTerritoryDynamicMap(ctx, map, options);
 }
 
 export function renderTerritoryEntities(ctx, state) {
@@ -1412,10 +1486,10 @@ function drawHudControls(ctx, controls, typography, centerX, y, clock, frozen) {
   }
 }
 
-export function renderTerritoryTicketHud(ctx, state, effects = {}) {
+export function renderTerritoryTicketHud(ctx, state, effects = {}, screenSize = {}) {
   if (!ctx || !state) return;
   const hud = buildTerritoryTicketHudState(state, effects);
-  const screenWidth = Math.max(900, Number(state.map?.worldSize?.width) || 1200);
+  const screenWidth = Math.max(900, Number(screenSize?.width) || 1440);
   const width = Math.min(780, screenWidth - 48);
   const height = 132;
   const x = (screenWidth - width) / 2;

@@ -3156,7 +3156,7 @@ const AI_DIFFICULTY = Object.freeze({
 });
 
 export class BotController {
-  constructor(team, enemy) {
+  constructor(team, enemy, { thinkIntervalSeconds = 0 } = {}) {
     this.team = team;
     this.enemy = enemy;
     this.profile = HARD_AI_PROFILE;
@@ -3169,6 +3169,10 @@ export class BotController {
     this.reactionMult = 1;
     this.replanMult = 1;
     this.focusLowHp = false;
+    this.thinkIntervalSeconds = Number.isFinite(Number(thinkIntervalSeconds))
+      ? clamp(Number(thinkIntervalSeconds), 0, 1)
+      : 0;
+    this.thinkAccumulator = 0;
 
     this.moveTimer = 0;
     this.scoutTimer = this.profile.initialScoutTimer;
@@ -4673,9 +4677,16 @@ export class BotController {
     this.subTimers.sub2 -= dt;
     this.modeTimer -= dt;
 
-    this.refreshIntel();
-    this.updateBelief(dt);
     this.updateStuckState(dt);
+    this.thinkAccumulator += dt;
+    if (this.thinkIntervalSeconds > 0 && this.thinkAccumulator + 1e-9 < this.thinkIntervalSeconds) {
+      return;
+    }
+    const thinkDt = this.thinkIntervalSeconds > 0 ? this.thinkAccumulator : dt;
+    this.thinkAccumulator = 0;
+
+    this.refreshIntel();
+    this.updateBelief(thinkDt);
     const main = this.team.ships.main;
     const focus = main.alive ? this.selectEnemyFocus(main) : null;
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
@@ -6153,6 +6164,9 @@ export class MatchSimulation {
     this.winnerAllianceId = null;
     this.victoryPolicy = options.victoryPolicy === "external" ? "external" : "internal";
     this.aiNavigationOwner = options.aiNavigationOwner === "mode" ? "mode" : "core";
+    this.aiThinkIntervalSeconds = Number.isFinite(Number(options.aiThinkIntervalSeconds))
+      ? clamp(Number(options.aiThinkIntervalSeconds), 0, 1)
+      : 0;
     this.environmentModifiers = new Map();
     this.environmentCollisionProvider = null;
 
@@ -6243,11 +6257,16 @@ export class MatchSimulation {
     this.bots = {};
     const legacyAiSeats = normalizeAiSeats(mode, options.legacyAiSeats); // 指定哪些AI席位用旧版AI
     const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
+    const aiDifficultiesBySeat = options.aiDifficultiesBySeat && typeof options.aiDifficultiesBySeat === "object"
+      ? options.aiDifficultiesBySeat
+      : {};
     for (const seat of this.aiSeats) {
-      const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
+      const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat), {
+        thinkIntervalSeconds: this.aiThinkIntervalSeconds,
+      });
       bot.legacy = legacyAiSeats.includes(seat);
       bot.navigationEnabled = this.aiNavigationOwner === "core";
-      bot.setDifficulty(aiDifficulty);
+      bot.setDifficulty(aiDifficultiesBySeat[seat] || aiDifficulty);
       this.bots[seat] = bot;
     }
     this.botA = this.bots.A || null;
@@ -6454,6 +6473,35 @@ export class MatchSimulation {
 
   botBySeat(seat) {
     return this.bots[seat] || null;
+  }
+
+  setSeatAiControl(seat, { enabled = true, difficulty = "normal" } = {}) {
+    const safeSeat = String(seat || "").trim().toUpperCase();
+    const team = this.fleetBySeat(safeSeat);
+    if (!team) return false;
+    if (!enabled) {
+      if (!this.bots[safeSeat]) return true;
+      delete this.bots[safeSeat];
+      this.aiSeats = this.aiSeats.filter((item) => item !== safeSeat);
+      team.aiFocusLowHp = false;
+      team.applyAiStatMult(1);
+      this.botA = this.bots.A || null;
+      this.bot = this.bots.B || null;
+      return true;
+    }
+    let bot = this.bots[safeSeat];
+    if (!bot) {
+      bot = new BotController(team, this.enemyTeamBySeat(safeSeat), {
+        thinkIntervalSeconds: this.aiThinkIntervalSeconds,
+      });
+      bot.navigationEnabled = this.aiNavigationOwner === "core";
+      this.bots[safeSeat] = bot;
+      if (!this.aiSeats.includes(safeSeat)) this.aiSeats.push(safeSeat);
+    }
+    bot.setDifficulty(difficulty);
+    this.botA = this.bots.A || null;
+    this.bot = this.bots.B || null;
+    return true;
   }
 
   respawnShipForSeat(seat, shipKey, options = {}) {

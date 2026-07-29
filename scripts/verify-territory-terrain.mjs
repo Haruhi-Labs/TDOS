@@ -114,18 +114,18 @@ assert(
 );
 
 const generatedTerrain = makeState(909).map.terrainRegions;
-assert(generatedTerrain.length >= 3 && generatedTerrain.length <= 5, `terrain generator should create three to five regions: ${generatedTerrain.length}`);
+assert(generatedTerrain.length === 7, `terrain generator should create all seven regions: ${generatedTerrain.length}`);
 const generatedCompounds = generatedTerrain.filter((region) => region.shape === "compound");
 assert(generatedCompounds.length >= 1, `terrain generator should include a compound region: ${JSON.stringify(generatedTerrain)}`);
 for (const region of generatedCompounds) {
   assert(
-    region.fields?.length >= 3 && region.radius >= 220 && region.radius <= 360,
+    region.fields?.length >= 3 && region.radius >= 275 && region.radius <= 450,
     `compound terrain should expose a large three-field envelope: ${JSON.stringify(region)}`,
   );
 }
 for (const region of generatedTerrain.filter((entry) => entry.type === "speed_lane")) {
   assert(
-    region.length >= 600 && region.length <= 1000 && region.width >= 220 && region.width <= 320,
+    region.length >= 750 && region.length <= 1250 && region.width >= 275 && region.width <= 400,
     `speed lane terrain should be a large tactical corridor: ${JSON.stringify(region)}`,
   );
 }
@@ -186,6 +186,39 @@ assert(Math.abs(laneShip.baseSpeed() / laneBase - 0.9) < 1e-6, "speed lane rever
 
 sim.clearEnvironmentModifiers();
 assert(Math.abs(laneShip.baseSpeed() - laneBase) < 1e-6, "environment modifier clear restores base speed");
+
+sim = makeSimulation();
+state = makeState(811);
+const formationLane = {
+  id: "formation-lane",
+  type: "speed_lane",
+  shape: "capsule",
+  center: { x: 500, y: 500 },
+  length: 320,
+  width: 120,
+  angle: 0,
+};
+state.map.terrainRegions = [formationLane];
+const formationFleet = sim.fleetBySeat("A");
+const formationMain = formationFleet.shipByKey("main");
+const formationSub1 = formationFleet.shipByKey("sub1");
+const formationSub2 = formationFleet.shipByKey("sub2");
+for (const member of [formationMain, formationSub1, formationSub2]) {
+  member.angle = 0;
+}
+formationMain.x = formationLane.center.x;
+formationMain.y = formationLane.center.y;
+formationSub1.x = formationLane.center.x;
+formationSub1.y = formationLane.center.y + formationLane.width;
+formationSub2.x = formationLane.center.x;
+formationSub2.y = formationLane.center.y + formationLane.width;
+const formationBaseSpeed = formationMain.effectiveSpeed();
+updateTerritoryTerrainModifiers({ modeState: state, simulation: sim });
+approximatelyEqual(
+  formationMain.effectiveSpeed(),
+  formationBaseSpeed * TERRAIN_MOVEMENT_MULTIPLIERS.speed_lane.forwardSpeedMultiplier,
+  "an attached fleet should receive the leader's full speed-lane multiplier",
+);
 
 const coreSource = await import("node:fs/promises").then((fs) => fs.readFile("shared/game-core.js", "utf8"));
 assert(!coreSource.includes('modeId === "stellar-territory"'), "game-core must not hardcode stellar territory");

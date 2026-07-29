@@ -14,6 +14,21 @@ export const CAMERA_ZOOM_MAX = 2.6;
 export const CAMERA_ZOOM_STEP = 0.2;
 export const MOBILE_ZOOM = 1.78;
 
+export function resolveCanvasBackingSize(cssWidth, devicePixelRatio, policy = {}) {
+  const minBacking = Number.isFinite(Number(policy.minBacking)) && Number(policy.minBacking) > 0
+    ? Number(policy.minBacking)
+    : SCREEN_LOGICAL;
+  const maxBacking = Number.isFinite(Number(policy.maxBacking)) && Number(policy.maxBacking) >= minBacking
+    ? Number(policy.maxBacking)
+    : 2880;
+  const maxDpr = Number.isFinite(Number(policy.maxDpr)) && Number(policy.maxDpr) > 0
+    ? Number(policy.maxDpr)
+    : 2.5;
+  const width = Number.isFinite(Number(cssWidth)) && Number(cssWidth) > 0 ? Number(cssWidth) : SCREEN_LOGICAL;
+  const dpr = Number.isFinite(Number(devicePixelRatio)) && Number(devicePixelRatio) > 0 ? Number(devicePixelRatio) : 1;
+  return Math.max(minBacking, Math.min(Math.round(width * Math.min(dpr, maxDpr)), maxBacking));
+}
+
 export function prefersMobileBattleMode() {
   return window.matchMedia("(max-width: 980px)").matches || window.matchMedia("(pointer: coarse)").matches;
 }
@@ -23,10 +38,14 @@ export function createBattleCamera({
   isMobile,
   showMinimap = isMobile,
   worldSize = { width: DEFAULT_WORLD_SIZE, height: DEFAULT_WORLD_SIZE },
+  zoomMin = CAMERA_ZOOM_MIN,
+  zoomMax = CAMERA_ZOOM_MAX,
+  zoomStep = CAMERA_ZOOM_STEP,
   mobileZoomEnabled = () => true,
   overviewWhenIdle = () => false,
   getTrackedShip = () => null,
   onZoomChanged = () => {},
+  getCanvasResolutionPolicy = () => null,
 }) {
   function normalizeWorldDimension(value) {
     const numeric = Number(value);
@@ -39,12 +58,44 @@ export function createBattleCamera({
   let worldHeight = normalizeWorldDimension(worldSize?.height);
   let centerX = worldWidth * 0.5;
   let centerY = worldHeight * 0.5;
+  let minZoom = CAMERA_ZOOM_MIN;
+  let maxZoom = CAMERA_ZOOM_MAX;
+  let zoomIncrement = CAMERA_ZOOM_STEP;
   let zoomRatio = 1;
   let manualUntil = 0;
 
+  function normalizeZoomConfig(config = {}) {
+    const requestedMin = Number(config.zoomMin);
+    const nextMin = Number.isFinite(requestedMin) && requestedMin > 0
+      ? Math.max(0.1, requestedMin)
+      : CAMERA_ZOOM_MIN;
+    const requestedMax = Number(config.zoomMax);
+    const nextMax = Number.isFinite(requestedMax) && requestedMax >= nextMin
+      ? requestedMax
+      : Math.max(nextMin, CAMERA_ZOOM_MAX);
+    const requestedStep = Number(config.zoomStep);
+    const nextStep = Number.isFinite(requestedStep) && requestedStep > 0
+      ? requestedStep
+      : CAMERA_ZOOM_STEP;
+    return { min: nextMin, max: nextMax, step: nextStep };
+  }
+
+  function setZoomConfig(config = {}) {
+    const next = normalizeZoomConfig(config);
+    minZoom = next.min;
+    maxZoom = next.max;
+    zoomIncrement = next.step;
+    zoomRatio = clamp(zoomRatio, minZoom, maxZoom);
+    const centered = clampCameraCenter(centerX, centerY);
+    centerX = centered.x;
+    centerY = centered.y;
+  }
+
+  setZoomConfig({ zoomMin, zoomMax, zoomStep });
+
   function effectiveViewZoom(ratio = zoomRatio) {
     const baseZoom = isMobile() && mobileZoomEnabled() ? MOBILE_ZOOM : 1;
-    return baseZoom * clamp(ratio, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+    return baseZoom * clamp(ratio, minZoom, maxZoom);
   }
 
   function clampCameraCenter(cx, cy, zoom = effectiveViewZoom()) {
@@ -142,7 +193,7 @@ export function createBattleCamera({
   }
 
   function setCameraZoom(nextZoom, focusScreen = null) {
-    const nextRatio = clamp(nextZoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+    const nextRatio = clamp(nextZoom, minZoom, maxZoom);
     if (Math.abs(nextRatio - zoomRatio) < 1e-3) {
       return false;
     }
@@ -162,7 +213,7 @@ export function createBattleCamera({
     }
 
     zoomRatio = nextRatio;
-    if (!isMobile() && nextRatio <= CAMERA_ZOOM_MIN + 1e-3) {
+    if (!isMobile() && nextRatio <= minZoom + 1e-3) {
       centerX = worldWidth * 0.5;
       centerY = worldHeight * 0.5;
       manualUntil = 0;
@@ -174,12 +225,26 @@ export function createBattleCamera({
   }
 
   function adjustCameraZoom(direction, focusScreen = null) {
-    const step = direction > 0 ? CAMERA_ZOOM_STEP : -CAMERA_ZOOM_STEP;
+    const step = direction > 0 ? zoomIncrement : -zoomIncrement;
     return setCameraZoom(zoomRatio + step, focusScreen);
   }
 
+  function panByScreenDelta(deltaX, deltaY) {
+    const screenDeltaX = Number(deltaX);
+    const screenDeltaY = Number(deltaY);
+    if (!Number.isFinite(screenDeltaX) || !Number.isFinite(screenDeltaY)) return false;
+    if (Math.abs(screenDeltaX) < 1e-6 && Math.abs(screenDeltaY) < 1e-6) return false;
+    const view = currentViewState();
+    centerCameraOn(
+      view.left + view.width * 0.5 - screenDeltaX / view.zoom,
+      view.top + view.height * 0.5 - screenDeltaY / view.zoom,
+      true,
+    );
+    return true;
+  }
+
   function updateCamera() {
-    const zoomedIn = zoomRatio > CAMERA_ZOOM_MIN + 1e-3;
+    const zoomedIn = zoomRatio > minZoom + 1e-3;
     // 观战全景:未手动放大时固定看全图,不跟随任何舰
     if (overviewWhenIdle() && !zoomedIn) {
       centerX = worldWidth * 0.5;
@@ -214,10 +279,8 @@ export function createBattleCamera({
     }
     const rect = canvas.getBoundingClientRect();
     const cssW = rect.width || canvas.clientWidth || SCREEN_LOGICAL;
-    // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [SCREEN_LOGICAL, 2880]:
-    // 不低于原始逻辑尺寸(绝不劣化),不超 2880(控住超大屏/高 DPR 的内存与填充开销)。
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    const backing = Math.max(SCREEN_LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
+    const policy = getCanvasResolutionPolicy?.() || {};
+    const backing = resolveCanvasBackingSize(cssW, window.devicePixelRatio || 1, policy);
     if (canvas.width !== backing) {
       canvas.width = backing;
       canvas.height = backing;
@@ -225,7 +288,7 @@ export function createBattleCamera({
   }
 
   function reset({ x, y, zoom = 1 } = {}) {
-    zoomRatio = clamp(Number(zoom) || 1, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
+    zoomRatio = clamp(Number(zoom) || 1, minZoom, maxZoom);
     manualUntil = 0;
     const centered = clampCameraCenter(Number.isFinite(x) ? x : worldWidth * 0.5, Number.isFinite(y) ? y : worldHeight * 0.5);
     centerX = centered.x;
@@ -236,6 +299,8 @@ export function createBattleCamera({
     get zoom() {
       return zoomRatio;
     },
+    getZoomConfig: () => ({ min: minZoom, max: maxZoom, step: zoomIncrement }),
+    setZoomConfig,
     setWorldSize,
     getWorldSize: () => ({ width: worldWidth, height: worldHeight }),
     effectiveViewZoom,
@@ -248,6 +313,7 @@ export function createBattleCamera({
     centerCameraOn,
     setCameraZoom,
     adjustCameraZoom,
+    panByScreenDelta,
     updateCamera,
     resizeCanvas,
     reset,

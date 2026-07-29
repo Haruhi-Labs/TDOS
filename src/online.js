@@ -6,6 +6,7 @@ import {
   EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
   cloneLoadout,
+  randomAiLoadout,
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
@@ -13,6 +14,7 @@ import {
   buildResultRenderKey,
   resolveViewerMatchResult,
 } from "../shared/match-result.js";
+import { planTerritoryRoute } from "../shared/gameplay/territory-navigation.js";
 
 import {
   getLoadout,
@@ -21,6 +23,7 @@ import {
   getNickname as getProfileNickname,
   setNickname as setProfileNickname,
 } from "./profile.js";
+import { accountClient } from "./account-client.js";
 
 // 联机选角与单机共用同一套「翻书选角」覆盖层;立绘绘制与单机同源
 import { createCharacterSelect, drawInGamePortrait } from "./character-select.js";
@@ -34,6 +37,7 @@ import {
 import {
   CAMERA_ZOOM_MIN,
   CAMERA_ZOOM_MAX,
+  CAMERA_ZOOM_STEP,
   createBattleCamera,
   prefersMobileBattleMode,
 } from "./battle/camera.js";
@@ -47,6 +51,13 @@ import {
   updateSkillButtons,
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
+import {
+  createTerritoryStaticMapCache,
+  renderTerritoryDynamicMap,
+  renderTerritoryEntities,
+  renderTerritoryMinimapOverlay,
+  renderTerritoryTicketHud,
+} from "./modes/stellar-territory/render.js";
 import {
   drawBackground,
   drawBattleCountdown,
@@ -81,6 +92,8 @@ let camera = null; // 共享战场相机（src/battle/camera.js），mount 时�
 let routeFluidBackdrop = null;
 let routeFluidMode = "";
 let lobbyStarfieldAc = null;
+let onSignedOut = null;
+let territoryStaticMapCache = null;
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -90,6 +103,7 @@ function cacheDom() {
   canvas = document.getElementById("gameCanvas");
   ctx = canvas.getContext("2d");
   ui = {
+  root: document.querySelector(".online-root"),
   serverTargetValue: document.getElementById("serverTargetValue"),
   connectBtn: document.getElementById("connectBtn"),
   disconnectBtn: document.getElementById("disconnectBtn"),
@@ -102,14 +116,19 @@ function cacheDom() {
   createPublicBtn: document.getElementById("createPublicBtn"),
   createPrivateBtn: document.getElementById("createPrivateBtn"),
   create2v2Btn: document.getElementById("create2v2Btn"),
+  create3v3PublicBtn: document.getElementById("create3v3PublicBtn"),
+  create3v3PrivateBtn: document.getElementById("create3v3PrivateBtn"),
   createAiRoomBtn: document.getElementById("createAiRoomBtn"),
   joinCodeInput: document.getElementById("joinCodeInput"),
   joinCodeBtn: document.getElementById("joinCodeBtn"),
   refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
   roomList: document.getElementById("roomList"),
+  onlineActionStatus: document.getElementById("onlineActionStatus"),
   roomSummary: document.getElementById("roomSummary"),
+  stellarRoomSeats: document.getElementById("stellarRoomSeats"),
   leaveRoomBtn: document.getElementById("leaveRoomBtn"),
   readyRoomBtn: document.getElementById("readyRoomBtn"),
+  startMatchBtn: document.getElementById("startMatchBtn"),
   battleControls: document.getElementById("battleControls"),
   seatValue: document.getElementById("seatValue"),
   hullValue: document.getElementById("hullValue"),
@@ -193,6 +212,7 @@ const SNAPSHOT_HISTORY_SECONDS = 6;
 const PING_INTERVAL_MS = 1000;
 const DRAG_SEND_INTERVAL_MS = 75;
 const REMOTE_WS_PORT = 21246;
+const MAP_PAN_START_DISTANCE_PX = 6;
 const ROUTE_OVERRIDE_MIN_HOLD_MS = 180;
 const ROUTE_OVERRIDE_MAX_HOLD_MS = 1200;
 const ROUTE_MATCH_P2_EPSILON = 30;
@@ -211,9 +231,16 @@ const TEAM_COMM_LABELS = Object.freeze({
   ack: "收到",
   emoji: "漂亮",
 });
+const BOT_LOADOUT_PRESETS = Object.freeze({
+  balanced: Object.freeze({ main: "haruhi", sub1: "koizumi", sub2: "future1096" }),
+  assault: Object.freeze({ main: "haruhi", sub1: "asakura", sub2: "kyon" }),
+  reconnaissance: Object.freeze({ main: "koizumi", sub1: "yuki", sub2: "future1096" }),
+  support: Object.freeze({ main: "kyon", sub1: "tsuruya", sub2: "koizumi" }),
+});
 
-function initApp() {
+function initApp(lobbyMode = "standard") {
   app = {
+  lobbyMode,
   ws: null,
   connected: false,
   playerId: null,
@@ -257,7 +284,9 @@ function initApp() {
   teamComms: [],
   reconnectTicket: null,
   drag: null,
+  pan: null,
   suppressClick: false,
+  stellarCameraRoomId: null,
   lastRenderState: null,
   lastMatchPhase: null,
   pendingSubSkillAim: null,
@@ -314,12 +343,31 @@ function shortestAngleDelta(from, to) {
   return delta - Math.PI;
 }
 
+function activeMapBounds() {
+  const state = app?.latestSnapshot?.state;
+  const territorySize = state?.territory?.map?.worldSize;
+  const world = state?.world;
+  const resolveDimension = (...values) => {
+    for (const value of values) {
+      const dimension = Number(value);
+      if (Number.isFinite(dimension) && dimension > 0) {
+        return dimension;
+      }
+    }
+    return LOGICAL;
+  };
+  return {
+    width: resolveDimension(territorySize?.width, territorySize, world?.width, world?.size),
+    height: resolveDimension(territorySize?.height, territorySize, world?.height, world?.size),
+  };
+}
+
 function clampToMapX(x, padding = 0) {
-  return clamp(x, padding, LOGICAL - padding);
+  return clamp(x, padding, Math.max(padding, activeMapBounds().width - padding));
 }
 
 function clampToMapY(y, padding = 0) {
-  return clamp(y, padding, LOGICAL - padding);
+  return clamp(y, padding, Math.max(padding, activeMapBounds().height - padding));
 }
 
 function nowSecond() {
@@ -372,6 +420,7 @@ function normalizeReconnectTicket(value) {
   const seat = String(value.seat || "").trim().toUpperCase();
   const reconnectToken = String(value.reconnectToken || "").trim();
   const expiresAt = Number(value.expiresAt) || 0;
+  const mode = value.mode === "stellar3v3" ? "stellar3v3" : "pvp2v2";
   if (!roomId || !seat || !reconnectToken) {
     return null;
   }
@@ -383,6 +432,8 @@ function normalizeReconnectTicket(value) {
     seat,
     reconnectToken,
     expiresAt,
+    mode,
+    modeScope: mode === "stellar3v3" ? "stellar3v3" : "standard",
   };
 }
 
@@ -417,8 +468,10 @@ function clearReconnectTicket() {
 function persistReconnectTicket(message) {
   const room = message && message.room ? message.room : null;
   const self = message && message.self ? message.self : null;
-  if (!room || room.mode !== "pvp2v2" || room.status === "finished" || !self || self.spectating || !self.seat || !self.reconnectToken) {
-    if (room && (room.mode !== "pvp2v2" || room.status === "finished")) {
+  const reconnectableMode = room?.mode === "pvp2v2" || room?.mode === "stellar3v3";
+  const reconnectableStatus = room?.status === "countdown" || room?.status === "running";
+  if (!room || !reconnectableMode || !reconnectableStatus || !self || self.spectating || !self.seat || !self.reconnectToken) {
+    if (room && (!reconnectableMode || !reconnectableStatus)) {
       clearReconnectTicket();
     }
     return null;
@@ -428,6 +481,7 @@ function persistReconnectTicket(message) {
     seat: String(self.seat || "").toUpperCase(),
     reconnectToken: String(self.reconnectToken || ""),
     expiresAt: nowMs() + ONLINE_RECONNECT_TICKET_TTL_MS,
+    mode: room.mode,
   };
   const normalized = normalizeReconnectTicket(ticket);
   if (!normalized) {
@@ -447,6 +501,9 @@ function persistReconnectTicket(message) {
 function tryResumePlayer() {
   const ticket = readReconnectTicket();
   if (!ticket) {
+    return false;
+  }
+  if (ticket.modeScope !== lobbyModeScope()) {
     return false;
   }
   return socketSend({
@@ -576,6 +633,16 @@ function log(message) {
   }
 }
 
+function showOnlineActionStatus(message, tone = "info") {
+  if (!ui?.onlineActionStatus) {
+    return;
+  }
+  const text = String(message || "").trim();
+  ui.onlineActionStatus.hidden = !text;
+  ui.onlineActionStatus.textContent = text;
+  ui.onlineActionStatus.dataset.tone = tone;
+}
+
 function updateConnectionUi() {
   ui.connectionValue.textContent = app.connected ? t("已连接") : t("未连接");
   ui.pingValue.textContent = app.connected ? `${Math.round(app.pingMs)}ms` : "-";
@@ -584,6 +651,20 @@ function updateConnectionUi() {
 
   ui.connectBtn.disabled = app.connected;
   ui.disconnectBtn.disabled = !app.connected;
+  for (const button of [
+    ui.createPublicBtn,
+    ui.createPrivateBtn,
+    ui.create2v2Btn,
+    ui.create3v3PublicBtn,
+    ui.create3v3PrivateBtn,
+    ui.createAiRoomBtn,
+    ui.joinCodeBtn,
+    ui.refreshRoomsBtn,
+  ]) {
+    if (!button) continue;
+    button.disabled = !app.connected;
+    button.title = app.connected ? "" : t("请先连接服务器");
+  }
 }
 
 function setBattleControlsEnabled(enabled) {
@@ -600,7 +681,7 @@ function updateReadyRoomButton() {
   if (!ui.readyRoomBtn) {
     return;
   }
-  const visible = Boolean(isTwoVsTwoRoom() && app.room.status === "waiting" && app.seat && !app.spectating);
+  const visible = Boolean(isTeamRoom() && app.room.status === "waiting" && app.seat && !app.spectating);
   ui.readyRoomBtn.hidden = !visible;
   ui.readyRoomBtn.disabled = !visible || !app.connected;
   ui.readyRoomBtn.textContent = app.ready ? t("取消准备") : t("准备");
@@ -623,6 +704,8 @@ function destroyOnlineFluidBackdrop() {
   routeFluidBackdrop?.destroy();
   routeFluidBackdrop = null;
   routeFluidMode = "";
+  territoryStaticMapCache?.clear();
+  territoryStaticMapCache = null;
 }
 
 function syncOnlineFluidBackdrop(showLobby) {
@@ -630,6 +713,9 @@ function syncOnlineFluidBackdrop(showLobby) {
   if (routeFluidBackdrop && routeFluidMode === nextMode) return;
 
   destroyOnlineFluidBackdrop();
+  if (!showLobby && isStellar3v3Room()) {
+    return;
+  }
   if (showLobby && ui.lobbyView) {
     routeFluidBackdrop = mountRouteFluidBackdrop(ui.lobbyView, {
       logLabel: "Online lobby fluid backdrop",
@@ -698,6 +784,18 @@ function isTwoVsTwoRoom(room = app ? app.room : null) {
   return Boolean(room && room.mode === "pvp2v2");
 }
 
+function isStellar3v3Room(room = app ? app.room : null) {
+  return Boolean(room && room.mode === "stellar3v3");
+}
+
+function isTeamRoom(room = app ? app.room : null) {
+  return isTwoVsTwoRoom(room) || isStellar3v3Room(room);
+}
+
+function lobbyModeScope() {
+  return app?.lobbyMode === "stellar3v3" ? "stellar3v3" : "standard";
+}
+
 function isTwoVsTwoState(state) {
   return Boolean(state && state.fleets);
 }
@@ -714,6 +812,9 @@ function roomModeLabel(mode) {
   if (mode === "ai") {
     return t("AI 训练");
   }
+  if (mode === "stellar3v3") {
+    return t("星域争夺 3v3");
+  }
   if (mode === "pvp2v2") {
     return t("2v2 对战");
   }
@@ -723,6 +824,9 @@ function roomModeLabel(mode) {
 function roomTitleLabel(mode) {
   if (mode === "ai") {
     return t("AI房");
+  }
+  if (mode === "stellar3v3") {
+    return t("星域争夺 3v3");
   }
   if (mode === "pvp2v2") {
     return t("2v2 对战房");
@@ -912,7 +1016,7 @@ function updateTeamCommUi() {
   if (!ui.teamCommPanel && !ui.mobileTeamCommPanel) {
     return;
   }
-  const visible = Boolean(isTwoVsTwoRoom() && app.seat && !app.spectating);
+  const visible = Boolean(isTeamRoom() && app.seat && !app.spectating);
   const enabled = Boolean(visible && app.connected && app.room && app.room.status !== "finished");
   if (ui.teamCommPanel) {
     ui.teamCommPanel.hidden = !visible;
@@ -1007,7 +1111,7 @@ function buildServerUrlCandidates() {
 
   if (pageHost) {
     // 同源 WS：跟随部署 base（线上 /test-game/ → /test-game/ws/；dev / → /ws/）
-    list.push(`${pageProtocol}://${pageHost}${import.meta.env.BASE_URL}ws/`);
+    list.push(`${pageProtocol}://${pageHost}${import.meta.env.BASE_URL}ws`);
   }
   if (pageHostname) {
     list.push(`${directProtocol}://${pageHostname}:${REMOTE_WS_PORT}/`);
@@ -1100,6 +1204,16 @@ function clearMatchRuntime() {
   app.fleetDefeated = false;
   app.canControlFleet = true;
   app.drag = null;
+  app.pan = null;
+  app.stellarCameraRoomId = null;
+  canvas.classList.remove("is-panning");
+  ui.root?.classList.remove("camera-pan-enabled");
+  camera.setWorldSize(DEFAULT_WORLD_SIZE, DEFAULT_WORLD_SIZE);
+  camera.setZoomConfig({
+    zoomMin: CAMERA_ZOOM_MIN,
+    zoomMax: CAMERA_ZOOM_MAX,
+    zoomStep: CAMERA_ZOOM_STEP,
+  });
   app.lastRenderState = null;
   app.lastMatchPhase = null;
   camera.reset();
@@ -1224,6 +1338,38 @@ function resultRowsForAlliance(players, allianceId) {
     const rowAlliance = row?.allianceId || allianceIdForSeatClient(row?.seat);
     return rowAlliance === allianceId;
   });
+}
+
+function onlineUserSummaryHTML(row) {
+  const user = row?.user;
+  if (!user) {
+    return `<span class="online-user-name">${escapeHtml(localizedServerName(row?.name, row?.isBot))}</span>`;
+  }
+  const avatar = user.avatarUrl
+    ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />`
+    : `<span>${escapeHtml(String(user.username || "?").slice(0, 1).toUpperCase())}</span>`;
+  return `<button type="button" class="online-user-summary" data-account-user-id="${escapeHtml(user.id)}"><i class="online-user-avatar">${avatar}</i><span class="online-user-name">${escapeHtml(user.username)}</span><b>${Number(user.elo) || 1000}</b></button>`;
+}
+
+async function showOnlineUserDetails(userId) {
+  const mode = isStellar3v3Room(app?.room) ? "stellar3v3" : "pvp2v2";
+  const dialog = document.createElement("dialog");
+  dialog.className = "online-user-dialog";
+  dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><p>PUBLIC PROFILE</p><strong>Loading...</strong>`;
+  document.body.append(dialog);
+  dialog.querySelector("button")?.addEventListener("click", () => dialog.close());
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+  try {
+    const user = await accountClient.getUser(userId, mode);
+    if (!user) throw new Error("not found");
+    const avatar = user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : "";
+    dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><div class="online-user-dialog-head">${avatar}<div><p>PUBLIC PROFILE</p><h2>${escapeHtml(user.username)}</h2></div></div><div class="online-user-dialog-stats"><strong>${user.elo}</strong><span>#${user.rank} / ${user.wins}W ${user.losses}L</span></div>`;
+    dialog.querySelector("button")?.addEventListener("click", () => dialog.close());
+  } catch (_error) {
+    dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><p>PUBLIC PROFILE</p><strong>Profile unavailable</strong>`;
+    dialog.querySelector("button")?.addEventListener("click", () => dialog.close());
+  }
 }
 
 function onlineResultAllianceHTML(players, allianceId, faction, sideClass) {
@@ -1428,14 +1574,26 @@ function connectServer() {
       startPingLoop();
     });
 
-    ws.addEventListener("close", () => {
+    ws.addEventListener("close", (event) => {
       if (currentAttemptId !== app.connectAttemptId || app.ws !== ws) {
+        return;
+      }
+      if (event.code === 4001) {
+        onSignedOut?.();
         return;
       }
       if (!opened && index < candidates.length - 1) {
         log(t("连接失败，尝试备用地址：{url}", { url: candidates[index + 1] }));
         tryConnect(index + 1);
         return;
+      }
+
+      if (!opened) {
+        void accountClient.getMe()
+          .then((user) => {
+            if (!user) onSignedOut?.();
+          })
+          .catch(() => {});
       }
 
       app.connected = false;
@@ -1485,13 +1643,156 @@ function disconnectServer() {
   app.ws.close();
 }
 
+function updateStellarStartButton() {
+  if (!ui.startMatchBtn) return;
+  const room = app.room;
+  const isStellar = isStellar3v3Room(room);
+  const isHost = Boolean(isStellar && room.hostPlayerId && room.hostPlayerId === app.playerId);
+  const rows = room?.players || [];
+  const fullAndReady = rows.length === 6 && rows.every((row) => row.isBot || (row.playerId && row.ready));
+  ui.startMatchBtn.hidden = !isStellar || room.status !== "waiting";
+  ui.startMatchBtn.disabled = !isHost || !fullAndReady || !app.connected;
+}
+
+function bindStellarRoomSeatEvents() {
+  if (!ui.stellarRoomSeats) return;
+  for (const button of ui.stellarRoomSeats.querySelectorAll("[data-choose-seat]")) {
+    button.addEventListener("click", () => socketSend({ type: "choose_seat", seat: button.dataset.chooseSeat }));
+  }
+  for (const button of ui.stellarRoomSeats.querySelectorAll("[data-add-bot]")) {
+    button.addEventListener("click", () => {
+      const seat = button.dataset.addBot;
+      const current = (app.room?.players || []).find((row) => row.seat === seat);
+      socketSend({ type: "configure_slot", seat, occupantType: "bot", difficulty: "normal", loadout: current?.loadout || undefined });
+    });
+  }
+  for (const button of ui.stellarRoomSeats.querySelectorAll("[data-remove-bot]")) {
+    button.addEventListener("click", () => {
+      socketSend({ type: "configure_slot", seat: button.dataset.removeBot, occupantType: "open" });
+    });
+  }
+  for (const select of ui.stellarRoomSeats.querySelectorAll("[data-bot-difficulty]")) {
+    select.addEventListener("change", () => {
+      const seat = select.dataset.botDifficulty;
+      const current = (app.room?.players || []).find((row) => row.seat === seat);
+      socketSend({ type: "configure_slot", seat, occupantType: "bot", difficulty: select.value, loadout: current?.loadout || undefined });
+    });
+  }
+  for (const select of ui.stellarRoomSeats.querySelectorAll("[data-bot-loadout]")) {
+    select.addEventListener("change", () => {
+      const loadout = BOT_LOADOUT_PRESETS[select.value];
+      if (!loadout) return;
+      const seat = select.dataset.botLoadout;
+      const current = (app.room?.players || []).find((row) => row.seat === seat);
+      socketSend({ type: "configure_slot", seat, occupantType: "bot", difficulty: current?.difficulty || "normal", loadout });
+    });
+  }
+  for (const button of ui.stellarRoomSeats.querySelectorAll("[data-random-bot]")) {
+    button.addEventListener("click", () => {
+      const seat = button.dataset.randomBot;
+      const current = (app.room?.players || []).find((row) => row.seat === seat);
+      socketSend({ type: "configure_slot", seat, occupantType: "bot", difficulty: current?.difficulty || "normal", loadout: randomAiLoadout() });
+    });
+  }
+}
+
+function botLoadoutPresetId(loadout) {
+  const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
+  return Object.entries(BOT_LOADOUT_PRESETS).find(([, preset]) => (
+    safe.main === preset.main && safe.sub1 === preset.sub1 && safe.sub2 === preset.sub2
+  ))?.[0] || "";
+}
+
+function describeLoadout(loadout) {
+  const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
+  return [safe.main, safe.sub1, safe.sub2]
+    .map((characterId) => characterShortName(characterId, CHARACTER_DEFS[characterId]?.shortName || characterId))
+    .join("/");
+}
+
+function botLoadoutPresetOptions(loadout) {
+  const current = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
+  const currentId = botLoadoutPresetId(current);
+  const currentOption = currentId
+    ? ""
+    : `<option value="" selected>${describeLoadout(current)}</option>`;
+  return `${currentOption}${Object.entries(BOT_LOADOUT_PRESETS)
+    .map(([id, roster]) => `<option value="${id}"${currentId === id ? " selected" : ""}>${describeLoadout(roster)}</option>`)
+    .join("")}`;
+}
+
+function renderStellarRoomSeats() {
+  if (!ui.stellarRoomSeats) return;
+  const room = app.room;
+  if (!isStellar3v3Room(room)) {
+    ui.stellarRoomSeats.hidden = true;
+    ui.stellarRoomSeats.replaceChildren();
+    return;
+  }
+  const isHost = room.hostPlayerId === app.playerId;
+  const canManage = Boolean(isHost && room.status === "waiting");
+  const seatHtml = (row) => {
+    const isOpen = row.occupantType === "open";
+    const status = row.isBot ? "AI" : row.disconnected ? t("断线接管中") : isOpen ? t("开放") : row.occupantType === "closed" ? t("关闭") : row.ready ? t("已准备") : t("未准备");
+    const name = row.isBot ? t("AI 指挥单元") : escapeHtml(localizedServerName(row.name, false));
+    const loadout = row.loadout
+      ? describeLoadout(row.loadout)
+      : t("未配置");
+    const choose = isOpen && room.status === "waiting" && app.seat && !app.spectating
+      ? `<button type="button" class="stellar-seat-choose" data-choose-seat="${row.seat}">${t("选择")}</button>`
+      : "";
+    const addBot = canManage && isOpen && !row.playerId && !row.disconnected
+      ? `<button type="button" class="stellar-seat-add-bot" data-add-bot="${row.seat}">${t("添加人机")}</button>`
+      : "";
+    const botControl = canManage && row.isBot
+      ? `<select data-bot-difficulty="${row.seat}">
+          ${["easy", "normal", "hard", "master"].map((level) => `<option value="${level}"${row.difficulty === level ? " selected" : ""}>${({ easy: t("简单"), normal: t("普通"), hard: t("困难"), master: t("极限") })[level]}</option>`).join("")}
+        </select><select data-bot-loadout="${row.seat}">${botLoadoutPresetOptions(row.loadout)}</select><button type="button" data-random-bot="${row.seat}" title="${t("随机阵容")}">${t("随机")}</button><button type="button" class="stellar-seat-remove-bot" data-remove-bot="${row.seat}">${t("移除人机")}</button>`
+      : "";
+    return `<article class="stellar-seat-row stellar-seat-${row.allianceId}" data-seat="${row.seat}">
+      <div class="stellar-seat-id">${row.seat}</div>
+      <div class="stellar-seat-copy"><strong>${row.user ? onlineUserSummaryHTML(row) : name}</strong><span>${status} | ${loadout}</span></div>
+      <div class="stellar-seat-actions">${choose}${addBot}${botControl}</div>
+    </article>`;
+  };
+  const rows = room.players || [];
+  ui.stellarRoomSeats.hidden = false;
+  ui.stellarRoomSeats.innerHTML = `<div class="stellar-seat-team"><h3>${t("A 阵营")}</h3>${rows.filter((row) => row.allianceId === "A").map(seatHtml).join("")}</div><div class="stellar-seat-team"><h3>${t("B 阵营")}</h3>${rows.filter((row) => row.allianceId === "B").map(seatHtml).join("")}</div>`;
+  bindStellarRoomSeatEvents();
+}
+
+function updateOnlinePlayerStrip() {
+  if (!ui?.root) return;
+  let strip = ui.root.querySelector("#onlinePlayerStrip");
+  if (!strip) {
+    strip = document.createElement("section");
+    strip.id = "onlinePlayerStrip";
+    strip.className = "online-player-strip";
+    ui.root.append(strip);
+  }
+  const room = app?.room;
+  const visible = Boolean(room && ["countdown", "running", "finished"].includes(room.status));
+  strip.hidden = !visible;
+  if (!visible) {
+    strip.replaceChildren();
+    return;
+  }
+  strip.innerHTML = (room.players || [])
+    .filter((row) => row?.user)
+    .map((row) => `<span class="online-player-strip-seat">${escapeHtml(row.seat)}</span>${onlineUserSummaryHTML(row)}`)
+    .join("");
+}
+
 function updateRoomSummary() {
+  updateOnlinePlayerStrip();
   if (!app.room) {
     ui.roomSummary.textContent = t("未进入房间");
     ui.leaveRoomBtn.disabled = true;
     app.ready = false;
     app.allianceId = null;
+    renderStellarRoomSeats();
     updateReadyRoomButton();
+    updateStellarStartButton();
     updateTeamCommUi();
     return;
   }
@@ -1510,7 +1811,7 @@ function updateRoomSummary() {
   for (const playerRow of app.room.players || []) {
     const seatText = seatLabelForRoomSeat(playerRow.seat);
     const suffix = playerRow.isBot ? t("（AI）") : playerRow.disconnected ? t("（断线）") : "";
-    const readyText = isTwoVsTwoRoom()
+    const readyText = isTeamRoom()
       ? playerRow.ready
         ? ` | ${t("已准备")}`
         : ` | ${t("未准备")}`
@@ -1524,7 +1825,9 @@ function updateRoomSummary() {
 
   ui.roomSummary.textContent = rows.join("\n");
   ui.leaveRoomBtn.disabled = false;
+  renderStellarRoomSeats();
   updateReadyRoomButton();
+  updateStellarStartButton();
 }
 
 function roomStatusText(status) {
@@ -1643,8 +1946,11 @@ function handleConnected(message) {
 
 function renderLobbyRooms(rooms) {
   ui.roomList.innerHTML = "";
+  const visibleRooms = (rooms || []).filter((room) => (
+    lobbyModeScope() === "stellar3v3" ? room.mode === "stellar3v3" : room.mode !== "stellar3v3"
+  ));
 
-  if (!rooms || rooms.length === 0) {
+  if (visibleRooms.length === 0) {
     const empty = document.createElement("div");
     empty.className = "room-item room-item-empty";
     empty.textContent = t("当前没有公开房，可先创建一个。");
@@ -1652,7 +1958,7 @@ function renderLobbyRooms(rooms) {
     return;
   }
 
-  for (const room of rooms) {
+  for (const room of visibleRooms) {
     const item = document.createElement("div");
     item.className = "room-item";
 
@@ -1672,15 +1978,15 @@ function renderLobbyRooms(rooms) {
 
     const joinBtn = document.createElement("button");
     joinBtn.textContent = t("加入");
-    joinBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
+    joinBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "waiting" || room.joinable === false || room.count >= room.capacity;
     joinBtn.addEventListener("click", () => {
       syncLoadoutToServer(false);
-      socketSend({ type: "join_room", roomId: room.roomId });
+      socketSend({ type: "join_room", roomId: room.roomId, modeScope: lobbyModeScope() });
     });
 
     const spectateBtn = document.createElement("button");
     spectateBtn.textContent = t("观战");
-    spectateBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "running" || room.mode === "pvp2v2";
+    spectateBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "running" || room.mode === "pvp2v2" || room.mode === "stellar3v3";
     spectateBtn.addEventListener("click", () => {
       socketSend({ type: "spectate_room", roomId: room.roomId });
     });
@@ -1721,6 +2027,7 @@ function applyRoomState(message) {
     syncLoadoutControls(app.playerLoadout);
   }
   persistReconnectTicket(message);
+  showOnlineActionStatus("");
 
   updateRoomSummary();
 
@@ -1748,7 +2055,7 @@ function applyRoomState(message) {
     app.room &&
       (app.room.status === "countdown" ||
         app.room.status === "running" ||
-        (isTwoVsTwoRoom() && app.ready)),
+        (isTeamRoom() && app.ready)),
   );
   for (const element of [
     ui.onlineMainRole,
@@ -1762,7 +2069,7 @@ function applyRoomState(message) {
     }
   }
   if (ui.openFleetSelectBtn) {
-    ui.openFleetSelectBtn.title = loadoutLocked && isTwoVsTwoRoom() && app.ready
+    ui.openFleetSelectBtn.title = loadoutLocked && isTeamRoom() && app.ready
       ? t("取消准备后可修改舰队")
       : "";
   }
@@ -1771,7 +2078,7 @@ function applyRoomState(message) {
     ui.seatValue.textContent = t("A位（左翼舰队）");
   } else if (app.seat === "B") {
     ui.seatValue.textContent = t("B位（右翼舰队）");
-  } else if (app.seat && isTwoVsTwoRoom()) {
+  } else if (app.seat && isTeamRoom()) {
     ui.seatValue.textContent = `${seatLabelForRoomSeat(app.seat)}`;
   } else if (app.spectating) {
     ui.seatValue.textContent = t("观战");
@@ -2147,6 +2454,7 @@ function handleSnapshot(message) {
 
   updateSnapshotTransportStats(snapshot);
   insertSnapshot(snapshot);
+  syncStellar3v3Camera(snapshot.state);
   applyViewerControlState(snapshot.state);
 
   if (Number.isInteger(message.ackSeq)) {
@@ -2248,7 +2556,9 @@ function handleServerMessage(raw) {
   }
 
   if (type === "error") {
-    log(t("错误：{message}", { message: translateServerText(message.message || t("未知错误"), message.code) }));
+    const errorMessage = translateServerText(message.message || t("未知错误"), message.code);
+    showOnlineActionStatus(errorMessage, "error");
+    log(t("错误：{message}", { message: errorMessage }));
     return;
   }
 }
@@ -2275,7 +2585,7 @@ function sendAction(action) {
 }
 
 function sendTeamComm(commType) {
-  if (!isTwoVsTwoRoom() || !app.connected || !app.room || app.room.status === "finished" || !app.seat || app.spectating) {
+  if (!isTeamRoom() || !app.connected || !app.room || app.room.status === "finished" || !app.seat || app.spectating) {
     return false;
   }
   const safeType = String(commType || "").trim();
@@ -2371,7 +2681,27 @@ function applySetRouteOverride(shipKey, seq, endX, endY) {
   if (!ship) {
     return;
   }
-  const route = createRouteGuessForSet(ship, endX, endY);
+  let previewEnd = { x: endX, y: endY };
+  if (isStellar3v3Room()) {
+    const map = app.latestSnapshot?.state?.territory?.map;
+    if (!map) {
+      return;
+    }
+    const plannedRoute = planTerritoryRoute({
+      map,
+      start: { x: ship.x, y: ship.y },
+      end: {
+        x: clampToMapX(endX, 20),
+        y: clampToMapY(endY, 20),
+      },
+      clearance: Number(ship.radius) || 0,
+    });
+    if (!plannedRoute.accepted || !plannedRoute.waypoints[0]) {
+      return;
+    }
+    previewEnd = plannedRoute.waypoints[0];
+  }
+  const route = createRouteGuessForSet(ship, previewEnd.x, previewEnd.y);
   setRouteOverride(routeOverrideKey(app.seat, shipKey), seq, route);
 }
 
@@ -2525,6 +2855,32 @@ function setThrottleFromSlider(shouldSend) {
 
 function currentBattleState() {
   return app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null);
+}
+
+function syncStellar3v3Camera(state) {
+  if (!isStellar3v3Room() || !state?.territory?.map) {
+    return;
+  }
+  const mapWorldSize = state.territory.map.worldSize;
+  const worldSize = Number(state.world?.size || mapWorldSize?.width || mapWorldSize);
+  if (!Number.isFinite(worldSize) || worldSize <= 0) {
+    return;
+  }
+
+  camera.setWorldSize(worldSize, worldSize);
+  camera.setZoomConfig({ zoomMin: 0.45, zoomMax: 2.6, zoomStep: 0.1 });
+  ui.root?.classList.add("camera-pan-enabled");
+
+  const roomId = app.room?.roomId || null;
+  if (!roomId || app.stellarCameraRoomId === roomId) {
+    return;
+  }
+  const main = teamBySeat(state, app.seat)?.ships?.main;
+  if (!main?.alive) {
+    return;
+  }
+  camera.reset({ x: main.x, y: main.y, zoom: 1.8 });
+  app.stellarCameraRoomId = roomId;
 }
 
 function syncResponsiveMode() {
@@ -3207,6 +3563,7 @@ function renderFrame() {
       ? [teamBySeat(state, enemySeat(ownSeat))]
       : [];
   const enemyTeam = enemyTeams[0] || null;
+  const stellarWorldSize = Number(state.territory?.map?.worldSize?.width || state.territory?.map?.worldSize || state.world?.size);
   const frame = {
     state,
     ownTeam,
@@ -3235,29 +3592,57 @@ function renderFrame() {
     selectedZoneId: app.selectedZoneId,
     pendingSubSkillAim: app.pendingSubSkillAim,
     pointer: app.pointer,
+    ...(Number.isFinite(stellarWorldSize) && stellarWorldSize > 0
+      ? { worldSize: { width: stellarWorldSize, height: stellarWorldSize } }
+      : {}),
   };
+  if (isStellar3v3Room() && state.territory?.map) {
+    frame.showLegacyZones = false;
+    frame.worldLayerAfterBackground = (layerCtx) => {
+      if (!territoryStaticMapCache) {
+        territoryStaticMapCache = createTerritoryStaticMapCache();
+      }
+      territoryStaticMapCache.draw(layerCtx, state.territory.map);
+      renderTerritoryDynamicMap(layerCtx, state.territory.map, {
+        navigationPlans: state.territory.navigationPlans,
+        localSeat: app.seat,
+        showNodes: true,
+      });
+    };
+    frame.worldLayerAfterShips = (layerCtx) => {
+      renderTerritoryEntities(layerCtx, state.territory);
+    };
+    frame.minimapLayerAfterBackground = (layerCtx, _layerFrame, rect) => {
+      renderTerritoryMinimapOverlay(layerCtx, state.territory, { rect });
+    };
+  }
   drawBattleWorld(ctx, frame);
   ctx.restore();
 
-  // 屏幕空间:对战视角沿用玩家阵营立绘;观战按 A 蓝/B 红在地图两侧显示双方当前所选角色。
-  if (spectating) {
-    const teamA = teamBySeat(state, "A");
-    const teamB = teamBySeat(state, "B");
-    const selectedA = teamA?.ships?.[selectedShipKeyForSeat(state, "A")];
-    const selectedB = teamB?.ships?.[selectedShipKeyForSeat(state, "B")];
-    if (selectedA?.alive) {
-      drawInGamePortrait(ctx, selectedA.characterId, LOGICAL, LOGICAL, 0.16, "blue", "left");
-    }
-    if (selectedB?.alive) {
-      drawInGamePortrait(ctx, selectedB.characterId, LOGICAL, LOGICAL, 0.16, "red", "right");
-    }
-  } else {
-    const activeShip = ownTeam && ownTeam.ships ? ownTeam.ships[app.selectedShipKey] : null;
-    if (activeShip && activeShip.alive) {
-      drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, getFaction());
+  if (!isStellar3v3Room()) {
+    // 屏幕空间:对战视角沿用玩家阵营立绘;观战按 A 蓝/B 红在地图两侧显示双方当前所选角色。
+    if (spectating) {
+      const teamA = teamBySeat(state, "A");
+      const teamB = teamBySeat(state, "B");
+      const selectedA = teamA?.ships?.[selectedShipKeyForSeat(state, "A")];
+      const selectedB = teamB?.ships?.[selectedShipKeyForSeat(state, "B")];
+      if (selectedA?.alive) {
+        drawInGamePortrait(ctx, selectedA.characterId, LOGICAL, LOGICAL, 0.16, "blue", "left");
+      }
+      if (selectedB?.alive) {
+        drawInGamePortrait(ctx, selectedB.characterId, LOGICAL, LOGICAL, 0.16, "red", "right");
+      }
+    } else {
+      const activeShip = ownTeam && ownTeam.ships ? ownTeam.ships[app.selectedShipKey] : null;
+      if (activeShip && activeShip.alive) {
+        drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, getFaction());
+      }
     }
   }
   drawMinimap(ctx, frame, camera.minimapRect(), view);
+  if (isStellar3v3Room() && state.territory) {
+    renderTerritoryTicketHud(ctx, state.territory, {}, { width: LOGICAL, height: LOGICAL });
+  }
   if (app.room?.status === "countdown") {
     drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - estimateServerNowMs());
   }
@@ -3277,7 +3662,7 @@ function syncLoadoutToServer(logOnSuccess = true) {
 
 // 与单机一致的「翻书选角」：选完写回隐藏下拉并同步服务器
 function openOnlineCharSelect() {
-  if (isTwoVsTwoRoom() && app.ready) {
+  if (isTeamRoom() && app.ready) {
     log(t("取消准备后可修改舰队"));
     return;
   }
@@ -3353,6 +3738,12 @@ function useSubSkillOnline() {
 }
 
 function bindUiEvents() {
+  document.addEventListener("click", (event) => {
+    const target = event.target.closest?.("[data-account-user-id]");
+    if (!target) return;
+    event.preventDefault();
+    showOnlineUserDetails(target.dataset.accountUserId);
+  }, { signal: ac.signal });
   ui.serverTargetValue.textContent = defaultServerUrl();
   const savedName = sanitizeNickname(getProfileNickname() || readCookie(NICKNAME_COOKIE_KEY));
   const fallbackName = t("玩家{num}", { num: Math.floor(Math.random() * 900 + 100) });
@@ -3407,15 +3798,19 @@ function bindUiEvents() {
     socketSend({ type: "list_rooms" });
   });
 
-  ui.createPublicBtn.addEventListener("click", () => {
-    syncLoadoutToServer(false);
-    socketSend({ type: "create_room", visibility: "public", mode: "pvp" });
-  });
+  if (ui.createPublicBtn) {
+    ui.createPublicBtn.addEventListener("click", () => {
+      syncLoadoutToServer(false);
+      socketSend({ type: "create_room", visibility: "public", mode: "pvp" });
+    });
+  }
 
-  ui.createPrivateBtn.addEventListener("click", () => {
-    syncLoadoutToServer(false);
-    socketSend({ type: "create_room", visibility: "private", mode: "pvp" });
-  });
+  if (ui.createPrivateBtn) {
+    ui.createPrivateBtn.addEventListener("click", () => {
+      syncLoadoutToServer(false);
+      socketSend({ type: "create_room", visibility: "private", mode: "pvp" });
+    });
+  }
 
   if (ui.create2v2Btn) {
     ui.create2v2Btn.addEventListener("click", () => {
@@ -3424,10 +3819,34 @@ function bindUiEvents() {
     });
   }
 
-  ui.createAiRoomBtn.addEventListener("click", () => {
-    syncLoadoutToServer(false);
-    socketSend({ type: "create_room", visibility: "private", mode: "ai" });
-  });
+  if (ui.create3v3PublicBtn) {
+    ui.create3v3PublicBtn.addEventListener("click", () => {
+      syncLoadoutToServer(false);
+      if (socketSend({ type: "create_room", visibility: "public", mode: "stellar3v3" })) {
+        showOnlineActionStatus(t("正在创建 3v3 房间..."));
+      } else {
+        showOnlineActionStatus(t("请先连接服务器"), "error");
+      }
+    });
+  }
+
+  if (ui.create3v3PrivateBtn) {
+    ui.create3v3PrivateBtn.addEventListener("click", () => {
+      syncLoadoutToServer(false);
+      if (socketSend({ type: "create_room", visibility: "private", mode: "stellar3v3" })) {
+        showOnlineActionStatus(t("正在创建 3v3 房间..."));
+      } else {
+        showOnlineActionStatus(t("请先连接服务器"), "error");
+      }
+    });
+  }
+
+  if (ui.createAiRoomBtn) {
+    ui.createAiRoomBtn.addEventListener("click", () => {
+      syncLoadoutToServer(false);
+      socketSend({ type: "create_room", visibility: "private", mode: "ai" });
+    });
+  }
 
   ui.joinCodeBtn.addEventListener("click", () => {
     const code = ui.joinCodeInput.value.replace(/\D/g, "").slice(0, 6);
@@ -3436,7 +3855,7 @@ function bindUiEvents() {
       return;
     }
     syncLoadoutToServer(false);
-    socketSend({ type: "join_private", code });
+    socketSend({ type: "join_private", code, modeScope: lobbyModeScope() });
   });
 
   ui.leaveRoomBtn.addEventListener("click", () => {
@@ -3480,10 +3899,18 @@ function bindUiEvents() {
 
   if (ui.readyRoomBtn) {
     ui.readyRoomBtn.addEventListener("click", () => {
-      if (!isTwoVsTwoRoom() || app.room.status !== "waiting" || !app.seat || app.spectating) {
+      if (!isTeamRoom() || app.room.status !== "waiting" || !app.seat || app.spectating) {
         return;
       }
       socketSend({ type: "set_ready", ready: !app.ready });
+    });
+  }
+
+  if (ui.startMatchBtn) {
+    ui.startMatchBtn.addEventListener("click", () => {
+      if (isStellar3v3Room() && app.room.status === "waiting") {
+        socketSend({ type: "start_match" });
+      }
     });
   }
 
@@ -3615,18 +4042,20 @@ function bindUiEvents() {
 
     // 左键:抓取航线手柄拖拽 —— 控制点=调曲率,端点=调路径。没抓到手柄则交给 click 选战区。
     if (event.button === 0) {
-      if (!ship || !ship.alive || !ship.canControl) {
-        return;
-      }
-      const ownTeam = teamBySeat(state, app.seat);
-      const route = getDisplayRouteForShip(ownTeam, ship);
-      if (!route) {
-        return;
-      }
+      const screen = camera.screenPointFromEvent(event);
       const pos = camera.pointerFromEvent(event);
-      const handle = routeHandleAtPoint(route, pos.x, pos.y);
-      if (handle) {
+      const ownTeam = teamBySeat(state, app.seat);
+      const route = ship?.alive && ship.canControl ? getDisplayRouteForShip(ownTeam, ship) : null;
+      const handle = route ? routeHandleAtPoint(route, pos.x, pos.y) : null;
+      if (handle && ship) {
         app.drag = { handle, shipKey: ship.key, lastSentAt: 0 };
+      } else if (isStellar3v3Room()) {
+        app.pan = {
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          lastScreen: screen,
+          active: false,
+        };
       }
       return;
     }
@@ -3661,6 +4090,21 @@ function bindUiEvents() {
       return;
     }
     app.pointer = camera.pointerFromEvent(event);
+    if (app.pan) {
+      const screen = camera.screenPointFromEvent(event);
+      if (!app.pan.active) {
+        const distance = Math.hypot(event.clientX - app.pan.startClientX, event.clientY - app.pan.startClientY);
+        if (distance < MAP_PAN_START_DISTANCE_PX) {
+          return;
+        }
+        app.pan.active = true;
+        canvas.classList.add("is-panning");
+      }
+      camera.panByScreenDelta(screen.x - app.pan.lastScreen.x, screen.y - app.pan.lastScreen.y);
+      app.pan.lastScreen = screen;
+      event.preventDefault();
+      return;
+    }
     if (!app.drag || !canControlBattle()) {
       return;
     }
@@ -3706,6 +4150,11 @@ function bindUiEvents() {
       app.drag = null;
       app.suppressClick = true; // 拖拽手柄结束后,抑制这次 click 的战区切换
     }
+    if (app.pan?.active) {
+      app.suppressClick = true;
+    }
+    app.pan = null;
+    canvas.classList.remove("is-panning");
   });
 
   canvas.addEventListener("wheel", (event) => {
@@ -4016,10 +4465,11 @@ function bindBattleExitGuard() {
 }
 
 // ── 可挂载入口 ──
-export function mount(root) {
-  root.innerHTML = onlineTemplate();
+function mountOnline(root, lobbyMode, context = {}) {
+  onSignedOut = typeof context.onSignedOut === "function" ? context.onSignedOut : null;
+  root.innerHTML = onlineTemplate(lobbyMode);
   cacheDom();
-  initApp();
+  initApp(lobbyMode);
   camera = createBattleCamera({
     canvas,
     isMobile: () => app.mobileMode,
@@ -4027,6 +4477,12 @@ export function mount(root) {
     overviewWhenIdle: () => isSpectatorMode(), // 观战未手动放大时固定全图视角
     getTrackedShip: () => getSelectedShipFromState(currentBattleState()),
     onZoomChanged: () => updateBattleStatus(currentBattleState()),
+    getCanvasResolutionPolicy: () => {
+      if (!isStellar3v3Room()) return null;
+      return app.mobileMode
+        ? { minBacking: 960, maxBacking: 1440, maxDpr: 1.25 }
+        : { minBacking: 1280, maxBacking: 1920, maxDpr: 1.5 };
+    },
   });
   ac = new AbortController();
   running = true;
@@ -4044,6 +4500,14 @@ export function mount(root) {
   return unmount;
 }
 
+export function mount(root, context) {
+  return mountOnline(root, "standard", context);
+}
+
+export function mountStellar3v3(root, context) {
+  return mountOnline(root, "stellar3v3", context);
+}
+
 function unmount() {
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
@@ -4056,6 +4520,7 @@ function unmount() {
   disconnectServer();
   stopBattleBgm();
   destroyOnlineFluidBackdrop();
+  onSignedOut = null;
   lobbyStarfieldAc?.abort();
   lobbyStarfieldAc = null;
   if (ac) ac.abort();
@@ -4067,9 +4532,24 @@ function unmount() {
 }
 
 
-function onlineTemplate() {
+function onlineTemplate(lobbyMode = "standard") {
+  const isStellarLobby = lobbyMode === "stellar3v3";
+  const lobbyTitle = isStellarLobby ? t("星域争夺 3v3 大厅") : t("在线对战大厅");
+  const roomControls = isStellarLobby
+    ? `<div class="btn-row">
+        <button id="create3v3PublicBtn" type="button">${t("创建 3v3 公开房")}</button>
+        <button id="create3v3PrivateBtn" type="button">${t("创建 3v3 私人房")}</button>
+      </div>
+      <a class="stellar-rules-link" href="/stellar3v3/rules">${t("3v3 规则说明")}</a>`
+    : `<div class="btn-row">
+        <button id="createPublicBtn">${t("创建公开房")}</button>
+        <button id="createPrivateBtn">${t("创建私人房")}</button>
+      </div>
+      <button id="create2v2Btn" type="button">${t("创建 2v2 公开房")}</button>
+      <button id="createAiRoomBtn">${t("创建 AI 训练房")}</button>`;
+  const stellarSeats = `<section id="stellarRoomSeats" class="stellar-room-seats" hidden></section>`;
   return `
-    <div class="online-root">
+    <div class="online-root${isStellarLobby ? " online-root-stellar" : ""}">
       <!-- ── 独立大厅页 ── -->
       <section id="lobbyView" class="lobby-view">
         <canvas class="page-stars" aria-hidden="true"></canvas>
@@ -4077,7 +4557,7 @@ function onlineTemplate() {
         <div class="lobby-frame">
           <header class="lobby-head">
             <a class="page-back" href="/">${t("‹ 主菜单")}</a>
-            <h1 class="lobby-title">${t("在线对战大厅")}</h1>
+            <h1 class="lobby-title">${lobbyTitle}</h1>
             <div class="lobby-conn">
               <strong id="connectionValue">${t("未连接")}</strong>
               <strong id="seatValue">-</strong>
@@ -4113,12 +4593,9 @@ function onlineTemplate() {
               </div>
 
               <h2 class="lobby-card-title">${t("开房 / 加入")}</h2>
-              <div class="btn-row">
-                <button id="createPublicBtn">${t("创建公开房")}</button>
-                <button id="createPrivateBtn">${t("创建私人房")}</button>
-              </div>
-              <button id="create2v2Btn" type="button">${t("创建 2v2 公开房")}</button>
-              <button id="createAiRoomBtn">${t("创建 AI 训练房")}</button>
+              ${roomControls}
+              <p id="onlineActionStatus" class="online-action-status" role="status" hidden></p>
+              ${isStellarLobby ? stellarSeats : ""}
               <div class="join-code-wrap">
                 <input id="joinCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="${t("输入 6 位房间号")}" />
                 <button id="joinCodeBtn">${t("加入私人房")}</button>
@@ -4131,8 +4608,10 @@ function onlineTemplate() {
               <div id="roomSummary" class="room-summary">${t("未进入房间")}</div>
               <div class="btn-row">
                 <button id="readyRoomBtn" type="button" hidden>${t("准备")}</button>
+                <button id="startMatchBtn" type="button" hidden>${t("开始")}</button>
                 <button id="leaveRoomBtn" disabled>${t("离开房间")}</button>
               </div>
+              ${isStellarLobby ? "" : stellarSeats}
             </section>
           </div>
 

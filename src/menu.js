@@ -13,10 +13,13 @@ import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js
 const ITEMS = [
   { href: "/play", no: "I", label: "单人实战", sub: "挑选舰队，迎击 AI 舰群" },
   { href: "/online", no: "II", label: "在线对战", sub: "大厅匹配，与真人同步交战" },
-  { href: "/profile", no: "III", label: "指挥官档案", sub: "呼号与阵营" },
-  { href: "/guide", no: "IV", label: "玩法说明", sub: "操作与机制速览" },
-  { href: "/credits", no: "V", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
+  { href: "/stellar3v3", no: "III", label: "星域争夺 3v3", sub: "六舰编队，争夺星域控制权" },
+  { href: "/profile", no: "IV", label: "指挥官档案", sub: "呼号与阵营" },
+  { href: "/guide", no: "V", label: "玩法说明", sub: "操作与机制速览" },
+  { href: "/credits", no: "VI", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
 ];
+
+ITEMS.push({ href: "/leaderboard", no: "VII", label: "排行榜", sub: "2v2 与 3v3 指挥官积分" });
 
 const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";
 const GROUP_URL = "https://qm.qq.com/q/zg5Bl5Ugwg";

@@ -32,9 +32,11 @@ function toUrlPath(appPath) {
   return BASE + appPath; // "/play" 或 "/test-game/play"
 }
 
-export function createRouter({ routes, outlet, notFound, onNavigate }) {
+export function createRouter({ routes, outlet, notFound, onNavigate, context = {} }) {
   let teardown = null; // 当前路由的卸载函数
   let token = 0; // 防止异步挂载竞态（快速连点）
+
+  let started = false;
 
   async function loadModule(entry) {
     // entry 可以是模块对象（含 mount），或返回 Promise<模块> 的函数（懒加载）
@@ -68,7 +70,7 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
     if (myToken !== token) return; // 期间又导航了，放弃
 
     if (typeof onNavigate === "function") onNavigate(path);
-    const result = await mod.mount(outlet, { navigate });
+    const result = await mod.mount(outlet, { ...context, navigate });
     if (myToken !== token) {
       // 挂载完成时已切走，立即卸载
       if (typeof result === "function") result();
@@ -79,6 +81,7 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
 
   // path 为应用路径（/、/play …），对外（含 window.__navigate）统一用此约定
   function navigate(path, { replace = false } = {}) {
+    if (!started) return;
     const url = toUrlPath(path);
     if (url === location.pathname) return;
     if (replace) history.replaceState({}, "", url);
@@ -98,17 +101,39 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
     navigate(href);
   }
 
-  function start() {
-    document.addEventListener("click", onClick);
-    window.addEventListener("popstate", () =>
-      render(toAppPath(location.pathname)),
-    );
+  function onPopState() {
     render(toAppPath(location.pathname));
+  }
+
+  function start() {
+    if (started) return;
+    started = true;
+    document.addEventListener("click", onClick);
+    window.addEventListener("popstate", onPopState);
+    render(toAppPath(location.pathname));
+  }
+
+  function stop() {
+    if (!started) return;
+    started = false;
+    token += 1;
+    document.removeEventListener("click", onClick);
+    window.removeEventListener("popstate", onPopState);
+    if (teardown) {
+      try {
+        teardown();
+      } catch (error) {
+        console.error("[router] unmount error:", error);
+      }
+      teardown = null;
+    }
+    outlet.innerHTML = "";
   }
 
   function refresh() {
+    if (!started) return;
     render(toAppPath(location.pathname));
   }
 
-  return { start, navigate, refresh };
+  return { start, stop, navigate, refresh };
 }

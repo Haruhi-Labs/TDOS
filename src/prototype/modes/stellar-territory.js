@@ -23,7 +23,7 @@ export const stellarTerritoryPreset = {
   name: "星域争夺战",
   description: "资源、控制区、战术技能与复活驱动的新玩法骨架。",
   runtimePreset: {
-    worldSize: 2160,
+    worldSize: 3200,
     persistentMinimap: true,
     controlA: "human",
     controlB: "ai",
@@ -33,6 +33,8 @@ export const stellarTerritoryPreset = {
     defaultLoadoutB: DEFAULT_AI_LOADOUT,
     aiDifficulty: "normal",
     initialCameraZoom: 1.8,
+    cameraZoom: Object.freeze({ min: 0.45, max: 2.6, step: 0.1 }),
+    cameraPanEnabled: true,
     showLegacyZones: false,
     victoryPolicy: "external",
     aiNavigationOwner: "mode",

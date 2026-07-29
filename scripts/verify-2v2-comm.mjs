@@ -1,4 +1,6 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import path from "node:path";
 import WebSocket from "ws";
 
 const PORT = 25000 + Math.floor(Math.random() * 1000);
@@ -34,13 +36,17 @@ async function eventually(fn, timeoutMs = 4000, intervalMs = 25) {
   throw new Error("Timed out waiting for condition");
 }
 
-function startServer() {
+async function startServer() {
+  const tempDir = await mkdtemp(path.join(process.env.TEMP || process.cwd(), "tdos-2v2-comm-"));
   const child = spawn(process.execPath, ["server/server.js"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       HOST: "127.0.0.1",
       PORT: String(PORT),
+      USER_DB_PATH: path.join(tempDir, "accounts.sqlite"),
+      USER_AVATAR_DIR: path.join(tempDir, "avatars"),
+      SESSION_SECRET: "2v2-comm-test-session-secret-that-is-long-enough",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -53,12 +59,15 @@ function startServer() {
     output += String(chunk);
   });
   child.output = () => output;
+  child.httpOrigin = `http://127.0.0.1:${PORT}`;
+  child.tempDir = tempDir;
+  await eventually(() => child.exitCode === null && output.includes(`:${PORT}`), 8000);
   return child;
 }
 
-function connectClient() {
+function connectClient(cookie) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(URL);
+    const ws = new WebSocket(URL, { headers: { Cookie: cookie } });
     ws.messages = [];
     ws.on("message", (raw) => {
       ws.messages.push(JSON.parse(String(raw)));
@@ -78,11 +87,11 @@ async function waitForMessage(ws, predicate, label) {
   });
 }
 
-async function connectWithRetry() {
+async function connectWithRetry(cookie) {
   let lastError = null;
   for (let i = 0; i < 40; i += 1) {
     try {
-      return await connectClient();
+      return await connectClient(cookie);
     } catch (error) {
       lastError = error;
       await wait(50);
@@ -91,19 +100,40 @@ async function connectWithRetry() {
   throw lastError || new Error("Could not connect client");
 }
 
+async function register(server, username) {
+  const response = await fetch(`${server.httpOrigin}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password: `strong-password-${username}` }),
+  });
+  assert(response.status === 201, `${username} registration must succeed`);
+  return response.headers.get("set-cookie").split(";", 1)[0];
+}
+
+async function stopServer(server) {
+  if (server.exitCode === null) {
+    if (process.platform === "win32") {
+      spawn("taskkill", ["/pid", String(server.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true });
+    } else {
+      server.kill("SIGTERM");
+    }
+  }
+  await eventually(() => server.exitCode !== null, 5000);
+  await rm(server.tempDir, { recursive: true, force: true });
+}
+
 function teamEvents(ws) {
   return ws.messages.filter((message) => message.type === "team_comm_event");
 }
 
 async function main() {
-  const server = startServer();
+  const server = await startServer();
   try {
     const clients = [];
     for (let i = 0; i < 4; i += 1) {
-      const ws = await connectWithRetry();
+      const ws = await connectWithRetry(await register(server, `Comm${i + 1}`));
       clients.push(ws);
       await waitForMessage(ws, (message) => message.type === "connected", `client ${i} connected`);
-      send(ws, { type: "set_name", name: `P${i + 1}` });
     }
 
     send(clients[0], { type: "create_room", visibility: "public", mode: "pvp2v2" });
@@ -146,7 +176,7 @@ async function main() {
 
     assert(senderEvent.roomId === roomId, "team comm event should include roomId");
     assert(senderEvent.event.senderSeat === "A1", "server should derive sender seat");
-    assert(senderEvent.event.senderName === "P1", "server should derive sender name");
+    assert(senderEvent.event.senderName === "Comm1", "server should derive sender account name");
     assert(senderEvent.event.allianceId === "A", "server should derive alliance");
     assert(senderEvent.event.anchor.x === 320 && senderEvent.event.anchor.y === 420, "point anchor should be preserved");
     assert(allyEvent.event.id === senderEvent.event.id, "ally should receive the same event id");
@@ -179,11 +209,7 @@ async function main() {
       ws.close();
     }
   } finally {
-    server.kill();
-    await wait(100);
-    if (server.exitCode === null) {
-      server.kill("SIGKILL");
-    }
+    await stopServer(server);
   }
   console.log("2v2 team communication verification passed");
 }

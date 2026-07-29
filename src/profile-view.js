@@ -1,125 +1,169 @@
-// ═══════════════════════════════════════════════════════════════
-// 指挥官档案（路由 /profile）
-// 只管身份：呼号 + 默认阵营。出战编队在进入对战时（选角页）挑选并自动记忆，
-// 不在此处编辑。
-// ═══════════════════════════════════════════════════════════════
-
-import { getProfile, setNickname, setFaction, getFaction } from "./profile.js";
+import { getFaction, getProfile, saveProfile, setFaction } from "./profile.js";
+import { accountClient, AccountApiError } from "./account-client.js";
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
-import { t } from "./i18n.js";
 import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 
-// 移动端专属：满宽表单 + 大触控目标（复用同样的 #pvNickname / .pv-faction-btn 钩子，逻辑共享）
-function mobileTemplate(profile) {
-  return `
-    <section class="mpage">
-      <canvas class="page-stars" aria-hidden="true"></canvas>
-      <div class="mpage-top">
-        <a class="mpage-back" href="/">‹</a>
-        <h1 class="mpage-title">${t("指挥官档案")}</h1>
-      </div>
-      <div class="mpage-body">
-        <label class="mfield">
-          <span class="mfield-label">${t("呼号")}</span>
-          <input id="pvNickname" type="text" maxlength="16" placeholder="${t("输入呼号")}" autocomplete="off" value="${escapeAttr(profile.nickname)}" />
-        </label>
-        <div class="mfield">
-          <span class="mfield-label">${t("默认阵营")}</span>
-          <div class="m-faction">
-            <button type="button" class="pv-faction-btn blue" data-color="blue">${t("蓝队")}</button>
-            <button type="button" class="pv-faction-btn red" data-color="red">${t("红队")}</button>
-          </div>
-          <p class="pv-note">${t("阵营色用于立绘与画面着色；每局开战仍可在选角页临时切换。")}</p>
-        </div>
-        <p class="pv-tip">${t("出战编队不在此处设定 —— 进入任意对战模式时挑选，并自动记住上次选择。")}</p>
-      </div>
-    </section>
-  `;
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
-function template(profile) {
+function statLine(label, stat) {
+  const safe = stat || { elo: 1000, wins: 0, losses: 0, games: 0, rank: "-" };
+  return `<div class="account-stat"><span>${label}</span><strong>${safe.elo || 1000}</strong><small>#${safe.rank || "-"} / ${safe.wins || 0}W ${safe.losses || 0}L</small></div>`;
+}
+
+function avatarHtml(user) {
+  if (user?.avatarUrl) {
+    return `<img class="account-avatar" src="${escapeHtml(user.avatarUrl)}" alt="${escapeHtml(user.username)}" />`;
+  }
+  return `<span class="account-avatar account-avatar-fallback" aria-hidden="true">${escapeHtml(String(user?.username || "?").slice(0, 1).toUpperCase())}</span>`;
+}
+
+function accountTemplate(account) {
   return `
-    <section class="page-stage">
+    <section class="account-surface account-member" aria-labelledby="accountHeading">
+      <div class="account-identity">
+        <label class="account-avatar-control" title="更换头像">${avatarHtml(account)}<input id="accountAvatarInput" type="file" accept="image/png,image/jpeg,image/webp" /></label>
+        <div><p>COMMANDER ACCOUNT</p><h2 id="accountHeading">${escapeHtml(account.username)}</h2><span class="account-status">已登录</span></div>
+        <button type="button" class="account-icon-button" data-account-action="logout" title="退出登录" aria-label="退出登录">↪</button>
+      </div>
+      <form id="accountProfileForm" class="account-profile-form">
+        <label class="pv-field"><span class="pv-label">用户名</span><input id="accountProfileUsername" maxlength="16" value="${escapeHtml(account.username)}" autocomplete="username" /></label>
+        <label class="pv-field"><span class="pv-label">个性签名</span><input id="accountSignature" maxlength="160" value="${escapeHtml(account.signature)}" /></label>
+        <div class="account-actions"><button type="submit" class="account-button account-button-primary">保存资料</button><a class="account-link" href="/leaderboard">查看排行榜</a></div>
+      </form>
+      <div class="account-stats" aria-label="个人战绩">${statLine("2v2", account.stats?.pvp2v2)}${statLine("3v3", account.stats?.stellar3v3)}</div>
+    </section>`;
+}
+
+function template(profile, account, message) {
+  return `
+    <section class="page-stage account-profile-page">
       <canvas class="page-stars" aria-hidden="true"></canvas>
       <div class="page-bg" aria-hidden="true"></div>
       <div class="page-frame">
-        <a class="page-back" href="/">${t("‹ 返回主菜单")}</a>
-        <h1 class="page-title">${t("指挥官档案")}</h1>
-
+        <a class="page-back" href="/">返回主菜单</a>
+        <h1 class="page-title">指挥官档案</h1>
         <div class="page-scroll">
-        <div class="page-card">
-          <label class="pv-field">
-            <span class="pv-label">${t("呼号")}</span>
-            <input id="pvNickname" type="text" maxlength="16" placeholder="${t("输入呼号")}" autocomplete="off" value="${escapeAttr(profile.nickname)}" />
-          </label>
-
-          <div class="pv-field">
-            <span class="pv-label">${t("默认阵营")}</span>
-            <div class="pv-faction">
-              <button type="button" class="pv-faction-btn blue" data-color="blue">${t("蓝队")}</button>
-              <button type="button" class="pv-faction-btn red" data-color="red">${t("红队")}</button>
-            </div>
-            <p class="pv-note">${t("阵营色用于立绘与画面着色；每局开战仍可在选角页临时切换。")}</p>
-          </div>
-        </div>
-
-        <p class="pv-tip">${t("出战编队不在此处设定 —— 进入任意对战模式时挑选，并自动记住上次选择。")}</p>
+          ${accountTemplate(account)}
+          <section class="page-card profile-local-settings">
+            <div class="account-section-head"><p>LOCAL LOADOUT</p><h2>本机出战偏好</h2></div>
+            <label class="pv-field"><span class="pv-label">本地呼号</span><input id="pvNickname" maxlength="16" value="${escapeHtml(profile.nickname)}" autocomplete="off" /></label>
+            <div class="pv-field"><span class="pv-label">默认阵营</span><div class="pv-faction"><button type="button" class="pv-faction-btn blue" data-color="blue">蓝队</button><button type="button" class="pv-faction-btn red" data-color="red">红队</button></div></div>
+            <p class="pv-note">编队会在进入对战时选择；登录后会同步到账号，作为下次出战的默认配置。</p>
+          </section>
+          <p class="account-message" role="status">${escapeHtml(message || "")}</p>
         </div>
       </div>
-    </section>
-  `;
+    </section>`;
 }
 
-function escapeAttr(value) {
-  return String(value || "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+function accountErrorMessage(error) {
+  if (error instanceof AccountApiError) {
+    if (error.code === "username_taken") return "该用户名已被使用。";
+    if (error.code === "username_cooldown") return "用户名每 30 天只能修改一次。";
+    if (error.code === "invalid_credentials") return "用户名或密码不正确。";
+    if (error.code === "login_throttled") return "登录尝试过多，请稍后再试。";
+    return error.message;
+  }
+  return "请求失败，请确认服务已启动后重试。";
 }
 
-export function mount(root) {
-  root.innerHTML = (isMobile() ? mobileTemplate : template)(getProfile());
-  const ac = new AbortController();
-  const { signal } = ac;
-  const starfieldAc = new AbortController();
-  startStarfield(root.querySelector(".page-stars"), starfieldAc.signal);
-  const fluidBackdrop = mountRouteFluidBackdrop(root.querySelector(".page-stage, .mpage"), {
-    logLabel: "Profile fluid backdrop",
-    onReady: () => starfieldAc.abort(),
-  });
+export async function mount(root, { onSignedOut } = {}) {
+  let account = null;
+  let message = "";
+  let eventAbort = null;
+  let starfieldAbort = null;
+  let fluidBackdrop = null;
 
-  const input = root.querySelector("#pvNickname");
-  const factionBtns = Array.from(root.querySelectorAll(".pv-faction-btn"));
-
-  function renderFaction() {
-    const faction = getFaction();
-    for (const btn of factionBtns) btn.classList.toggle("active", btn.dataset.color === faction);
+  try {
+    account = await accountClient.getMe();
+  } catch (error) {
+    message = accountErrorMessage(error);
   }
 
-  input.addEventListener("input", () => setNickname(input.value), { signal });
-  input.addEventListener(
-    "change",
-    () => {
-      setNickname(input.value);
-      input.value = getProfile().nickname;
-    },
-    { signal },
-  );
-
-  for (const btn of factionBtns) {
-    btn.addEventListener(
-      "click",
-      () => {
-        setFaction(btn.dataset.color);
-        renderFaction();
-      },
-      { signal },
-    );
+  if (!account) {
+    onSignedOut?.();
+    return () => {};
   }
 
-  renderFaction();
+  function syncAccountToLocal(user) {
+    if (!user) return;
+    saveProfile({ username: undefined, nickname: user.username, loadout: user.loadout || getProfile().loadout });
+  }
 
+  function render() {
+    eventAbort?.abort();
+    starfieldAbort?.abort();
+    fluidBackdrop?.destroy();
+    root.innerHTML = template(getProfile(), account, message);
+    eventAbort = new AbortController();
+    const { signal } = eventAbort;
+    starfieldAbort = new AbortController();
+    startStarfield(root.querySelector(".page-stars"), starfieldAbort.signal);
+    fluidBackdrop = mountRouteFluidBackdrop(root.querySelector(".account-profile-page"), {
+      logLabel: "Account profile fluid backdrop",
+      onReady: () => starfieldAbort.abort(),
+    });
+
+    const nicknameInput = root.querySelector("#pvNickname");
+    nicknameInput?.addEventListener("input", () => saveProfile({ nickname: nicknameInput.value }), { signal });
+    for (const button of root.querySelectorAll(".pv-faction-btn")) {
+      button.classList.toggle("active", button.dataset.color === getFaction());
+      button.addEventListener("click", () => {
+        setFaction(button.dataset.color);
+        for (const item of root.querySelectorAll(".pv-faction-btn")) item.classList.toggle("active", item.dataset.color === getFaction());
+      }, { signal });
+    }
+
+    async function run(action) {
+      message = "";
+      try {
+        account = await action();
+        syncAccountToLocal(account);
+        message = "资料已同步。";
+      } catch (error) {
+        if (error instanceof AccountApiError && error.status === 401) {
+          onSignedOut?.();
+          return;
+        }
+        message = accountErrorMessage(error);
+      }
+      render();
+    }
+
+    root.querySelector('[data-account-action="logout"]')?.addEventListener("click", async () => {
+      try {
+        await accountClient.logout();
+        account = null;
+        onSignedOut?.();
+        return;
+      } catch (error) {
+        message = accountErrorMessage(error);
+      }
+      render();
+    }, { signal });
+    root.querySelector("#accountProfileForm")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const username = root.querySelector("#accountProfileUsername")?.value || "";
+      const signature = root.querySelector("#accountSignature")?.value || "";
+      run(() => accountClient.updateProfile({ username, signature, loadout: getProfile().loadout }));
+    }, { signal });
+    root.querySelector("#accountAvatarInput")?.addEventListener("change", () => {
+      const file = root.querySelector("#accountAvatarInput")?.files?.[0];
+      if (file) run(() => accountClient.uploadAvatar(file));
+    }, { signal });
+  }
+
+  render();
   return () => {
-    fluidBackdrop.destroy();
-    starfieldAc.abort();
-    ac.abort();
+    eventAbort?.abort();
+    starfieldAbort?.abort();
+    fluidBackdrop?.destroy();
   };
 }

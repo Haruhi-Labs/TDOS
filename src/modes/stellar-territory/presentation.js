@@ -549,8 +549,8 @@ export function createStellarTerritoryPresentation({ root, runtime, restartHost 
       renderTerritoryMinimapOverlay(ctx, presentationState, { rect });
     },
 
-    renderScreen(ctx, { presentationState }) {
-      renderTerritoryTicketHud(ctx, presentationState, state.effects);
+    renderScreen(ctx, { presentationState, frame }) {
+      renderTerritoryTicketHud(ctx, presentationState, state.effects, frame?.screenSize);
     },
 
     destroy() {

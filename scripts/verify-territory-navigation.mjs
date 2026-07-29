@@ -30,7 +30,7 @@ function makeEdge(id, from, to) {
   return { id, from, to };
 }
 
-const map = generateTerritoryMap({ seed: 7251, templateId: "three-lane-v2", worldSize: 2160 });
+const map = generateTerritoryMap({ seed: 7251, templateId: "three-lane-v2", worldSize: 3200 });
 const graphValidation = validateNavigationGraph(map);
 assert(graphValidation.valid, `generated navigation graph should be valid: ${stableJson(graphValidation)}`);
 

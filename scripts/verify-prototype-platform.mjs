@@ -130,6 +130,28 @@ const worldCorner = dynamicCamera.minimapWorldPointFromScreenPoint(
 );
 assert(approxEqual(worldCorner.x, 2160) && approxEqual(worldCorner.y, 2160), `minimap should project runtime world: ${JSON.stringify(worldCorner)}`);
 
+const territoryCamera = createBattleCamera({
+  canvas: cameraCanvas,
+  isMobile: () => false,
+  worldSize: { width: 3200, height: 3200 },
+  zoomMin: 0.45,
+  zoomMax: 2.6,
+  zoomStep: 0.1,
+});
+territoryCamera.reset({ x: 1600, y: 1600, zoom: 0.45 });
+let territoryView = territoryCamera.currentViewState();
+assert(approxEqual(territoryView.zoom, 0.45), `territory camera should permit full-map zoom: ${JSON.stringify(territoryView)}`);
+assert(approxEqual(territoryView.width, 3200) && approxEqual(territoryView.height, 3200), `territory full-map zoom should cover the world: ${JSON.stringify(territoryView)}`);
+territoryCamera.adjustCameraZoom(1);
+territoryView = territoryCamera.currentViewState();
+assert(approxEqual(territoryView.zoom, 0.55), `territory wheel step should be ten percent: ${JSON.stringify(territoryView)}`);
+territoryCamera.panByScreenDelta(2000, -1000);
+territoryView = territoryCamera.currentViewState();
+assert(
+  approxEqual(territoryView.left, 0) && territoryView.top > 0,
+  `screen drag should pan the world oppositely and retain map bounds: ${JSON.stringify(territoryView)}`,
+);
+
 const fallbackCamera = createBattleCamera({ canvas: cameraCanvas, isMobile: () => false });
 fallbackCamera.reset({ x: 2100, y: 2100, zoom: 2 });
 let fallbackView = fallbackCamera.currentViewState();
@@ -655,8 +677,13 @@ assert(validationSurvivalMode.status === MODE_STATUS.EXPERIMENTAL, "survival sta
 validateModeDefinition(stellarTerritoryMode);
 assert(stellarTerritoryMode.id === "stellar-territory", "stellar territory mode id");
 assert(stellarTerritoryMode.status === MODE_STATUS.EXPERIMENTAL, "stellar territory status");
-assert(stellarTerritoryPreset.runtimePreset.worldSize === 2160, "territory preset should request 2160 world");
+assert(stellarTerritoryPreset.runtimePreset.worldSize === 3200, "territory preset should request 3200 world");
 assert(stellarTerritoryPreset.runtimePreset.persistentMinimap === true, "territory preset should request persistent minimap");
+assert(
+  JSON.stringify(stellarTerritoryPreset.runtimePreset.cameraZoom) === JSON.stringify({ min: 0.45, max: 2.6, step: 0.1 }),
+  "territory preset should request full-map camera zoom controls",
+);
+assert(stellarTerritoryPreset.runtimePreset.cameraPanEnabled === true, "territory preset should enable blank-map camera dragging");
 const stellarParams = normalizeModeParameters(stellarTerritoryMode.parameterSchema, {});
 assert(stellarParams.initialTickets === 120, "stellar default initial tickets");
 assert(!stellarTerritoryMode.parameterSchema.some((field) => field.key === "controlPointCount"), "fixed control points should not expose an ineffective count parameter");
@@ -747,8 +774,8 @@ const stellarRuntime = createPrototypeRuntime({
 });
 stellarRuntime.start();
 assert(
-  stellarRuntime.getSimulation().worldSize === 2160,
-  `stellar runtime should inherit the mode-preferred 2160 world: ${stellarRuntime.getSimulation().worldSize}`,
+  stellarRuntime.getSimulation().worldSize === 3200,
+  `stellar runtime should inherit the mode-preferred 3200 world: ${stellarRuntime.getSimulation().worldSize}`,
 );
 stellarRuntime.pause();
 stellarRuntime.step(TICK_DT);

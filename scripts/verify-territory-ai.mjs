@@ -369,6 +369,20 @@ for (const seat of ["A1", "A2", "A3"]) {
 }
 assert(Object.values(state.aiCoordinator.A.assignments).filter((assignment) => assignment.targetId === midPoint.id).length === 3, "post-lock emergency support should be able to reassign across lanes");
 
+state = makeState(6414);
+state.elapsed = 25.1;
+state.pickups = [];
+state.skillPickups = [];
+sim = makeSimulation();
+const postOpeningShip = sim.fleetBySeat("B").shipByKey("main");
+postOpeningShip.x = 1200;
+postOpeningShip.y = 1600;
+const postOpeningAction = chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
+assert(
+  postOpeningAction?.navigationKey === "capture_control_point:control-left",
+  `an unclaimed side control should outrank the nearer mid control after opening: ${JSON.stringify(postOpeningAction)}`,
+);
+
 state = makeState(6464);
 state.elapsed = 25.1;
 sim = makeSimulation();

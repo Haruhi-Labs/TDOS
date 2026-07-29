@@ -67,6 +67,15 @@ function scoreDistance(ship, target, nearScale = 720) {
   return Math.max(0, nearScale - distance(ship, target)) / Math.max(1, nearScale);
 }
 
+function objectiveDistanceScale(simulation) {
+  const worldSize = Number(simulation?.worldSize);
+  return Number.isFinite(worldSize) && worldSize > 0 ? worldSize / 3 : 720;
+}
+
+function unclaimedSideControlBonus(target) {
+  return target?.ownerAllianceId == null && ["left", "right"].includes(target?.laneId) ? 18 : 0;
+}
+
 function objectiveTargetId(objective, allianceId) {
   const target = objective?.target;
   if (objective?.type === "retreat") return `spawn-${allianceId}`;
@@ -121,7 +130,7 @@ export function scoreTerritoryObjective({ objective, seat, simulation, modeState
   const ship = mainShip(simulation, seat);
   if (!objective || !ship?.alive) return 0;
   const target = objective.target || null;
-  const near = scoreDistance(ship, target?.center || target);
+  const near = scoreDistance(ship, target?.center || target, objectiveDistanceScale(simulation));
   if (objective.type === "retreat") {
     const hull = fleetHullRatio(simulation?.fleetBySeat?.(seat));
     return hull < 0.35 ? 140 - hull * 140 : 0;
@@ -136,7 +145,7 @@ export function scoreTerritoryObjective({ objective, seat, simulation, modeState
     const owner = target?.ownerAllianceId || null;
     const ownerBonus = owner === enemyAllianceId(allianceId) ? 46 : owner == null ? 24 : -20;
     const ticketPressure = Number(modeState?.alliances?.[allianceId]?.tickets || 0) < Number(modeState?.alliances?.[enemyAllianceId(allianceId)]?.tickets || 0) ? 16 : 0;
-    return 54 + ownerBonus + near * 24 + ticketPressure;
+    return 54 + ownerBonus + near * 24 + ticketPressure + unclaimedSideControlBonus(target);
   }
   if (objective.type === "defend_control_point") {
     if (target?.ownerAllianceId !== allianceId) return 26 + near * 10;

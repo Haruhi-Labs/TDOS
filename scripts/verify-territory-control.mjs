@@ -65,6 +65,7 @@ assert(
 
 let sim = makeSimulation();
 let state = makeState();
+assert(state.map.controlPoints.length === 5, "expanded territory map should expose five capture points");
 let cp = state.map.controlPoints[0];
 assert(cp.shape === "rect", "generated control points should be rectangular");
 assert(!("radius" in cp), "generated control points should not rely on radius");
@@ -183,19 +184,28 @@ assert(
 state = makeState();
 state.map.controlPoints[0].ownerAllianceId = "A";
 state.map.controlPoints[1].ownerAllianceId = "A";
-state.map.controlPoints[2].ownerAllianceId = "B";
+state.map.controlPoints[2].ownerAllianceId = "A";
+state.map.controlPoints[3].ownerAllianceId = "B";
+state.map.controlPoints[4].ownerAllianceId = "B";
 for (let i = 0; i < Math.ceil(4 / TICK_DT); i += 1) {
   state = updateTerritoryTickets({ modeState: state, dt: TICK_DT }).modeState;
 }
-assert(state.alliances.B.tickets === 119, `B should lose one ticket when down one point, got ${state.alliances.B.tickets}`);
+assert(state.alliances.B.tickets === 119, `B should lose one ticket when behind 3:2, got ${state.alliances.B.tickets}`);
 assert(state.alliances.A.tickets === 120, "advantaged side should not lose tickets");
-assert(state.ticketDrainRates.B === 0.25 && state.ticketDrainRates.A === 0, `ticket drain rates should reflect a 2-1 control deficit: ${JSON.stringify(state.ticketDrainRates)}`);
+assert(state.ticketDrainRates.B === 0.25 && state.ticketDrainRates.A === 0, `ticket drain rates should reflect a 3-2 control deficit: ${JSON.stringify(state.ticketDrainRates)}`);
 
-state.map.controlPoints[2].ownerAllianceId = "A";
+state.map.controlPoints[3].ownerAllianceId = "A";
 for (let i = 0; i < Math.ceil(2.5 / TICK_DT); i += 1) {
   state = updateTerritoryTickets({ modeState: state, dt: TICK_DT }).modeState;
 }
-assert(state.alliances.B.tickets === 118, `B should lose another ticket when all points controlled, got ${state.alliances.B.tickets}`);
+assert(state.alliances.B.tickets === 118, `B should lose another ticket when behind 4:1, got ${state.alliances.B.tickets}`);
+assert(state.ticketDrainRates.B === 0.4 && state.ticketDrainRates.A === 0, `ticket drain rates should reflect a 4-1 control deficit: ${JSON.stringify(state.ticketDrainRates)}`);
+
+state.map.controlPoints[4].ownerAllianceId = "A";
+for (let i = 0; i < Math.ceil(2.5 / TICK_DT); i += 1) {
+  state = updateTerritoryTickets({ modeState: state, dt: TICK_DT }).modeState;
+}
+assert(state.alliances.B.tickets === 117, `B should lose another ticket when down 5:0, got ${state.alliances.B.tickets}`);
 
 state.alliances.B.tickets = 1;
 for (let i = 0; i < Math.ceil(10 / TICK_DT); i += 1) {

@@ -14,10 +14,10 @@ function assert(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function makeSimulation({ worldSize = null } = {}) {
+function makeSimulation({ worldSize = stellarTerritoryMode.worldSize } = {}) {
   return new MatchSimulation({
     mode: "ai",
-    ...(worldSize ? { worldSize } : {}),
+    worldSize,
     teamLoadouts: { A: cloneLoadout(DEFAULT_TEAM_LOADOUT), B: cloneLoadout(DEFAULT_AI_LOADOUT) },
     aiSeats: [],
   });
@@ -66,7 +66,7 @@ for (const skill of ALLOWED_TACTICAL_SKILLS) {
 assert(ALLOWED_TACTICAL_SKILLS.every((skill) => skill.type === "active"), "all tactical skills must be active");
 
 const distributedSkillState = makeState(4046);
-assert(new Set(distributedSkillState.map.skillSpawnNodes.map((node) => node.regionId)).size === 5, "skills should expose five strategy groups");
+assert(new Set(distributedSkillState.map.skillSpawnNodes.map((node) => node.regionId)).size === 7, "skills should expose seven strategy groups");
 
 const blockedSkillState = makeState(4041);
 const blockedSkillNode = blockedSkillState.map.skillSpawnNodes[0];
@@ -90,12 +90,13 @@ assert(blockedSkillSpawn.pickups.length === 0, "blocked skill reservation must n
 
 const outOfBoundsSkillState = makeState(4044);
 const outOfBoundsSkillNode = outOfBoundsSkillState.map.skillSpawnNodes[0];
+const skillBounds = outOfBoundsSkillState.map.safeBounds;
 const outOfBoundsSkillSpawn = spawnTerritorySkillPickup({
   modeState: outOfBoundsSkillState,
   reservation: {
     skillId: "all_fleet_shield",
     nodeId: outOfBoundsSkillNode.id,
-    position: { x: 2300, y: 2300 },
+    position: { x: skillBounds.width + 100, y: skillBounds.height + 100 },
     spawnAt: 10,
   },
 });

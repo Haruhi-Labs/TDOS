@@ -53,6 +53,7 @@ const LOADOUT_A_KEY = "tdos-prototype-loadout-a-v1";
 const LOADOUT_B_KEY = "tdos-prototype-loadout-b-v1";
 const MODE_KEY = "tdos-prototype-mode-v1";
 const SPEED_PRESETS = [0.25, 0.5, 1, 2, 4];
+const MAP_PAN_START_DISTANCE_PX = 6;
 
 let canvas;
 let ctx;
@@ -99,6 +100,7 @@ function initApp() {
     selectedZoneId: 5,
     pendingSubSkillAim: null,
     drag: null,
+    pan: null,
     suppressMapClick: false,
     pointer: { x: LOGICAL * 0.5, y: LOGICAL * 0.5 },
     mobileMode: false,
@@ -351,6 +353,13 @@ function createRuntimeForCurrentMode(restartOptions = null) {
   });
   runtime.start();
   camera.setWorldSize(worldSize, worldSize);
+  const cameraZoom = mode.runtimePreset?.cameraZoom || {};
+  camera.setZoomConfig({
+    zoomMin: cameraZoom.min,
+    zoomMax: cameraZoom.max,
+    zoomStep: cameraZoom.step,
+  });
+  ui?.root?.classList.toggle("camera-pan-enabled", Boolean(mode.runtimePreset?.cameraPanEnabled));
   app.runtime = runtime;
   if (typeof window !== "undefined") {
     window.__TDOS_PROTOTYPE_RUNTIME__ = runtime;
@@ -361,6 +370,8 @@ function createRuntimeForCurrentMode(restartOptions = null) {
   app.selectedZoneId = 5;
   app.pendingSubSkillAim = null;
   app.drag = null;
+  app.pan = null;
+  canvas?.classList.remove("is-panning");
   resetShipDestructionEffects(app.destructionEffects);
   createPresentationForCurrentMode();
   const snap = runtime.getSnapshot();
@@ -575,6 +586,7 @@ function renderFrame() {
       app.modeDefinition?.runtimePreset,
       app.pendingSubSkillAim,
     ),
+    screenSize: { width: LOGICAL, height: LOGICAL },
     pointer: app.pointer,
   };
   const presentation = app.presentation;
@@ -798,18 +810,29 @@ function bindUi() {
       event.preventDefault();
       return;
     }
+    app.pan = null;
     const ship = selectedShip();
     if (event.button === 0) {
-      if (!ship?.alive || !ship.canControl) return;
       const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
-      const navigationPlan = app.runtime?.getPresentationState?.()?.navigationPlans?.[
-        `${localSeat()}:${ship.key || app.selectedShipKey}`
-      ];
-      const handle = routeHandleAtPoint(ship.route, pos.x, pos.y, {
-        allowControl: navigationPlan?.kind !== "graph",
-      });
+      let handle = null;
+      if (ship?.alive && ship.canControl) {
+        const navigationPlan = app.runtime?.getPresentationState?.()?.navigationPlans?.[
+          `${localSeat()}:${ship.key || app.selectedShipKey}`
+        ];
+        handle = routeHandleAtPoint(ship.route, pos.x, pos.y, {
+          allowControl: navigationPlan?.kind !== "graph",
+        });
+      }
       if (handle) app.drag = { handle, shipKey: ship.key };
+      else if (app.modeDefinition?.runtimePreset?.cameraPanEnabled && !app.pendingSubSkillAim) {
+        app.pan = {
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          lastScreen: screen,
+          active: false,
+        };
+      }
       return;
     }
     if (event.button === 2) {
@@ -823,20 +846,38 @@ function bindUi() {
   }, { signal });
 
   canvas.addEventListener("mousemove", (event) => {
+    const screen = camera.screenPointFromEvent(event);
     const pos = camera.pointerFromEvent(event);
     app.pointer = pos;
-    if (!app.drag || app.runtime?.isFinished?.()) return;
-    if (app.drag.handle === "control") {
-      applyAction({ type: "route_control", shipKey: app.drag.shipKey, controlX: pos.x, controlY: pos.y });
-    } else {
-      applyAction({ type: "route_end", shipKey: app.drag.shipKey, endX: pos.x, endY: pos.y });
+    if (app.runtime?.isFinished?.()) return;
+    if (app.drag) {
+      if (app.drag.handle === "control") {
+        applyAction({ type: "route_control", shipKey: app.drag.shipKey, controlX: pos.x, controlY: pos.y });
+      } else {
+        applyAction({ type: "route_end", shipKey: app.drag.shipKey, endX: pos.x, endY: pos.y });
+      }
+      return;
     }
+    if (!app.pan) return;
+    if (!app.pan.active) {
+      const distance = Math.hypot(event.clientX - app.pan.startClientX, event.clientY - app.pan.startClientY);
+      if (distance < MAP_PAN_START_DISTANCE_PX) return;
+      app.pan.active = true;
+      canvas.classList.add("is-panning");
+    }
+    camera.panByScreenDelta(screen.x - app.pan.lastScreen.x, screen.y - app.pan.lastScreen.y);
+    app.pan.lastScreen = screen;
+    event.preventDefault();
   }, { signal });
 
   window.addEventListener("mouseup", () => {
-    if (!app.drag) return;
-    app.drag = null;
-    app.suppressMapClick = true;
+    if (app.drag) {
+      app.drag = null;
+      app.suppressMapClick = true;
+    }
+    if (app.pan?.active) app.suppressMapClick = true;
+    app.pan = null;
+    canvas.classList.remove("is-panning");
   }, { signal });
 
   canvas.addEventListener("wheel", (event) => {

@@ -22,7 +22,7 @@ function shipOccupiesLane(ship, lane, spawnAreas) {
   if ((spawnAreas || []).some((spawn) => Math.hypot(ship.x - spawn.center.x, ship.y - spawn.center.y) <= Number(spawn.radius || 0) + radius)) return false;
   const threshold = Math.max(0, Number(lane?.width) || 0) / 2 + radius;
   const path = lane?.path || [];
-  return path.slice(2, -1).some((end, index) => distanceToSegment(ship, path[index + 1], end) <= threshold);
+  return path.slice(3, -1).some((end, index) => distanceToSegment(ship, path[index + 2], end) <= threshold);
 }
 
 function makeFleetLayout() {
@@ -47,7 +47,9 @@ const occupancyMap = stellarTerritoryMode.createInitialModeState({
   randomSeed: 7799,
   parameters: stellarTerritoryMode.defaultParameters,
 }).map;
-const sharedExitShip = { x: 225, y: 1780, radius: 20 };
+const spawnA = occupancyMap.spawnAreas.find((area) => area.allianceId === "A");
+const sharedExitShip = { ...occupancyMap.laneCorridors.find((lane) => lane.id === "mid").path[1], radius: 20 };
+assert(Math.hypot(sharedExitShip.x - spawnA.center.x, sharedExitShip.y - spawnA.center.y) > spawnA.radius + sharedExitShip.radius, "lane-distribution fixture must sit beyond A spawn clearance");
 for (const laneId of ["top", "bottom"]) {
   const lane = occupancyMap.laneCorridors.find((candidate) => candidate.id === laneId);
   assert(!shipOccupiesLane(sharedExitShip, lane, occupancyMap.spawnAreas), `shared spawn exit must not count as ${laneId} occupancy`);
@@ -74,11 +76,12 @@ function runMatch(seed) {
     let skillEvents = 0;
     let respawnEvents = 0;
     const occupiedLaneIds = new Set();
+    const sideControlObjectiveIds = new Set();
     const started = performance.now();
     for (let tick = 0; tick < maxTicks && !runtime.isFinished(); tick += 1) {
       runtime.step(TICK_DT);
       const tickModeState = runtime.getModeState();
-      if (Number(tickModeState?.elapsed || 0) < 30) {
+      if (Number(tickModeState?.elapsed || 0) < 40) {
         const simulation = runtime.getSimulation();
         for (const lane of tickModeState?.map?.laneCorridors || []) {
           if (lane?.id !== "top" && lane?.id !== "bottom") continue;
@@ -88,6 +91,13 @@ function runMatch(seed) {
               occupiedLaneIds.add(lane.id);
               break;
             }
+          }
+        }
+      }
+      if (Number(tickModeState?.elapsed || 0) >= 25 && Number(tickModeState?.elapsed || 0) < 90) {
+        for (const allianceId of ["A", "B"]) {
+          for (const assignment of Object.values(tickModeState?.aiCoordinator?.[allianceId]?.assignments || {})) {
+            if (["control-left", "control-right"].includes(assignment?.targetId)) sideControlObjectiveIds.add(assignment.targetId);
           }
         }
       }
@@ -116,6 +126,7 @@ function runMatch(seed) {
       ticketsB: Number(modeState?.alliances?.B?.tickets || 0),
       controlOwners: (modeState?.map?.controlPoints || []).map((point) => point.ownerAllianceId || "-").join(""),
       occupiedLaneIds: [...occupiedLaneIds].sort(),
+      sideControlObjectiveIds: [...sideControlObjectiveIds].sort(),
     };
   } finally {
     Math.random = originalRandom;
@@ -176,6 +187,7 @@ function simulationSignature(result) {
     ticketsA: result.ticketsA,
     ticketsB: result.ticketsB,
     controlOwners: result.controlOwners,
+    sideControlObjectiveIds: result.sideControlObjectiveIds,
   });
 }
 assert(
@@ -216,6 +228,7 @@ console.log(JSON.stringify({
     ticketsB: item.ticketsB,
       controlOwners: item.controlOwners,
       openingOccupancy: item.occupiedLaneIds,
+      sideObjectives: item.sideControlObjectiveIds,
       respawns: item.respawnEvents,
   })),
 }, null, 2));
@@ -226,5 +239,6 @@ assert(longMatches.length <= Math.ceil(results.length * 0.5), `too many long mat
 assert(totalResources > results.length * 2, `resource collection too low: ${totalResources}`);
 assert(totalSkills > 0, "AI should use at least one tactical skill in batch simulation");
 assert(totalRespawns > 0, "respawns should occur in batch simulation");
-assert(results.every((item) => item.occupiedLaneIds.includes("top") && item.occupiedLaneIds.includes("bottom")), `top and bottom lanes should be occupied before 30 seconds: ${JSON.stringify(results.map((item) => item.occupiedLaneIds))}`);
-assert(avgStepMs < 9000, `headless match wall time too high: ${avgStepMs.toFixed(1)}ms average`);
+assert(results.every((item) => item.occupiedLaneIds.includes("top") && item.occupiedLaneIds.includes("bottom")), `top and bottom lanes should be occupied before 40 seconds: ${JSON.stringify(results.map((item) => item.occupiedLaneIds))}`);
+assert(results.every((item) => item.sideControlObjectiveIds.includes("control-left") && item.sideControlObjectiveIds.includes("control-right")), `AI should assign both side controls after the opening lock: ${JSON.stringify(results.map((item) => item.sideControlObjectiveIds))}`);
+assert(avgStepMs < 18000, `headless match wall time too high: ${avgStepMs.toFixed(1)}ms average`);

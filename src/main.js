@@ -13,8 +13,12 @@
 import "../styles.css";
 import { initI18n } from "./i18n.js";
 import { createRouter } from "./router.js";
+import { createAuthGate } from "./auth-gate.js";
+import { accountClient } from "./account-client.js";
 import * as menu from "./menu.js";
+import * as authView from "./auth-view.js";
 import * as profileView from "./profile-view.js";
+import * as leaderboardView from "./leaderboard-view.js";
 import * as guide from "./guide.js";
 import * as credits from "./credits.js";
 
@@ -25,18 +29,36 @@ const outlet = document.getElementById("app");
 const routes = {
   "/": menu,
   "/profile": profileView,
+  "/leaderboard": leaderboardView,
   "/guide": guide,
   "/credits": credits,
   "/play": () => import("./solo.js"),
   "/online": () => import("./online.js"),
+  "/stellar3v3": async () => {
+    const { mountStellar3v3 } = await import("./online.js");
+    return { mount: mountStellar3v3 };
+  },
+  "/stellar3v3/rules": () => import("./stellar3v3-rules.js"),
   "/debug": () => import("./debug.js"),
   "/prototype": () => import("./prototype/index.js"),
 };
+
+let authGate = null;
 
 const router = createRouter({
   routes,
   outlet,
   notFound: menu,
+  context: {
+    onSignedOut: () => authGate?.signOut(),
+  },
+});
+
+authGate = createAuthGate({
+  root: outlet,
+  router,
+  authView,
+  getMe: () => accountClient.getMe(),
 });
 
 // 让各路由模块在需要时也能编程式导航
@@ -46,4 +68,4 @@ window.addEventListener("haruhi:locale-change", () => {
   router.refresh();
 });
 
-router.start();
+authGate.start();

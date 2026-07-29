@@ -108,7 +108,7 @@ assert(stableJson(mapSeqBeforeResource) === stableJson(mapSeqAfterResource), "su
 
 const request = {
   templateId: "three-lane-v2",
-  worldSize: { width: 2160, height: 2160 },
+  worldSize: { width: 3200, height: 3200 },
   teamSize: 3,
 };
 const mapA = generateTerritoryMap({ ...request, seed: 111 });
@@ -124,21 +124,23 @@ const validation = validateTerritoryMap(mapA);
 assert(validation.valid, `generated V2 map should be valid: ${validation.errors.join("; ")}`);
 assert(TERRITORY_MAP_TEMPLATE_ID === "three-lane-v2", `exported V2 template id: ${TERRITORY_MAP_TEMPLATE_ID}`);
 assert(mapA.templateId === "three-lane-v2" && mapA.version === 2, `V2 identity: ${mapA.templateId}/${mapA.version}`);
-assert(stableJson(mapA.worldSize) === stableJson({ width: 2160, height: 2160 }), `V2 world size: ${stableJson(mapA.worldSize)}`);
-assert(mapA.safeBounds?.width === 2160 && mapA.safeBounds?.height === 2160, `V2 safe bounds: ${stableJson(mapA.safeBounds)}`);
+assert(stableJson(mapA.worldSize) === stableJson({ width: 3200, height: 3200 }), `V2 world size: ${stableJson(mapA.worldSize)}`);
+assert(mapA.safeBounds?.width === 3200 && mapA.safeBounds?.height === 3200, `V2 safe bounds: ${stableJson(mapA.safeBounds)}`);
 
 const spawnA = mapA.spawnAreas.find((area) => area.allianceId === "A");
 const spawnB = mapA.spawnAreas.find((area) => area.allianceId === "B");
-assert(spawnA?.center.x < 360 && spawnA?.center.y > 1800, `A spawn should remain lower-left: ${stableJson(spawnA)}`);
-assert(spawnB?.center.x > 1800 && spawnB?.center.y < 360, `B spawn should remain upper-right: ${stableJson(spawnB)}`);
+assert(spawnA?.center.x < 700 && spawnA?.center.y > 2500, `A spawn should remain lower-left: ${stableJson(spawnA)}`);
+assert(spawnB?.center.x > 2500 && spawnB?.center.y < 700, `B spawn should remain upper-right: ${stableJson(spawnB)}`);
 assertRotatedPoint(spawnA.center, spawnB.center, mapA.worldSize, "spawn rotation");
 
 const expectedControls = [
-  ["control-top", "top", 860, 330, 340, 240],
-  ["control-mid", "mid", 1080, 1080, 360, 260],
-  ["control-bottom", "bottom", 1300, 1830, 340, 240],
+  ["control-top", "top", 1325, 662.5, 425, 300],
+  ["control-mid", "mid", 1600, 1600, 450, 325],
+  ["control-bottom", "bottom", 1875, 2537.5, 425, 300],
+  ["control-left", "left", 520, 1600, 425, 300],
+  ["control-right", "right", 2680, 1600, 425, 300],
 ];
-assert(mapA.controlPoints.length === expectedControls.length, "map has exactly three control points");
+assert(mapA.controlPoints.length === expectedControls.length, "map has exactly five control points");
 for (let index = 0; index < expectedControls.length; index += 1) {
   const [id, laneId, x, y, width, height] = expectedControls[index];
   const control = mapA.controlPoints[index];
@@ -150,13 +152,14 @@ for (let index = 0; index < expectedControls.length; index += 1) {
   assert(control.ownerAllianceId === null && control.captureProgress === 0 && control.contested === false, `control ${id} neutral state`);
 }
 assertRotatedPoint(mapA.controlPoints[0].center, mapA.controlPoints[2].center, mapA.worldSize, "top/bottom control rotation");
+assertRotatedPoint(mapA.controlPoints[3].center, mapA.controlPoints[4].center, mapA.worldSize, "left/right control rotation");
 assert(
   mapA.controlPoints.some((control) => axisDistance(control.center, spawnA.center, spawnB.center) > 200),
   "control points must not all remain on the A-to-B base diagonal",
 );
 
 assert(mapA.laneCorridors.map((lane) => lane.id).join(",") === "top,mid,bottom", `three named lanes: ${stableJson(mapA.laneCorridors)}`);
-assert(stableJson(mapA.laneCorridors.map((lane) => lane.width)) === stableJson([340, 380, 340]), "lane widths should match V2 design");
+assert(stableJson(mapA.laneCorridors.map((lane) => lane.width)) === stableJson([425, 475, 425]), "lane widths should match expanded V2 design");
 assert(mapA.laneCorridors.every((lane) => Array.isArray(lane.path) && lane.path.length >= 4), "each lane has an explicit corridor path");
 assertRotatedPath(mapA.laneCorridors[0].path, mapA.laneCorridors[2].path, mapA.worldSize, "top/bottom lane rotation");
 
@@ -192,12 +195,24 @@ for (const laneId of ["top", "mid", "bottom"]) {
 }
 assert(mapA.resourceSpawnNodes.some((node) => node.rarity === "rare" && node.regionId === "upper-wild"), "upper wild has rare resource candidates");
 assert(mapA.resourceSpawnNodes.some((node) => node.rarity === "rare" && node.regionId === "lower-wild"), "lower wild has rare resource candidates");
+for (const laneId of ["left", "right"]) {
+  assert(
+    mapA.resourceSpawnNodes.filter((node) => node.rarity === "common" && node.laneId === laneId).length === 1,
+    `${laneId} should have one common resource candidate`,
+  );
+}
 assert(
-  new Set(mapA.skillSpawnNodes.map((node) => node.regionId)).size === 5,
-  `skill candidates should cover five strategy regions: ${stableJson(mapA.skillSpawnNodes)}`,
+  new Set(mapA.skillSpawnNodes.map((node) => node.regionId)).size === 7,
+  `skill candidates should cover seven strategy regions: ${stableJson(mapA.skillSpawnNodes)}`,
 );
-assert(mapA.terrainSlots.length === 5, `five fixed terrain slots: ${stableJson(mapA.terrainSlots)}`);
-assert(mapA.terrainRegions.length >= 3 && mapA.terrainRegions.length <= 5, `three to five terrain regions: ${mapA.terrainRegions.length}`);
+assert(mapA.terrainSlots.length === 7, `seven fixed terrain slots: ${stableJson(mapA.terrainSlots)}`);
+assert(mapA.terrainRegions.length === 7, `seven fixed terrain regions: ${mapA.terrainRegions.length}`);
+for (const [first, second] of [["top", "bottom"], ["upper-wild", "lower-wild"], ["left", "right"]]) {
+  const source = mapA.terrainRegions.find((region) => region.regionId === first);
+  const mirror = mapA.terrainRegions.find((region) => region.regionId === second);
+  assert(source?.type === mirror?.type, `${first}/${second} terrain types should match`);
+  assertRotatedPoint(source?.center, mirror?.center, mapA.worldSize, `${first}/${second} terrain rotation`);
+}
 
 const invalid = validateTerritoryMap({
   ...mapA,
@@ -328,11 +343,19 @@ assert(
   `validator must reject connector mirror drift: ${stableJson(asymmetricConnector)}`,
 );
 
+const asymmetricTerrainMap = JSON.parse(stableJson(mapA));
+asymmetricTerrainMap.terrainRegions.find((region) => region.regionId === "bottom").center.x += 1;
+const asymmetricTerrain = validateTerritoryMap(asymmetricTerrainMap);
+assert(
+  !asymmetricTerrain.valid && asymmetricTerrain.errors.some((error) => error.includes("terrain rotation mismatch")),
+  `validator must reject terrain mirror drift: ${stableJson(asymmetricTerrain)}`,
+);
+
 const oversizedRequest = generateTerritoryMap({ ...request, seed: 111, worldSize: { width: 2400, height: 2400 } });
 const oversizedValidation = validateTerritoryMap(oversizedRequest);
 assert(
-  stableJson(oversizedRequest.worldSize) === stableJson({ width: 2160, height: 2160 }) && oversizedValidation.valid,
-  `V2 should normalize unsupported world dimensions to a valid 2160 map: ${stableJson({ map: oversizedRequest.worldSize, oversizedValidation })}`,
+  stableJson(oversizedRequest.worldSize) === stableJson({ width: 3200, height: 3200 }) && oversizedValidation.valid,
+  `V2 should normalize unsupported world dimensions to a valid 3200 map: ${stableJson({ map: oversizedRequest.worldSize, oversizedValidation })}`,
 );
 
 const missingControlNodeMap = JSON.parse(stableJson(mapA));

@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import WebSocket from "ws";
 
 function assert(condition, message) {
@@ -53,12 +56,16 @@ function reservePort() {
 async function startServer() {
   const port = await reservePort();
   const url = `ws://127.0.0.1:${port}/`;
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tdos-2v2-server-"));
   const child = spawn(process.execPath, ["server/server.js"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       HOST: "127.0.0.1",
       PORT: String(port),
+      USER_DB_PATH: path.join(tempDir, "accounts.sqlite"),
+      USER_AVATAR_DIR: path.join(tempDir, "avatars"),
+      SESSION_SECRET: "2v2-server-test-session-secret-that-is-long-enough",
     },
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
@@ -73,6 +80,8 @@ async function startServer() {
   child.output = () => output;
   child.port = port;
   child.url = url;
+  child.httpOrigin = `http://127.0.0.1:${port}`;
+  child.tempDir = tempDir;
 
   await eventually(() => {
     if (child.exitCode !== null) {
@@ -84,9 +93,9 @@ async function startServer() {
   return child;
 }
 
-function connectClient(url) {
+function connectClient(url, cookie) {
   return new Promise((resolve, reject) => {
-    const ws = new WebSocket(url);
+    const ws = new WebSocket(url, { headers: { Cookie: cookie } });
     ws.messages = [];
     ws.on("message", (raw) => {
       ws.messages.push(JSON.parse(String(raw)));
@@ -107,11 +116,11 @@ async function waitForMessage(ws, predicate, label) {
   });
 }
 
-async function connectWithRetry(url) {
+async function connectWithRetry(url, cookie) {
   let lastError = null;
   for (let i = 0; i < 60; i += 1) {
     try {
-      return await connectClient(url);
+      return await connectClient(url, cookie);
     } catch (error) {
       lastError = error;
       await wait(50);
@@ -120,9 +129,19 @@ async function connectWithRetry(url) {
   throw lastError || new Error("Could not connect client");
 }
 
+async function register(server, username) {
+  const response = await fetch(`${server.httpOrigin}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password: `strong-password-${username}` }),
+  });
+  assert(response.status === 201, `${username} registration must succeed`);
+  return response.headers.get("set-cookie").split(";", 1)[0];
+}
+
 async function stopServer(server) {
   if (!server) return;
-  try {
+  if (server.exitCode === null) {
     if (process.platform === "win32" && server.pid) {
       spawn("taskkill", ["/pid", String(server.pid), "/t", "/f"], {
         stdio: "ignore",
@@ -131,18 +150,9 @@ async function stopServer(server) {
     } else {
       server.kill("SIGTERM");
     }
-  } catch (_error) {
-    // ignore
   }
-  await wait(150);
-  if (server.exitCode === null) {
-    try {
-      server.kill("SIGKILL");
-    } catch (_error) {
-      // ignore
-    }
-  }
-  await wait(50);
+  await eventually(() => server.exitCode !== null, 5000);
+  await rm(server.tempDir, { recursive: true, force: true });
 }
 
 async function main() {
@@ -150,7 +160,7 @@ async function main() {
   try {
     const clients = [];
     for (let i = 0; i < 4; i += 1) {
-      const ws = await connectWithRetry(server.url);
+      const ws = await connectWithRetry(server.url, await register(server, `Main${i + 1}`));
       clients.push(ws);
       await waitForMessage(ws, (message) => message.type === "connected", `client ${i} connected`);
       send(ws, { type: "set_name", name: `P${i + 1}` });
@@ -238,12 +248,6 @@ async function main() {
     );
     assert(snapshotA.ackSeq === 0, "snapshot should include per-player ack sequence");
 
-    send(clients[0], { type: "set_name", name: "MutatedAfterReady" });
-    await waitForMessage(
-      clients[0],
-      (message) => message.type === "error",
-      "set_name should be rejected after ready countdown starts",
-    );
     send(clients[0], {
       type: "set_loadout",
       loadout: { main: "asakura", sub1: "asakura", sub2: "asakura" },
@@ -268,7 +272,7 @@ async function main() {
 async function createFilledWaitingRoom(server) {
   const clients = [];
   for (let i = 0; i < 4; i += 1) {
-    const ws = await connectWithRetry(server.url);
+    const ws = await connectWithRetry(server.url, await register(server, `Race${i + 1}`));
     clients.push(ws);
     await waitForMessage(ws, (message) => message.type === "connected", `race client ${i} connected`);
     send(ws, { type: "set_name", name: `R${i + 1}` });

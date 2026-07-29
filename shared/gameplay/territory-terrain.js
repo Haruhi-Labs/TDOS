@@ -167,6 +167,8 @@ export function updateTerritoryTerrainModifiers({ modeState, simulation, mutate 
     const fleet = simulation?.fleetBySeat?.(seat);
     for (const ship of fleet?.getAllShips?.() || []) {
       if (!ship?.alive) continue;
+      const formationKey = fleet?.fleetKeyForShip?.(ship) || ship.key;
+      const movementSource = fleet?.fleetMembersByKey?.(formationKey)?.[0] || ship;
       let modifier = { speedMultiplier: 1, accelerationMultiplier: 1, turnMultiplier: 1 };
       const activeIds = [];
       const activeIntensities = {};
@@ -174,15 +176,15 @@ export function updateTerritoryTerrainModifiers({ modeState, simulation, mutate 
       const memory = terrainMemoryEntry(previous, key);
       for (const region of terrainRegions) {
         const wasInside = memory.ids.includes(region.id);
-        const rawIntensity = terrainIntensityAtPoint(ship, region);
-        const inside = rawIntensity > 0 || (wasInside && pointInTerrainRegion(ship, region, {
+        const rawIntensity = terrainIntensityAtPoint(movementSource, region);
+        const inside = rawIntensity > 0 || (wasInside && pointInTerrainRegion(movementSource, region, {
           hysteresis: TERRAIN_HYSTERESIS_PX,
         }));
         if (!inside) continue;
         const intensity = rawIntensity > 0 ? rawIntensity : clamp01(memory.intensities[region.id]);
         activeIds.push(region.id);
         activeIntensities[region.id] = intensity;
-        modifier = composeModifiers(modifier, modifierForTerrain(ship, region, intensity));
+        modifier = composeModifiers(modifier, modifierForTerrain(movementSource, region, intensity));
         if (!wasInside) {
           events.push({
             type: "terrain_entered",

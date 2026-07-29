@@ -117,6 +117,7 @@ export function createPrototypeRuntime({
   randomSeedFactory = createPrototypeRandomSeed,
   worldSize = null,
   aiDifficulty = "normal",
+  aiDifficultiesBySeat = null,
 } = {}) {
   if (!modeDefinition) {
     throw new Error("createPrototypeRuntime requires modeDefinition");
@@ -161,9 +162,13 @@ export function createPrototypeRuntime({
     },
     worldSize: resolvedWorldSize,
     aiDifficulty,
+    aiDifficultiesBySeat: aiDifficultiesBySeat && typeof aiDifficultiesBySeat === "object"
+      ? { ...aiDifficultiesBySeat }
+      : {},
     controlA: runtimePreset.controlA || "human",
     controlB: runtimePreset.controlB || "ai",
     fleetLayout: normalizeRuntimeFleetLayout(runtimePreset.fleetLayout, teamLoadouts),
+    transientAiSeats: new Set(),
     modeAiNextActionAt: {},
     modeEvents: [],
     eventSequence: 0,
@@ -171,9 +176,10 @@ export function createPrototypeRuntime({
 
   function buildAiSeats() {
     if (state.fleetLayout) {
-      return [...state.fleetLayout.alliances.A, ...state.fleetLayout.alliances.B]
+      const configured = [...state.fleetLayout.alliances.A, ...state.fleetLayout.alliances.B]
         .filter((entry) => entry.control === "ai")
         .map((entry) => entry.seat);
+      return [...new Set([...configured, ...state.transientAiSeats])];
     }
     const seats = [];
     if (state.controlA === "ai") seats.push("A");
@@ -194,9 +200,11 @@ export function createPrototypeRuntime({
       },
       aiSeats,
       aiDifficulty: state.aiDifficulty,
+      aiDifficultiesBySeat: state.aiDifficultiesBySeat,
       gameplayRules: state.gameplayRules,
       victoryPolicy: state.runtimePreset.victoryPolicy,
       aiNavigationOwner: state.runtimePreset.aiNavigationOwner,
+      aiThinkIntervalSeconds: state.runtimePreset.aiThinkIntervalSeconds,
       fleetLayout: state.fleetLayout,
     });
   }
@@ -585,6 +593,22 @@ export function createPrototypeRuntime({
         },
         localSeat: state.controlA === "human" ? "A" : state.controlB === "human" ? "B" : "A",
       };
+    },
+    setSeatAiControl(seat, options = {}) {
+      const safeSeat = String(seat || "").trim().toUpperCase();
+      const enabled = options.enabled !== false;
+      const changed = state.simulation?.setSeatAiControl?.(safeSeat, {
+        enabled,
+        difficulty: options.difficulty || "normal",
+      });
+      if (!changed) return false;
+      if (enabled) {
+        state.transientAiSeats.add(safeSeat);
+      } else {
+        state.transientAiSeats.delete(safeSeat);
+      }
+      delete state.modeAiNextActionAt[safeSeat];
+      return true;
     },
     getDiagnostics,
     serialize,

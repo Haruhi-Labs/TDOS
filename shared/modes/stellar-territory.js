@@ -301,8 +301,8 @@ export const stellarTerritoryMode = {
   description: "资源、控制区、战术技能与复活驱动的星域争夺 Prototype 骨架。",
   status: MODE_STATUS.EXPERIMENTAL,
   version: 1,
-  worldSize: 2160,
-  supportedWorldSizes: Object.freeze([2160]),
+  worldSize: 3200,
+  supportedWorldSizes: Object.freeze([3200]),
   parameterSchema: STELLAR_TERRITORY_PARAMETER_SCHEMA,
   defaultParameters: STELLAR_TERRITORY_DEFAULT_PARAMETERS,
 
