@@ -170,8 +170,8 @@ try {
   const me = await fetch(`${origin}/api/me`, { headers: { Cookie: cookie } });
   assert.equal(me.status, 200, "a session cookie should authenticate /api/me");
   const meData = await me.json();
-  assert.equal(meData.user.elo.pvp2v2, 1000, "the profile should expose the personal 2v2 rating");
-  assert.equal(meData.user.stats.pvp2v2.rank, 1, "the profile should expose the personal 2v2 rank");
+  assert.equal(meData.user.elo, 1000, "the profile should expose one global rating");
+  assert.equal(meData.user.stats.rank, 1, "the profile should expose one global rank");
 
   const profile = await fetch(`${origin}/api/profile`, {
     method: "PATCH",
@@ -219,15 +219,22 @@ try {
   });
   assert.equal(truncatedJpeg.status, 400, "an image signature without valid dimensions must be rejected");
 
-  const publicUser = await fetch(`${origin}/api/users/${created.user.id}?mode=pvp2v2`);
+  const publicUser = await fetch(`${origin}/api/users/${created.user.id}`);
   assert.equal(publicUser.status, 200, "a public profile should be available without a session");
   const publicData = await publicUser.json();
   assert.equal(publicData.user.username, "Suzumiya", "public profile should include the display name");
-  assert.equal("signature" in publicData.user, false, "public profile must not expose a private signature");
+  assert.equal(publicData.user.signature, "SOS Brigade", "public profile should include the configured signature");
+  const legacyPublicUser = await fetch(`${origin}/api/users/${created.user.id}?mode=stellar3v3`);
+  assert.equal((await legacyPublicUser.json()).user.elo, publicData.user.elo, "legacy profile mode queries should resolve to the global rating");
 
-  const leaderboard = await fetch(`${origin}/api/leaderboard?mode=pvp2v2`);
+  const leaderboard = await fetch(`${origin}/api/leaderboard`);
   assert.equal(leaderboard.status, 200, "leaderboard should be publicly queryable");
-  assert.equal((await leaderboard.json()).entries[0].userId, created.user.id, "leaderboard should include registered users");
+  const leaderboardData = await leaderboard.json();
+  assert.equal("mode" in leaderboardData, false, "the global leaderboard response should not expose a mode selector");
+  assert.equal(leaderboardData.entries[0].userId, created.user.id, "leaderboard should include registered users");
+  assert.equal(leaderboardData.entries[0].signature, "SOS Brigade", "leaderboard entries should include the configured signature");
+  const legacyLeaderboard = await fetch(`${origin}/api/leaderboard?mode=pvp2v2`);
+  assert.equal((await legacyLeaderboard.json()).entries[0].userId, created.user.id, "legacy leaderboard mode queries should resolve to the global board");
 
   const logout = await fetch(`${origin}/api/auth/logout`, { method: "POST", headers: { Cookie: cookie } });
   assert.equal(logout.status, 204, "logout should revoke the current session");

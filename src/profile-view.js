@@ -37,7 +37,7 @@ function accountTemplate(account) {
         <label class="pv-field"><span class="pv-label">个性签名</span><input id="accountSignature" maxlength="160" value="${escapeHtml(account.signature)}" /></label>
         <div class="account-actions"><button type="submit" class="account-button account-button-primary">保存资料</button><a class="account-link" href="/leaderboard">查看排行榜</a></div>
       </form>
-      <div class="account-stats" aria-label="个人战绩">${statLine("2v2", account.stats?.pvp2v2)}${statLine("3v3", account.stats?.stellar3v3)}</div>
+      <div class="account-stats" aria-label="个人战绩">${statLine("综合战绩", { elo: account.elo, ...account.stats })}</div>
     </section>`;
 }
 

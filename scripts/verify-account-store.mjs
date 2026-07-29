@@ -36,8 +36,13 @@ try {
   const haruhi = await registration;
   assert.equal(haruhi.username, "Haruhi", "registration should retain the username");
   assert.ok(haruhi.id, "registration should assign a persistent user ID");
-  assert.equal(store.getRating(haruhi.id, "pvp2v2").elo, 1000, "2v2 Elo should start at 1000");
-  assert.equal(store.getRating(haruhi.id, "stellar3v3").elo, 1000, "3v3 Elo should start at 1000");
+  const startingRating = store.getRating(haruhi.id);
+  assert.equal(startingRating.elo, 1000, "the global Elo should start at 1000");
+  assert.deepEqual(
+    { wins: startingRating.wins, losses: startingRating.losses, games: startingRating.games },
+    { wins: 0, losses: 0, games: 0 },
+    "a new global rating should start with no recorded games",
+  );
   await assert.rejects(
     () => store.register({ username: "haruhi", password: "another-strong-password" }),
     /username/i,
@@ -82,8 +87,8 @@ try {
     ],
   });
   assert.equal(settlement.settled, true, "a human 2v2 result should settle once");
-  assert.equal(store.getRating(haruhi.id, "pvp2v2").elo, 1016, "equal-rating winners should gain 16 Elo");
-  assert.equal(store.getRating(mikuru.id, "pvp2v2").elo, 984, "equal-rating losers should lose 16 Elo");
+  assert.equal(store.getRating(haruhi.id).elo, 1016, "equal-rating winners should gain 16 Elo");
+  assert.equal(store.getRating(mikuru.id).elo, 984, "equal-rating losers should lose 16 Elo");
   const replay = store.settleCompetitiveMatch({
     matchId: "test-match-1",
     mode: "pvp2v2",
@@ -97,8 +102,8 @@ try {
     ],
   });
   assert.equal(replay.settled, false, "replaying a completed match ID must not settle twice");
-  assert.equal(store.getRating(haruhi.id, "pvp2v2").elo, 1016, "idempotency must retain the first Elo result");
-  assert.equal(store.getLeaderboard("pvp2v2", 1)[0].userId, haruhi.id, "leaderboard should sort by Elo");
+  assert.equal(store.getRating(haruhi.id).elo, 1016, "idempotency must retain the first Elo result");
+  assert.equal(store.getLeaderboard(1)[0].userId, haruhi.id, "leaderboard should sort by Elo");
 
   console.log("account store verification passed");
 } finally {

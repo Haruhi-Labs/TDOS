@@ -1,4 +1,4 @@
-import { COMPETITIVE_MODES, AccountStoreError } from "./account-store.js";
+import { AccountStoreError } from "./account-store.js";
 
 const JSON_BODY_LIMIT = 64 * 1024;
 const AVATAR_BODY_LIMIT = 2 * 1024 * 1024;
@@ -70,41 +70,37 @@ async function readJson(request) {
   }
 }
 
-function allowedMode(mode) {
-  return COMPETITIVE_MODES.includes(mode) ? mode : "pvp2v2";
-}
-
 function serializePrivateUser(store, avatarStorage, user) {
-  const stats = {};
-  const elo = {};
-  for (const mode of COMPETITIVE_MODES) {
-    const rating = store.getRating(user.id, mode);
-    elo[mode] = rating.elo;
-    stats[mode] = { ...rating, rank: store.getRank(user.id, mode) };
-  }
+  const rating = store.getRating(user.id);
   return {
     id: user.id,
     username: user.username,
     signature: user.signature,
     avatarUrl: avatarStorage.urlForKey(user.avatarKey),
     loadout: user.loadout,
-    elo,
-    stats,
+    elo: rating.elo,
+    stats: {
+      wins: rating.wins,
+      losses: rating.losses,
+      games: rating.games,
+      rank: store.getRank(user.id),
+    },
   };
 }
 
-function serializePublicUser(store, avatarStorage, userId, mode) {
-  const user = store.getPublicUser(userId, mode);
+function serializePublicUser(store, avatarStorage, userId) {
+  const user = store.getPublicUser(userId);
   if (!user) return null;
   return {
     id: user.id,
     username: user.username,
+    signature: user.signature,
     avatarUrl: avatarStorage.urlForKey(user.avatarKey),
     elo: user.elo,
     wins: user.wins,
     losses: user.losses,
     games: user.games,
-    rank: store.getRank(user.id, mode),
+    rank: store.getRank(user.id),
   };
 }
 
@@ -241,19 +237,18 @@ export function createAccountApi({ store, avatarStorage, secureCookies = false, 
         return true;
       }
       if (request.method === "GET" && url.pathname.startsWith("/api/users/")) {
-        const user = serializePublicUser(store, avatarStorage, decodeURIComponent(url.pathname.slice("/api/users/".length)), allowedMode(url.searchParams.get("mode")));
+        const user = serializePublicUser(store, avatarStorage, decodeURIComponent(url.pathname.slice("/api/users/".length)));
         if (!user) throw Object.assign(new Error("User not found."), { status: 404, code: "user_not_found" });
         sendJson(response, 200, { user });
         return true;
       }
       if (request.method === "GET" && url.pathname === "/api/leaderboard") {
-        const mode = allowedMode(url.searchParams.get("mode"));
-        const entries = store.getLeaderboard(mode, url.searchParams.get("limit")).map((entry) => ({
+        const entries = store.getLeaderboard(url.searchParams.get("limit")).map((entry) => ({
           ...entry,
           avatarUrl: avatarStorage.urlForKey(entry.avatarKey),
           avatarKey: undefined,
         }));
-        sendJson(response, 200, { mode, entries });
+        sendJson(response, 200, { entries });
         return true;
       }
       sendJson(response, 404, { error: { code: "api_not_found", message: "API endpoint not found." } });

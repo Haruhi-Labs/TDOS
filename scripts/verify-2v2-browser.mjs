@@ -1,10 +1,14 @@
 import { spawn } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { chromium } from "playwright";
 
 const WS_PORT = 27000 + Math.floor(Math.random() * 1000);
 const VITE_PORT = 28000 + Math.floor(Math.random() * 1000);
-const WS_URL = `ws://127.0.0.1:${WS_PORT}/`;
-const APP_URL = `http://127.0.0.1:${VITE_PORT}/online?ws=${encodeURIComponent(WS_URL)}`;
+const SERVER_BASE = `http://127.0.0.1:${WS_PORT}`;
+const APP_BASE = `http://127.0.0.1:${VITE_PORT}`;
+const APP_URL = `${APP_BASE}/online`;
 
 function assert(condition, message) {
   if (!condition) {
@@ -79,8 +83,52 @@ async function sampleDisabledState(page, selector, samples = 80, intervalMs = 20
   );
 }
 
-async function openOnlinePage(browser, viewport) {
+async function register(serverBase, username) {
+  const response = await fetch(`${serverBase}/api/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password: `browser-test-password-${username}` }),
+  });
+  assert(response.status === 201, `${username} registration must succeed`);
+  const rawCookie = response.headers.get("set-cookie")?.split(";", 1)[0] || "";
+  const separator = rawCookie.indexOf("=");
+  assert(separator > 0, `${username} registration must issue a session cookie`);
+  return { name: rawCookie.slice(0, separator), value: rawCookie.slice(separator + 1) };
+}
+
+async function installBattleControlTracking(page) {
+  await page.addInitScript(() => {
+    window.__battleDisabledWrites = [];
+    const patchDisabled = (proto) => {
+      const descriptor = Object.getOwnPropertyDescriptor(proto, "disabled");
+      if (!descriptor || typeof descriptor.get !== "function" || typeof descriptor.set !== "function") return;
+      Object.defineProperty(proto, "disabled", {
+        configurable: true,
+        get() {
+          return descriptor.get.call(this);
+        },
+        set(value) {
+          if (this && typeof this.closest === "function" && this.closest("#battleControls")) {
+            window.__battleDisabledWrites.push({
+              id: this.id || this.getAttribute("data-ship") || this.tagName,
+              value: Boolean(value),
+              at: performance.now(),
+            });
+          }
+          descriptor.set.call(this, value);
+        },
+      });
+    };
+    patchDisabled(HTMLButtonElement.prototype);
+    patchDisabled(HTMLInputElement.prototype);
+    patchDisabled(HTMLSelectElement.prototype);
+  });
+}
+
+async function openOnlinePage(browser, viewport, session) {
   const page = await browser.newPage({ viewport });
+  await page.context().addCookies([{ ...session, url: APP_BASE }]);
+  await installBattleControlTracking(page);
   await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("#disconnectBtn");
   await page.waitForFunction(() => document.querySelector("#disconnectBtn")?.disabled === false, null, { timeout: 8000 });
@@ -309,7 +357,7 @@ async function mountSyntheticTwoVsTwoResult(page) {
   });
 }
 
-async function runResultLayoutSweep(browser) {
+async function runResultLayoutSweep(browser, session) {
   const viewports = [
     { width: 1920, height: 1080 },
     { width: 1366, height: 768 },
@@ -320,7 +368,7 @@ async function runResultLayoutSweep(browser) {
     { width: 390, height: 844 },
   ];
   for (const viewport of viewports) {
-    const page = await openOnlinePage(browser, viewport);
+      const page = await openOnlinePage(browser, viewport, session);
     try {
       await mountSyntheticTwoVsTwoResult(page);
       await assertResultLayout(page, `${viewport.width}x${viewport.height}`);
@@ -330,7 +378,7 @@ async function runResultLayoutSweep(browser) {
   }
 }
 
-async function runFourClientTwoVsTwoSmoke(browser) {
+async function runFourClientTwoVsTwoSmoke(browser, sessions) {
   const viewports = [
     { width: 1280, height: 720 },
     { width: 1366, height: 768 },
@@ -339,10 +387,11 @@ async function runFourClientTwoVsTwoSmoke(browser) {
   ];
   const pages = [];
   try {
-    for (const viewport of viewports) {
-      pages.push(await openOnlinePage(browser, viewport));
+    for (let i = 0; i < viewports.length; i += 1) {
+      pages.push(await openOnlinePage(browser, viewports[i], sessions[i]));
     }
 
+    assert(await pages[0].locator("#createAiRoomBtn").count() === 0, "standard lobby must not render the AI training room entry");
     await pages[0].click("#create2v2Btn");
     for (let i = 1; i < pages.length; i += 1) {
       await pages[i].waitForSelector(".room-item-actions button", { timeout: 8000 });
@@ -404,6 +453,20 @@ async function runFourClientTwoVsTwoSmoke(browser) {
       assert(!stacked, "character select must not remain visible over battle view");
     }
 
+    const controlPage = pages[0];
+    await controlPage.waitForSelector("#subSkillBtn");
+    await controlPage.evaluate(() => {
+      window.__battleWriteMarker = performance.now();
+    });
+    const states = await sampleDisabledState(controlPage, "#subSkillBtn");
+    const falseWrites = await controlPage.evaluate(() =>
+      (window.__battleDisabledWrites || []).filter(
+        (item) => item.id === "subSkillBtn" && item.value === false && item.at >= (window.__battleWriteMarker || 0),
+      ),
+    );
+    assert(states.every(Boolean), `subSkillBtn should stay disabled while the main ship is selected; samples=${states.join("")}`);
+    assert(falseWrites.length === 0, `snapshot/control gate must not re-enable subSkillBtn; false writes=${JSON.stringify(falseWrites.slice(0, 5))}`);
+
     for (let i = 0; i < pages.length; i += 1) {
       await assertNoVisiblePanelOverlap(pages[i], `${expectedSeats[i]} ${viewports[i].width}x${viewports[i].height}`);
     }
@@ -415,73 +478,26 @@ async function runFourClientTwoVsTwoSmoke(browser) {
 }
 
 async function main() {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "tdos-2v2-browser-"));
   const wsServer = startProcess(process.execPath, ["server/server.js"], {
     HOST: "127.0.0.1",
     PORT: String(WS_PORT),
+    USER_DB_PATH: path.join(tempDir, "accounts.sqlite"),
+    USER_AVATAR_DIR: path.join(tempDir, "avatars"),
+    SESSION_SECRET: "2v2-browser-test-session-secret-that-is-long-enough",
   });
-  const vite = startProcess(process.execPath, ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(VITE_PORT)]);
+  const vite = startProcess(process.execPath, ["node_modules/vite/bin/vite.js", "--host", "127.0.0.1", "--port", String(VITE_PORT)], {
+    VITE_BACKEND_ORIGIN: SERVER_BASE,
+  });
   let browser = null;
 
   try {
     await waitForHttp(`http://127.0.0.1:${VITE_PORT}/online`);
 
     browser = await chromium.launch();
-    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-    await page.addInitScript(() => {
-      window.__battleDisabledWrites = [];
-      const patchDisabled = (proto) => {
-        const descriptor = Object.getOwnPropertyDescriptor(proto, "disabled");
-        if (!descriptor || typeof descriptor.get !== "function" || typeof descriptor.set !== "function") {
-          return;
-        }
-        Object.defineProperty(proto, "disabled", {
-          configurable: true,
-          get() {
-            return descriptor.get.call(this);
-          },
-          set(value) {
-            if (this && typeof this.closest === "function" && this.closest("#battleControls")) {
-              window.__battleDisabledWrites.push({
-                id: this.id || this.getAttribute("data-ship") || this.tagName,
-                value: Boolean(value),
-                at: performance.now(),
-              });
-            }
-            descriptor.set.call(this, value);
-          },
-        });
-      };
-      patchDisabled(HTMLButtonElement.prototype);
-      patchDisabled(HTMLInputElement.prototype);
-      patchDisabled(HTMLSelectElement.prototype);
-    });
-
-    await page.goto(APP_URL, { waitUntil: "domcontentloaded" });
-    await page.waitForSelector("#createAiRoomBtn");
-    await page.waitForTimeout(900);
-    await page.click("#createAiRoomBtn");
-    await page.waitForSelector("#battleView:not([hidden])", { timeout: 8000 });
-    await page.waitForSelector("#subSkillBtn");
-    await page.evaluate(() => {
-      window.__battleWriteMarker = performance.now();
-    });
-
-    const states = await sampleDisabledState(page, "#subSkillBtn");
-    const falseWrites = await page.evaluate(() =>
-      (window.__battleDisabledWrites || []).filter(
-        (item) => item.id === "subSkillBtn" && item.value === false && item.at >= (window.__battleWriteMarker || 0),
-      ),
-    );
-
-    assert(states.every(Boolean), `subSkillBtn should stay disabled while the main ship is selected; samples=${states.join("")}`);
-    assert(
-      falseWrites.length === 0,
-      `snapshot/control gate must not re-enable subSkillBtn; false writes=${JSON.stringify(falseWrites.slice(0, 5))}`,
-    );
-
-    await page.close();
-    await runResultLayoutSweep(browser);
-    await runFourClientTwoVsTwoSmoke(browser);
+    const sessions = await Promise.all(Array.from({ length: 4 }, (_value, index) => register(SERVER_BASE, `TwoVsTwo${index + 1}`)));
+    await runResultLayoutSweep(browser, sessions[0]);
+    await runFourClientTwoVsTwoSmoke(browser, sessions);
   } finally {
     if (browser) {
       await browser.close();
@@ -497,6 +513,7 @@ async function main() {
         child.kill("SIGKILL");
       }
     }
+    await rm(tempDir, { recursive: true, force: true });
   }
 
   console.log("2v2 browser behavior verification passed");

@@ -118,7 +118,6 @@ function cacheDom() {
   create2v2Btn: document.getElementById("create2v2Btn"),
   create3v3PublicBtn: document.getElementById("create3v3PublicBtn"),
   create3v3PrivateBtn: document.getElementById("create3v3PrivateBtn"),
-  createAiRoomBtn: document.getElementById("createAiRoomBtn"),
   joinCodeInput: document.getElementById("joinCodeInput"),
   joinCodeBtn: document.getElementById("joinCodeBtn"),
   refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
@@ -657,7 +656,6 @@ function updateConnectionUi() {
     ui.create2v2Btn,
     ui.create3v3PublicBtn,
     ui.create3v3PrivateBtn,
-    ui.createAiRoomBtn,
     ui.joinCodeBtn,
     ui.refreshRoomsBtn,
   ]) {
@@ -1351,8 +1349,11 @@ function onlineUserSummaryHTML(row) {
   return `<button type="button" class="online-user-summary" data-account-user-id="${escapeHtml(user.id)}"><i class="online-user-avatar">${avatar}</i><span class="online-user-name">${escapeHtml(user.username)}</span><b>${Number(user.elo) || 1000}</b></button>`;
 }
 
+function publicSignatureText(user) {
+  return String(user?.signature || "").trim() || "暂无个性签名";
+}
+
 async function showOnlineUserDetails(userId) {
-  const mode = isStellar3v3Room(app?.room) ? "stellar3v3" : "pvp2v2";
   const dialog = document.createElement("dialog");
   dialog.className = "online-user-dialog";
   dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><p>PUBLIC PROFILE</p><strong>Loading...</strong>`;
@@ -1361,10 +1362,10 @@ async function showOnlineUserDetails(userId) {
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
   try {
-    const user = await accountClient.getUser(userId, mode);
+    const user = await accountClient.getUser(userId);
     if (!user) throw new Error("not found");
     const avatar = user.avatarUrl ? `<img src="${escapeHtml(user.avatarUrl)}" alt="" />` : "";
-    dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><div class="online-user-dialog-head">${avatar}<div><p>PUBLIC PROFILE</p><h2>${escapeHtml(user.username)}</h2></div></div><div class="online-user-dialog-stats"><strong>${user.elo}</strong><span>#${user.rank} / ${user.wins}W ${user.losses}L</span></div>`;
+    dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><div class="online-user-dialog-head">${avatar}<div><p>PUBLIC PROFILE</p><h2>${escapeHtml(user.username)}</h2></div></div><p class="online-user-dialog-signature">${escapeHtml(publicSignatureText(user))}</p><div class="online-user-dialog-stats"><strong>${user.elo}</strong><span>#${user.rank} / ${user.wins}W ${user.losses}L</span></div>`;
     dialog.querySelector("button")?.addEventListener("click", () => dialog.close());
   } catch (_error) {
     dialog.innerHTML = `<button type="button" class="online-user-dialog-close" aria-label="Close">x</button><p>PUBLIC PROFILE</p><strong>Profile unavailable</strong>`;
@@ -1801,6 +1802,7 @@ function updateRoomSummary() {
   rows.push(t("房间ID：{id}", { id: app.room.roomId }));
   rows.push(t("类型：{type}", { type: roomModeLabel(app.room.mode) }));
   rows.push(t("可见性：{visibility}", { visibility: app.room.visibility === "private" ? t("私人") : t("公开") }));
+  rows.push(t("对局类型：{type}", { type: app.room.visibility === "public" ? t("公开排位") : t("私人练习") }));
   if (app.room.visibility === "private" && app.room.code) {
     rows.push(t("房间号：{code}", { code: app.room.code }));
   }
@@ -3841,13 +3843,6 @@ function bindUiEvents() {
     });
   }
 
-  if (ui.createAiRoomBtn) {
-    ui.createAiRoomBtn.addEventListener("click", () => {
-      syncLoadoutToServer(false);
-      socketSend({ type: "create_room", visibility: "private", mode: "ai" });
-    });
-  }
-
   ui.joinCodeBtn.addEventListener("click", () => {
     const code = ui.joinCodeInput.value.replace(/\D/g, "").slice(0, 6);
     if (code.length !== 6) {
@@ -4537,16 +4532,15 @@ function onlineTemplate(lobbyMode = "standard") {
   const lobbyTitle = isStellarLobby ? t("星域争夺 3v3 大厅") : t("在线对战大厅");
   const roomControls = isStellarLobby
     ? `<div class="btn-row">
-        <button id="create3v3PublicBtn" type="button">${t("创建 3v3 公开房")}</button>
-        <button id="create3v3PrivateBtn" type="button">${t("创建 3v3 私人房")}</button>
+        <button id="create3v3PublicBtn" type="button">${t("创建 3v3 公开排位房")}</button>
+        <button id="create3v3PrivateBtn" type="button">${t("创建 3v3 私人练习房")}</button>
       </div>
       <a class="stellar-rules-link" href="/stellar3v3/rules">${t("3v3 规则说明")}</a>`
     : `<div class="btn-row">
-        <button id="createPublicBtn">${t("创建公开房")}</button>
-        <button id="createPrivateBtn">${t("创建私人房")}</button>
+        <button id="createPublicBtn">${t("创建 1v1 公开排位房")}</button>
+        <button id="createPrivateBtn">${t("创建 1v1 私人练习房")}</button>
       </div>
-      <button id="create2v2Btn" type="button">${t("创建 2v2 公开房")}</button>
-      <button id="createAiRoomBtn">${t("创建 AI 训练房")}</button>`;
+      <button id="create2v2Btn" type="button">${t("创建 2v2 公开排位房")}</button>`;
   const stellarSeats = `<section id="stellarRoomSeats" class="stellar-room-seats" hidden></section>`;
   return `
     <div class="online-root${isStellarLobby ? " online-root-stellar" : ""}">

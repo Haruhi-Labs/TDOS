@@ -33,6 +33,7 @@ try {
   const room = {
     id: "room-42",
     mode: "pvp2v2",
+    visibility: "public",
     result: {
       winnerAllianceId: "A",
       finishedAt: 1_700_000_000_000,
@@ -47,8 +48,8 @@ try {
 
   const settled = settleCompletedRoom(store, room);
   assert.equal(settled.settled, true, "a finished real online 2v2 should settle ratings");
-  assert.equal(store.getRating(a1.id, "pvp2v2").elo, 1016, "winning users should receive team Elo");
-  assert.equal(store.getRating(b1.id, "pvp2v2").elo, 984, "losing users should lose team Elo");
+  assert.equal(store.getRating(a1.id).elo, 1016, "winning users should receive team Elo");
+  assert.equal(store.getRating(b1.id).elo, 984, "losing users should lose team Elo");
   assert.equal(
     settleCompletedRoom(store, room).settled,
     false,
@@ -58,6 +59,7 @@ try {
   const ineligible = settleCompletedRoom(store, {
     id: "training-room",
     mode: "ai",
+    visibility: "public",
     result: { winnerAllianceId: "A", finishedAt: 1_700_000_000_001, players: room.result.players },
   });
   assert.equal(ineligible.settled, false, "AI and training rooms must not affect competitive ratings");
@@ -65,6 +67,7 @@ try {
   const botOnlySide = settleCompletedRoom(store, {
     id: "bot-only-side",
     mode: "stellar3v3",
+    visibility: "public",
     result: {
       winnerAllianceId: "A",
       finishedAt: 1_700_000_000_002,
@@ -79,6 +82,7 @@ try {
   const mixedHumanBotMatch = settleCompletedRoom(store, {
     id: "mixed-human-bot-room",
     mode: "stellar3v3",
+    visibility: "public",
     result: {
       winnerAllianceId: "A",
       finishedAt: 1_700_000_000_003,
@@ -97,6 +101,7 @@ try {
   const incompleteMatch = settleCompletedRoom(store, {
     id: "incomplete-room",
     mode: "pvp2v2",
+    visibility: "public",
     result: {
       winnerAllianceId: "A",
       finishedAt: 1_700_000_000_004,
@@ -106,13 +111,14 @@ try {
       ],
     },
   });
-  assert.equal(incompleteMatch.settled, false, "only complete 2v2 and 3v3 results may affect Elo");
+  assert.equal(incompleteMatch.settled, false, "only complete 1v1, 2v2, and 3v3 results may affect Elo");
 
   let duplicateUserMatch;
   assert.doesNotThrow(() => {
     duplicateUserMatch = settleCompletedRoom(store, {
       id: "duplicate-user-room",
       mode: "pvp2v2",
+      visibility: "public",
       result: {
         winnerAllianceId: "A",
         finishedAt: 1_700_000_000_005,

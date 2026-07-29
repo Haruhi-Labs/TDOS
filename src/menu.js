@@ -5,6 +5,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import { getFaction } from "./profile.js";
+import { accountClient } from "./account-client.js";
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { bindLanguageSelector, languageSelectorHTML, t } from "./i18n.js";
@@ -14,16 +15,22 @@ const ITEMS = [
   { href: "/play", no: "I", label: "单人实战", sub: "挑选舰队，迎击 AI 舰群" },
   { href: "/online", no: "II", label: "在线对战", sub: "大厅匹配，与真人同步交战" },
   { href: "/stellar3v3", no: "III", label: "星域争夺 3v3", sub: "六舰编队，争夺星域控制权" },
-  { href: "/profile", no: "IV", label: "指挥官档案", sub: "呼号与阵营" },
-  { href: "/guide", no: "V", label: "玩法说明", sub: "操作与机制速览" },
-  { href: "/credits", no: "VI", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
+  { href: "/guide", no: "IV", label: "玩法说明", sub: "操作与机制速览" },
+  { href: "/credits", no: "V", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
+  { href: "/leaderboard", no: "VI", label: "排行榜", sub: "全模式统一指挥官积分" },
 ];
-
-ITEMS.push({ href: "/leaderboard", no: "VII", label: "排行榜", sub: "2v2 与 3v3 指挥官积分" });
 
 const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";
 const GROUP_URL = "https://qm.qq.com/q/zg5Bl5Ugwg";
 const VERSION_LABEL = "公测版 v0.1";
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 // 首页 GitHub 链接(内嵌 Octocat 标记,fill 跟随 currentColor 以适配主题色)
 function githubLinkHTML() {
@@ -46,6 +53,20 @@ function languageCornerHTML() {
     `</div>`;
 }
 
+function accountCornerHTML(account) {
+  const username = String(account?.username || "?");
+  const fallback = escapeHtml(username.slice(0, 1).toUpperCase());
+  const avatar = account?.avatarUrl
+    ? `<img data-menu-avatar-image src="${escapeHtml(account.avatarUrl)}" alt="" /><span data-menu-avatar-fallback hidden>${fallback}</span>`
+    : `<span data-menu-avatar-fallback>${fallback}</span>`;
+  const label = t("指挥官档案");
+  return `<a class="ts-account-corner" href="/profile" aria-label="${label}" title="${label}"><span class="ts-account-avatar">${avatar}</span></a>`;
+}
+
+function cornerControlsHTML(account) {
+  return `<div class="ts-corner-controls">${accountCornerHTML(account)}${languageCornerHTML()}</div>`;
+}
+
 function menuItemsHTML() {
   return ITEMS.map(
     (it, i) => `
@@ -61,11 +82,11 @@ function menuItemsHTML() {
 }
 
 // 移动端专属：纵向堆叠 —— 标题 / 大触控菜单行
-function mobileTemplate(faction) {
+function mobileTemplate(faction, account) {
   return `
     <section class="ts-stage mmenu ts-faction-${faction}">
       <canvas class="ts-bg" aria-hidden="true"></canvas>
-      ${languageCornerHTML()}
+      ${cornerControlsHTML(account)}
       <div class="mmenu-shell">
         <header class="mmenu-head">
           <div class="ts-seal" role="img" aria-label="${t("SOS团")}"></div>
@@ -81,14 +102,14 @@ function mobileTemplate(faction) {
   `;
 }
 
-function template(faction) {
+function template(faction, account) {
   const items = menuItemsHTML();
 
   return `
     <section class="ts-stage ts-faction-${faction}">
       <canvas class="ts-bg" aria-hidden="true"></canvas>
       <div class="ts-vignette" aria-hidden="true"></div>
-      ${languageCornerHTML()}
+      ${cornerControlsHTML(account)}
 
       <div class="ts-content">
         <header class="ts-head">
@@ -111,14 +132,30 @@ function template(faction) {
   `;
 }
 
-export function mount(root, ctx) {
+export async function mount(root, ctx) {
+  let account;
+  let accountLoadFailed = false;
+  try {
+    account = await accountClient.getMe();
+  } catch (_error) {
+    accountLoadFailed = true;
+  }
+  if (!account && !accountLoadFailed) {
+    ctx?.onSignedOut?.();
+    return () => {};
+  }
   const faction = getFaction();
   const mobile = isMobile();
-  root.innerHTML = (mobile ? mobileTemplate : template)(faction);
+  root.innerHTML = (mobile ? mobileTemplate : template)(faction, account);
   bindLanguageSelector(root);
 
   const ac = new AbortController();
   const { signal } = ac;
+
+  root.querySelector("[data-menu-avatar-image]")?.addEventListener("error", (event) => {
+    event.currentTarget.hidden = true;
+    root.querySelector("[data-menu-avatar-fallback]")?.removeAttribute("hidden");
+  }, { signal });
 
   const stage = root.querySelector(".ts-stage");
   const bg = root.querySelector(".ts-bg");

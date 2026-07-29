@@ -3670,7 +3670,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   z-index: 1;
   pointer-events: none;
 }
-.route-fluid-backdrop > :not(.fluid-reveal-canvas):not(.fluid-pointer-ring):not(.page-stars):not(.ts-bg):not(.page-bg):not(.ts-vignette):not(.cs-bg-canvas) {
+.route-fluid-backdrop > :not(.fluid-reveal-canvas):not(.fluid-pointer-ring):not(.page-stars):not(.ts-bg):not(.page-bg):not(.ts-vignette):not(.cs-bg-canvas):not(.ts-corner-controls) {
   position: relative;
   z-index: 2;
 }
@@ -4025,12 +4025,17 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   line-height: 1;
 }
 
-/* 右上角语言切换:地球图标 + 语言下拉,半透明药丸托底保证压在立绘上也清晰可读 */
-.ts-lang-corner {
+/* 右上角账号与语言控件：半透明托底保证压在立绘上也清晰可读 */
+.ts-corner-controls {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 14px);
   right: calc(env(safe-area-inset-right, 0px) + 16px);
   z-index: 20;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.ts-lang-corner {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -4042,12 +4047,32 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   backdrop-filter: blur(5px);
   color: var(--text-muted);
 }
+.ts-account-corner {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(111, 84, 40, 0.88);
+  border-radius: 50%;
+  color: var(--gilt-pale);
+  background: rgba(6, 10, 24, 0.62);
+  box-shadow: 0 0 0 2px rgba(6, 10, 24, 0.24);
+  text-decoration: none;
+  transition: border-color 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+.ts-account-corner:hover, .ts-account-corner:focus-visible { border-color: var(--gilt-bright); color: var(--gilt-bright); transform: translateY(-1px); outline: none; }
+.ts-account-avatar { display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; font-family: var(--font-engrave); font-size: 0.76rem; }
+.ts-account-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.ts-account-avatar [hidden] { display: none; }
 .ts-globe { display: block; opacity: 0.82; }
 .ts-language-corner { gap: 0; min-width: 0; }
 .ts-language-corner > span { display: none; } /* 隐藏「语言」字样,地球图标已表意 */
 .ts-language-corner select { min-width: 80px; max-width: 132px; }
 @media (max-width: 980px) {
+  .ts-corner-controls { gap: 6px; }
   .ts-lang-corner { padding: 3px 7px 3px 10px; gap: 6px; }
+  .ts-account-corner { width: 32px; height: 32px; }
   .ts-language-corner select { min-width: 76px; font-size: 0.7rem; }
 }
 
@@ -4192,6 +4217,13 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .pv-tip { font-family: var(--font-italic); font-style: italic; color: var(--text-muted); text-align: center; font-size: 0.9rem; }
 
 /* 玩法说明页 */
+.guide-scroll { gap: 16px; }
+.guide-tabs { display: inline-flex; align-self: flex-start; gap: 4px; padding: 3px; border: 1px solid #6c4a2888; background: #0b1429aa; }
+.guide-tabs button { min-height: 32px; border: 1px solid transparent; padding: 5px 11px; color: var(--text-muted); background: transparent; font-family: var(--font-cn); font-size: 0.76rem; cursor: pointer; }
+.guide-tabs button:hover, .guide-tabs button:focus-visible { border-color: #c8a24e88; color: var(--gilt-bright); outline: none; }
+.guide-tabs button.active { border-color: var(--gilt); color: #fff4d4; background: #8c652522; }
+.guide-tab-panel { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.guide-tab-panel[hidden] { display: none; }
 .guide-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
 .guide-item {
   padding: 16px 18px;
@@ -5159,18 +5191,21 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .leaderboard-table > header { min-height: 34px; color: var(--text-muted); font-family: var(--font-cn); font-size: 0.72rem; }
 .leaderboard-table > header span:nth-child(2) { grid-column: 2; }
 .leaderboard-table > header span:last-child { text-align: right; }
-.leaderboard-row { width: 100%; min-height: 58px; padding: 7px 0; border: 0; border-top: 1px solid #6c4a2844; color: var(--text-soft); background: transparent; text-align: left; cursor: pointer; }
+.leaderboard-row { width: 100%; min-height: 72px; padding: 7px 0; border: 0; border-top: 1px solid #6c4a2844; color: var(--text-soft); background: transparent; text-align: left; cursor: pointer; }
 .leaderboard-row:hover { background: #c8a24e12; }
 .leaderboard-rank { color: var(--gilt); font-family: var(--font-engrave); text-align: center; }
 .leaderboard-avatar { width: 34px; height: 34px; border-radius: 50%; grid-column: 2; }
 .leaderboard-avatar img { width: 100%; height: 100%; object-fit: cover; }
-.leaderboard-player { display: grid; gap: 2px; grid-column: 2; margin-left: 44px; min-width: 0; }
+.leaderboard-player { display: grid; gap: 1px; grid-column: 2; margin-left: 44px; min-width: 0; }
 .leaderboard-player strong { overflow: hidden; color: var(--text-primary); font-family: var(--font-cn); font-size: 0.9rem; text-overflow: ellipsis; white-space: nowrap; }
 .leaderboard-player small { color: var(--text-muted); font-family: var(--font-cn); font-size: 0.7rem; }
+.leaderboard-signature { overflow: hidden; color: var(--text-soft); text-overflow: ellipsis; white-space: nowrap; }
+.leaderboard-record { font-size: 0.64rem !important; }
 .leaderboard-elo { color: var(--gilt-bright); font-family: var(--font-engrave); text-align: right; }
 .leaderboard-empty, .leaderboard-status { color: var(--text-muted); font-family: var(--font-cn); font-size: 0.82rem; }
 .leaderboard-detail { position: sticky; bottom: 0; display: grid; gap: 5px; margin-top: 12px; padding: 12px; border-top: 2px solid var(--gilt); background: #0c1430f5; }
 .leaderboard-detail h2 { margin: 0; color: var(--text-primary); font-family: var(--font-cn); font-size: 1rem; }
+.leaderboard-detail-signature { margin: 0; overflow-wrap: anywhere; color: var(--text-soft); font-family: var(--font-cn); font-size: 0.8rem; line-height: 1.5; }
 .leaderboard-detail > strong { color: var(--gilt-bright); font-family: var(--font-engrave); font-size: 1.5rem; }
 .leaderboard-detail > span { color: var(--text-muted); font-family: var(--font-cn); font-size: 0.76rem; }
 .leaderboard-detail button { position: absolute; top: 7px; right: 7px; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; font-size: 1.1rem; }
@@ -5190,11 +5225,15 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .online-user-dialog-head { display: flex; align-items: center; gap: 10px; }
 .online-user-dialog-head img { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; border: 1px solid var(--brass); }
 .online-user-dialog h2 { margin: 3px 0 0; color: var(--text-primary); font-family: var(--font-cn); font-size: 1.1rem; }
+.online-user-dialog-signature { margin: 12px 0 0; overflow-wrap: anywhere; color: var(--text-soft); font-family: var(--font-cn); font-size: 0.82rem; line-height: 1.55; }
 .online-user-dialog-stats { display: grid; gap: 3px; margin-top: 14px; border-top: 1px solid #6c4a2855; padding-top: 10px; }
 .online-user-dialog-stats strong { color: var(--gilt-bright); font-family: var(--font-engrave); font-size: 1.45rem; }
 .online-user-dialog-stats span { color: var(--text-muted); font-family: var(--font-cn); font-size: 0.78rem; }
 
 @media (max-width: 680px) {
+  .guide-mobile-body .guide-tabs { display: grid; align-self: stretch; grid-template-columns: 1fr 1fr; }
+  .guide-mobile-body .guide-tabs button { min-width: 0; padding-inline: 6px; }
+  .guide-mobile-body .guide-tab-panel { gap: 12px; }
   .account-grid, .account-profile-form, .account-stats { grid-template-columns: 1fr; }
   .account-stat { border-left: 0; border-top: 1px solid #6c4a2855; }
   .account-stat:first-child { border-top: 0; }

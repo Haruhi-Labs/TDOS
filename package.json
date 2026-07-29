@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "start:server": "node server/server.js",
     "test:account-store": "node scripts/verify-account-store.mjs",
+    "test:unified-rating": "node scripts/verify-unified-rating.mjs",
     "test:account-api": "node scripts/verify-account-api.mjs",
     "test:account-settlement": "node scripts/verify-competitive-settlement.mjs",
     "test:account-online": "node scripts/verify-account-online.mjs",

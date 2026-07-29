@@ -1,8 +1,6 @@
 import { STELLAR_TERRITORY_DEFAULT_PARAMETERS } from "../shared/modes/stellar-territory.js";
 import { TERRAIN_MOVEMENT_MULTIPLIERS } from "../shared/gameplay/territory-terrain.js";
-import { startStarfield } from "./starfield.js";
 import { getLocale } from "./i18n.js";
-import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
 
 const COPY = Object.freeze({
   zh: {
@@ -144,7 +142,7 @@ function terrainFacts(copy) {
   ];
 }
 
-function template() {
+export function stellar3v3GuideHTML() {
   const copy = localizedCopy();
   const defaults = STELLAR_TERRITORY_DEFAULT_PARAMETERS;
   const objectiveCards = copy.objectives.map(([title, body], index) => `
@@ -169,12 +167,6 @@ function template() {
   `).join("");
 
   return `
-    <section class="page-stage stellar-rules-page">
-      <canvas class="page-stars" aria-hidden="true"></canvas>
-      <div class="page-bg" aria-hidden="true"></div>
-      <div class="page-frame page-frame-wide stellar-rules-frame">
-        <a class="page-back" href="/stellar3v3">${copy.back}</a>
-        <div class="page-scroll stellar-rules-scroll">
           <header class="stellar-rules-hero">
             <p>${copy.eyebrow}</p>
             <h1>${copy.title}<span>3v3</span></h1>
@@ -220,22 +212,5 @@ function template() {
           </section>
 
           <a class="stellar-rules-enter" href="/stellar3v3">${copy.begin}</a>
-        </div>
-      </div>
-    </section>
   `;
-}
-
-export function mount(root) {
-  root.innerHTML = template();
-  const starfieldAbort = new AbortController();
-  startStarfield(root.querySelector(".page-stars"), starfieldAbort.signal);
-  const fluidBackdrop = mountRouteFluidBackdrop(root.querySelector(".stellar-rules-page"), {
-    logLabel: "Stellar 3v3 rules fluid backdrop",
-    onReady: () => starfieldAbort.abort(),
-  });
-  return () => {
-    fluidBackdrop.destroy();
-    starfieldAbort.abort();
-  };
 }

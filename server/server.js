@@ -462,10 +462,10 @@ function spectatorCount(room) {
 }
 
 function publicUserSummaryForRoom(room, userId) {
-  if (!userId || !isMultiplayerRoom(room)) {
+  if (!userId || (room?.mode !== "pvp" && !isMultiplayerRoom(room))) {
     return null;
   }
-  const account = accountStore.getPublicUser(userId, room.mode);
+  const account = accountStore.getPublicUser(userId);
   if (!account) {
     return null;
   }

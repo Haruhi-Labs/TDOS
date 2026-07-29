@@ -4,7 +4,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
 
-export const COMPETITIVE_MODES = Object.freeze(["pvp2v2", "stellar3v3"]);
+export const COMPETITIVE_MODES = Object.freeze(["pvp", "pvp2v2", "stellar3v3"]);
 export const INITIAL_ELO = 1000;
 export const ELO_K_FACTOR = 32;
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000;
@@ -72,7 +72,6 @@ function toUser(row) {
 function toRating(row) {
   return {
     userId: row.user_id,
-    mode: row.mode,
     elo: row.elo,
     wins: row.wins,
     losses: row.losses,
@@ -83,7 +82,7 @@ function toRating(row) {
 
 function ensureCompetitiveMode(mode) {
   if (!COMPETITIVE_MODES.includes(mode)) {
-    throw new AccountStoreError("invalid_mode", "Only 2v2 and 3v3 PvP modes are competitive.");
+    throw new AccountStoreError("invalid_mode", "Only 1v1, 2v2, and 3v3 PvP modes are competitive.");
   }
   return mode;
 }
@@ -112,28 +111,28 @@ export function createAccountStore({
 
   const selectUserById = db.prepare("SELECT * FROM users WHERE id = ?");
   const selectUserByKey = db.prepare("SELECT * FROM users WHERE username_key = ?");
-  const selectRating = db.prepare("SELECT * FROM ratings WHERE user_id = ? AND mode = ?");
+  const selectRating = db.prepare("SELECT * FROM ratings WHERE user_id = ?");
 
-  function ensureRating(userId, mode, at = clock()) {
-    ensureCompetitiveMode(mode);
+  function ensureRating(userId, at = clock()) {
     db.prepare(
-      `INSERT OR IGNORE INTO ratings (user_id, mode, elo, wins, losses, games, updated_at)
-       VALUES (?, ?, ?, 0, 0, 0, ?)`,
-    ).run(userId, mode, INITIAL_ELO, at);
-    return toRating(selectRating.get(userId, mode));
+      `INSERT OR IGNORE INTO ratings (user_id, elo, wins, losses, games, updated_at)
+       VALUES (?, ?, 0, 0, 0, ?)`,
+    ).run(userId, INITIAL_ELO, at);
+    return toRating(selectRating.get(userId));
   }
 
   function getUserById(userId) {
     return toUser(selectUserById.get(userId));
   }
 
-  function getPublicUser(userId, mode = "pvp2v2") {
+  function getPublicUser(userId) {
     const user = getUserById(userId);
     if (!user) return null;
-    const rating = ensureRating(userId, mode);
+    const rating = ensureRating(userId);
     return {
       id: user.id,
       username: user.username,
+      signature: user.signature,
       avatarKey: user.avatarKey,
       elo: rating.elo,
       wins: rating.wins,
@@ -171,7 +170,7 @@ export function createAccountStore({
       }
       throw error;
     }
-    for (const mode of COMPETITIVE_MODES) ensureRating(userId, mode, at);
+    ensureRating(userId, at);
     return getUserById(userId);
   }
 
@@ -218,23 +217,22 @@ export function createAccountStore({
     if (token) db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(sessionDigest(String(token)));
   }
 
-  function getRating(userId, mode) {
-    return ensureRating(userId, mode);
+  function getRating(userId) {
+    return ensureRating(userId);
   }
 
-  function getLeaderboard(mode, limit = 100) {
-    ensureCompetitiveMode(mode);
+  function getLeaderboard(limit = 100) {
     const cappedLimit = Math.max(1, Math.min(Number(limit) || 100, 100));
     return db.prepare(
-      `SELECT r.user_id, r.mode, r.elo, r.wins, r.losses, r.games, r.updated_at,
-              u.username, u.avatar_key
-       FROM ratings r JOIN users u ON u.id = r.user_id
-       WHERE r.mode = ?
-       ORDER BY r.elo DESC, r.games DESC, u.created_at ASC LIMIT ?`,
-    ).all(mode, cappedLimit).map((row, index) => ({
+       `SELECT r.user_id, r.elo, r.wins, r.losses, r.games, r.updated_at,
+               u.username, u.signature, u.avatar_key
+        FROM ratings r JOIN users u ON u.id = r.user_id
+        ORDER BY r.elo DESC, r.games DESC, u.created_at ASC LIMIT ?`,
+    ).all(cappedLimit).map((row, index) => ({
       rank: index + 1,
       userId: row.user_id,
       username: row.username,
+      signature: row.signature || "",
       avatarKey: row.avatar_key || null,
       elo: row.elo,
       wins: row.wins,
@@ -244,20 +242,20 @@ export function createAccountStore({
     }));
   }
 
-  function getRank(userId, mode) {
+  function getRank(userId) {
     const user = getUserById(userId);
     if (!user) return null;
-    const rating = ensureRating(userId, mode);
+    const rating = ensureRating(userId);
     const row = db.prepare(
       `SELECT 1 + COUNT(*) AS rank
-       FROM ratings r
-       JOIN users u ON u.id = r.user_id
-       WHERE r.mode = ? AND (
-         r.elo > ? OR
-         (r.elo = ? AND r.games > ?) OR
-         (r.elo = ? AND r.games = ? AND u.created_at < ?)
-       )`,
-    ).get(mode, rating.elo, rating.elo, rating.games, rating.elo, rating.games, user.createdAt);
+        FROM ratings r
+        JOIN users u ON u.id = r.user_id
+        WHERE (
+          r.elo > ? OR
+          (r.elo = ? AND r.games > ?) OR
+          (r.elo = ? AND r.games = ? AND u.created_at < ?)
+        )`,
+    ).get(rating.elo, rating.elo, rating.games, rating.elo, rating.games, user.createdAt);
     return Number(row.rank);
   }
 
@@ -288,7 +286,7 @@ export function createAccountStore({
     if (byAlliance.A.length === 0 || byAlliance.B.length === 0) return { settled: false, reason: "not_human_pvp" };
 
     const ratings = new Map();
-    for (const userId of seenUserIds) ratings.set(userId, ensureRating(userId, mode, finishedAt));
+    for (const userId of seenUserIds) ratings.set(userId, ensureRating(userId, finishedAt));
     const average = (ids) => ids.reduce((sum, id) => sum + ratings.get(id).elo, 0) / ids.length;
     const averageA = average(byAlliance.A);
     const averageB = average(byAlliance.B);
@@ -300,7 +298,7 @@ export function createAccountStore({
       .run(normalizedMatchId, mode, winnerAllianceId, finishedAt, clock());
     const updateRating = db.prepare(
       `UPDATE ratings SET elo = ?, wins = wins + ?, losses = losses + ?, games = games + 1, updated_at = ?
-       WHERE user_id = ? AND mode = ?`,
+       WHERE user_id = ?`,
     );
     const insertMatchPlayer = db.prepare(
       `INSERT INTO match_players (match_id, user_id, alliance_id, elo_before, elo_after, elo_delta, outcome)
@@ -313,7 +311,7 @@ export function createAccountStore({
       for (const userId of byAlliance[allianceId]) {
         const before = ratings.get(userId).elo;
         const after = before + delta;
-        updateRating.run(after, won ? 1 : 0, won ? 0 : 1, finishedAt, userId, mode);
+        updateRating.run(after, won ? 1 : 0, won ? 0 : 1, finishedAt, userId);
         insertMatchPlayer.run(normalizedMatchId, userId, allianceId, before, after, delta, won ? "win" : "loss");
         changes.push({ userId, allianceId, before, after, delta, outcome: won ? "win" : "loss" });
       }
@@ -379,36 +377,60 @@ export function createAccountStore({
 }
 
 function migrate(db) {
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);
-    CREATE TABLE IF NOT EXISTS users (
-      id TEXT PRIMARY KEY, username TEXT NOT NULL, username_key TEXT NOT NULL UNIQUE,
-      password_salt BLOB NOT NULL, password_hash BLOB NOT NULL, signature TEXT NOT NULL DEFAULT '',
-      avatar_key TEXT, loadout_json TEXT, username_changed_at INTEGER,
-      created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS sessions (
-      token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS sessions_expires_at ON sessions(expires_at);
-    CREATE TABLE IF NOT EXISTS ratings (
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, mode TEXT NOT NULL, elo INTEGER NOT NULL,
-      wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0, games INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, mode)
-    );
-    CREATE INDEX IF NOT EXISTS ratings_leaderboard ON ratings(mode, elo DESC, games DESC);
-    CREATE TABLE IF NOT EXISTS matches (
-      id TEXT PRIMARY KEY, mode TEXT NOT NULL, winner_alliance_id TEXT NOT NULL,
-      finished_at INTEGER NOT NULL, settled_at INTEGER NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS match_players (
-      match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
-      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, alliance_id TEXT NOT NULL,
-      elo_before INTEGER NOT NULL, elo_after INTEGER NOT NULL, elo_delta INTEGER NOT NULL, outcome TEXT NOT NULL,
-      PRIMARY KEY (match_id, user_id)
-    );
-    CREATE INDEX IF NOT EXISTS match_players_user ON match_players(user_id, match_id);
-  `);
-  db.prepare("INSERT OR IGNORE INTO schema_migrations (version, applied_at) VALUES (1, ?)").run(Date.now());
+  db.exec("CREATE TABLE IF NOT EXISTS schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL)");
+  const isApplied = db.prepare("SELECT 1 FROM schema_migrations WHERE version = ?");
+
+  if (!isApplied.get(1)) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+          id TEXT PRIMARY KEY, username TEXT NOT NULL, username_key TEXT NOT NULL UNIQUE,
+          password_salt BLOB NOT NULL, password_hash BLOB NOT NULL, signature TEXT NOT NULL DEFAULT '',
+          avatar_key TEXT, loadout_json TEXT, username_changed_at INTEGER,
+          created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS sessions (
+          token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          expires_at INTEGER NOT NULL, created_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS sessions_expires_at ON sessions(expires_at);
+        CREATE TABLE IF NOT EXISTS ratings (
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, mode TEXT NOT NULL, elo INTEGER NOT NULL,
+          wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0, games INTEGER NOT NULL DEFAULT 0,
+          updated_at INTEGER NOT NULL, PRIMARY KEY (user_id, mode)
+        );
+        CREATE INDEX IF NOT EXISTS ratings_leaderboard ON ratings(mode, elo DESC, games DESC);
+        CREATE TABLE IF NOT EXISTS matches (
+          id TEXT PRIMARY KEY, mode TEXT NOT NULL, winner_alliance_id TEXT NOT NULL,
+          finished_at INTEGER NOT NULL, settled_at INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS match_players (
+          match_id TEXT NOT NULL REFERENCES matches(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE, alliance_id TEXT NOT NULL,
+          elo_before INTEGER NOT NULL, elo_after INTEGER NOT NULL, elo_delta INTEGER NOT NULL, outcome TEXT NOT NULL,
+          PRIMARY KEY (match_id, user_id)
+        );
+        CREATE INDEX IF NOT EXISTS match_players_user ON match_players(user_id, match_id);
+      `);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (1, ?)").run(Date.now());
+    })();
+  }
+
+  if (!isApplied.get(2)) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE ratings_v2 (
+          user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+          elo INTEGER NOT NULL, wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
+          games INTEGER NOT NULL DEFAULT 0, updated_at INTEGER NOT NULL
+        );
+        INSERT INTO ratings_v2 (user_id, elo, wins, losses, games, updated_at)
+        SELECT id, ${INITIAL_ELO}, 0, 0, 0, updated_at FROM users;
+        DROP TABLE ratings;
+        ALTER TABLE ratings_v2 RENAME TO ratings;
+        CREATE INDEX ratings_leaderboard ON ratings(elo DESC, games DESC);
+      `);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)").run(Date.now());
+    })();
+  }
 }

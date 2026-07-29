@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const [main, menu, profile, online, vite, accountClient, authView] = await Promise.all([
+const [main, menu, profile, online, vite, accountClient, authView, leaderboard, styles] = await Promise.all([
   readFile(new URL("../src/main.js", import.meta.url), "utf8"),
   readFile(new URL("../src/menu.js", import.meta.url), "utf8"),
   readFile(new URL("../src/profile-view.js", import.meta.url), "utf8"),
@@ -9,12 +9,20 @@ const [main, menu, profile, online, vite, accountClient, authView] = await Promi
   readFile(new URL("../vite.config.js", import.meta.url), "utf8"),
   readFile(new URL("../src/account-client.js", import.meta.url), "utf8"),
   readFile(new URL("../src/auth-view.js", import.meta.url), "utf8"),
+  readFile(new URL("../src/leaderboard-view.js", import.meta.url), "utf8"),
+  readFile(new URL("../styles.css", import.meta.url), "utf8"),
 ]);
 
 assert.match(main, /createAuthGate/, "application startup should be controlled by the authentication gate");
 assert.match(main, /accountClient\.getMe/, "application startup should check the current account session");
 assert.match(main, /"\/leaderboard"/, "main router should register the leaderboard page");
 assert.match(menu, /leaderboard/i, "main menu should link to the leaderboard page");
+assert.doesNotMatch(menu, /label: "指挥官档案"/, "main menu should not expose commander profile as a menu row");
+assert.match(menu, /ts-account-corner/, "main menu should expose an avatar settings entry in its top-right controls");
+assert.match(menu, /accountClient\.getMe\(/, "main menu avatar should load the authenticated account");
+assert.match(menu, /let accountLoadFailed = false;/, "main menu should distinguish a temporary account lookup failure from a missing session");
+assert.match(menu, /if \(!account && !accountLoadFailed\)/, "main menu should only sign out when the account session is missing");
+assert.match(styles, /:not\(\.ts-corner-controls\)/, "fluid menu backdrop must not override the account controls' absolute positioning");
 assert.match(profile, /account-client/, "profile page should use the account API client");
 assert.match(accountClient, /profile\/avatar/, "account client should expose an avatar upload action");
 assert.match(profile, /signature/i, "profile page should expose the signature field");
@@ -26,8 +34,16 @@ assert.match(online, /if \(!user\) onSignedOut\?\.\(\);/, "an expired online ses
 assert.match(online, /event\.code === 4001\) \{\s*onSignedOut\?\.\(\);/, "a server-authenticated close should return online users to the authentication gate");
 assert.match(authView, /name="confirmPassword"/, "registration view should render a confirmation-password input");
 assert.match(authView, /validateRegistration/, "registration view should validate confirmation before registration");
-assert.match(online, /user\.elo/, "online room rendering should show the mode Elo from public player summaries");
-assert.match(online, /getUser\(/, "online user rows should load public player details on demand");
+assert.match(online, /user\.elo/, "online room rendering should show the global Elo from public player summaries");
+assert.match(online, /accountClient\.getUser\(userId\)/, "online user rows should load global public player details on demand");
+assert.match(online, /online-user-dialog-signature/, "online public profile dialogs should render public signatures");
+assert.doesNotMatch(online, /createAiRoomBtn/, "standard online lobby should not retain an AI training room entry or binding");
+assert.match(leaderboard, /signatureText\(entry\)/, "leaderboard rows should render public signatures");
+assert.doesNotMatch(leaderboard, /data-mode=/, "the leaderboard should not expose separate rating tabs");
+assert.match(profile, /statLine\("综合战绩"/, "the profile should render one combined rating card");
+assert.doesNotMatch(accountClient, /mode=/, "account API requests should not choose a rating mode");
+assert.match(online, /公开排位/, "public rooms should be labelled as rated");
+assert.match(online, /私人练习/, "private rooms should be labelled as unranked practice");
 assert.match(vite, /"\/api"/, "Vite dev server should proxy account API requests");
 assert.match(
   vite,

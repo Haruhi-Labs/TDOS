@@ -8,6 +8,7 @@ const source = await readFile(new URL("../src/online.js", import.meta.url), "utf
 const menuSource = await readFile(new URL("../src/menu.js", import.meta.url), "utf8");
 const mainSource = await readFile(new URL("../src/main.js", import.meta.url), "utf8");
 const i18nSource = await readFile(new URL("../src/i18n.js", import.meta.url), "utf8");
+const guideSource = await readFile(new URL("../src/guide.js", import.meta.url), "utf8");
 const rulesPageUrl = new URL("../src/stellar3v3-rules.js", import.meta.url);
 
 for (const id of ["create3v3PublicBtn", "create3v3PrivateBtn", "stellarRoomSeats", "startMatchBtn"]) {
@@ -55,9 +56,13 @@ assert(source.includes("function activeMapBounds"), "3v3 client must resolve the
 assert(source.includes("activeMapBounds().width"), "3v3 local route prediction must clamp X coordinates against the active map width");
 assert(source.includes("activeMapBounds().height"), "3v3 local route prediction must clamp Y coordinates against the active map height");
 assert(source.includes('href="/stellar3v3/rules"'), "3v3 lobby must link to the dedicated rules page");
+assert(guideSource.includes('data-guide-tab="base"'), "main gameplay guide must provide a base-rules tab");
+assert(guideSource.includes('data-guide-tab="stellar3v3"'), "main gameplay guide must provide a 3v3-rules tab");
+assert(guideSource.includes('activeTab === "stellar3v3" ? "active" : ""'), "legacy 3v3 rules route must visually activate its merged guide tab");
 assert(i18nSource.includes('"3v3 规则说明": "3v3 ルール"'), "3v3 rules entry must have a Japanese translation");
 assert(i18nSource.includes('"3v3 规则说明": "3v3 Rules"'), "3v3 rules entry must have an English translation");
 assert(mainSource.includes('"/stellar3v3/rules"'), "router must register the 3v3 rules page");
+assert(mainSource.includes('initialTab: "stellar3v3"'), "legacy 3v3 rules route must open the merged guide on its 3v3 tab");
 try {
   await access(rulesPageUrl);
 } catch {

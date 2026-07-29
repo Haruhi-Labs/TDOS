@@ -114,12 +114,24 @@ try {
 
   const alice = await register("Alice");
   const bob = await register("Bob");
+  const carol = await register("Carol");
   const aliceSocket = await connect(wsOrigin, alice.cookie);
   const aliceSecondSocket = await connect(wsOrigin, alice.cookie);
   const bobSocket = await connect(wsOrigin, bob.cookie);
+  const carolSocket = await connect(wsOrigin, carol.cookie);
   await eventually(() => aliceSocket.messages.some((message) => message.type === "connected"));
   await eventually(() => aliceSecondSocket.messages.some((message) => message.type === "connected"));
   await eventually(() => bobSocket.messages.some((message) => message.type === "connected"));
+  await eventually(() => carolSocket.messages.some((message) => message.type === "connected"));
+
+  carolSocket.send(JSON.stringify({ type: "create_room", visibility: "public", mode: "pvp" }));
+  const oneVsOneCreated = await eventually(() => carolSocket.messages.find(
+    (message) => message.type === "room_state" && message.room?.mode === "pvp",
+  ));
+  const carolRow = oneVsOneCreated.room.players.find((player) => player.seat === "A");
+  assert.ok(carolRow.user, "a public 1v1 room should expose its host's global account summary");
+  assert.equal(carolRow.user.id, carol.user.id, "the 1v1 summary should use the persistent account ID");
+  assert.equal(carolRow.user.elo, 1000, "the 1v1 room should expose the global Elo");
 
   aliceSocket.send(JSON.stringify({ type: "set_name", name: "Imposter" }));
   aliceSocket.send(JSON.stringify({ type: "create_room", visibility: "public", mode: "pvp2v2" }));
@@ -163,6 +175,7 @@ try {
   aliceSocket.close();
   aliceSecondSocket.close();
   bobSocket.close();
+  carolSocket.close();
   console.log("account online verification passed");
 } finally {
   await stopServer(child);

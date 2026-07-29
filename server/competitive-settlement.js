@@ -1,9 +1,9 @@
-const COMPETITIVE_MODES = new Set(["pvp2v2", "stellar3v3"]);
-const COMPETITIVE_PLAYER_COUNTS = Object.freeze({ pvp2v2: 4, stellar3v3: 6 });
+const COMPETITIVE_MODES = new Set(["pvp", "pvp2v2", "stellar3v3"]);
+const COMPETITIVE_PLAYER_COUNTS = Object.freeze({ pvp: 2, pvp2v2: 4, stellar3v3: 6 });
 
 export function buildCompetitiveSettlement(room) {
   const result = room?.result;
-  if (!room || !result || !COMPETITIVE_MODES.has(room.mode)) {
+  if (!room || !result || room.visibility !== "public" || !COMPETITIVE_MODES.has(room.mode)) {
     return null;
   }
   if (result.winnerAllianceId !== "A" && result.winnerAllianceId !== "B") {

@@ -38,7 +38,11 @@ const routes = {
     const { mountStellar3v3 } = await import("./online.js");
     return { mount: mountStellar3v3 };
   },
-  "/stellar3v3/rules": () => import("./stellar3v3-rules.js"),
+  "/stellar3v3/rules": {
+    mount(root, context) {
+      return guide.mount(root, { ...context, initialTab: "stellar3v3" });
+    },
+  },
   "/debug": () => import("./debug.js"),
   "/prototype": () => import("./prototype/index.js"),
 };

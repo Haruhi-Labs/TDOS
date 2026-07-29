@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════════
-// 玩法说明（路由 /guide）—— 精简版：四步开打 + 几条要点 + 分端操作。
+// 玩法说明（路由 /guide）—— 基础玩法与星域争夺 3v3 共用同一说明页。
 // ═══════════════════════════════════════════════════════════════
 
 import { startStarfield } from "./starfield.js";
@@ -7,6 +7,7 @@ import { isMobile } from "./mobile.js";
 import { setTutorialSeen } from "./profile.js";
 import { t } from "./i18n.js";
 import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
+import { stellar3v3GuideHTML } from "./stellar3v3-rules.js";
 
 const QUICKSTART = [
   "<b>编队</b>：选 1 名角色担任<b>主舰</b>、2 名担任<b>副舰</b>；同一角色在主舰与副舰位置上技能不同。",
@@ -62,8 +63,36 @@ function buildHTML(itemClass, keyClass) {
   return { quickstart, sections, keys };
 }
 
-function template() {
-  const { quickstart, sections, keys } = buildHTML("guide-item", "guide-key");
+function baseGuideHTML(itemClass, keyClass, subtitleClass) {
+  const { quickstart, sections, keys } = buildHTML(itemClass, keyClass);
+  return `
+    <div class="guide-quickstart">
+      <div class="qs-head">${t("快速开始")}</div>
+      <ol class="qs-steps">${quickstart}</ol>
+      <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
+      <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
+    </div>
+    <h2 class="${subtitleClass}">${t("要点")}</h2>
+    <div class="guide-grid">${sections}</div>
+    <h2 class="${subtitleClass}">${t("操作")}</h2>
+    <div class="guide-keys">${keys}</div>
+  `;
+}
+
+function guideTabsHTML(activeTab) {
+  return `
+    <div class="guide-tabs" role="tablist" aria-label="${t("玩法说明")}">
+      <button type="button" class="${activeTab === "base" ? "active" : ""}" data-guide-tab="base" role="tab" aria-selected="${activeTab === "base"}">${t("基础玩法")}</button>
+      <button type="button" class="${activeTab === "stellar3v3" ? "active" : ""}" data-guide-tab="stellar3v3" role="tab" aria-selected="${activeTab === "stellar3v3"}">${t("星域争夺 3v3")}</button>
+    </div>
+  `;
+}
+
+function tabPanelHTML(tab, activeTab, content, className = "") {
+  return `<section class="guide-tab-panel ${className}" data-guide-panel="${tab}"${tab === activeTab ? "" : " hidden"}>${content}</section>`;
+}
+
+function template(activeTab) {
   return `
     <section class="page-stage">
       <canvas class="page-stars" aria-hidden="true"></canvas>
@@ -71,29 +100,17 @@ function template() {
       <div class="page-frame page-frame-wide">
         <a class="page-back" href="/">${t("‹ 返回主菜单")}</a>
         <h1 class="page-title">${t("玩法说明")}</h1>
-
-        <div class="page-scroll">
-          <div class="guide-quickstart">
-            <div class="qs-head">${t("快速开始")}</div>
-            <ol class="qs-steps">${quickstart}</ol>
-            <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
-            <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
-          </div>
-
-          <h2 class="guide-subtitle">${t("要点")}</h2>
-          <div class="guide-grid">${sections}</div>
-
-          <h2 class="guide-subtitle">${t("操作")}</h2>
-          <div class="guide-keys">${keys}</div>
+        <div class="page-scroll guide-scroll">
+          ${guideTabsHTML(activeTab)}
+          ${tabPanelHTML("base", activeTab, baseGuideHTML("guide-item", "guide-key", "guide-subtitle"))}
+          ${tabPanelHTML("stellar3v3", activeTab, stellar3v3GuideHTML(), "stellar-rules-scroll")}
         </div>
       </div>
     </section>
   `;
 }
 
-// 移动端专属：顶栏固定 + 原生可滚
-function mobileTemplate() {
-  const { quickstart, sections, keys } = buildHTML("m-guide-item", "m-guide-key");
+function mobileTemplate(activeTab) {
   return `
     <section class="mpage">
       <canvas class="page-stars" aria-hidden="true"></canvas>
@@ -101,23 +118,30 @@ function mobileTemplate() {
         <a class="mpage-back" href="/">‹</a>
         <h1 class="mpage-title">${t("玩法说明")}</h1>
       </div>
-      <div class="mpage-body">
-        <div class="guide-quickstart">
-          <div class="qs-head">${t("快速开始")}</div>
-          <ol class="qs-steps">${quickstart}</ol>
-          <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
-          <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
-        </div>
-        ${sections}
-        <h2 class="m-guide-sub">${t("操作")}</h2>
-        ${keys}
+      <div class="mpage-body guide-mobile-body">
+        ${guideTabsHTML(activeTab)}
+        ${tabPanelHTML("base", activeTab, baseGuideHTML("m-guide-item", "m-guide-key", "m-guide-sub"))}
+        ${tabPanelHTML("stellar3v3", activeTab, stellar3v3GuideHTML(), "stellar-rules-scroll")}
       </div>
     </section>
   `;
 }
 
-export function mount(root) {
-  root.innerHTML = isMobile() ? mobileTemplate() : template();
+function setActiveGuideTab(root, tab) {
+  const activeTab = tab === "stellar3v3" ? "stellar3v3" : "base";
+  for (const button of root.querySelectorAll("[data-guide-tab]")) {
+    const active = button.dataset.guideTab === activeTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  }
+  for (const panel of root.querySelectorAll("[data-guide-panel]")) {
+    panel.hidden = panel.dataset.guidePanel !== activeTab;
+  }
+}
+
+export function mount(root, { initialTab } = {}) {
+  const activeTab = initialTab === "stellar3v3" ? "stellar3v3" : "base";
+  root.innerHTML = isMobile() ? mobileTemplate(activeTab) : template(activeTab);
   const ac = new AbortController();
   const starfieldAc = new AbortController();
   startStarfield(root.querySelector(".page-stars"), starfieldAc.signal);
@@ -125,17 +149,16 @@ export function mount(root) {
     logLabel: "Guide fluid backdrop",
     onReady: () => starfieldAc.abort(),
   });
-  // 「重看新手教程」:清掉已看过标记,再让路由跳到 /play(下次进战场即重新触发引导)
-  const replay = root.querySelector("[data-replay-tutorial]");
-  if (replay) {
-    replay.addEventListener(
-      "click",
-      () => {
-        setTutorialSeen(false);
-      },
-      { signal: ac.signal },
-    );
+  for (const button of root.querySelectorAll("[data-guide-tab]")) {
+    button.addEventListener("click", () => setActiveGuideTab(root, button.dataset.guideTab), { signal: ac.signal });
   }
+  root.querySelector("[data-replay-tutorial]")?.addEventListener(
+    "click",
+    () => {
+      setTutorialSeen(false);
+    },
+    { signal: ac.signal },
+  );
   return () => {
     fluidBackdrop.destroy();
     starfieldAc.abort();

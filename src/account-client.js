@@ -72,11 +72,14 @@ export function createAccountClient({ baseUrl = "", fetchImpl = globalThis.fetch
         body: file,
       }))?.user;
     },
-    async getUser(userId, mode = "pvp2v2") {
-      return (await request(`/api/users/${encodeURIComponent(userId)}?mode=${encodeURIComponent(mode)}`))?.user || null;
+    async getUser(userId) {
+      return (await request(`/api/users/${encodeURIComponent(userId)}`))?.user || null;
     },
-    async getLeaderboard(mode = "pvp2v2", limit = 100) {
-      return request(`/api/leaderboard?mode=${encodeURIComponent(mode)}&limit=${encodeURIComponent(limit)}`);
+    async getLeaderboard(modeOrLimit, legacyLimit) {
+      const limit = legacyLimit !== undefined
+        ? legacyLimit
+        : typeof modeOrLimit === "string" ? 100 : modeOrLimit ?? 100;
+      return request(`/api/leaderboard?limit=${encodeURIComponent(limit)}`);
     },
   };
 }
