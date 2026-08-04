@@ -958,7 +958,7 @@ class Ship {
 
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
-    // 名字暴露:敌方舰船默认隐藏名字,一旦其在敌方视野中施放技能即永久暴露(供渲染层判断是否显示名牌)
+    // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
 
     this.effects = {
@@ -1619,7 +1619,7 @@ class Ship {
       braking: this.isEmergencyBraking(),
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
-      nameRevealed: this.nameRevealed, // 名字是否已永久暴露(敌方施放技能被看见后置真)
+      nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
       buffs: this.team.listShipBuffs(this),
       route: this.route
         ? {
@@ -2923,11 +2923,17 @@ class Team {
     radar.angle = currentAngle;
 
     for (const target of enemyTeam.getAllShips()) {
-      if (!target.alive || this.visibleEnemyIds.has(target.id)) {
+      if (!target.alive) {
         continue;
       }
       const bearing = normalizeAngle(Math.atan2(target.y - source.y, target.x - source.x));
       if (counterClockwiseSweepDistance(previousAngle, bearing) > sweepDistance + 1e-9) {
+        continue;
+      }
+      if (this.visibleEnemyIds.has(target.id)) {
+        // 真实视野内不生成雷达残影，直接复用现有永久名牌状态确认角色身份。
+        target.nameRevealed = true;
+        radar.contacts.delete(target.id);
         continue;
       }
       radar.contacts.set(target.id, this.createRadarContact(target, source));

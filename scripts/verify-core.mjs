@@ -430,6 +430,15 @@ function yukiPassiveCheck() {
     !sim.serializeRadarForSeat("A").contacts.some((contact) => contact.targetId === enemyMain.id),
     "已在常规视野内的敌舰仍显示雷达扫描效果",
   );
+  assert(enemyMain.nameRevealed, "长门雷达扫过真实视野内敌舰后未永久确认角色名");
+
+  enemyMain.x = main.x + zoneWidth + 120;
+  teamA.computeVisibility(sim.teamB);
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "角色名持续显示测试中的敌舰未离开真实视野");
+  assert(
+    sim.teamB.serialize().ships.main.nameRevealed,
+    "敌舰离开真实视野后，长门雷达确认的角色名未沿用持续显示状态",
+  );
 
   main.takeDamage(main.maxHp * 2, null, sim);
   assert(!main.alive, "旧版长门复活效果未从新雷达被动中移除");

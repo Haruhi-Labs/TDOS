@@ -661,7 +661,7 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
 
   // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
-  // 敌方默认隐藏名字,仅当其名字已永久暴露(曾在我方视野中施放技能)时才显示。
+  // 敌方默认隐藏名字,仅当其角色名已永久确认(视野内施放技能或被长门雷达扫中)时才显示。
   if (forceName || (!attached && (!isEnemy || ship.nameRevealed))) {
     drawShipNameLabel(ctx, ship, color);
   }
