@@ -441,6 +441,7 @@ function setSelectedShip(shipKey) {
   }
   syncPowerFromSelected();
   updateUi();
+  tutorial.onShipSelection(shipKey);
   return true;
 }
 
@@ -1445,6 +1446,7 @@ function launchTutorialCampaign() {
   beginSimulationLoop();
   tutorial.start({
     isMobile: () => app.mobileMode,
+    getSelectedShipKey: () => app.selectedShipKey,
     onStageChange: (id) => {
       if (!app?.sim) return;
       if (id === "attack") app.sim.setCombatEnabled("A", true);

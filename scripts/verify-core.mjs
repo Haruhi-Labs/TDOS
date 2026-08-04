@@ -17,6 +17,7 @@ import {
 import {
   TUTORIAL_ATTACK_TARGET,
   TUTORIAL_MOVE_TARGET,
+  tutorialEventStepSatisfied,
   tutorialTargetContainsPoint,
 } from "../src/tutorial.js";
 
@@ -1908,6 +1909,31 @@ function tutorialTargetGeometryCheck() {
   assert(!tutorialTargetContainsPoint({ x: "无效", y: 0 }, TUTORIAL_MOVE_TARGET), "教程目标接受了非法坐标");
 }
 
+function tutorialEventTriggerCheck() {
+  const selectedEarly = new Set(["sub1"]);
+  assert(
+    !tutorialEventStepSatisfied("yuki_skill", { selectedShips: selectedEarly, yukiSkillCast: false }),
+    "教程在长门技能释放前错误推进",
+  );
+  assert(
+    tutorialEventStepSatisfied("yuki_skill", { selectedShips: selectedEarly, yukiSkillCast: true }),
+    "提前选择长门后成功释放技能仍无法推进",
+  );
+
+  const castEarly = { selectedShips: new Set(), yukiSkillCast: true };
+  assert(!tutorialEventStepSatisfied("yuki_skill", castEarly), "教程在尚未选择长门时错误推进");
+  castEarly.selectedShips.add("sub1");
+  assert(tutorialEventStepSatisfied("yuki_skill", castEarly), "长门选择与技能事件顺序影响步骤完成判定");
+
+  assert(tutorialEventStepSatisfied("scout", { scoutLaunched: true }), "侦察机成功派出后步骤未完成");
+  assert(tutorialEventStepSatisfied("split_yuki", { splitLevelReached: 1 }), "一级分离状态未被步骤识别");
+  assert(tutorialEventStepSatisfied("split_kyon", { splitLevelReached: 2 }), "二级分离状态未被步骤识别");
+  assert(
+    tutorialEventStepSatisfied("battle_skills", { usedBattleSkills: new Set(["kyon", "flagship"]) }),
+    "战斗技能的释放顺序影响步骤完成判定",
+  );
+}
+
 function main() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
@@ -1956,6 +1982,7 @@ function main() {
   aiEdgeRecoveryCheck();
   aiEngageCheck();
   tutorialTargetGeometryCheck();
+  tutorialEventTriggerCheck();
   tutorialBattleRulesCheck();
   console.log("核心战斗逻辑校验通过");
 }

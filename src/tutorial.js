@@ -131,8 +131,10 @@ let overlayEl = null;
 let cardEl = null;
 let highlighted = [];
 let briefingClosed = false;
-let routedShips = new Set();
 let usedBattleSkills = new Set();
+let selectedShips = new Set();
+let scoutLaunched = false;
+let splitLevelReached = 0;
 let yukiSkillCast = false;
 
 function step() {
@@ -229,6 +231,38 @@ function endpointInTarget(action, target) {
   return tutorialTargetContainsPoint({ x: action.endX, y: action.endY }, target);
 }
 
+export function tutorialEventStepSatisfied(stepId, progress = {}) {
+  const selections = progress.selectedShips instanceof Set
+    ? progress.selectedShips
+    : new Set(progress.selectedShips || []);
+  const battleSkills = progress.usedBattleSkills instanceof Set
+    ? progress.usedBattleSkills
+    : new Set(progress.usedBattleSkills || []);
+  if (stepId === "scout") return Boolean(progress.scoutLaunched);
+  if (stepId === "split_yuki") return Number(progress.splitLevelReached) >= 1;
+  if (stepId === "yuki_skill") return selections.has("sub1") && Boolean(progress.yukiSkillCast);
+  if (stepId === "split_kyon") return Number(progress.splitLevelReached) >= 2;
+  if (stepId === "battle_skills") return battleSkills.has("flagship") && battleSkills.has("kyon");
+  return false;
+}
+
+function currentProgress() {
+  return {
+    selectedShips,
+    usedBattleSkills,
+    scoutLaunched,
+    splitLevelReached,
+    yukiSkillCast,
+  };
+}
+
+function advanceFromRecordedEvents() {
+  const current = step();
+  if (!current || !tutorialEventStepSatisfied(current.id, currentProgress())) return false;
+  goto(activeIndex + 1);
+  return true;
+}
+
 function allowsAction(action) {
   if (!isActive() || !action) return true;
   const id = step().id;
@@ -281,30 +315,32 @@ function allowsControl(control) {
 
 function onAction(action) {
   if (!isActive() || !action) return;
-  const id = step().id;
-  if (id === "scout" && action.type === "launch_scout") goto(activeIndex + 1);
-  else if (id === "split_yuki" && action.type === "split" && Number(action.level) === 1) goto(activeIndex + 1);
-  else if (id === "yuki_skill" && action.type === "cast_sub_skill" && action.shipKey === "sub1") yukiSkillCast = true;
-  else if (id === "split_kyon" && action.type === "split" && Number(action.level) === 2) goto(activeIndex + 1);
-  else if (id === "regroup" && action.type === "set_route") routedShips.add(action.shipKey);
-  else if (id === "battle_skills") {
-    if (action.type === "cast_flagship_skill") usedBattleSkills.add("flagship");
-    if (action.type === "cast_sub_skill" && action.shipKey === "sub2") usedBattleSkills.add("kyon");
-    if (usedBattleSkills.size >= 2) goto(activeIndex + 1);
-  }
+  const type = String(action.type || "");
+  if (type === "launch_scout") scoutLaunched = true;
+  if (type === "split") splitLevelReached = Math.max(splitLevelReached, Number(action.level) || 0);
+  if (type === "cast_sub_skill" && action.shipKey === "sub1") yukiSkillCast = true;
+  if (type === "cast_flagship_skill") usedBattleSkills.add("flagship");
+  if (type === "cast_sub_skill" && action.shipKey === "sub2") usedBattleSkills.add("kyon");
+  advanceFromRecordedEvents();
+}
+
+function onShipSelection(shipKey) {
+  if (!isActive() || !shipKey) return;
+  selectedShips.add(String(shipKey));
+  advanceFromRecordedEvents();
 }
 
 function update(state) {
   if (!isActive() || !state) return;
   const own = state.teams?.A;
   if (!own?.ships) return;
+  splitLevelReached = Math.max(splitLevelReached, Number(own.splitLevel) || 0);
+  if (advanceFromRecordedEvents()) return;
   const id = step().id;
   if (id === "move") {
     const main = own.ships.main;
     if (main && tutorialTargetContainsPoint(main, TUTORIAL_MOVE_TARGET)) goto(activeIndex + 1);
-  } else if (id === "yuki_skill" && yukiSkillCast && (own.visibleEnemyIds || []).length > 0) {
-    goto(activeIndex + 1);
-  } else if (id === "regroup" && routedShips.size >= 3) {
+  } else if (id === "regroup") {
     const arrived = ["main", "sub1", "sub2"].every((key) => {
       const ship = own.ships[key];
       return ship && tutorialTargetContainsPoint(ship, TUTORIAL_ATTACK_TARGET);
@@ -326,8 +362,10 @@ function start(context = {}) {
   ctx = context;
   activeIndex = 0;
   briefingClosed = false;
-  routedShips = new Set();
   usedBattleSkills = new Set();
+  selectedShips = new Set([String(context.getSelectedShipKey?.() || "main")]);
+  scoutLaunched = false;
+  splitLevelReached = 0;
   yukiSkillCast = false;
   overlayEl = document.createElement("div");
   overlayEl.className = "tut-overlay tut-campaign";
@@ -358,4 +396,5 @@ export const tutorial = {
   allowsAction,
   allowsControl,
   allowsShipSelection,
+  onShipSelection,
 };
