@@ -35,6 +35,7 @@ const unackedClientCount = Math.max(0, Number(process.env.NETWORK_UNACKED_CLIENT
 const ackRecoverySeconds = Math.max(0, Number(process.env.NETWORK_ACK_RECOVERY_SECONDS) || 0);
 const dropDeltaClientCount = Math.max(0, Number(process.env.NETWORK_DROP_DELTA_CLIENTS) || 0);
 const legacyClientCount = Math.max(0, Number(process.env.NETWORK_LEGACY_CLIENTS) || 0);
+const radarLoadoutEnabled = String(process.env.NETWORK_RADAR_LOADOUT || "") === "1";
 const configuredUrl = String(process.env.NETWORK_WS_URL || "").trim();
 const localPort = positiveInteger(process.env.NETWORK_PORT, 23000 + Math.floor(Math.random() * 1000));
 const wsUrl = configuredUrl || `ws://127.0.0.1:${localPort}`;
@@ -389,6 +390,12 @@ async function main() {
   await Promise.all(
     rooms.map(async (room, roomIndex) => {
       room.host.send({ type: "set_name", name: `压测主机${roomIndex}` });
+      if (radarLoadoutEnabled) {
+        room.host.send({
+          type: "set_loadout",
+          loadout: { main: "yuki", sub1: "haruhi", sub2: "koizumi" },
+        });
+      }
       room.host.send({ type: "create_room", visibility: "public", mode: "pvp" });
       const state = await room.host.waitFor(
         (message) => message.type === "room_state" && message.self?.seat === "A" && message.room?.status === "waiting",
@@ -400,6 +407,12 @@ async function main() {
   await Promise.all(
     rooms.map(async (room, roomIndex) => {
       room.guest.send({ type: "set_name", name: `压测客机${roomIndex}` });
+      if (radarLoadoutEnabled) {
+        room.guest.send({
+          type: "set_loadout",
+          loadout: { main: "yuki", sub1: "kyon", sub2: "tsuruya" },
+        });
+      }
       room.guest.send({ type: "join_room", roomId: room.roomId });
       await room.guest.waitFor(
         (message) => message.type === "room_state" && message.room?.roomId === room.roomId && message.room?.status === "countdown",
@@ -497,6 +510,7 @@ async function main() {
       spectators: roomCount * spectatorsPerRoom,
       totalConnections: clients.length,
       durationSeconds,
+      radarLoadout: radarLoadoutEnabled,
     },
     total: {
       wireKBps: round(wireBytes / durationSeconds / 1024),

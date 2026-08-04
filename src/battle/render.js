@@ -104,8 +104,9 @@ function traceWaterRipple(ctx, x, y, radiusX, radiusY, rotation, phase) {
   const cosR = Math.cos(rotation);
   const sinR = Math.sin(rotation);
   ctx.beginPath();
-  for (let index = 0; index <= 56; index += 1) {
-    const angle = (index / 56) * TAU;
+  const segmentCount = 32;
+  for (let index = 0; index <= segmentCount; index += 1) {
+    const angle = (index / segmentCount) * TAU;
     const wobble = 1 + Math.sin(angle * 3 + phase) * 0.045 + Math.sin(angle * 7 - phase * 0.7) * 0.018;
     const localX = Math.cos(angle) * radiusX * wobble;
     const localY = Math.sin(angle) * radiusY * wobble;
@@ -128,17 +129,11 @@ function drawRadarDisturbance(ctx, contact, elapsed, alpha) {
   ctx.save();
   ctx.translate(drift * Math.cos(rotation), drift * Math.sin(rotation));
   ctx.globalCompositeOperation = "screen";
-  if ("filter" in ctx) {
-    ctx.filter = `blur(${(1.15 + (1 - clarity) * 2.1).toFixed(2)}px)`;
-  }
   ctx.lineCap = "round";
   for (let ring = 0; ring < 3; ring += 1) {
     const progress = clamp(age / 2.15 - ring * 0.13, 0, 1);
     if (progress <= 0) continue;
     const radius = 8 + progress * (22 + uncertainty * 0.13);
-    ctx.globalAlpha = alpha * (0.16 - ring * 0.035) * (1 - progress * 0.5);
-    ctx.strokeStyle = ring === 0 ? "#bfeeee" : "#72c9d9";
-    ctx.lineWidth = 1.15 + (1 - clarity) * 0.75;
     traceWaterRipple(
       ctx,
       contact.x,
@@ -148,6 +143,15 @@ function drawRadarDisturbance(ctx, contact, elapsed, alpha) {
       rotation + ring * 0.18,
       age * 2.2 + seedPhase + ring,
     );
+    // 用低透明宽描边托住一条清晰细线，取代高开销的逐帧模糊滤镜。
+    // 远距回波仍然柔和，但水面轮廓不会糊成光团。
+    ctx.globalAlpha = alpha * (0.105 - ring * 0.014) * (1 - progress * 0.3);
+    ctx.strokeStyle = ring === 0 ? "#6fc7d0" : "#4f9fab";
+    ctx.lineWidth = 3.1 + (1 - clarity) * 0.9;
+    ctx.stroke();
+    ctx.globalAlpha = alpha * (0.36 - ring * 0.06) * (1 - progress * 0.32);
+    ctx.strokeStyle = ring === 0 ? "#d5f6f2" : "#8bd7dc";
+    ctx.lineWidth = 0.82 + (1 - clarity) * 0.38;
     ctx.stroke();
   }
   ctx.restore();
@@ -173,9 +177,6 @@ function drawRadarAfterimage(ctx, contact, elapsed, alpha) {
   ctx.translate(contact.x, contact.y);
   ctx.rotate(Number(contact.angle) || 0);
   ctx.globalCompositeOperation = "screen";
-  if ("filter" in ctx) {
-    ctx.filter = `blur(${Math.max(0, (1 - clarity) * 1.35).toFixed(2)}px)`;
-  }
   ctx.lineJoin = "round";
   for (let echo = 2; echo >= 0; echo -= 1) {
     const trail = echo * (5 + uncertainty * 0.025);
