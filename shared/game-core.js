@@ -63,7 +63,7 @@ export function energyRateForThrottle(baseRegen, moveDrain, throttle) {
 }
 
 const TAU = Math.PI * 2;
-const BEAM_CHARGE_DURATION = 2.05;
+const BEAM_CHARGE_DURATION = 1.05;
 const BEAM_VISUAL_DURATION = 0.26;
 const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
@@ -294,7 +294,7 @@ export const CHARACTER_DEFS = {
       cooldown: 12,
       cost: 74,
       target: "point",
-      description: "蓄力2.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。",
+      description: "蓄力1.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。",
     },
   },
   kyon: {
@@ -2466,7 +2466,10 @@ class Team {
           beam.life = 0;
           continue;
         }
-        this.updateBeamGeometry(beam, ship);
+        beam.x1 = ship.x;
+        beam.y1 = ship.y;
+        beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
+        beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
         beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
       }
       beam.life -= dt;
@@ -2722,38 +2725,13 @@ class Team {
     return true;
   }
 
-  updateBeamGeometry(beam, ship) {
-    const targetX = Number(beam.targetX);
-    const targetY = Number(beam.targetY);
-    const aimDx = targetX - ship.x;
-    const aimDy = targetY - ship.y;
-    const aimLen = Math.hypot(aimDx, aimDy);
-    if (Number.isFinite(aimLen) && aimLen >= 1e-4) {
-      beam.dirX = aimDx / aimLen;
-      beam.dirY = aimDy / aimLen;
-    }
-
-    beam.x1 = ship.x;
-    beam.y1 = ship.y;
-    let rayLength = Math.max(0, Number(beam.range) || 0);
-    const worldSize = this.match.worldSize;
-    if (beam.dirX > 1e-8) rayLength = Math.min(rayLength, (worldSize - ship.x) / beam.dirX);
-    else if (beam.dirX < -1e-8) rayLength = Math.min(rayLength, -ship.x / beam.dirX);
-    if (beam.dirY > 1e-8) rayLength = Math.min(rayLength, (worldSize - ship.y) / beam.dirY);
-    else if (beam.dirY < -1e-8) rayLength = Math.min(rayLength, -ship.y / beam.dirY);
-    beam.x2 = ship.x + beam.dirX * rayLength;
-    beam.y2 = ship.y + beam.dirY * rayLength;
-  }
-
-  castBeamFromShip(shipKey, targetX, targetY) {
+  castBeamFromShip(shipKey, directionX, directionY) {
     const ship = this.ships[shipKey];
     if (!ship || ship.isAttached() || !ship.alive) {
       return false;
     }
-    const lockedTargetX = Number(targetX);
-    const lockedTargetY = Number(targetY);
-    const aimDx = lockedTargetX - ship.x;
-    const aimDy = lockedTargetY - ship.y;
+    const aimDx = Number(directionX) - ship.x;
+    const aimDy = Number(directionY) - ship.y;
     const aimLen = Math.hypot(aimDx, aimDy);
     if (!Number.isFinite(aimLen) || aimLen < 1e-4) {
       return false;
@@ -2767,10 +2745,8 @@ class Team {
       phase: "charge",
       x1: ship.x,
       y1: ship.y,
-      x2: ship.x,
-      y2: ship.y,
-      targetX: lockedTargetX,
-      targetY: lockedTargetY,
+      x2: this.match.clampX(ship.x + dirX * range, 0),
+      y2: this.match.clampY(ship.y + dirY * range, 0),
       dirX,
       dirY,
       range,
@@ -2780,7 +2756,6 @@ class Team {
       progress: 0,
       fired: false,
     };
-    this.updateBeamGeometry(beam, ship);
     this.beams.push(beam);
     return true;
   }
@@ -2848,7 +2823,10 @@ class Team {
       beam.life = BEAM_VISUAL_DURATION;
       beam.maxLife = BEAM_VISUAL_DURATION;
       beam.progress = 1;
-      this.updateBeamGeometry(beam, ship);
+      beam.x1 = ship.x;
+      beam.y1 = ship.y;
+      beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
+      beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
 
       let hitAny = false;
       for (const target of enemyTeam.getAllShips()) {

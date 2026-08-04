@@ -575,7 +575,7 @@ function beamSkillCheck() {
   assert(castOk, "1096光线触发失败");
   const chargingBeam = teamA.beams.find((beam) => beam.phase === "charge");
   assert(chargingBeam, "1096光线未创建蓄力轨迹");
-  assert(Math.abs(chargingBeam.maxLife - 2.05) < 1e-9, "1096光线蓄力时间不是2.05秒");
+  assert(Math.abs(chargingBeam.maxLife - 1.05) < 1e-9, "1096光线蓄力时间不是1.05秒");
   const initialBeamVector = {
     x: chargingBeam.x2 - chargingBeam.x1,
     y: chargingBeam.y2 - chargingBeam.y1,
@@ -586,20 +586,20 @@ function beamSkillCheck() {
   assert(movedBeam, "1096光线在移动测试中提前结束蓄力");
   const movedBeamDx = movedBeam.x2 - movedBeam.x1;
   const movedBeamDy = movedBeam.y2 - movedBeam.y1;
-  const lockedTargetDistance = Math.abs(
-    (enemyMain.x - movedBeam.x1) * movedBeamDy - (enemyMain.y - movedBeam.y1) * movedBeamDx,
-  ) / Math.max(1e-9, Math.hypot(movedBeamDx, movedBeamDy));
-
+  const directionCross = initialBeamVector.x * movedBeamDy - initialBeamVector.y * movedBeamDx;
+  const directionScale = Math.max(1, Math.hypot(initialBeamVector.x, initialBeamVector.y) * Math.hypot(movedBeamDx, movedBeamDy));
   assert(Math.abs(movedBeam.x1 - sub2.x) < 1e-6 && Math.abs(movedBeam.y1 - sub2.y) < 1e-6, "1096光线发射点未跟随舰船移动");
-  assert(lockedTargetDistance < 1e-6, "1096光线未持续射向释放时点击的固定坐标");
   assert(
-    Math.abs(initialBeamVector.x * movedBeamDy - initialBeamVector.y * movedBeamDx) > 1,
-    "1096光线随舰船整体平移，没有围绕固定瞄准点改变方向",
+    Math.abs(directionCross) / directionScale < 1e-9
+      && initialBeamVector.x * movedBeamDx + initialBeamVector.y * movedBeamDy > 0,
+    "1096光线随舰船移动时没有保持原始发射方向",
   );
+  sub2.y -= 90;
+  teamA.update(TICK_DT);
 
-  runSteps(sim, 1.35);
+  runSteps(sim, 0.35);
   const chargingVisible = teamA.beams.some((beam) => beam.phase === "charge");
-  runSteps(sim, 0.8);
+  runSteps(sim, 1.2);
   const after = teamB.hullRatio();
   const enemyFleetHpAfter = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
 
