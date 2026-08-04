@@ -1576,7 +1576,8 @@ class Ship {
       }
     }
     const finalAmount = amount * this.damageTakenMultiplier();
-    this.hp = Math.max(0, this.hp - finalAmount);
+    const damageFloor = this.maxHp * clamp(Number(this.team.damageFloorRatio) || 0, 0, 1);
+    this.hp = Math.max(damageFloor, this.hp - finalAmount);
     if (this.hp > 0) {
       return;
     }
@@ -1907,6 +1908,12 @@ class Team {
     // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
     this.statMult = 1;
     this.aiFocusLowHp = false;
+    // 独立教程使用的安全门：敌军全程禁用技能，友军在自由战前锁血至 1/4。
+    // 常规对战均保持默认值，不改变既有规则。
+    this.forceSkillsDisabled = false;
+    this.forceCharacterSkillsDisabled = false;
+    this.forceScoutsDisabled = false;
+    this.damageFloorRatio = 0;
     // 极限集火只对"残血"目标生效(血量 ≤ 该值×自身上限才值得转火去收人头);
     // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
     this.focusHpFrac = 0.5;
@@ -2250,7 +2257,11 @@ class Team {
   }
 
   areSkillsDisabled() {
-    return false;
+    return this.forceSkillsDisabled || this.forceCharacterSkillsDisabled;
+  }
+
+  areScoutsDisabled() {
+    return this.forceSkillsDisabled || this.forceScoutsDisabled;
   }
 
   cooldownStep(dt) {
@@ -2492,7 +2503,7 @@ class Team {
   launchScout(zoneId, options = {}) {
     const cost = SCOUT_LAUNCH_COST;
     const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
-    if (this.areSkillsDisabled()) {
+    if (this.areScoutsDisabled()) {
       return false;
     }
     if (this.cooldowns.scout > 0) {
@@ -4805,7 +4816,7 @@ export class BotController {
       this.stuckTimer = 0;
     }
 
-    if (this.scoutTimer <= 0 && !this.team.areSkillsDisabled()) {
+    if (this.scoutTimer <= 0 && !this.team.areScoutsDisabled()) {
       if (this.shouldLaunchScout(this.currentContext)) {
         const focusEst = this.currentContext?.focus || this.primaryEnemyEstimate();
         const zoneId = this.pickScoutZoneId(this.team.ships.main, focusEst);
@@ -6250,6 +6261,9 @@ export class MatchSimulation {
     this.mapPadding = mapPadding;
     this.aiAutoBeam = aiAutoBeam;
     this.aiSeats = aiSeats;
+    this.tutorialMode = Boolean(options.tutorialMode);
+    this.combatEnabled = { A: true, B: true };
+    this.aiEnabled = { A: true, B: true };
     this.zones = buildZones(worldSize);
 
     this.tick = 0;
@@ -6282,6 +6296,58 @@ export class MatchSimulation {
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;
+    if (this.tutorialMode) {
+      this.configureTutorialBattle();
+    }
+  }
+
+  configureTutorialBattle() {
+    this.teamA.damageFloorRatio = 0.25;
+    this.teamB.forceCharacterSkillsDisabled = true;
+    this.teamB.splitLevel = 2;
+    this.combatEnabled.A = false;
+    this.combatEnabled.B = false;
+    this.aiEnabled.B = false;
+
+    const trainingStats = {
+      hp: 400,
+      energy: 80,
+      speed: 20,
+      turnRate: 0.4,
+      accel: 0.8,
+      energyRegen: 4,
+      moveDrain: 3,
+      vision: 50,
+      range: 100,
+      damage: 5,
+      fireRate: 0.08,
+    };
+    const positions = {
+      main: { x: this.worldSize * 0.67, y: this.worldSize * 0.28 },
+      sub1: { x: this.worldSize * 0.69, y: this.worldSize * 0.3 },
+      sub2: { x: this.worldSize * 0.69, y: this.worldSize * 0.26 },
+    };
+    for (const ship of this.teamB.getAllShips()) {
+      ship.base = { ...ship.base, ...trainingStats };
+      ship.maxHp = trainingStats.hp;
+      ship.hp = trainingStats.hp;
+      ship.maxEnergy = trainingStats.energy;
+      ship.energy = trainingStats.energy;
+      const pos = positions[ship.key] || positions.main;
+      ship.x = pos.x;
+      ship.y = pos.y;
+      ship.command = { x: pos.x, y: pos.y };
+      ship.route = null;
+      ship.speed = 0;
+    }
+  }
+
+  setCombatEnabled(seat, enabled) {
+    if (seat === "A" || seat === "B") this.combatEnabled[seat] = Boolean(enabled);
+  }
+
+  setAiEnabled(seat, enabled) {
+    if (seat === "A" || seat === "B") this.aiEnabled[seat] = Boolean(enabled);
   }
 
   clampX(x, padding = 0) {
@@ -6610,8 +6676,8 @@ export class MatchSimulation {
     this.tick += 1;
     this.elapsed += safeDt;
 
-    for (const bot of Object.values(this.bots)) {
-      bot.update(safeDt, this.elapsed);
+    for (const [seat, bot] of Object.entries(this.bots)) {
+      if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
     }
 
     this.teamA.update(safeDt);
@@ -6627,8 +6693,8 @@ export class MatchSimulation {
     this.teamA.resolveChargedBeams(this.teamB);
     this.teamB.resolveChargedBeams(this.teamA);
 
-    this.teamA.stepCombat(this.teamB);
-    this.teamB.stepCombat(this.teamA);
+    if (this.combatEnabled.A) this.teamA.stepCombat(this.teamB);
+    if (this.combatEnabled.B) this.teamB.stepCombat(this.teamA);
     this.updateProjectiles(safeDt);
     this.updateVisualEffects(safeDt);
 
