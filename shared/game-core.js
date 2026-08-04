@@ -71,6 +71,11 @@ const BEAM_DAMAGE_RATIO = 0.28;
 const FUTURE_1096_HULL_RATIO = 0.75;
 const DEG_TO_RAD = Math.PI / 180;
 const SHIP_HULL_SIZE_SCALE = 1.28;
+export const YUKI_RADAR_ROTATION_SECONDS = 20;
+const YUKI_RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
+const YUKI_RADAR_AFTERIMAGE_RATIO = 0.58;
+const YUKI_RADAR_CONTACT_MIN_LIFE = 2.6;
+const YUKI_RADAR_CONTACT_MAX_LIFE = 3.8;
 export const SCOUT_LAUNCH_COST = 28;
 export const MANUAL_SCOUT_COOLDOWN = 2.6;
 export const AUTO_SCOUT_COOLDOWN_MULTIPLIER = 2;
@@ -239,10 +244,10 @@ export const CHARACTER_DEFS = {
       radius: 9 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "vanishing_world",
-      name: "消失的世界",
+      id: "data_overmind_radar",
+      name: "资讯统合雷达",
       type: "passive",
-      description: "全舰队封印所有旗舰技与通用技能；作为代价，每艘船各拥有1次复活（原地以52%最大生命复活）。",
+      description: "被动持续以逆时针雷达波扫描全图。视野外敌舰仅产生带距离误差的私有回波：越近越清晰，适中距离可辨识角色；不会获得真实视野。",
     },
     subSkill: {
       id: "apm_overdrive",
@@ -422,8 +427,7 @@ export const DEFAULT_AI_LOADOUT = Object.freeze({
   sub2: "yuki",
 });
 
-// 主舰不可用的角色:长门有希(旗舰被动「消失的世界」会封印全队技能,当主舰=AI 全程无技能)、
-// 鹤屋(支援定位,不适合当旗舰)。副舰位不受限。
+// AI 主舰暂不使用长门(雷达回波是玩家侧的间接情报表现)与鹤屋(支援定位)。副舰位不受限。
 const AI_MAIN_EXCLUDE = new Set(["yuki", "tsuruya"]);
 
 // 生成随机 AI 阵容:从全部角色中不重复地抽 3 名,主舰排除 AI_MAIN_EXCLUDE。
@@ -644,6 +648,24 @@ function shortestAngleDelta(from, to) {
     delta += TAU;
   }
   return delta - Math.PI;
+}
+
+function normalizeAngle(angle) {
+  let normalized = Number(angle) % TAU;
+  if (normalized < 0) {
+    normalized += TAU;
+  }
+  return normalized;
+}
+
+// 画布坐标系中 y 轴向下，因此视觉上的逆时针旋转对应角度递减。
+function counterClockwiseSweepDistance(fromAngle, targetAngle) {
+  return normalizeAngle(fromAngle - targetAngle);
+}
+
+function stableRadarNoise(seed, salt = 0) {
+  const value = Math.sin((Number(seed) || 0) * 12.9898 + salt * 78.233 + 19.731) * 43758.5453;
+  return value - Math.floor(value);
 }
 
 function rotateOffset(x, y, angle) {
@@ -934,7 +956,6 @@ class Ship {
 
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
-    this.reviveCharges = 0;
     // 名字暴露:敌方舰船默认隐藏名字,一旦其在敌方视野中施放技能即永久暴露(供渲染层判断是否显示名牌)
     this.nameRevealed = false;
 
@@ -1532,19 +1553,6 @@ class Ship {
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
   }
 
-  tryRevive(match) {
-    if (this.reviveCharges <= 0) {
-      return false;
-    }
-    this.reviveCharges -= 1;
-    this.hp = this.maxHp * 0.52;
-    this.energy = Math.max(this.energy, this.maxEnergy * 0.4);
-    this.alive = true;
-    match.spawnBurst(this.x, this.y, "#8cf7ff", 13);
-    match.spawnFloatingTextKey(this.x + 6, this.y - 14, "再起动", {}, "#9bf7ff");
-    return true;
-  }
-
   takeDamage(amount, _source = null, match = null, share = true) {
     if (!this.alive) {
       return;
@@ -1568,9 +1576,6 @@ class Ship {
     const finalAmount = amount * this.damageTakenMultiplier();
     this.hp = Math.max(0, this.hp - finalAmount);
     if (this.hp > 0) {
-      return;
-    }
-    if (match && this.tryRevive(match)) {
       return;
     }
     this.alive = false;
@@ -1609,7 +1614,6 @@ class Ship {
       range: this.effectiveRange(),
       attached: this.isAttached(),
       canControl: this.canControl(),
-      reviveCharges: this.reviveCharges,
       braking: this.isEmergencyBraking(),
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
@@ -1948,6 +1952,11 @@ class Team {
     this.ships.sub2.formationOffset = sub2FormationOffset;
 
     this.extraShips = [];
+    this.radarPassive = {
+      angle: normalizeAngle(facing),
+      scanSequence: 0,
+      contacts: new Map(),
+    };
     this.applyFlagshipPassives(spawnX, spawnY, facing);
 
     this.scouts = [];
@@ -1956,12 +1965,6 @@ class Team {
   }
 
   applyFlagshipPassives(spawnX, spawnY, facing) {
-    if (this.hasYukiFlagship()) {
-      for (const ship of this.getPlayerShips()) {
-        ship.reviveCharges = 1;
-      }
-    }
-
     if (this.mainCharacterId() === "future1096") {
       this.ships.main.setTwinHullMode();
       const twinFormationOffset = { x: -52, y: 0 };
@@ -2244,7 +2247,7 @@ class Team {
   }
 
   areSkillsDisabled() {
-    return this.hasYukiFlagship();
+    return false;
   }
 
   cooldownStep(dt) {
@@ -2843,6 +2846,99 @@ class Team {
         this.match.spawnBurst(beam.x2, beam.y2, "#78dfff", 9);
       }
     }
+  }
+
+  radarMaxDistanceFrom(source) {
+    const size = this.match.worldSize;
+    return Math.max(
+      Math.hypot(source.x, source.y),
+      Math.hypot(size - source.x, source.y),
+      Math.hypot(source.x, size - source.y),
+      Math.hypot(size - source.x, size - source.y),
+      1,
+    );
+  }
+
+  createRadarContact(target, source) {
+    const radar = this.radarPassive;
+    radar.scanSequence += 1;
+    const targetDistance = distance(source.x, source.y, target.x, target.y);
+    const distanceRatio = clamp(targetDistance / this.radarMaxDistanceFrom(source), 0, 1);
+    const clarity = clamp(0.96 - distanceRatio * 0.86, 0.12, 0.9);
+    const uncertainty = 10 + 210 * distanceRatio * distanceRatio;
+    const seed = target.id * 131 + radar.scanSequence * 977 + this.match.tick * 17;
+    const errorAngle = stableRadarNoise(seed, 1) * TAU;
+    const errorDistance = uncertainty * Math.sqrt(stableRadarNoise(seed, 2));
+    const headingError = (stableRadarNoise(seed, 3) - 0.5) * (0.15 + distanceRatio * 0.9);
+    const afterimage = distanceRatio <= YUKI_RADAR_AFTERIMAGE_RATIO;
+    const life = lerp(YUKI_RADAR_CONTACT_MIN_LIFE, YUKI_RADAR_CONTACT_MAX_LIFE, clarity);
+
+    return {
+      id: target.id,
+      targetId: target.id,
+      x: clamp(target.x + Math.cos(errorAngle) * errorDistance, 8, this.match.worldSize - 8),
+      y: clamp(target.y + Math.sin(errorAngle) * errorDistance, 8, this.match.worldSize - 8),
+      angle: normalizeAngle((Number(target.angle) || 0) + headingError),
+      kind: afterimage ? "afterimage" : "disturbance",
+      characterId: afterimage ? target.characterId : null,
+      clarity,
+      uncertainty,
+      distanceRatio,
+      detectedAt: this.match.elapsed,
+      expiresAt: this.match.elapsed + life,
+      seed: Math.floor(stableRadarNoise(seed, 4) * 1_000_000),
+    };
+  }
+
+  updateRadarPassive(enemyTeam, dt) {
+    const radar = this.radarPassive;
+    const source = this.ships.main;
+    if (!radar || !this.hasYukiFlagship() || !source?.alive) {
+      if (radar) {
+        radar.contacts.clear();
+      }
+      return;
+    }
+
+    const now = this.match.elapsed;
+    const enemyById = new Map(enemyTeam.getAllShips().map((ship) => [ship.id, ship]));
+    for (const [targetId, contact] of radar.contacts) {
+      const target = enemyById.get(targetId);
+      if (!target?.alive || contact.expiresAt <= now || this.visibleEnemyIds.has(targetId)) {
+        radar.contacts.delete(targetId);
+      }
+    }
+
+    const previousAngle = radar.angle;
+    const sweepDistance = YUKI_RADAR_ANGULAR_SPEED * Math.max(0, Number(dt) || 0);
+    radar.angle = normalizeAngle(previousAngle - sweepDistance);
+
+    for (const target of enemyTeam.getAllShips()) {
+      if (!target.alive || this.visibleEnemyIds.has(target.id)) {
+        continue;
+      }
+      const bearing = normalizeAngle(Math.atan2(target.y - source.y, target.x - source.x));
+      if (counterClockwiseSweepDistance(previousAngle, bearing) > sweepDistance + 1e-9) {
+        continue;
+      }
+      radar.contacts.set(target.id, this.createRadarContact(target, source));
+    }
+  }
+
+  serializeRadarPassive() {
+    const source = this.ships.main;
+    if (!this.hasYukiFlagship() || !source?.alive || !this.radarPassive) {
+      return null;
+    }
+    return {
+      active: true,
+      sourceShipId: source.id,
+      angle: this.radarPassive.angle,
+      angularVelocity: -YUKI_RADAR_ANGULAR_SPEED,
+      rotationSeconds: YUKI_RADAR_ROTATION_SECONDS,
+      sampledAt: this.match.elapsed,
+      contacts: [...this.radarPassive.contacts.values()].map((contact) => ({ ...contact })),
+    };
   }
 
   computeVisibility(enemyTeam) {
@@ -3721,7 +3817,7 @@ export class BotController {
         }
       }
       // (b) 敌方侦察机:区分两类,避免被长门"一圈侦察机"误导——
-      //   · burst(长门旗舰技):一圈(16架)围着发射舰orbit,逐个回溯方向会被环切线带偏、且落点成一圈
+      //   · burst(长门分舰技):一圈(16架)围着发射舰orbit,逐个回溯方向会被环切线带偏、且落点成一圈
       //     (峰偏到环上而非中心)。正确读法=一圈侦察机的"质心"≈敌舰所在 → 只在质心加权,不逐个回溯。
       //   · 普通(transit):单架从敌舰飞向战区,逆其朝向≈发射处有敌舰 → 回溯加权。
       let bx0 = 0;
@@ -6512,6 +6608,8 @@ export class MatchSimulation {
     this.resolveScoutClashes();
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
+    this.teamA.updateRadarPassive(this.teamB, safeDt);
+    this.teamB.updateRadarPassive(this.teamA, safeDt);
     this.teamA.resolveChargedBeams(this.teamB);
     this.teamB.resolveChargedBeams(this.teamA);
 
@@ -6521,6 +6619,10 @@ export class MatchSimulation {
     this.updateVisualEffects(safeDt);
 
     this.checkVictory();
+  }
+
+  serializeRadarForSeat(seat) {
+    return this.teamBySeat(seat).serializeRadarPassive();
   }
 
   serializeState() {

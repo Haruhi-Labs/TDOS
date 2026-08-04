@@ -350,13 +350,56 @@ function yukiPassiveCheck() {
   });
   const teamA = sim.teamA;
   const main = teamA.ships.main;
+  const enemyMain = sim.teamB.ships.main;
 
-  assert(teamA.areSkillsDisabled(), "有希旗舰被动未封印全队技能");
-  const beforeCharges = main.reviveCharges;
+  assert(!teamA.areSkillsDisabled(), "长门新雷达被动仍错误封印全队技能");
+  const initialRadar = sim.serializeRadarForSeat("A");
+  assert(initialRadar?.active, "长门旗舰雷达未在开局自动启用");
+  assert(initialRadar.rotationSeconds === 20, "长门雷达旋转周期不是预期的缓慢20秒");
+  assert(initialRadar.angularVelocity < 0, "长门雷达没有沿画布视觉逆时针方向旋转");
+
+  const energyBeforeScan = main.energy;
+  teamA.computeVisibility(sim.teamB);
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达测试前置敌舰应在常规视野外");
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  const mediumRadar = sim.serializeRadarForSeat("A");
+  const mediumContact = mediumRadar.contacts.find((contact) => contact.targetId === enemyMain.id);
+  assert(mediumContact, "长门雷达波扫过视野外敌舰时未生成回波");
+  assert(mediumContact.kind === "afterimage", "适中距离的雷达回波未显示为舰队残影");
+  assert(mediumContact.characterId === enemyMain.characterId, "适中距离的雷达残影未携带角色身份");
+  assert(main.energy === energyBeforeScan, "长门被动雷达错误消耗了能量");
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达回波错误转化成了真实视野");
+
+  enemyMain.x = sim.worldSize - 10;
+  enemyMain.y = main.y;
+  teamA.radarPassive.angle = 0;
+  teamA.radarPassive.contacts.clear();
+  teamA.computeVisibility(sim.teamB);
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  const farContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
+  assert(farContact?.kind === "disturbance", "远距离雷达回波未降级为水面扰动");
+  assert(farContact.characterId === null, "远距离雷达扰动错误泄露了角色身份");
+  assert(farContact.uncertainty > mediumContact.uncertainty, "雷达距离变远后误差范围没有增大");
+  assert(farContact.clarity < mediumContact.clarity, "雷达距离变远后清晰度没有降低");
+  assert(
+    Math.hypot(farContact.x - enemyMain.x, farContact.y - enemyMain.y) <= farContact.uncertainty + 1e-6,
+    "雷达估算位置超出了声明的误差范围",
+  );
+
+  enemyMain.x = main.x + 100;
+  enemyMain.y = main.y;
+  teamA.radarPassive.angle = 0;
+  teamA.computeVisibility(sim.teamB);
+  assert(teamA.visibleEnemyIds.has(enemyMain.id), "近距离敌舰未进入任意常规视野");
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  assert(
+    !sim.serializeRadarForSeat("A").contacts.some((contact) => contact.targetId === enemyMain.id),
+    "已在常规视野内的敌舰仍显示雷达扫描效果",
+  );
+
   main.takeDamage(main.maxHp * 2, null, sim);
-  assert(beforeCharges === 1, "有希旗舰未为舰船提供额外命数");
-  assert(main.alive, "有希旗舰被动未触发复活");
-  assert(main.reviveCharges === 0, "复活后命数未正确扣除");
+  assert(!main.alive, "旧版长门复活效果未从新雷达被动中移除");
+  assert(sim.serializeRadarForSeat("A") === null, "长门旗舰被击毁后雷达仍从无来源位置工作");
 }
 
 function koizumiFlagshipInvulnCheck() {

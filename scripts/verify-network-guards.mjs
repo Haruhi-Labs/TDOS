@@ -167,6 +167,43 @@ async function connectionLimitCheck() {
   await delay(120);
 }
 
+async function yukiRadarPrivacyCheck() {
+  const host = await new GuardClient().open();
+  const guest = await new GuardClient().open();
+  const spectator = await new GuardClient().open();
+  host.send({
+    type: "set_loadout",
+    loadout: { main: "yuki", sub1: "haruhi", sub2: "koizumi" },
+  });
+  host.send({ type: "create_room", visibility: "public", mode: "pvp" });
+  const waiting = await host.waitFor(
+    (message) => message.type === "room_state" && message.room?.status === "waiting",
+  );
+  const roomId = waiting.room.roomId;
+  guest.send({ type: "join_room", roomId });
+
+  const ownSnapshot = await host.waitFor(
+    (message) => message.type === "snapshot" && message.radar?.active === true,
+  );
+  const enemySnapshot = await guest.waitFor((message) => message.type === "snapshot");
+  assert(ownSnapshot.radar?.active, "长门玩家自己的快照未携带私有雷达状态");
+  assert(!Object.hasOwn(enemySnapshot, "radar"), "长门雷达状态泄露给了对手");
+
+  await host.waitFor(
+    (message) => message.type === "room_state" && message.room?.status === "running",
+    5000,
+  );
+  spectator.send({ type: "spectate_room", roomId });
+  await spectator.waitFor(
+    (message) => message.type === "room_state" && message.self?.spectating === true,
+  );
+  const spectatorSnapshot = await spectator.waitFor(
+    (message) => message.type === "snapshot" || message.type === "snapshot_delta",
+  );
+  assert(!Object.hasOwn(spectatorSnapshot, "radar"), "长门雷达状态泄露给了观战者");
+  await terminateClients();
+}
+
 async function spectatorLimitCheck() {
   const host = await new GuardClient().open();
   const guest = await new GuardClient().open();
@@ -248,10 +285,11 @@ try {
   await oversizedPayloadCheck();
   await heartbeatCheck();
   await connectionLimitCheck();
+  await yukiRadarPrivacyCheck();
   await spectatorLimitCheck();
   await activeRoomLimitCheck();
   await messageFloodCheck();
-  console.log("网络保护校验通过：大包、心跳、连接、房间、观战与消息洪泛均已受控。");
+  console.log("网络保护校验通过：大包、心跳、连接、房间、雷达隐私、观战与消息洪泛均已受控。");
 } catch (error) {
   console.error(`网络保护校验失败：${error instanceof Error ? error.stack || error.message : String(error)}`);
   process.exitCode = 1;

@@ -318,6 +318,11 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
   if (options.spectating) {
     header.spectating = true;
   }
+  // 长门雷达属于席位私有的间接情报，不进入共享 state / 差量缓存；
+  // 只有该长门玩家自己的快照消息头会携带，对手与观战者均收不到。
+  if (options.radar) {
+    header.radar = options.radar;
+  }
 
   const keyframeDue =
     !supportsDeltaProtocol ||
@@ -343,7 +348,8 @@ function sendSnapshotToPlayer(player, frame, options = {}) {
       patch,
     };
     const deltaText = JSON.stringify(deltaPayload);
-    if (Buffer.byteLength(deltaText) <= frame.stateBytes * MAX_DELTA_TO_FULL_RATIO) {
+    const privateBytes = options.radar ? Buffer.byteLength(JSON.stringify(options.radar)) : 0;
+    if (Buffer.byteLength(deltaText) <= (frame.stateBytes + privateBytes) * MAX_DELTA_TO_FULL_RATIO) {
       serialized = deltaText;
     } else {
       keyframe = true;
@@ -993,6 +999,10 @@ function buildSnapshotFrame(room, advanceSeq = true) {
     serverTime,
     state,
     stateBytes: Buffer.byteLength(JSON.stringify(state)),
+    radarBySeat: {
+      A: quantizeNetworkState(room.match.serializeRadarForSeat("A")),
+      B: quantizeNetworkState(room.match.serializeRadarForSeat("B")),
+    },
     patchCache: new Map(),
   };
 }
@@ -1009,11 +1019,13 @@ function sendSnapshot(room) {
   if (pA) {
     sendSnapshotToPlayer(pA, frame, {
       ackSeq: pA.lastProcessedSeq,
+      radar: frame.radarBySeat.A,
     });
   }
   if (room.mode === "pvp" && pB) {
     sendSnapshotToPlayer(pB, frame, {
       ackSeq: pB.lastProcessedSeq,
+      radar: frame.radarBySeat.B,
     });
   }
   // 观战者默认使用7.5Hz权威快照；每条连接会根据端到端确认独立降档，

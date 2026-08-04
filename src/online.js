@@ -1543,6 +1543,7 @@ function handleSnapshot(message) {
     snapshotSeq,
     receivedAtMs: nowMs(),
     state,
+    radar: message.radar || null,
   };
 
   updateSnapshotTransportStats(snapshot);
@@ -2451,6 +2452,7 @@ function renderFrame() {
     ownTeam,
     enemyTeam,
     spectating,
+    radar: spectating ? null : app.latestSnapshot?.radar || null,
     visibleEnemyIds: new Set((ownTeam && ownTeam.visibleEnemyIds) || []),
     // 观战:按快照内各座位的选中舰高亮;对战:己方取本地选中,敌方不高亮
     selectedKeyForTeam: (team) =>

@@ -782,6 +782,7 @@ function render() {
     ownTeam: own,
     enemyTeam: enemyTeamState(),
     spectating: false,
+    radar: app.sim ? app.sim.serializeRadarForSeat("A") : null,
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
     mobileMode: app.mobileMode,

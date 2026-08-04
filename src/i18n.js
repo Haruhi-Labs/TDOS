@@ -31,7 +31,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "有希",
       title: "高感知统合支援舰",
       flavor: "资讯统合思念体级别的情报能力",
-      flagshipSkill: { name: "消失的世界", description: "全舰队封印所有旗舰技与通用技能；作为代价，每艘船各拥有1次复活（原地以52%最大生命复活）。" },
+      flagshipSkill: { name: "资讯统合雷达", description: "被动持续以逆时针雷达波扫描全图。视野外敌舰仅产生带距离误差的私有回波：越近越清晰，适中距离可辨识角色；不会获得真实视野。" },
       subSkill: { name: "apm上万", description: "向8个方向各射出一对（共16架）高速侦察机。" },
     },
     future1096: {
@@ -89,7 +89,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "有希",
       title: "高感知統合支援艦",
       flavor: "情報統合思念体級の情報能力",
-      flagshipSkill: { name: "消失した世界", description: "艦隊全体の旗艦スキルと汎用スキルを封印する代わりに、各艦が1回だけ復活できる（その場で最大耐久の52%で復活）。" },
+      flagshipSkill: { name: "情報統合レーダー", description: "パッシブで反時計回りのレーダー波が常時マップ全域を走査する。視界外の敵艦は距離に応じた誤差を含む自分専用の反応としてのみ現れ、近いほど鮮明になり、中距離では人物を識別できる。実視界は得られない。" },
       subSkill: { name: "APM一万超え", description: "8方向それぞれへ一対（計16機）の高速偵察機を放つ。" },
     },
     future1096: {
@@ -147,7 +147,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "Yuki",
       title: "High-Sensor Integrated Support",
       flavor: "Information capability on the level of the Data Overmind",
-      flagshipSkill: { name: "The Vanishing World", description: "Seals every flagship and utility skill for the fleet; in exchange, each ship revives once (in place at 52% max hull)." },
+      flagshipSkill: { name: "Data Integration Radar", description: "A passive counterclockwise radar sweep continuously scans the full map. Enemies outside vision create private, distance-inaccurate echoes only: nearer returns are clearer and mid-range returns identify the character. It never grants true vision." },
       subSkill: { name: "APM Overdrive", description: "Launches a pair of high-speed scouts in each of 8 directions (16 total)." },
     },
     future1096: {
