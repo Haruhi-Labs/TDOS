@@ -211,10 +211,22 @@ function layoutMobile() {
   }
 }
 
+export function tutorialTargetContainsPoint(point, target) {
+  const x = Number(point?.x);
+  const y = Number(point?.y);
+  const targetX = Number(target?.x);
+  const targetY = Number(target?.y);
+  const radius = Number(target?.radius);
+  return Number.isFinite(x)
+    && Number.isFinite(y)
+    && Number.isFinite(targetX)
+    && Number.isFinite(targetY)
+    && Number.isFinite(radius)
+    && distance(x, y, targetX, targetY) <= radius;
+}
+
 function endpointInTarget(action, target) {
-  const x = Number(action.endX);
-  const y = Number(action.endY);
-  return Number.isFinite(x) && Number.isFinite(y) && distance({ x, y }, target) <= target.radius;
+  return tutorialTargetContainsPoint({ x: action.endX, y: action.endY }, target);
 }
 
 function allowsAction(action) {
@@ -289,13 +301,13 @@ function update(state) {
   const id = step().id;
   if (id === "move") {
     const main = own.ships.main;
-    if (main && distance(main, TUTORIAL_MOVE_TARGET) <= TUTORIAL_MOVE_TARGET.radius) goto(activeIndex + 1);
+    if (main && tutorialTargetContainsPoint(main, TUTORIAL_MOVE_TARGET)) goto(activeIndex + 1);
   } else if (id === "yuki_skill" && yukiSkillCast && (own.visibleEnemyIds || []).length > 0) {
     goto(activeIndex + 1);
   } else if (id === "regroup" && routedShips.size >= 3) {
     const arrived = ["main", "sub1", "sub2"].every((key) => {
       const ship = own.ships[key];
-      return ship && distance(ship, TUTORIAL_ATTACK_TARGET) <= TUTORIAL_ATTACK_TARGET.radius;
+      return ship && tutorialTargetContainsPoint(ship, TUTORIAL_ATTACK_TARGET);
     });
     if (arrived) goto(activeIndex + 1);
   } else if (id === "attack") {

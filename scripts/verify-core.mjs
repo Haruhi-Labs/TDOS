@@ -14,6 +14,11 @@ import {
   throttleForGear,
   throttleGearForValue,
 } from "../shared/game-core.js";
+import {
+  TUTORIAL_ATTACK_TARGET,
+  TUTORIAL_MOVE_TARGET,
+  tutorialTargetContainsPoint,
+} from "../src/tutorial.js";
 
 function runSteps(sim, seconds) {
   const steps = Math.floor(seconds / TICK_DT);
@@ -1877,6 +1882,32 @@ function tutorialBattleRulesCheck() {
   assert(sim.bot.moveTimer > 0 || sim.teamB.ships.main.route, "教程自由战开始后敌方AI没有恢复运行");
 }
 
+function tutorialTargetGeometryCheck() {
+  assert(tutorialTargetContainsPoint(TUTORIAL_MOVE_TARGET, TUTORIAL_MOVE_TARGET), "教程移动目标中心未被接受");
+  assert(
+    tutorialTargetContainsPoint(
+      { x: TUTORIAL_MOVE_TARGET.x + TUTORIAL_MOVE_TARGET.radius, y: TUTORIAL_MOVE_TARGET.y },
+      TUTORIAL_MOVE_TARGET,
+    ),
+    "教程移动目标边缘未被接受",
+  );
+  assert(
+    !tutorialTargetContainsPoint(
+      { x: TUTORIAL_MOVE_TARGET.x + TUTORIAL_MOVE_TARGET.radius + 1, y: TUTORIAL_MOVE_TARGET.y },
+      TUTORIAL_MOVE_TARGET,
+    ),
+    "教程移动目标范围外坐标被错误接受",
+  );
+  assert(
+    tutorialTargetContainsPoint(
+      { x: TUTORIAL_ATTACK_TARGET.x - 20, y: TUTORIAL_ATTACK_TARGET.y + 20 },
+      TUTORIAL_ATTACK_TARGET,
+    ),
+    "教程三舰集结区域内坐标未被接受",
+  );
+  assert(!tutorialTargetContainsPoint({ x: "无效", y: 0 }, TUTORIAL_MOVE_TARGET), "教程目标接受了非法坐标");
+}
+
 function main() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
@@ -1924,6 +1955,7 @@ function main() {
   aiPressureCheck();
   aiEdgeRecoveryCheck();
   aiEngageCheck();
+  tutorialTargetGeometryCheck();
   tutorialBattleRulesCheck();
   console.log("核心战斗逻辑校验通过");
 }

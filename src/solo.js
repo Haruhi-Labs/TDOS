@@ -823,6 +823,19 @@ function render() {
     return;
   }
 
+  const tutorialIllustration = tutorial.isActive() ? tutorial.getIllustration() : null;
+  if (app.mobileMode && tutorialIllustration === "moveTarget") {
+    const main = ownTeamState()?.ships?.main;
+    if (main?.alive) {
+      // 第一阶段同时框住起始舰队与目标点，避免移动端自动跟随把唯一合法落点推到视野外。
+      camera.centerCameraOn(
+        (main.x + TUTORIAL_MOVE_TARGET.x) * 0.5,
+        (main.y + TUTORIAL_MOVE_TARGET.y) * 0.5,
+        true,
+      );
+    }
+  }
+
   // backing store(设备像素)对逻辑世界(LOGICAL)的比例:整幅画面放大到物理像素 → 矢量线条像素级清晰。
   const scale = canvas.width / LOGICAL;
   camera.updateCamera();
@@ -856,8 +869,8 @@ function render() {
     pointer: app.pointer,
   };
   drawBattleWorld(ctx, frame);
-  if (tutorial.isActive()) {
-    drawTutorialIllustration(tutorial.getIllustration());
+  if (tutorialIllustration) {
+    drawTutorialIllustration(tutorialIllustration);
   }
   ctx.restore();
 
