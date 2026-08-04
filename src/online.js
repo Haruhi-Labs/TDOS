@@ -33,7 +33,7 @@ import {
   createBattleCamera,
   prefersMobileBattleMode,
 } from "./battle/camera.js";
-import { routeHandleAtPoint, shipAtPoint, zoneFromPoint } from "./battle/input.js";
+import { routeHandleAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
   syncThrottleGearControls,
   throttleGearFromShortcut,
@@ -2948,11 +2948,6 @@ function bindUiEvents() {
 
     if (app.mobileMode && canControlBattle()) {
       if (handleMinimapTap(screenPos, state)) {
-        return;
-      }
-      const tappedShip = shipAtPoint(teamBySeat(state, app.seat), pos.x, pos.y, app.mobileMode);
-      if (tappedShip) {
-        selectShip(tappedShip.key, state);
         return;
       }
       const ship = getLatestOwnShip(app.selectedShipKey);
