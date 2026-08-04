@@ -570,16 +570,41 @@ function beamSkillCheck() {
   enemyMain.y = 700;
 
   const before = teamB.hullRatio();
+  const enemyFleetHpBefore = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
   const castOk = teamA.castSubSkill("sub2", { targetX: enemyMain.x, targetY: enemyMain.y });
+  assert(castOk, "1096光线触发失败");
+  const chargingBeam = teamA.beams.find((beam) => beam.phase === "charge");
+  assert(chargingBeam, "1096光线未创建蓄力轨迹");
+  const initialBeamVector = {
+    x: chargingBeam.x2 - chargingBeam.x1,
+    y: chargingBeam.y2 - chargingBeam.y1,
+  };
+  sub2.y += 90;
+  teamA.update(TICK_DT);
+  const movedBeam = teamA.beams.find((beam) => beam.phase === "charge");
+  assert(movedBeam, "1096光线在移动测试中提前结束蓄力");
+  const movedBeamDx = movedBeam.x2 - movedBeam.x1;
+  const movedBeamDy = movedBeam.y2 - movedBeam.y1;
+  const lockedTargetDistance = Math.abs(
+    (enemyMain.x - movedBeam.x1) * movedBeamDy - (enemyMain.y - movedBeam.y1) * movedBeamDx,
+  ) / Math.max(1e-9, Math.hypot(movedBeamDx, movedBeamDy));
+
+  assert(Math.abs(movedBeam.x1 - sub2.x) < 1e-6 && Math.abs(movedBeam.y1 - sub2.y) < 1e-6, "1096光线发射点未跟随舰船移动");
+  assert(lockedTargetDistance < 1e-6, "1096光线未持续射向释放时点击的固定坐标");
+  assert(
+    Math.abs(initialBeamVector.x * movedBeamDy - initialBeamVector.y * movedBeamDx) > 1,
+    "1096光线随舰船整体平移，没有围绕固定瞄准点改变方向",
+  );
+
   runSteps(sim, 0.35);
   const chargingVisible = teamA.beams.some((beam) => beam.phase === "charge");
   runSteps(sim, 1.2);
   const after = teamB.hullRatio();
+  const enemyFleetHpAfter = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
 
-  assert(castOk, "1096光线触发失败");
   assert(chargingVisible, "1096光线未进入蓄力阶段");
   assert(after < before, "1096光线未造成伤害");
-  assert(before - after >= 0.18, "1096光线伤害明显偏低");
+  assert(enemyFleetHpBefore - enemyFleetHpAfter >= enemyMain.maxHp * 0.25, "1096光线未命中点击坐标处的目标或伤害明显偏低");
 }
 
 function tsuruyaFlagshipActiveCheck() {
