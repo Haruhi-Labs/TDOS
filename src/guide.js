@@ -4,7 +4,6 @@
 
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
-import { setTutorialSeen } from "./profile.js";
 import { t } from "./i18n.js";
 
 const QUICKSTART = [
@@ -76,7 +75,7 @@ function template() {
             <div class="qs-head">${t("快速开始")}</div>
             <ol class="qs-steps">${quickstart}</ol>
             <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
-            <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
+            <a class="guide-replay" href="/play/tutorial">${t("▶ 进入独立教程")}</a>
           </div>
 
           <h2 class="guide-subtitle">${t("要点")}</h2>
@@ -105,7 +104,7 @@ function mobileTemplate() {
           <div class="qs-head">${t("快速开始")}</div>
           <ol class="qs-steps">${quickstart}</ol>
           <div class="qs-goal"><b>${t("胜负")}</b>：${t(QUICKSTART_GOAL)}</div>
-          <a class="guide-replay" href="/play" data-replay-tutorial>${t("▶ 重看新手教程")}</a>
+          <a class="guide-replay" href="/play/tutorial">${t("▶ 进入独立教程")}</a>
         </div>
         ${sections}
         <h2 class="m-guide-sub">${t("操作")}</h2>
@@ -119,16 +118,5 @@ export function mount(root) {
   root.innerHTML = isMobile() ? mobileTemplate() : template();
   const ac = new AbortController();
   startStarfield(root.querySelector(".page-stars"), ac.signal);
-  // 「重看新手教程」:清掉已看过标记,再让路由跳到 /play(下次进战场即重新触发引导)
-  const replay = root.querySelector("[data-replay-tutorial]");
-  if (replay) {
-    replay.addEventListener(
-      "click",
-      () => {
-        setTutorialSeen(false);
-      },
-      { signal: ac.signal },
-    );
-  }
   return () => ac.abort();
 }

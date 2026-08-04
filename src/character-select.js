@@ -5,43 +5,7 @@ import {
   DEFAULT_TEAM_LOADOUT,
 } from "../shared/game-core.js";
 import { isMobile } from "./mobile.js";
-import { getDifficulty, setDifficulty } from "./profile.js";
 import { t } from "./i18n.js";
-
-// 单人难度档(仅在 solo 的选角页显示)。四档同时影响:敌方数值(血量+伤害)缩放 + AI反应快慢,
-// 极限额外开启"智能集火残血"(优先收掉你打残的舰)。tip 文案会作为按钮 title 提示。
-const DIFFICULTY_LEVELS = [
-  { key: "easy", label: "简单", tip: "敌方数值 ×0.8,反应迟钝" },
-  { key: "normal", label: "普通", tip: "敌方数值 ×1.0,反应一般" },
-  { key: "hard", label: "困难", tip: "敌方数值 ×1.2,反应敏捷(更肉更痛)" },
-  { key: "master", label: "极限", tip: "敌方数值 ×1.2,反应最快,且会智能集火收掉你的残血舰" },
-];
-
-// 构建难度选择器(prefix: "cs" 桌面 / "csm" 移动),自动读写本地存储并高亮当前档
-function buildDifficultyEl(prefix) {
-  const wrap = document.createElement("div");
-  wrap.className = `${prefix}-difficulty`;
-  wrap.setAttribute("role", "group");
-  wrap.setAttribute("aria-label", t("选择难度"));
-  wrap.innerHTML =
-    `<span class="${prefix}-faction-label">${t("难度")}</span>` +
-    DIFFICULTY_LEVELS.map(
-      (d) => `<button type="button" class="${prefix}-diff-btn" data-diff="${d.key}" title="${t(d.tip)}">${t(d.label)}</button>`,
-    ).join("");
-  const btns = Array.from(wrap.querySelectorAll(`.${prefix}-diff-btn`));
-  const sync = () => {
-    const cur = getDifficulty();
-    for (const b of btns) b.classList.toggle("active", b.dataset.diff === cur);
-  };
-  for (const b of btns) {
-    b.addEventListener("click", () => {
-      setDifficulty(b.dataset.diff);
-      sync();
-    });
-  }
-  sync();
-  return wrap;
-}
 
 // ═══════════════════════════════════════════════════
 // 角色主题色 — 取自立绘的复古太空军装
@@ -603,18 +567,6 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     <div class="cs-folio right"></div>
   `;
   content.appendChild(header);
-  if (opts.showDifficulty) {
-    const center = header.querySelector(".cs-header-center");
-    const faction = center?.querySelector(".cs-faction");
-    if (center && faction) {
-      const row = document.createElement("div");
-      row.className = "cs-setup-row";
-      center.insertBefore(row, faction); // 阵营与难度并排成一行
-      row.appendChild(faction);
-      row.appendChild(buildDifficultyEl("cs"));
-    }
-  }
-
   const factionBtns = {
     blue: header.querySelector('.cs-faction-btn.blue'),
     red: header.querySelector('.cs-faction-btn.red'),
@@ -725,9 +677,14 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   modeLinks.className = "cs-mode-links";
   modeLinks.innerHTML = `
     <button type="button" class="cs-mode-link" data-action="random">${t("随机编队")}</button>
-    <a href="/" class="cs-mode-link">${t("主菜单")}</a>
+    ${opts.onBack
+      ? `<button type="button" class="cs-mode-link" data-action="flow-back">${t(opts.backLabel || "返回上一步")}</button>`
+      : `<a href="/" class="cs-mode-link">${t("主菜单")}</a>`}
   `;
   modeLinks.querySelector('[data-action="random"]').addEventListener("click", randomFill);
+  modeLinks.querySelector('[data-action="flow-back"]')?.addEventListener("click", () => {
+    hide(() => opts.onBack());
+  });
   content.appendChild(modeLinks);
 
   // ── 预加载某阵营的全部立绘 ──
@@ -994,7 +951,10 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   function stepBack() {
     finishFlip();
     const curStep = getStep();
-    if (curStep <= 0) return;
+    if (curStep <= 0) {
+      if (opts.onBack) hide(() => opts.onBack());
+      return;
+    }
     state.loadout[SLOT_INFO[curStep - 1].key] = null;
     afterLoadoutChange();
   }
@@ -1355,7 +1315,9 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   screen.className = "cs-screen csm";
   screen.innerHTML = `
     <div class="csm-top">
-      <a class="csm-back" href="/">${t("‹ 主菜单")}</a>
+      ${opts.onBack
+        ? `<button type="button" class="csm-back" data-action="flow-back">‹ ${t(opts.backLabel || "返回上一步")}</button>`
+        : `<a class="csm-back" href="/">${t("‹ 主菜单")}</a>`}
       <button type="button" class="csm-random" data-action="random">${t("随机编队")}</button>
       <div class="csm-faction" role="group" aria-label="${t("选择阵营")}">
         <button type="button" class="csm-faction-btn blue active" data-color="blue">${t("蓝队")}</button>
@@ -1378,18 +1340,6 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
       <button type="button" class="csm-cta" disabled></button>
     </div>
   `;
-  if (opts.showDifficulty) {
-    const top = screen.querySelector(".csm-top");
-    const faction = top?.querySelector(".csm-faction");
-    if (top && faction) {
-      const row = document.createElement("div");
-      row.className = "csm-setup-row";
-      top.insertAdjacentElement("afterend", row); // 顶栏下方整行,阵营与难度并排
-      row.appendChild(faction);
-      row.appendChild(buildDifficultyEl("csm"));
-    }
-  }
-
   const els = {
     stage: screen.querySelector(".csm-stage"),
     track: screen.querySelector(".csm-track"),
@@ -1669,6 +1619,9 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   els.random?.addEventListener("click", randomFill);
   els.factionBlue.addEventListener("click", () => setColor("blue"));
   els.factionRed.addEventListener("click", () => setColor("red"));
+  screen.querySelector('[data-action="flow-back"]')?.addEventListener("click", () => {
+    hide(() => opts.onBack());
+  });
 
   // 立绘区：手指拖动跟手平滑滑动；松手按位移决定切换或回弹
   let dragX0 = null, dragY0 = null, dragging = false, dragBase = 0;
@@ -1716,6 +1669,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     if (e.key === "ArrowLeft") { e.preventDefault(); go(state.idx - 1); }
     else if (e.key === "ArrowRight") { e.preventDefault(); go(state.idx + 1); }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ctaAction(); }
+    else if (e.key === "Escape" && opts.onBack) { e.preventDefault(); hide(() => opts.onBack()); }
   }
 
   function show() {

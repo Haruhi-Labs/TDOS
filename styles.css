@@ -1824,63 +1824,6 @@ button.toggle-active {
   box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 14px #b8232a88;
 }
 
-/* 阵营 + 难度 并排成一行(仅单人选角页) */
-.cs-setup-row { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; margin-top: 7px; }
-.cs-setup-row .cs-faction, .cs-setup-row .cs-difficulty { margin-top: 0; }
-.csm-setup-row { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; padding: 0 10px 6px; }
-.csm-setup-row .csm-difficulty { margin-top: 0; }
-/* 移动端紧凑化,让阵营+难度尽量同一行 */
-.csm-setup-row .csm-faction-btn { padding: 4px 9px; font-size: 0.72rem; }
-.csm-setup-row .csm-diff-btn { padding: 4px 8px; font-size: 0.66rem; }
-.csm-setup-row .csm-faction-label { letter-spacing: 0.08em; }
-
-/* 难度选择器(仅单人选角页):沿用阵营按钮外观,选中点亮黄铜 */
-.cs-difficulty {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 7px;
-}
-.cs-diff-btn {
-  font-family: var(--font-engrave);
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  padding: 4px 12px;
-  border: 1px solid var(--brass);
-  border-radius: 3px;
-  background: linear-gradient(180deg, #2a1c0e 0%, #160c05 100%);
-  color: var(--ink-faint);
-  cursor: pointer;
-  transition: all 160ms ease;
-}
-.cs-diff-btn:hover:not(.active) { color: var(--gilt-bright); border-color: var(--gilt); }
-.cs-diff-btn.active {
-  border-color: var(--gilt-bright);
-  background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%);
-  color: #fff6dc;
-  box-shadow: inset 0 1px 0 #ffe9a8, 0 0 12px #c8a24e88;
-}
-/* 移动版 */
-.csm-difficulty { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; margin-top: 6px; }
-.csm-faction-label { font-family: var(--font-kai); font-size: 0.7rem; letter-spacing: 0.16em; color: var(--gilt); }
-.csm-diff-btn {
-  font-size: 0.72rem;
-  padding: 5px 11px;
-  border: 1px solid var(--brass);
-  border-radius: 4px;
-  background: #160c05;
-  color: var(--ink-faint);
-  cursor: pointer;
-}
-.csm-diff-btn.active {
-  border-color: var(--gilt-bright);
-  background: linear-gradient(180deg, #b8923c 0%, #6b4d12 100%);
-  color: #fff6dc;
-}
-
 /* ════════════════════════════════════════════════════════════
    书本本体（皮装精装）
    ════════════════════════════════════════════════════════════ */
@@ -1966,7 +1909,7 @@ button.toggle-active {
   .cs-sos-badge { width: 36px; height: 44px; }
   .cs-title { font-size: 1.5rem; }
   .cs-subtitle { font-size: 0.58rem; letter-spacing: 0.32em; }
-  .cs-faction, .cs-setup-row { margin-top: 4px; }
+  .cs-faction { margin-top: 4px; }
   .cs-page-half { padding: 12px 26px 10px; }
   .cs-page-chapter { margin-bottom: 6px; padding-bottom: 4px; }
   .cs-page-flavor { margin: 0 0 5px; padding: 2px 16px 3px; font-size: 0.92rem; line-height: 1.4; }
@@ -3874,6 +3817,133 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   #app > *, .ts-content, .page-frame, .lobby-frame { animation: none; }
 }
 
+/* ═══════════════ 单人战役 / 难度流程 ═══════════════ */
+.solo-flow {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  min-height: 100dvh;
+  transition: opacity 320ms ease, visibility 0s linear 0s;
+}
+.solo-flow.concealed {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 320ms ease, visibility 0s linear 320ms;
+}
+.solo-flow-content { width: min(650px, 94%); }
+.solo-flow-panel { width: 100%; }
+.solo-flow-panel.enter-forward { opacity: 0; transform: translateX(34px); }
+.solo-flow-panel.enter-back { opacity: 0; transform: translateX(-34px); }
+.solo-flow-panel.enter-forward.ready,
+.solo-flow-panel.enter-back.ready {
+  opacity: 1;
+  transform: none;
+  transition: opacity 360ms ease, transform 420ms cubic-bezier(0.22, 0.72, 0.25, 1);
+}
+.solo-flow-panel.leave-forward {
+  opacity: 0;
+  transform: translateX(-28px);
+  transition: opacity 220ms ease, transform 230ms ease;
+}
+.solo-flow-panel.leave-back {
+  opacity: 0;
+  transform: translateX(28px);
+  transition: opacity 220ms ease, transform 230ms ease;
+}
+.solo-flow-heading { margin-bottom: clamp(18px, 3vh, 32px); }
+.solo-flow-kicker {
+  margin: 0 0 6px;
+  color: var(--gilt);
+  font: 700 0.76rem/1 var(--font-engrave);
+  letter-spacing: 0.32em;
+}
+.solo-flow-title {
+  margin: 0;
+  font-family: var(--font-title);
+  font-size: clamp(2.25rem, 6vw, 4rem);
+  line-height: 1.08;
+  letter-spacing: 0.08em;
+  background: var(--gilt-foil);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 3px 12px #000);
+}
+.solo-flow-subtitle {
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-family: var(--font-italic);
+  font-style: italic;
+  letter-spacing: 0.08em;
+}
+.solo-flow-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border-top: 0;
+  border-right: 0;
+  border-bottom: 0;
+}
+.solo-flow-item.active {
+  background: linear-gradient(90deg, #f0d48818, transparent 82%);
+  border-left-color: var(--gilt);
+}
+.solo-flow-item.active .ts-item-no::after {
+  content: "•";
+  margin-left: 0.35em;
+  color: var(--gilt-bright);
+}
+.solo-flow-back {
+  margin-top: 22px;
+  padding: 8px 2px;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font: 600 0.84rem/1 var(--font-cn);
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: color 180ms ease, transform 180ms ease;
+}
+.solo-flow-back:hover,
+.solo-flow-back:focus-visible { color: var(--gilt-bright); transform: translateX(-4px); }
+.solo-flow-orbit {
+  position: absolute;
+  z-index: 1;
+  width: min(54vw, 720px);
+  aspect-ratio: 1;
+  right: -8vw;
+  top: 50%;
+  translate: 0 -50%;
+  border: 1px solid #c8a24e20;
+  border-radius: 50%;
+  box-shadow: inset 0 0 90px #6488df0b, 0 0 80px #6488df0b;
+  pointer-events: none;
+}
+.solo-flow-orbit::before,
+.solo-flow-orbit::after,
+.solo-flow-orbit i {
+  content: "";
+  position: absolute;
+  inset: 12%;
+  border: 1px solid #8aa9f51c;
+  border-radius: 50%;
+  transform: rotate(24deg) scaleY(0.46);
+}
+.solo-flow-orbit::after { inset: 28%; transform: rotate(-18deg) scaleY(0.68); }
+.solo-flow-orbit i:nth-child(1) { inset: 45%; background: #f0d488; box-shadow: 0 0 18px #f0d488; }
+.solo-flow-orbit i:nth-child(2) { inset: 8%; transform: rotate(68deg) scaleY(0.28); }
+.solo-flow-orbit i:nth-child(3) { inset: 20%; transform: rotate(-50deg) scaleY(0.38); }
+
+@media (max-width: 720px) {
+  .solo-flow-content { width: 100%; padding: 24px 18px; }
+  .solo-flow-orbit { width: 92vw; right: -45vw; opacity: 0.65; }
+  .solo-flow-title { font-size: clamp(2.1rem, 12vw, 3.25rem); }
+  .solo-flow-item { padding: 12px 10px; }
+  .solo-flow-item .ts-item-label { font-size: 1.25rem; }
+  .solo-flow-item .ts-item-sub { display: block; font-size: 0.7rem; }
+}
+
 /* AI推演：对照旧AI开关 */
 .debug-legacy-toggle {
   display: flex;
@@ -3928,7 +3998,12 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
     0 0 0 3px #160c05;
   color: var(--text-soft);
   animation: tut-rise 0.34s cubic-bezier(0.2, 0.7, 0.3, 1);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 180ms ease, transform 220ms ease;
 }
+.tut-card.ready { opacity: 1; transform: none; }
+.tut-overlay.closed { opacity: 0; visibility: hidden; transition: opacity 260ms ease, visibility 0s linear 260ms; }
 /* 移动端紧凑卡:更小的字号/内距,占屏更少 */
 .tut-overlay.tut-mobile .tut-card {
   width: min(82%, 360px);
@@ -3972,6 +4047,15 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--ivory);
 }
 .tut-body b { color: var(--gilt-bright); font-weight: 600; }
+.tut-callout {
+  margin: 9px 0 0;
+  padding: 7px 10px;
+  border-left: 2px solid var(--gilt);
+  background: #f0d4880c;
+  color: var(--gilt-pale);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
 .tut-wait {
   margin: 8px 0 0;
   font-size: 0.8rem;
@@ -4028,6 +4112,24 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 @keyframes tut-pulse {
   0%, 100% { box-shadow: 0 0 0 2px #f0d48866, 0 0 10px 2px #c8a24e55; }
   50% { box-shadow: 0 0 0 2px #f0d488cc, 0 0 18px 5px #c8a24eaa; }
+}
+
+.tut-locked {
+  opacity: 0.28 !important;
+  filter: saturate(0.25) !important;
+  pointer-events: none !important;
+}
+.tut-concealed {
+  opacity: 0.16 !important;
+  filter: blur(1px) saturate(0.2);
+  pointer-events: none;
+  transition: opacity 220ms ease, filter 220ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .solo-flow,
+  .solo-flow-panel,
+  .tut-card { transition-duration: 1ms !important; animation: none !important; }
 }
 
 /* 玩法说明页:重看新手教程入口 */

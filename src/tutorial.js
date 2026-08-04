@@ -1,263 +1,349 @@
-// ═══════════════════════════════════════════════════════════════
-
+import { distance } from "../shared/game-core.js";
 import { t } from "./i18n.js";
-// 引导式新手教程 —— 玩家第一次进战场时自动触发的分步引导。
-// 设计:全程实时不暂停;对话卡是非阻挡 overlay(战场点击穿透,只有卡片本身吃事件),
-//       逐步引导真实操作(下航线/分离/放技能),并配合画布示意图讲机制(射界/射程·视野)。
-// 与 solo.js 的接口:start(ctx) / onAction(action) / getIllustration() / isActive() / stop()。
-// ctx = { isMobile():boolean, onFinish():void }。illustration 由 solo.js 渲染层取用。
-// ═══════════════════════════════════════════════════════════════
 
-// 每步:
-//  title/body —— 文案(body 可为 (mobile)=>string,按端给不同提示);
-//  advance —— 'button'(显示「继续/开始战斗」按钮) 或 { action } (检测到该类玩家动作才推进);
-//  illustration —— 'visionRange' | 'fireArc',交给画布画示意图;
-//  highlight —— { desktop, mobile } 控件 id,对应步骤脉冲高亮该按钮;
-//  hint —— 动作门控步骤的等待提示。
+export const TUTORIAL_LOADOUT = Object.freeze({ main: "haruhi", sub1: "yuki", sub2: "kyon" });
+export const TUTORIAL_MOVE_TARGET = Object.freeze({ x: 720, y: 240, radius: 72, zoneId: 2 });
+export const TUTORIAL_ATTACK_TARGET = Object.freeze({ x: 1110, y: 395, radius: 125, zoneId: 3 });
+
 const STEPS = [
   {
-    id: "welcome",
-    title: "欢迎,指挥官",
-    body: "用几步带你上手。<b>目标:歼灭对方全部舰船</b>(含主舰与副舰)即获胜。",
-    advance: "button",
+    id: "move",
+    phase: 1,
+    title: "移动舰队",
+    body: (mobile) => mobile
+      ? "点击战场，为舰队创建一条前往<b>2号战区中央</b>的航线。教程暂时只接受落在标记区域内的航线。"
+      : "在战场上<b>右键单击</b>，为舰队创建一条前往<b>2号战区中央</b>的航线。教程暂时只接受落在标记区域内的航线。",
+    wait: "将舰队移动到目标区域",
+    illustration: "moveTarget",
   },
   {
-    id: "route",
-    title: "第一步 · 移动与开火",
-    body: (info) =>
-      info.mobile
-        ? "点战场<b>空地</b>创建航线目标,舰队自动航行(默认三舰跟随主舰)。舰队会<b>自动攻击视野内最近</b>的敌人——靠走位来集火、分担伤害。"
-        : "在战场空地<b>右键</b>创建航线目标(可拖<b>控制点</b>微调曲线)。舰队会<b>自动攻击视野内最近</b>的敌人——靠走位来集火、分担伤害。",
-    advance: { action: "set_route" },
-    hint: "↳ 下出一条航线即可继续",
+    id: "vision",
+    phase: 2,
+    title: "视野范围",
+    body: "舰船周围的<b>青色圆环</b>是视野。敌人只有进入任意友方单位的视野，才能成为真实目标。",
+    button: "查看射程",
+    illustration: "vision",
+    callout: "视野决定你能否发现目标",
   },
   {
-    id: "visionRange",
-    title: "机制 · 视野远小于射程",
-    body:
-      "旗舰周围<b>青色圈是视野</b>(看得见的范围),<b>金色圈是射程</b>(能打到的范围)。" +
-      "射程远大于视野——只有“看得见”的敌人才会自动开火,所以<b>情报是关键</b>:可吊在敌人视野外输出。",
-    illustration: "visionRange",
-    advance: "button",
+    id: "range",
+    phase: 2,
+    title: "武器射程",
+    body: "舰船周围的<b>金色圆环</b>是射程。射程明显大于视野，因此侦察和情报往往比盲目前进更重要。",
+    button: "继续",
+    illustration: "range",
+    callout: "看得见，才打得到",
   },
   {
     id: "scout",
-    title: "机制 · 侦察与战区",
-    body: (info) =>
-      info.mobile
-        ? "看不见的地方派<b>侦察机</b>去开图:点右上<b>小地图选一个战区</b>,再点<b>「侦察」</b>放出侦察机——它能获取敌方动向、还能吸引火力。"
-        : "看不见的地方派<b>侦察机</b>去开图:<b>左键</b>在 3×3 地图选一个战区,再点<b>「侦察」</b>(或按 X)放出侦察机——它能获取敌方动向、还能吸引火力。",
-    advance: { action: "launch_scout" },
-    hint: "↳ 放出一架侦察机即可继续",
-    highlight: { desktop: "scoutBtn", mobile: "mobileScoutBtn" },
+    phase: 3,
+    title: "派出侦察机",
+    body: "侦察机拥有自己的视野。现在已解锁<b>侦察</b>：向2号战区派出一架侦察机，观察它扩展出的情报范围。",
+    wait: "派出一架侦察机",
+    illustration: "scoutVision",
+    highlight: ["scoutBtn", "mobileScoutBtn"],
   },
   {
-    id: "fireArc",
-    title: "机制 · 火力与朝向",
-    body: (info) =>
-      info.uniformFire
-        ? "你的旗舰(<b>阿虚</b>)火力<b>均匀</b>——各方向射速均为 <b>×1.5</b>,没有侧舷差异、船尾也照常开火(看周围的均匀光环)。" +
-          "但<b>尾击</b>对谁都通用:从<b>敌方船尾</b>命中仍打 <b>×1.2</b>,绕到敌后更划算。"
-        : "看旗舰周围的扇形:<b>侧舷火力最猛(×1.5)</b>,正前 ×1,<b>船尾不开火(×0)</b>。" +
-          "而且从<b>敌方船尾</b>命中会打出 <b>×1.2 尾击</b>——侧面对敌、绕到敌后最划算。",
+    id: "energy",
+    phase: 3,
+    title: "能量与舰况",
+    body: "几乎所有操作都会消耗能量，降低航速可更快恢复。教程中推进档位已锁定。全舰队状态栏会分别显示舰体与能量，请随时留意。",
+    button: "继续",
+    callout: "能量并非越快越好",
+  },
+  {
+    id: "split_yuki",
+    phase: 4,
+    title: "一级分离 · 长门有希",
+    body: "解锁<b>一级分离</b>，让有希独立行动。她擅长侦察与支援；春日旗舰则更偏重正面火力。分离能增加战术自由，但<b>不可逆</b>，也会失去编队共同承伤。",
+    wait: "执行一级分离",
+    highlight: ["splitOneBtn", "mobileSplitOneBtn"],
+  },
+  {
+    id: "split_explain",
+    phase: 4,
+    title: "独立舰队",
+    body: "有希现在拥有独立的航线、舰况和技能。切换舰船后，下达的命令只会作用于当前舰队。",
+    button: "继续",
+  },
+  {
+    id: "yuki_skill",
+    phase: 5,
+    title: "有希的分舰技能",
+    body: "选择<b>长门有希</b>，释放分舰技能「apm上万」。十六架高速侦察机会向八个方向展开搜索。",
+    wait: "选择有希并释放分舰技能",
+    highlight: ["subSkillBtn", "mobileSubSkillBtn"],
+  },
+  {
+    id: "enemy_found",
+    phase: 5,
+    title: "发现敌方动向",
+    body: "侦察机在<b>3号战区中下方</b>发现了训练舰队。地图上的标记只是情报提示；真实交火仍以单位视野为准。",
+    button: "继续",
+    illustration: "enemyRegion",
+    callout: "目标位于3号战区中下方",
+  },
+  {
+    id: "split_kyon",
+    phase: 5,
+    title: "二级分离 · 阿虚",
+    body: "现在解锁<b>二级分离</b>。阿虚也将成为独立舰队；三支舰队的航线、状态和技能互不共用。",
+    wait: "执行二级分离",
+    highlight: ["splitTwoBtn", "mobileSplitTwoBtn"],
+  },
+  {
+    id: "regroup",
+    phase: 5,
+    title: "三舰协同机动",
+    body: "分别选择春日、有希和阿虚，为三支舰队各自设置航线，移动到<b>3号战区中下方</b>的集结区域。",
+    wait: "让三支舰队全部抵达标记区域",
+    illustration: "attackTarget",
+  },
+  {
+    id: "attack",
+    phase: 6,
+    title: "自动交火与朝向",
+    body: "进入视野与射程后，舰队会自动攻击最近的敌人。多数舰船<b>侧舷射速 ×1.5</b>、正面 ×1、船尾不开火；用航线控制朝向。",
+    wait: "等待任意友方舰船首次开火",
     illustration: "fireArc",
-    advance: "button",
   },
   {
-    id: "autofire",
-    title: "机制 · 自动交火",
-    body:
-      "敌人<b>进入射程且被你看见</b>时,舰船<b>自动攻击最近</b>的目标。" +
-      "你只管走位放技能——靠站位决定<b>集火</b>还是<b>分担伤害</b>。",
-    advance: "button",
+    id: "battle_skills",
+    phase: 6,
+    title: "旗舰技与分舰技",
+    body: "先发动春日的<b>旗舰技能</b>，再选择阿虚并发动他的<b>分舰技能</b>。旗舰技可直接发动；分舰技必须先选中对应舰队。",
+    wait: "发动春日旗舰技与阿虚分舰技",
+    highlight: ["flagshipBtn", "mobileFlagshipBtn", "subSkillBtn", "mobileSubSkillBtn"],
   },
   {
-    id: "split",
-    title: "第二步 · 分离副舰",
-    body:
-      "副舰的技能<b>分离后才能放</b>。点<b>「一级分离」</b>让副一独立:分离后各队有独立视野、" +
-      "<b>火力更强(开火 ×1.2)</b>、走位更灵活;但也更<b>脆弱、无法共同承伤</b>,易被各个击破。",
-    advance: { action: "split" },
-    hint: "↳ 点「一级分离」即可继续",
-    highlight: { desktop: "splitOneBtn", mobile: "mobileSplitOneBtn" },
-  },
-  {
-    id: "skill",
-    title: "第三步 · 释放技能",
-    // 旗舰技被动时,引导改用分舰技(选中分离出的副舰再放),避免高亮到禁用的旗舰技按钮造成冲突
-    body: (info) =>
-      info.flagshipPassive
-        ? "你的旗舰技是<b>被动技</b>(自动生效、无需手动)。改放分舰技——<b>选中分离出的副一</b>,点<b>「分舰技」</b>释放它的主动技。"
-        : "选中一艘舰,点<b>「旗舰技」</b>释放它的招牌技;有的技能需要在战场上点一个落点。能量回满即可再放——关键时机一个技能常常翻盘。",
-    advance: { action: "cast_skill" },
-    hint: "↳ 放出一个技能即可完成",
-    highlight: (info) =>
-      info.flagshipPassive
-        ? { desktop: "subSkillBtn", mobile: "mobileSubSkillBtn" }
-        : { desktop: "flagshipBtn", mobile: "mobileFlagshipBtn" },
+    id: "free",
+    phase: 7,
+    title: "自由作战",
+    body: "训练舰队即将开始移动、攻击和侦察。你的舰船在本关会锁定于<b>至少1/4舰体</b>。现在自由控制三支舰队，歼灭全部敌舰即可获胜。",
+    button: "开始实战",
+    illustration: "enemyRegion",
   },
 ];
 
 let activeIndex = -1;
+let ctx = null;
 let overlayEl = null;
 let cardEl = null;
-let ctx = null;
-let highlightedEl = null;
+let highlighted = [];
+let briefingClosed = false;
+let routedShips = new Set();
+let usedBattleSkills = new Set();
+let yukiSkillCast = false;
+
+function step() {
+  return STEPS[activeIndex] || null;
+}
 
 function isActive() {
   return activeIndex >= 0 && activeIndex < STEPS.length;
 }
 
-function getIllustration() {
-  return isActive() ? STEPS[activeIndex].illustration || null : null;
+function isMobile() {
+  return Boolean(ctx?.isMobile?.());
 }
 
-function mobileMode() {
-  return !!(ctx && typeof ctx.isMobile === "function" && ctx.isMobile());
+function clearHighlights() {
+  for (const el of highlighted) el.classList.remove("tut-highlight");
+  highlighted = [];
 }
 
-// 当前步可用的运行态信息(端、旗舰技是否被动),供 body / highlight 按情况取用。
-function stepInfo() {
-  return {
-    mobile: mobileMode(),
-    flagshipPassive: !!(ctx && typeof ctx.flagshipPassive === "function" && ctx.flagshipPassive()),
-    uniformFire: !!(ctx && typeof ctx.uniformFire === "function" && ctx.uniformFire()),
-  };
-}
-
-function clearHighlight() {
-  if (highlightedEl) {
-    highlightedEl.classList.remove("tut-highlight");
-    highlightedEl = null;
+function applyHighlights(ids = []) {
+  clearHighlights();
+  for (const id of ids) {
+    const el = document.getElementById(id);
+    if (el && ((isMobile() && id.startsWith("mobile")) || (!isMobile() && !id.startsWith("mobile")))) {
+      el.classList.add("tut-highlight");
+      highlighted.push(el);
+    }
   }
 }
 
-function applyHighlight(step, info) {
-  clearHighlight();
-  if (!step.highlight) return;
-  const hl = typeof step.highlight === "function" ? step.highlight(info) : step.highlight;
-  if (!hl) return;
-  const id = info.mobile ? hl.mobile : hl.desktop;
-  const el = id && document.getElementById(id);
-  if (el) {
-    el.classList.add("tut-highlight");
-    highlightedEl = el;
-  }
-}
-
-function renderCard(step, info) {
-  const total = STEPS.length;
-  const num = activeIndex + 1;
-  const rawBody = typeof step.body === "function" ? step.body(info) : step.body;
-  const bodyText = t(rawBody);
-  const isButton = step.advance === "button";
-  const btnLabel = isButton ? (activeIndex === total - 1 ? t("开始战斗") : t("继续")) : "";
-  cardEl.innerHTML =
-    `<div class="tut-step">${t("第 {num} / {total} 步", { num, total })}</div>` +
-    `<h3 class="tut-title">${t(step.title)}</h3>` +
-    `<p class="tut-body">${bodyText}</p>` +
-    (step.hint ? `<p class="tut-wait">${t(step.hint)}</p>` : "") +
-    `<div class="tut-actions">` +
-    (btnLabel ? `<button type="button" class="tut-next">${btnLabel}</button>` : "") +
-    `<button type="button" class="tut-skip">${t("跳过教程")}</button>` +
-    `</div>`;
-  const nextBtn = cardEl.querySelector(".tut-next");
-  if (nextBtn) nextBtn.addEventListener("click", () => goto(activeIndex + 1));
-  const skipBtn = cardEl.querySelector(".tut-skip");
-  if (skipBtn) skipBtn.addEventListener("click", () => finish());
+function renderCard() {
+  const current = step();
+  if (!current || !cardEl || briefingClosed) return;
+  const rawBody = typeof current.body === "function" ? current.body(isMobile()) : current.body;
+  cardEl.classList.remove("ready");
+  setTimeout(() => {
+    if (!cardEl || step() !== current) return;
+    cardEl.innerHTML = `
+      <div class="tut-step">${t("教学阶段 {phase} / 7", { phase: current.phase })}</div>
+      <h3 class="tut-title">${t(current.title)}</h3>
+      <p class="tut-body">${t(rawBody)}</p>
+      ${current.callout ? `<p class="tut-callout">${t(current.callout)}</p>` : ""}
+      ${current.wait ? `<p class="tut-wait">↳ ${t(current.wait)}</p>` : ""}
+      ${current.button ? `<div class="tut-actions"><button type="button" class="tut-next">${t(current.button)}</button></div>` : ""}`;
+    cardEl.querySelector(".tut-next")?.addEventListener("click", () => {
+      if (current.id === "free") closeBriefing();
+      else goto(activeIndex + 1);
+    });
+    requestAnimationFrame(() => cardEl?.classList.add("ready"));
+    layoutMobile();
+  }, 110);
+  applyHighlights(current.highlight);
 }
 
 function goto(index) {
-  activeIndex = index;
-  if (!isActive()) {
-    finish();
-    return;
-  }
-  const step = STEPS[activeIndex];
-  const info = stepInfo();
-  renderCard(step, info);
-  applyHighlight(step, info);
-  layoutMobile();
+  activeIndex = Math.max(0, Math.min(index, STEPS.length - 1));
+  const current = step();
+  ctx?.onStageChange?.(current.id, current.phase);
+  renderCard();
 }
 
-// 移动端:把教程卡压到底部操作面板上方、并按当前高亮按钮的位置自动偏到另一侧,尽量不挡视野/按钮。
+function closeBriefing() {
+  briefingClosed = true;
+  clearHighlights();
+  overlayEl?.classList.add("closed");
+  ctx?.onStageChange?.("free", 7);
+}
+
 function layoutMobile() {
   if (!overlayEl) return;
-  const mobile = mobileMode();
-  overlayEl.classList.toggle("tut-mobile", mobile);
-  overlayEl.classList.remove("tut-bias-left", "tut-bias-right");
-  if (!mobile) return;
-  // 卡片底边坐到底部 HUD 顶沿之上(测 HUD 实际高度);非底栏布局(横屏)退回小留白
-  const hud = document.getElementById("mobileBattleHud");
-  const vh = window.innerHeight || 800;
-  let clear = 12;
-  if (hud) {
-    const top = hud.getBoundingClientRect().top;
-    if (top > vh * 0.4) clear = Math.round(vh - top); // 确认是底栏才贴它上沿
-  }
-  overlayEl.style.setProperty("--tut-hud-clear", `${clear}px`);
-  // 自动避让:当前步高亮了某个按钮,就把卡片偏到按钮所在的另一半,留出按钮
-  if (highlightedEl) {
-    const r = highlightedEl.getBoundingClientRect();
-    const cx = r.left + r.width / 2;
-    overlayEl.classList.add(cx < (window.innerWidth || 400) / 2 ? "tut-bias-right" : "tut-bias-left");
+  overlayEl.classList.toggle("tut-mobile", isMobile());
+  if (isMobile()) {
+    const hud = document.getElementById("mobileBattleHud");
+    const top = hud?.getBoundingClientRect().top || innerHeight;
+    overlayEl.style.setProperty("--tut-hud-clear", `${Math.max(12, innerHeight - top)}px`);
   }
 }
 
-function start(context) {
-  ctx = context || {};
-  if (!overlayEl) {
-    overlayEl = document.createElement("div");
-    overlayEl.className = "tut-overlay";
-    cardEl = document.createElement("div");
-    cardEl.className = "tut-card";
-    overlayEl.appendChild(cardEl);
-    document.body.appendChild(overlayEl);
+function endpointInTarget(action, target) {
+  const x = Number(action.endX);
+  const y = Number(action.endY);
+  return Number.isFinite(x) && Number.isFinite(y) && distance({ x, y }, target) <= target.radius;
+}
+
+function allowsAction(action) {
+  if (!isActive() || !action) return true;
+  const id = step().id;
+  const type = String(action.type || "");
+  if (id === "move") {
+    return action.shipKey === "main" && type === "set_route" && endpointInTarget(action, TUTORIAL_MOVE_TARGET);
   }
+  if (id === "scout") return type === "launch_scout";
+  if (id === "split_yuki") return type === "split" && Number(action.level) === 1;
+  if (id === "yuki_skill") return type === "cast_sub_skill" && action.shipKey === "sub1";
+  if (id === "split_kyon") return type === "split" && Number(action.level) === 2;
+  if (id === "regroup") {
+    if (type === "set_route" || type === "route_end") return endpointInTarget(action, TUTORIAL_ATTACK_TARGET);
+    return type === "route_control";
+  }
+  if (id === "attack") return type === "set_route" || type === "route_control" || type === "route_end";
+  if (id === "battle_skills") {
+    return type === "set_route" || type === "route_control" || type === "route_end"
+      || type === "cast_flagship_skill"
+      || (type === "cast_sub_skill" && action.shipKey === "sub2");
+  }
+  if (id === "free") {
+    return ["set_route", "route_control", "route_end", "launch_scout", "cast_flagship_skill", "cast_sub_skill"].includes(type);
+  }
+  return false;
+}
+
+function allowsShipSelection(shipKey) {
+  if (!isActive()) return true;
+  const index = activeIndex;
+  if (shipKey === "main") return true;
+  if (shipKey === "sub1") return index >= STEPS.findIndex((item) => item.id === "split_yuki");
+  if (shipKey === "sub2") return index >= STEPS.findIndex((item) => item.id === "split_kyon");
+  return false;
+}
+
+function allowsControl(control) {
+  if (!isActive()) return true;
+  const id = step().id;
+  if (control === "mainMenu") return true;
+  if (control === "fleetRoster" || control === "energy") return activeIndex >= STEPS.findIndex((item) => item.id === "energy");
+  if (control === "scout") return ["scout", "free"].includes(id);
+  if (control === "split1") return id === "split_yuki";
+  if (control === "split2") return id === "split_kyon";
+  if (control === "flagshipSkill") return id === "battle_skills" || id === "free";
+  if (control === "subSkill") return id === "yuki_skill" || id === "battle_skills" || id === "free";
+  if (control === "shipSelection") return activeIndex >= STEPS.findIndex((item) => item.id === "split_yuki");
+  return false;
+}
+
+function onAction(action) {
+  if (!isActive() || !action) return;
+  const id = step().id;
+  if (id === "scout" && action.type === "launch_scout") goto(activeIndex + 1);
+  else if (id === "split_yuki" && action.type === "split" && Number(action.level) === 1) goto(activeIndex + 1);
+  else if (id === "yuki_skill" && action.type === "cast_sub_skill" && action.shipKey === "sub1") yukiSkillCast = true;
+  else if (id === "split_kyon" && action.type === "split" && Number(action.level) === 2) goto(activeIndex + 1);
+  else if (id === "regroup" && action.type === "set_route") routedShips.add(action.shipKey);
+  else if (id === "battle_skills") {
+    if (action.type === "cast_flagship_skill") usedBattleSkills.add("flagship");
+    if (action.type === "cast_sub_skill" && action.shipKey === "sub2") usedBattleSkills.add("kyon");
+    if (usedBattleSkills.size >= 2) goto(activeIndex + 1);
+  }
+}
+
+function update(state) {
+  if (!isActive() || !state) return;
+  const own = state.teams?.A;
+  if (!own?.ships) return;
+  const id = step().id;
+  if (id === "move") {
+    const main = own.ships.main;
+    if (main && distance(main, TUTORIAL_MOVE_TARGET) <= TUTORIAL_MOVE_TARGET.radius) goto(activeIndex + 1);
+  } else if (id === "yuki_skill" && yukiSkillCast && (own.visibleEnemyIds || []).length > 0) {
+    goto(activeIndex + 1);
+  } else if (id === "regroup" && routedShips.size >= 3) {
+    const arrived = ["main", "sub1", "sub2"].every((key) => {
+      const ship = own.ships[key];
+      return ship && distance(ship, TUTORIAL_ATTACK_TARGET) <= TUTORIAL_ATTACK_TARGET.radius;
+    });
+    if (arrived) goto(activeIndex + 1);
+  } else if (id === "attack") {
+    const enemyDamaged = Number(state.teams?.B?.hullRatio) < 0.999;
+    const friendlyProjectile = (state.projectiles || []).some((item) => item.teamSeat === "A" || item.team === "A");
+    if (enemyDamaged || friendlyProjectile) goto(activeIndex + 1);
+  }
+}
+
+function getIllustration() {
+  return isActive() ? step().illustration || null : null;
+}
+
+function start(context = {}) {
+  stop();
+  ctx = context;
+  activeIndex = 0;
+  briefingClosed = false;
+  routedShips = new Set();
+  usedBattleSkills = new Set();
+  yukiSkillCast = false;
+  overlayEl = document.createElement("div");
+  overlayEl.className = "tut-overlay tut-campaign";
+  cardEl = document.createElement("div");
+  cardEl.className = "tut-card ready";
+  overlayEl.appendChild(cardEl);
+  document.body.appendChild(overlayEl);
   goto(0);
 }
 
-// solo.js 在每次成功 applyAction 后调用:动作门控步骤检测到对应动作即推进。
-function onAction(action) {
-  if (!isActive() || !action) return;
-  const step = STEPS[activeIndex];
-  if (!step.advance || step.advance === "button") return;
-  const want = step.advance.action;
-  const type = action.type;
-  let match = false;
-  if (want === "set_route") {
-    match = type === "set_route";
-  } else if (want === "split") {
-    match = type === "split";
-  } else if (want === "launch_scout") {
-    match = type === "launch_scout";
-  } else if (want === "cast_skill") {
-    // 旗舰技/分舰技/侦察任一都算“用了一个能力”,避免被动技或无可放时卡死
-    match = type === "cast_flagship_skill" || type === "cast_sub_skill" || type === "launch_scout";
-  }
-  if (match) goto(activeIndex + 1);
-}
-
-function teardown() {
-  clearHighlight();
-  if (overlayEl) {
-    overlayEl.remove();
-    overlayEl = null;
-    cardEl = null;
-  }
-  activeIndex = -1;
-}
-
-// 走完最后一步或点「跳过教程」:拆掉 UI 并写“已看过”标记。
-function finish() {
-  const wasActive = activeIndex >= 0 || overlayEl != null;
-  teardown();
-  if (wasActive && ctx && typeof ctx.onFinish === "function") ctx.onFinish();
-}
-
-// 模块卸载时静默清理:不写标记(没走完不算看过,下次仍会触发)。
 function stop() {
-  teardown();
+  clearHighlights();
+  overlayEl?.remove();
+  overlayEl = null;
+  cardEl = null;
+  activeIndex = -1;
+  ctx = null;
+  briefingClosed = false;
 }
 
-export const tutorial = { start, onAction, getIllustration, isActive, stop };
+export const tutorial = {
+  start,
+  stop,
+  update,
+  onAction,
+  isActive,
+  getIllustration,
+  allowsAction,
+  allowsControl,
+  allowsShipSelection,
+};

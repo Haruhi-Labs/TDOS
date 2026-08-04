@@ -10,7 +10,7 @@ import { isMobile } from "./mobile.js";
 import { bindLanguageSelector, languageSelectorHTML, t } from "./i18n.js";
 
 const ITEMS = [
-  { href: "/play", no: "I", label: "单人实战", sub: "挑选舰队，迎击 AI 舰群" },
+  { href: "/play", no: "I", label: "单人游戏", sub: "选择战役，指挥舰队迎击 AI" },
   { href: "/online", no: "II", label: "在线对战", sub: "大厅匹配，与真人同步交战" },
   { href: "/profile", no: "III", label: "指挥官档案", sub: "呼号与阵营" },
   { href: "/guide", no: "IV", label: "玩法说明", sub: "操作与机制速览" },

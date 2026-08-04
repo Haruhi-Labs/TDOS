@@ -29,11 +29,15 @@ import {
   getFaction,
   setFaction,
   getDifficulty,
-  getTutorialSeen,
-  setTutorialSeen,
 } from "./profile.js";
 
-import { tutorial } from "./tutorial.js";
+import {
+  tutorial,
+  TUTORIAL_ATTACK_TARGET,
+  TUTORIAL_LOADOUT,
+  TUTORIAL_MOVE_TARGET,
+} from "./tutorial.js";
+import { createSoloSetupFlow } from "./solo-setup.js";
 import { showConfirm } from "./confirm-dialog.js";
 import {
   createShipDestructionEffects,
@@ -82,6 +86,7 @@ let ac = null; // AbortController：统一移除 window 级监听
 let rafId = 0; // 渲染循环句柄
 let running = false; // 渲染循环开关
 let charSelect = null; // 选角覆盖层引用，卸载时移除
+let setupFlow = null; // 战役 / 难度选择覆盖层
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -158,6 +163,7 @@ function initApp() {
   app = {
   sim: null,
   state: null,
+  campaign: "standard",
   playerLoadout: readStoredLoadout(),
   enemyLoadout: cloneLoadout(DEFAULT_AI_LOADOUT),
   playerColor: getFaction(), // 玩家阵营立绘色（取自统一档案，可被角色选择覆盖）
@@ -250,6 +256,9 @@ function clearLog() {
 
 function applyAction(action) {
   if (!app.sim) {
+    return false;
+  }
+  if (tutorial.isActive() && !tutorial.allowsAction(action)) {
     return false;
   }
   const ok = app.sim.applyActionForSeat("A", action);
@@ -379,11 +388,16 @@ function createSimulation() {
       B: app.enemyLoadout,
     },
     aiDifficulty: getDifficulty(), // 单人难度:敌方数值(血量+伤害)缩放 + AI反应快慢,极限额外开启智能集火残血
+    tutorialMode: app.campaign === "tutorial",
   });
 }
 
 function resetMatch(logMessage = true) {
-  app.enemyLoadout = randomAiLoadout(); // 每局随机 AI 阵容(主舰不含长门/鹤屋),结算画面据此展示敌方
+  if (app.campaign === "standard") {
+    app.enemyLoadout = randomAiLoadout(); // 每局随机 AI 阵容(主舰不含长门/鹤屋),结算画面据此展示敌方
+  } else {
+    app.enemyLoadout = cloneLoadout(DEFAULT_AI_LOADOUT); // 教程敌舰技能由仿真层禁用，阵容只用于既有绘制结构
+  }
   app.sim = createSimulation();
   app.state = app.sim.serializeState();
   app.selectedShipKey = "main";
@@ -412,6 +426,9 @@ function setSelectedShip(shipKey) {
   }
   const ship = own.ships[shipKey];
   if (!ship || !ship.alive || !ship.canControl) {
+    return false;
+  }
+  if (tutorial.isActive() && !tutorial.allowsShipSelection(shipKey)) {
     return false;
   }
   app.selectedShipKey = shipKey;
@@ -462,6 +479,7 @@ function syncPowerFromSelected() {
 }
 
 function setThrottleGear(gear) {
+  if (tutorial.isActive() && !tutorial.allowsControl("throttle")) return false;
   const throttle = throttleValueForGear(gear);
   syncThrottleGearControls(ui, throttle);
   applyAction({
@@ -485,6 +503,7 @@ function syncAutoScoutZone() {
 }
 
 function setSelectedZoneId(zoneId, { allowLog = true } = {}) {
+  if (tutorial.isActive() && !tutorial.allowsControl("zoneSelection")) return false;
   const nextZoneId = clamp(Number(zoneId) || app.selectedZoneId, 1, 9);
   const changed = nextZoneId !== app.selectedZoneId;
   app.selectedZoneId = nextZoneId;
@@ -568,6 +587,34 @@ function setRouteForSelectedShip(x, y, logRoute = false) {
   return ok;
 }
 
+function forceTutorialControl(elements, allowed) {
+  for (const el of (Array.isArray(elements) ? elements : [elements])) {
+    if (!el) continue;
+    el.classList.toggle("tut-locked", !allowed);
+    if (!allowed && "disabled" in el) el.disabled = true;
+    el.setAttribute("aria-disabled", allowed ? "false" : "true");
+  }
+}
+
+function applyTutorialUiGates() {
+  if (!tutorial.isActive()) return;
+  const allow = (key) => tutorial.allowsControl(key);
+  forceTutorialControl([...ui.powerGearButtons, ...ui.mobileThrottleButtons], false);
+  forceTutorialControl([ui.zoomOutBtn, ui.zoomInBtn, ui.mobileZoomOutBtn, ui.mobileZoomInBtn], false);
+  forceTutorialControl([ui.autoScoutBtn, ui.mobileAutoScoutBtn, ui.brakeBtn, ui.mobileBrakeBtn], false);
+  forceTutorialControl([ui.mobileCenterBtn, ui.applyLoadoutBtn], false);
+  forceTutorialControl([ui.scoutBtn, ui.mobileScoutBtn], allow("scout"));
+  forceTutorialControl([ui.splitOneBtn, ui.mobileSplitOneBtn], allow("split1"));
+  forceTutorialControl([ui.splitTwoBtn, ui.mobileSplitTwoBtn], allow("split2"));
+  forceTutorialControl([ui.flagshipBtn, ui.mobileFlagshipBtn], allow("flagshipSkill"));
+  forceTutorialControl([ui.subSkillBtn, ui.mobileSubSkillBtn], allow("subSkill"));
+  for (const button of [...ui.shipSwitchButtons, ...ui.mobileShipButtons, ...ui.fleetRows.map((item) => item.row)]) {
+    forceTutorialControl(button, allow("shipSelection") && tutorial.allowsShipSelection(button.dataset.ship));
+  }
+  ui.energyValue?.parentElement?.classList.toggle("tut-concealed", !allow("energy"));
+  document.getElementById("fleetRoster")?.closest(".fleet-section")?.classList.toggle("tut-concealed", !allow("fleetRoster"));
+}
+
 function updateUi() {
   const own = ownTeamState();
   if (!own) {
@@ -612,6 +659,7 @@ function updateUi() {
     selectedZoneId: app.selectedZoneId,
     pendingSubSkillAim: app.pendingSubSkillAim,
   });
+  applyTutorialUiGates();
 
   if (app.state.phase === "finished") {
     if (!app.gameOverLogged) {
@@ -693,9 +741,9 @@ function showResultScreen(winnerSeat) {
   subEl.textContent = sub;
 
   const dm = difficultyMeta();
-  diffEl.innerHTML =
-    `<span class="result-diff-label">${t("难度")}</span>` +
-    `<span class="result-diff-val rd-${dm.cls}">${t(dm.label)}</span>`;
+  diffEl.innerHTML = app.campaign === "tutorial"
+    ? `<span class="result-diff-label">${t("战役")}</span><span class="result-diff-val rd-normal">${t("教程")}</span>`
+    : `<span class="result-diff-label">${t("难度")}</span><span class="result-diff-val rd-${dm.cls}">${t(dm.label)}</span>`;
 
   const playerFaction = getFaction();
   const enemyFaction = playerFaction === "blue" ? "red" : "blue";
@@ -710,47 +758,62 @@ function showResultScreen(winnerSeat) {
   card.classList.add("result-in");
 }
 
-// 新手教程画布示意图。'fireArc' 复用已有 drawSelectedFireArc(每帧已为选中舰画扇形),无需重画;
-// 'visionRange' 在旗舰上额外画出真实「射程圈」(金)与加亮「视野圈」(青)+ 标注,直观呈现 视野 ≪ 射程。
 function drawTutorialIllustration(kind) {
-  if (kind !== "visionRange") {
-    return;
-  }
   const own = ownTeamState();
-  if (!own || !own.ships) {
-    return;
-  }
+  if (!own?.ships || !kind) return;
   const ship = own.ships.main;
-  if (!ship || !ship.alive) {
-    return;
-  }
+  if (!ship?.alive) return;
+  const pulse = 0.5 + Math.sin(performance.now() / 420) * 0.18;
   ctx.save();
-  if (ship.range) {
-    ctx.strokeStyle = "#f0d488d6";
+
+  const drawTarget = (target, label, color = "#f0d488") => {
+    ctx.fillStyle = `${color}14`;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 2;
-    ctx.setLineDash([9, 7]);
+    ctx.setLineDash([10, 7]);
     ctx.beginPath();
-    ctx.arc(ship.x, ship.y, ship.range, 0, TAU);
+    ctx.arc(target.x, target.y, target.radius * (0.97 + pulse * 0.05), 0, TAU);
+    ctx.fill();
     ctx.stroke();
     ctx.setLineDash([]);
-  }
-  if (ship.vision) {
-    ctx.strokeStyle = "#8adfffe6";
-    ctx.lineWidth = 2;
+    ctx.font = "700 14px 'Noto Sans SC', 'PingFang SC', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = color;
+    ctx.fillText(t(label), target.x, target.y - target.radius - 12);
+  };
+
+  if (kind === "moveTarget") drawTarget(TUTORIAL_MOVE_TARGET, "移动目标", "#8adfff");
+  if (kind === "attackTarget") drawTarget(TUTORIAL_ATTACK_TARGET, "三舰集结区域", "#f0d488");
+  if (kind === "enemyRegion") drawTarget({ ...TUTORIAL_ATTACK_TARGET, x: 980, radius: 96 }, "敌方动向", "#ef7272");
+
+  if (kind === "vision" || kind === "range") {
+    const radius = kind === "vision" ? ship.vision : ship.range;
+    const color = kind === "vision" ? "#8adfff" : "#f0d488";
+    ctx.strokeStyle = color;
+    ctx.fillStyle = `${color}0d`;
+    ctx.lineWidth = 2.4;
+    ctx.setLineDash(kind === "range" ? [10, 7] : []);
     ctx.beginPath();
-    ctx.arc(ship.x, ship.y, ship.vision, 0, TAU);
+    ctx.arc(ship.x, ship.y, radius, 0, TAU);
+    ctx.fill();
     ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = "700 14px 'Noto Sans SC', 'PingFang SC', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = color;
+    ctx.fillText(t(kind === "vision" ? "视野" : "射程"), ship.x, ship.y - radius - 8);
   }
-  ctx.font = "bold 13px 'Noto Sans SC', 'PingFang SC', sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
-  if (ship.vision) {
-    ctx.fillStyle = "#bde6ff";
-    ctx.fillText(t("视野"), ship.x, ship.y - ship.vision - 4);
-  }
-  if (ship.range) {
-    ctx.fillStyle = "#ffe7a1";
-    ctx.fillText(t("射程"), ship.x, ship.y - ship.range - 4);
+
+  if (kind === "scoutVision") {
+    for (const scout of own.scouts || []) {
+      ctx.strokeStyle = "#8adfffcc";
+      ctx.fillStyle = "#8adfff0b";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(scout.x, scout.y, scout.vision || 96, 0, TAU);
+      ctx.fill();
+      ctx.stroke();
+    }
   }
   ctx.restore();
 }
@@ -821,6 +884,7 @@ function tick(timestamp) {
   }
   app.state = app.sim ? app.sim.serializeState() : null;
 
+  tutorial.update(app.state);
   updateUi();
   render();
 
@@ -828,6 +892,7 @@ function tick(timestamp) {
 }
 
 function useFlagshipSkill() {
+  if (tutorial.isActive() && !tutorial.allowsControl("flagshipSkill")) return;
   const own = ownTeamState();
   const meta = currentFlagshipMeta(own, app.playerLoadout);
   if (!meta || meta.type !== "active") {
@@ -840,6 +905,7 @@ function useFlagshipSkill() {
 }
 
 function useSubSkill() {
+  if (tutorial.isActive() && !tutorial.allowsControl("subSkill")) return;
   const selected = selectedShipState();
   const own = ownTeamState();
   const meta = currentSubMeta(selected);
@@ -916,9 +982,11 @@ function bindUiEvents() {
     });
   }
   ui.zoomOutBtn.addEventListener("click", () => {
+    if (tutorial.isActive()) return;
     camera.adjustCameraZoom(-1);
   });
   ui.zoomInBtn.addEventListener("click", () => {
+    if (tutorial.isActive()) return;
     camera.adjustCameraZoom(1);
   });
   for (const button of ui.mobileThrottleButtons) {
@@ -928,6 +996,7 @@ function bindUiEvents() {
   }
   if (ui.mobileCenterBtn) {
     ui.mobileCenterBtn.addEventListener("click", () => {
+      if (tutorial.isActive()) return;
       const ship = selectedShipState();
       if (ship) {
         camera.centerCameraOn(ship.x, ship.y, false);
@@ -936,11 +1005,13 @@ function bindUiEvents() {
   }
   if (ui.mobileZoomOutBtn) {
     ui.mobileZoomOutBtn.addEventListener("click", () => {
+      if (tutorial.isActive()) return;
       camera.adjustCameraZoom(-1);
     });
   }
   if (ui.mobileZoomInBtn) {
     ui.mobileZoomInBtn.addEventListener("click", () => {
+      if (tutorial.isActive()) return;
       camera.adjustCameraZoom(1);
     });
   }
@@ -984,7 +1055,8 @@ function bindUiEvents() {
   bindBattleExitGuard();
 
   ui.restartBtn.addEventListener("click", () => {
-    showCharacterSelectScreen();
+    if (app.campaign === "tutorial") launchTutorialCampaign();
+    else showCharacterSelectScreen();
   });
 
   // 桌面右键用于设航线:窗口级屏蔽右键菜单——含「右键按下拖动后在画布外松开」的情况,
@@ -1076,7 +1148,7 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("wheel", (event) => {
-    if (app.mobileMode || !app.state || app.state.phase === "finished") {
+    if (app.mobileMode || tutorial.isActive() || !app.state || app.state.phase === "finished") {
       return;
     }
     event.preventDefault();
@@ -1169,7 +1241,7 @@ function bindUiEvents() {
     const throttleGear = throttleGearFromShortcut(event, selectedShipState()?.throttle);
     if (throttleGear !== null) {
       event.preventDefault();
-      setThrottleGear(throttleGear);
+      if (!tutorial.isActive()) setThrottleGear(throttleGear);
       return;
     }
 
@@ -1221,6 +1293,7 @@ function bindUiEvents() {
 
     if (newRow !== row || newCol !== col) {
       event.preventDefault();
+      if (tutorial.isActive()) return;
       const newZoneId = newRow * 3 + newCol + 1;
       setSelectedZoneId(newZoneId);
       return;
@@ -1283,17 +1356,17 @@ function bindUiEvents() {
     // +/-/0 — camera zoom
     if (event.code === "Equal" || event.code === "NumpadAdd") {
       event.preventDefault();
-      camera.adjustCameraZoom(1);
+      if (!tutorial.isActive()) camera.adjustCameraZoom(1);
       return;
     }
     if (event.code === "Minus" || event.code === "NumpadSubtract") {
       event.preventDefault();
-      camera.adjustCameraZoom(-1);
+      if (!tutorial.isActive()) camera.adjustCameraZoom(-1);
       return;
     }
     if (event.code === "Digit0" || event.code === "Numpad0") {
       event.preventDefault();
-      camera.setCameraZoom(CAMERA_ZOOM_MIN);
+      if (!tutorial.isActive()) camera.setCameraZoom(CAMERA_ZOOM_MIN);
       return;
     }
 
@@ -1312,50 +1385,80 @@ function bindUiEvents() {
   });
 }
 
-function launchWithLoadout(loadout, color) {
-  app.playerLoadout = loadout;
-  if (color === "blue" || color === "red") {
-    app.playerColor = color;
-    setFaction(color); // 阵营写入统一档案，主菜单与在线模式同步
-    // 预加载本队所选阵营立绘，保证画布角落立绘正确着色
-    for (const key of ["main", "sub1", "sub2"]) {
-      if (loadout[key]) loadPortraitImage(loadout[key], color);
-    }
-  }
-  storeLoadout(loadout);
-  syncLoadoutControls(loadout);
-  resetMatch(true);
-  camera.resizeCanvas(); // 战斗画布此刻可见且已布局,按设备像素定 backing,首帧即清晰
+function beginSimulationLoop() {
+  camera.resizeCanvas();
   if (!running) {
     running = true;
     app.tickRunning = true;
     app.lastTime = performance.now();
     rafId = requestAnimationFrame(tick);
   }
-  // 首次进战场:等选角翻书动画收尾、战场显出后再弹出新手教程
-  if (!getTutorialSeen()) {
-    setTimeout(() => {
-      if (app && app.sim && !getTutorialSeen()) {
-        tutorial.start({
-          isMobile: () => app.mobileMode,
-          // 旗舰技是否被动:被动时「放技能」步改引导用分舰技,避免高亮到禁用的旗舰技按钮
-          flagshipPassive: () => {
-            const meta = currentFlagshipMeta(ownTeamState(), app.playerLoadout);
-            return !!meta && meta.type === "passive";
-          },
-          // 阿虚旗舰:火力各方向均匀(无侧舷加成/船尾也开火),火力讲解需换说法
-          uniformFire: () => !!(app.playerLoadout && app.playerLoadout.main === "kyon"),
-          onFinish: () => setTutorialSeen(true),
-        });
-      }
-    }, 450);
+}
+
+function applyPlayerFaction(color, loadout) {
+  if (color !== "blue" && color !== "red") return;
+  app.playerColor = color;
+  setFaction(color);
+  for (const key of ["main", "sub1", "sub2"]) {
+    if (loadout[key]) loadPortraitImage(loadout[key], color);
   }
 }
 
-function showCharacterSelectScreen() {
+function launchWithLoadout(loadout, color) {
+  setupFlow?.destroy();
+  setupFlow = null;
+  document.getElementById("battleView")?.removeAttribute("inert");
+  tutorial.stop();
+  app.campaign = "standard";
+  app.playerLoadout = loadout;
+  applyPlayerFaction(color, loadout);
+  storeLoadout(loadout);
+  syncLoadoutControls(loadout);
+  resetMatch(true);
+  beginSimulationLoop();
+}
+
+function launchTutorialCampaign() {
+  setupFlow?.destroy();
+  setupFlow = null;
+  document.getElementById("battleView")?.removeAttribute("inert");
+  tutorial.stop();
+  app.campaign = "tutorial";
+  app.playerLoadout = cloneLoadout(TUTORIAL_LOADOUT);
+  applyPlayerFaction(getFaction(), app.playerLoadout);
+  syncLoadoutControls(app.playerLoadout);
+  resetMatch(true);
+  app.selectedZoneId = 2;
+  beginSimulationLoop();
+  tutorial.start({
+    isMobile: () => app.mobileMode,
+    onStageChange: (id) => {
+      if (!app?.sim) return;
+      if (id === "attack") app.sim.setCombatEnabled("A", true);
+      if (id === "free") {
+        app.sim.setCombatEnabled("A", true);
+        app.sim.setCombatEnabled("B", true);
+        app.sim.setAiEnabled("B", true);
+      }
+      updateUi();
+    },
+  });
+  updateUi();
+}
+
+function showCharacterSelectScreen({ fromSetup = false } = {}) {
+  document.getElementById("battleView")?.setAttribute("inert", "");
   charSelect = createCharacterSelect((loadout, color) => {
+    charSelect = null;
     launchWithLoadout(loadout, color);
-  }, { showDifficulty: true });
+  }, {
+    backLabel: fromSetup ? "返回难度选择" : "返回战场",
+    onBack: () => {
+      charSelect = null;
+      if (fromSetup) setupFlow?.showDifficulty();
+      else document.getElementById("battleView")?.removeAttribute("inert");
+    },
+  });
   charSelect.show();
 }
 
@@ -1415,7 +1518,14 @@ export function mount(root) {
   syncResponsiveMode();
   populateLoadoutControls();
   bindUiEvents();
-  showCharacterSelectScreen();
+  setupFlow = createSoloSetupFlow({
+    onStandard: () => showCharacterSelectScreen({ fromSetup: true }),
+    onTutorial: launchTutorialCampaign,
+    onHome: () => window.__navigate?.("/"),
+  });
+  if (window.location.pathname.endsWith("/play/tutorial")) {
+    setupFlow.conceal(launchTutorialCampaign);
+  }
   return unmount;
 }
 
@@ -1423,7 +1533,9 @@ function unmount() {
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
-  tutorial.stop(); // 静默拆掉教程 overlay(没走完不写已看过标记)
+  tutorial.stop(); // 静默拆掉独立教程覆盖层
+  setupFlow?.destroy();
+  setupFlow = null;
   if (ac) ac.abort();
   ac = null;
   // 选角覆盖层挂在 body 上：用 hide() 清掉它的 keydown 监听与背景 rAF，并移除节点

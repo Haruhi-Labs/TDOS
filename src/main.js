@@ -28,6 +28,7 @@ const routes = {
   "/guide": guide,
   "/credits": credits,
   "/play": () => import("./solo.js"),
+  "/play/tutorial": () => import("./solo.js"),
   "/online": () => import("./online.js"),
   "/debug": () => import("./debug.js"),
 };
