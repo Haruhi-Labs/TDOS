@@ -575,6 +575,7 @@ function beamSkillCheck() {
   assert(castOk, "1096光线触发失败");
   const chargingBeam = teamA.beams.find((beam) => beam.phase === "charge");
   assert(chargingBeam, "1096光线未创建蓄力轨迹");
+  assert(Math.abs(chargingBeam.maxLife - 2.05) < 1e-9, "1096光线蓄力时间不是2.05秒");
   const initialBeamVector = {
     x: chargingBeam.x2 - chargingBeam.x1,
     y: chargingBeam.y2 - chargingBeam.y1,
@@ -596,9 +597,9 @@ function beamSkillCheck() {
     "1096光线随舰船整体平移，没有围绕固定瞄准点改变方向",
   );
 
-  runSteps(sim, 0.35);
+  runSteps(sim, 1.35);
   const chargingVisible = teamA.beams.some((beam) => beam.phase === "charge");
-  runSteps(sim, 1.2);
+  runSteps(sim, 0.8);
   const after = teamB.hullRatio();
   const enemyFleetHpAfter = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
 

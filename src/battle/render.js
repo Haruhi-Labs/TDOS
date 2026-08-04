@@ -720,7 +720,7 @@ export function drawBeam(ctx, beam) {
     return;
   }
   const phase = beam.phase || "fire";
-  const maxLife = Math.max(0.001, Number(beam.maxLife) || (phase === "charge" ? 1.05 : 0.26));
+  const maxLife = Math.max(0.001, Number(beam.maxLife) || (phase === "charge" ? 2.05 : 0.26));
   const alpha = clamp((beam.life || 0) / maxLife, 0, 1);
   if (alpha <= 0) {
     return;

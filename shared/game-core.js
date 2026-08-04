@@ -63,7 +63,7 @@ export function energyRateForThrottle(baseRegen, moveDrain, throttle) {
 }
 
 const TAU = Math.PI * 2;
-const BEAM_CHARGE_DURATION = 1.05;
+const BEAM_CHARGE_DURATION = 2.05;
 const BEAM_VISUAL_DURATION = 0.26;
 const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
@@ -294,7 +294,7 @@ export const CHARACTER_DEFS = {
       cooldown: 12,
       cost: 74,
       target: "point",
-      description: "蓄力1.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。",
+      description: "蓄力2.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。",
     },
   },
   kyon: {
