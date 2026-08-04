@@ -1,5 +1,7 @@
-import { getDifficulty, setDifficulty } from "./profile.js";
+import { getDifficulty, getFaction, setDifficulty } from "./profile.js";
 import { startStarfield } from "./starfield.js";
+import { startMenuHero } from "./menu-hero.js";
+import { isMobile } from "./mobile.js";
 import { t } from "./i18n.js";
 
 const DIFFICULTIES = [
@@ -23,19 +25,25 @@ function menuItem({ no, label, sub, action, active = false }) {
 
 export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
   const controller = new AbortController();
+  const faction = getFaction();
   const screen = document.createElement("section");
-  screen.className = "solo-flow ts-stage";
+  screen.className = `solo-flow ts-stage ts-faction-${faction}`;
   screen.innerHTML = `
     <canvas class="ts-bg" aria-hidden="true"></canvas>
     <div class="ts-vignette" aria-hidden="true"></div>
-    <div class="solo-flow-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
+    <div class="ts-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
     <div class="ts-content solo-flow-content">
       <div class="solo-flow-panel"></div>
     </div>`;
   document.body.appendChild(screen);
   const battleView = document.getElementById("battleView");
   battleView?.setAttribute("inert", "");
-  startStarfield(screen.querySelector(".ts-bg"), controller.signal, { density: 23000 });
+  startStarfield(screen.querySelector(".ts-bg"), controller.signal);
+  startMenuHero(screen.querySelector(".ts-hero-img"), {
+    faction,
+    signal: controller.signal,
+    mobile: isMobile(),
+  });
 
   const panel = screen.querySelector(".solo-flow-panel");
   let step = "campaign";
@@ -43,13 +51,12 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
 
   function campaignHtml() {
     return `
-      <div class="solo-flow-heading">
-        <div class="ts-seal" aria-hidden="true"></div>
-        <p class="solo-flow-kicker">${t("单人战役")}</p>
-        <h1 class="solo-flow-title">${t("选择战役")}</h1>
-        <p class="solo-flow-subtitle">Campaign Registry · 选择本次出击任务</p>
+      <header class="ts-head solo-flow-heading">
+        <div class="ts-seal" role="img" aria-label="${t("SOS团")}"></div>
+        <h1 class="ts-title">${t("射手座之日")}</h1>
+        <p class="ts-subtitle">The Day of Sagittarius</p>
         <div class="ts-rule"></div>
-      </div>
+      </header>
       <nav class="ts-menu" aria-label="${t("选择战役")}">
         ${menuItem({ no: "01", label: "标准对战", sub: "自由编队，对抗统合思念体舰队", action: "standard" })}
         ${menuItem({ no: "02", label: "教程", sub: "固定舰队，循序学习航行、侦察、分舰与交火", action: "tutorial" })}
@@ -60,13 +67,12 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
   function difficultyHtml() {
     const current = getDifficulty();
     return `
-      <div class="solo-flow-heading">
-        <div class="ts-seal" aria-hidden="true"></div>
-        <p class="solo-flow-kicker">${t("标准对战")}</p>
-        <h1 class="solo-flow-title">${t("选择难度")}</h1>
-        <p class="solo-flow-subtitle">Threat Assessment · 难度将在确认后锁定</p>
+      <header class="ts-head solo-flow-heading">
+        <div class="ts-seal" role="img" aria-label="${t("SOS团")}"></div>
+        <h1 class="ts-title">${t("射手座之日")}</h1>
+        <p class="ts-subtitle">The Day of Sagittarius</p>
         <div class="ts-rule"></div>
-      </div>
+      </header>
       <nav class="ts-menu" aria-label="${t("选择难度")}">
         ${DIFFICULTIES.map((item) => menuItem({ ...item, action: `difficulty:${item.key}`, active: item.key === current })).join("")}
       </nav>
