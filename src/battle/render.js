@@ -230,7 +230,6 @@ export function drawYukiRadar(ctx, frame) {
   const elapsed = Number(state.elapsed) || 0;
   const angle = radarAngleAt(radar, elapsed);
   const edge = rayToRectEdge(source.x, source.y, angle, 0, 0, LOGICAL, LOGICAL);
-  const fullRadius = Math.hypot(LOGICAL, LOGICAL);
 
   ctx.save();
   ctx.beginPath();
@@ -238,92 +237,87 @@ export function drawYukiRadar(ctx, frame) {
   ctx.clip();
   ctx.globalCompositeOperation = "screen";
 
-  // 极淡的磷光拖尾扇区，读得出旋转方向但不会盖过航线与交火。
-  const sweepGlow = ctx.createRadialGradient(source.x, source.y, 8, source.x, source.y, fullRadius);
-  sweepGlow.addColorStop(0, "rgba(154, 235, 225, 0.07)");
-  sweepGlow.addColorStop(0.48, "rgba(102, 210, 207, 0.035)");
-  sweepGlow.addColorStop(1, "rgba(76, 173, 190, 0.004)");
-  ctx.fillStyle = sweepGlow;
-  ctx.beginPath();
-  ctx.moveTo(source.x, source.y);
-  ctx.arc(source.x, source.y, fullRadius, angle, angle + 0.19);
-  ctx.closePath();
-  ctx.fill();
-
   const rayGradient = ctx.createLinearGradient(source.x, source.y, edge.x, edge.y);
-  rayGradient.addColorStop(0, "rgba(210, 255, 246, 0.2)");
-  rayGradient.addColorStop(0.42, "rgba(130, 226, 219, 0.13)");
-  rayGradient.addColorStop(1, "rgba(87, 186, 196, 0.025)");
-  ctx.strokeStyle = rayGradient;
-  ctx.lineCap = "round";
-  ctx.globalAlpha = 0.24;
-  ctx.lineWidth = 4.5;
-  ctx.beginPath();
-  ctx.moveTo(source.x, source.y);
-  ctx.lineTo(edge.x, edge.y);
-  ctx.stroke();
-  ctx.globalAlpha = 0.72;
-  ctx.lineWidth = 0.8;
-  ctx.stroke();
-
-  // 资讯扫描束：在柔和主光束上叠加流动分段、距离刻度与数据脉冲，
-  // 科技感来自节奏和结构，不靠高亮度压住战场信息。
+  rayGradient.addColorStop(0, "rgba(220, 255, 248, 0.82)");
+  rayGradient.addColorStop(0.5, "rgba(126, 237, 224, 0.62)");
+  rayGradient.addColorStop(1, "rgba(61, 170, 190, 0.08)");
   const rayDx = edge.x - source.x;
   const rayDy = edge.y - source.y;
   const rayLength = Math.max(1, Math.hypot(rayDx, rayDy));
   const normalX = -rayDy / rayLength;
   const normalY = rayDx / rayLength;
-  ctx.strokeStyle = "rgba(187, 255, 244, 0.7)";
-  ctx.globalAlpha = 0.34;
-  ctx.lineWidth = 0.72;
-  ctx.setLineDash([17, 9, 3, 8]);
-  ctx.lineDashOffset = -elapsed * 24;
+
+  // 资讯扫描束：不使用扇形铺色，以一条高精度亮芯、两条异步数据轨和离散校准节点
+  // 构成扫描线本体，保持科技感的同时不遮盖战区信息。
+  ctx.lineCap = "round";
+  ctx.strokeStyle = rayGradient;
+  ctx.globalAlpha = 0.2;
+  ctx.lineWidth = 4.2;
   ctx.beginPath();
   ctx.moveTo(source.x, source.y);
   ctx.lineTo(edge.x, edge.y);
   ctx.stroke();
+
+  ctx.globalAlpha = 0.92;
+  ctx.lineWidth = 0.82;
+  ctx.stroke();
+
+  for (const rail of [-1, 1]) {
+    const railOffset = rail * 4.3;
+    ctx.strokeStyle = rail < 0 ? "rgba(191, 255, 245, 0.72)" : "rgba(89, 214, 217, 0.62)";
+    ctx.globalAlpha = 0.46;
+    ctx.lineWidth = 0.68;
+    ctx.setLineDash(rail < 0 ? [9, 6, 2, 5] : [3, 5, 12, 7]);
+    ctx.lineDashOffset = elapsed * (rail < 0 ? -34 : 27);
+    ctx.beginPath();
+    ctx.moveTo(source.x + normalX * railOffset, source.y + normalY * railOffset);
+    ctx.lineTo(edge.x + normalX * railOffset, edge.y + normalY * railOffset);
+    ctx.stroke();
+  }
   ctx.setLineDash([]);
   ctx.lineDashOffset = 0;
 
   ctx.strokeStyle = "#b9f8ef";
   ctx.fillStyle = "#d9fff8";
-  for (const fraction of [0.2, 0.4, 0.62, 0.82]) {
+  for (const [index, fraction] of [0.14, 0.28, 0.45, 0.64, 0.83].entries()) {
     const x = source.x + rayDx * fraction;
     const y = source.y + rayDy * fraction;
-    const tickSize = 2.3 + fraction * 2.2;
-    ctx.globalAlpha = 0.2 - fraction * 0.1;
-    ctx.lineWidth = 0.7;
+    const side = index % 2 === 0 ? 1 : -1;
+    const tickInner = 2.1;
+    const tickOuter = 7.2 + fraction * 2.8;
+    ctx.globalAlpha = 0.54 - fraction * 0.24;
+    ctx.lineWidth = 0.72;
     ctx.beginPath();
-    ctx.moveTo(x - normalX * tickSize, y - normalY * tickSize);
-    ctx.lineTo(x + normalX * tickSize, y + normalY * tickSize);
+    ctx.moveTo(x + normalX * tickInner * side, y + normalY * tickInner * side);
+    ctx.lineTo(x + normalX * tickOuter * side, y + normalY * tickOuter * side);
+    ctx.lineTo(
+      x + normalX * tickOuter * side - Math.cos(angle) * 3.2,
+      y + normalY * tickOuter * side - Math.sin(angle) * 3.2,
+    );
     ctx.stroke();
   }
 
-  const packetFraction = (elapsed * 0.19) % 1;
-  const packetX = source.x + rayDx * packetFraction;
-  const packetY = source.y + rayDy * packetFraction;
-  const packetRadius = 2.2;
-  ctx.globalAlpha = 0.42 * (1 - packetFraction * 0.55);
-  ctx.beginPath();
-  ctx.moveTo(packetX + Math.cos(angle) * packetRadius, packetY + Math.sin(angle) * packetRadius);
-  ctx.lineTo(packetX + normalX * packetRadius, packetY + normalY * packetRadius);
-  ctx.lineTo(packetX - Math.cos(angle) * packetRadius, packetY - Math.sin(angle) * packetRadius);
-  ctx.lineTo(packetX - normalX * packetRadius, packetY - normalY * packetRadius);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = "#75cfcf";
-  ctx.lineWidth = 0.65;
-  ctx.setLineDash([4, 10]);
-  ctx.lineDashOffset = elapsed * 8;
-  for (const radius of [150, 310, 540, 820]) {
-    ctx.globalAlpha = 0.11 * (1 - radius / 1200);
+  for (const [packetIndex, phaseOffset] of [0, 0.31, 0.67].entries()) {
+    const packetFraction = (elapsed * 0.22 + phaseOffset) % 1;
+    const packetX = source.x + rayDx * packetFraction;
+    const packetY = source.y + rayDy * packetFraction;
+    const packetRadius = 3.5 - packetFraction * 0.75;
+    const packetPulse = 0.72 + Math.sin(elapsed * 7.5 + packetIndex * 2.1) * 0.28;
+    ctx.globalAlpha = packetPulse * (0.72 - packetFraction * 0.38);
+    ctx.lineWidth = 0.72;
+    ctx.strokeStyle = "#bafff4";
     ctx.beginPath();
-    ctx.arc(source.x, source.y, radius, angle, angle + 0.19);
+    ctx.moveTo(packetX - normalX * 6.4, packetY - normalY * 6.4);
+    ctx.lineTo(packetX + normalX * 6.4, packetY + normalY * 6.4);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(packetX + Math.cos(angle) * packetRadius, packetY + Math.sin(angle) * packetRadius);
+    ctx.lineTo(packetX + normalX * packetRadius, packetY + normalY * packetRadius);
+    ctx.lineTo(packetX - Math.cos(angle) * packetRadius, packetY - Math.sin(angle) * packetRadius);
+    ctx.lineTo(packetX - normalX * packetRadius, packetY - normalY * packetRadius);
+    ctx.closePath();
+    ctx.fill();
   }
-  ctx.setLineDash([]);
-  ctx.lineDashOffset = 0;
 
   const sourcePulse = 0.5 + Math.sin(elapsed * 2.4) * 0.5;
   ctx.globalAlpha = 0.38;

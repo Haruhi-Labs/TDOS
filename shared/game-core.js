@@ -73,7 +73,7 @@ const DEG_TO_RAD = Math.PI / 180;
 const SHIP_HULL_SIZE_SCALE = 1.28;
 export const YUKI_RADAR_ROTATION_SECONDS = 20;
 const YUKI_RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
-const YUKI_RADAR_AFTERIMAGE_RATIO = 0.58;
+const YUKI_RADAR_IDENTIFY_ZONE_WIDTHS = 1;
 const YUKI_RADAR_CONTACT_MIN_LIFE = 2.6;
 const YUKI_RADAR_CONTACT_MAX_LIFE = 3.8;
 export const SCOUT_LAUNCH_COST = 28;
@@ -247,7 +247,7 @@ export const CHARACTER_DEFS = {
       id: "data_overmind_radar",
       name: "资讯统合雷达",
       type: "passive",
-      description: "被动持续以逆时针雷达波扫描全图。视野外敌舰仅产生带距离误差的私有回波：越近越清晰，适中距离可辨识角色；不会获得真实视野。",
+      description: "被动持续以逆时针雷达波扫描全图。视野外敌舰仅产生带距离误差的私有回波：越近越清晰，一个战区宽度内可辨识角色；不会获得真实视野。",
     },
     subSkill: {
       id: "apm_overdrive",
@@ -2870,7 +2870,8 @@ class Team {
     const errorAngle = stableRadarNoise(seed, 1) * TAU;
     const errorDistance = uncertainty * Math.sqrt(stableRadarNoise(seed, 2));
     const headingError = (stableRadarNoise(seed, 3) - 0.5) * (0.15 + distanceRatio * 0.9);
-    const afterimage = distanceRatio <= YUKI_RADAR_AFTERIMAGE_RATIO;
+    const identifyDistance = (this.match.worldSize / 3) * YUKI_RADAR_IDENTIFY_ZONE_WIDTHS;
+    const afterimage = targetDistance <= identifyDistance;
     const life = lerp(YUKI_RADAR_CONTACT_MIN_LIFE, YUKI_RADAR_CONTACT_MAX_LIFE, clarity);
 
     return {

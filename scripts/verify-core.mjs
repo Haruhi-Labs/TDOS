@@ -351,6 +351,7 @@ function yukiPassiveCheck() {
   const teamA = sim.teamA;
   const main = teamA.ships.main;
   const enemyMain = sim.teamB.ships.main;
+  const zoneWidth = sim.zones[0].width;
 
   assert(!teamA.areSkillsDisabled(), "长门新雷达被动仍错误封印全队技能");
   const initialRadar = sim.serializeRadarForSeat("A");
@@ -367,8 +368,19 @@ function yukiPassiveCheck() {
   assert(mediumContact, "长门雷达波扫过视野外敌舰时未生成回波");
   assert(mediumContact.kind === "afterimage", "适中距离的雷达回波未显示为舰队残影");
   assert(mediumContact.characterId === enemyMain.characterId, "适中距离的雷达残影未携带角色身份");
+  assert(Math.hypot(enemyMain.x - main.x, enemyMain.y - main.y) <= zoneWidth, "角色识别测试目标不在一个战区宽度内");
   assert(main.energy === energyBeforeScan, "长门被动雷达错误消耗了能量");
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达回波错误转化成了真实视野");
+
+  enemyMain.x = main.x + zoneWidth + 1;
+  enemyMain.y = main.y;
+  teamA.radarPassive.angle = 0;
+  teamA.radarPassive.contacts.clear();
+  teamA.computeVisibility(sim.teamB);
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  const outsideIdentifyContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
+  assert(outsideIdentifyContact?.kind === "disturbance", "超过一个战区宽度后仍显示可辨识的舰队残影");
+  assert(outsideIdentifyContact.characterId === null, "超过一个战区宽度后仍泄露角色身份");
 
   enemyMain.x = sim.worldSize - 10;
   enemyMain.y = main.y;
