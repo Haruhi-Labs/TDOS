@@ -31,7 +31,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "有希",
       title: "高感知统合支援舰",
       flavor: "资讯统合思念体级别的情报能力",
-      flagshipSkill: { name: "资讯统合雷达", description: "被动持续以逆时针雷达波扫描全图。视野外敌舰仅产生带距离误差的私有回波：越近越清晰，一个战区宽度内可辨识角色；不会获得真实视野。" },
+      flagshipSkill: { name: "资讯统合雷达", description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。" },
       subSkill: { name: "apm上万", description: "向8个方向各射出一对（共16架）高速侦察机。" },
     },
     future1096: {
@@ -89,7 +89,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "有希",
       title: "高感知統合支援艦",
       flavor: "情報統合思念体級の情報能力",
-      flagshipSkill: { name: "情報統合レーダー", description: "パッシブで反時計回りのレーダー波が常時マップ全域を走査する。視界外の敵艦は距離に応じた誤差を含む自分専用の反応としてのみ現れ、近いほど鮮明になり、1戦区分の距離内では人物を識別できる。実視界は得られない。" },
+      flagshipSkill: { name: "情報統合レーダー", description: "パッシブでレーダーが常時マップ全域を走査し、敵の動向を捉える。距離が近いほど誤差は小さくなり、近距離では敵キャラクターを識別できる。実視界は得られない。" },
       subSkill: { name: "APM一万超え", description: "8方向それぞれへ一対（計16機）の高速偵察機を放つ。" },
     },
     future1096: {
@@ -147,7 +147,7 @@ const CHARACTER_TEXT = Object.freeze({
       shortName: "Yuki",
       title: "High-Sensor Integrated Support",
       flavor: "Information capability on the level of the Data Overmind",
-      flagshipSkill: { name: "Data Integration Radar", description: "A passive counterclockwise radar sweep continuously scans the full map. Enemies outside vision create private, distance-inaccurate echoes only: nearer returns are clearer, and characters are identified within one zone width. It never grants true vision." },
+      flagshipSkill: { name: "Data Integration Radar", description: "Passively scans the entire map by radar to track enemy movement. Positional error decreases at closer range, and nearby enemy characters can be identified. It never grants true vision." },
       subSkill: { name: "APM Overdrive", description: "Launches a pair of high-speed scouts in each of 8 directions (16 total)." },
     },
     future1096: {

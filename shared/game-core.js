@@ -247,7 +247,7 @@ export const CHARACTER_DEFS = {
       id: "data_overmind_radar",
       name: "资讯统合雷达",
       type: "passive",
-      description: "被动持续以逆时针雷达波扫描全图。视野外敌舰仅产生带距离误差的私有回波：越近越清晰，一个战区宽度内可辨识角色；不会获得真实视野。",
+      description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。",
     },
     subSkill: {
       id: "apm_overdrive",
