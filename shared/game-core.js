@@ -71,7 +71,9 @@ const BEAM_DAMAGE_RATIO = 0.28;
 const FUTURE_1096_HULL_RATIO = 0.75;
 const DEG_TO_RAD = Math.PI / 180;
 const SHIP_HULL_SIZE_SCALE = 1.28;
-export const YUKI_RADAR_ROTATION_SECONDS = 20;
+const YUKI_RADAR_BASE_ROTATION_SECONDS = 20;
+const YUKI_RADAR_SPEED_MULTIPLIER = 1.5;
+export const YUKI_RADAR_ROTATION_SECONDS = YUKI_RADAR_BASE_ROTATION_SECONDS / YUKI_RADAR_SPEED_MULTIPLIER;
 const YUKI_RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
 const YUKI_RADAR_IDENTIFY_ZONE_WIDTHS = 1;
 const YUKI_RADAR_CONTACT_MIN_LIFE = 2.6;
@@ -1953,6 +1955,7 @@ class Team {
 
     this.extraShips = [];
     this.radarPassive = {
+      epochAngle: normalizeAngle(facing),
       angle: normalizeAngle(facing),
       scanSequence: 0,
       contacts: new Map(),
@@ -2910,9 +2913,14 @@ class Team {
       }
     }
 
-    const previousAngle = radar.angle;
-    const sweepDistance = YUKI_RADAR_ANGULAR_SPEED * Math.max(0, Number(dt) || 0);
-    radar.angle = normalizeAngle(previousAngle - sweepDistance);
+    // 扫线角度只由对局绝对时间决定，舰队的位移、航向、速度与帧累计误差
+    // 均不会改变其角速度；舰船只作为随动的雷达圆心。
+    const safeDt = Math.max(0, Number(dt) || 0);
+    const previousTime = Math.max(0, now - safeDt);
+    const previousAngle = normalizeAngle(radar.epochAngle - YUKI_RADAR_ANGULAR_SPEED * previousTime);
+    const currentAngle = normalizeAngle(radar.epochAngle - YUKI_RADAR_ANGULAR_SPEED * now);
+    const sweepDistance = Math.min(TAU, YUKI_RADAR_ANGULAR_SPEED * (now - previousTime));
+    radar.angle = currentAngle;
 
     for (const target of enemyTeam.getAllShips()) {
       if (!target.alive || this.visibleEnemyIds.has(target.id)) {

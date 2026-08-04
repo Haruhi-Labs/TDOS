@@ -8,6 +8,7 @@ import {
   SCOUT_LAUNCH_COST,
   THROTTLE_GEAR_VALUES,
   TICK_DT,
+  YUKI_RADAR_ROTATION_SECONDS,
   energyRateForThrottle,
   normalizeThrottleToGear,
   throttleForGear,
@@ -356,10 +357,33 @@ function yukiPassiveCheck() {
   assert(!teamA.areSkillsDisabled(), "长门新雷达被动仍错误封印全队技能");
   const initialRadar = sim.serializeRadarForSeat("A");
   assert(initialRadar?.active, "长门旗舰雷达未在开局自动启用");
-  assert(initialRadar.rotationSeconds === 20, "长门雷达旋转周期不是预期的缓慢20秒");
+  assert(Math.abs(initialRadar.rotationSeconds - 20 / 1.5) < 1e-9, "长门雷达旋转速度未提升为原来的1.5倍");
   assert(initialRadar.angularVelocity < 0, "长门雷达没有沿画布视觉逆时针方向旋转");
 
+  const originalMainPose = { x: main.x, y: main.y, angle: main.angle };
+  const angleBeforeMovement = initialRadar.angle;
+  main.x += 180;
+  main.y -= 110;
+  main.angle += 1.7;
+  sim.elapsed += 1;
+  teamA.updateRadarPassive(sim.teamB, 1);
+  const angleAfterMovement = sim.serializeRadarForSeat("A").angle;
+  const sweptAfterMovement = (angleBeforeMovement - angleAfterMovement + Math.PI * 2) % (Math.PI * 2);
+  assert(
+    Math.abs(sweptAfterMovement - (Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS) < 1e-9,
+    "长门雷达角速度受到旗舰位移、转向或速度状态影响",
+  );
+  Object.assign(main, originalMainPose);
+
+  const alignRadarToBearingZero = () => {
+    teamA.radarPassive.epochAngle = ((Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS) * sim.elapsed;
+    teamA.radarPassive.angle = 0;
+    teamA.radarPassive.contacts.clear();
+    sim.elapsed += TICK_DT;
+  };
+
   const energyBeforeScan = main.energy;
+  alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达测试前置敌舰应在常规视野外");
   teamA.updateRadarPassive(sim.teamB, TICK_DT);
@@ -374,8 +398,7 @@ function yukiPassiveCheck() {
 
   enemyMain.x = main.x + zoneWidth + 1;
   enemyMain.y = main.y;
-  teamA.radarPassive.angle = 0;
-  teamA.radarPassive.contacts.clear();
+  alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   teamA.updateRadarPassive(sim.teamB, TICK_DT);
   const outsideIdentifyContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
@@ -384,8 +407,7 @@ function yukiPassiveCheck() {
 
   enemyMain.x = sim.worldSize - 10;
   enemyMain.y = main.y;
-  teamA.radarPassive.angle = 0;
-  teamA.radarPassive.contacts.clear();
+  alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   teamA.updateRadarPassive(sim.teamB, TICK_DT);
   const farContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
@@ -400,7 +422,7 @@ function yukiPassiveCheck() {
 
   enemyMain.x = main.x + 100;
   enemyMain.y = main.y;
-  teamA.radarPassive.angle = 0;
+  alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   assert(teamA.visibleEnemyIds.has(enemyMain.id), "近距离敌舰未进入任意常规视野");
   teamA.updateRadarPassive(sim.teamB, TICK_DT);
