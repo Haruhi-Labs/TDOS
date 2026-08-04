@@ -4,8 +4,8 @@ import { t } from "./i18n.js";
 // 极简 History 路由器
 // · 干净 URL（/play、/online …），无 .html 后缀。
 // · 每个路由是一个「可挂载模块」：导出 mount(root, ctx) → 可选 unmount()。
-// · 切换路由时先卸载上一个（停 rAF、断 socket、移除监听），再挂载下一个，
-//   避免多个游戏循环/网络连接泄漏并存。
+// · 切换路由时先加载新模块，代码就绪后再卸载上一个（停 rAF、断 socket、移除监听）并挂载，
+//   既避免多个游戏循环/网络连接泄漏并存，也不在懒加载期间露出空白帧。
 // · 拦截站内 <a href="/..."> 点击走 pushState；支持浏览器前进/后退。
 // · base 感知：线上挂在 /test-game/ 子路径下时，内部一律用「应用路径」
 //   (/、/play …)，与 location.pathname 间靠 toAppPath/toUrlPath 剥离/拼接
@@ -42,11 +42,7 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
     return mod && mod.default && mod.default.mount ? mod.default : mod;
   }
 
-  async function render(path) {
-    const myToken = ++token;
-    const entry = routes[path] || notFound;
-
-    // 卸载上一个路由
+  function clearCurrent() {
     if (teardown) {
       try {
         teardown();
@@ -56,16 +52,27 @@ export function createRouter({ routes, outlet, notFound, onNavigate }) {
       teardown = null;
     }
     outlet.innerHTML = "";
+  }
+
+  async function render(path) {
+    const myToken = ++token;
+    const entry = routes[path] || notFound;
 
     let mod;
     try {
+      // 懒加载期间保留当前页面及其合成图层，避免先清空再等待脚本造成闪帧。
       mod = await loadModule(entry);
     } catch (error) {
       console.error("[router] failed to load route", path, error);
+      if (myToken !== token) return;
+      clearCurrent();
       outlet.innerHTML = `<div class="boot-splash">${t("页面加载失败")}</div>`;
       return;
     }
     if (myToken !== token) return; // 期间又导航了，放弃
+
+    // 新页面代码就绪后再卸载旧页面；清空与挂载发生在同一轮任务内，不产生可见空窗。
+    clearCurrent();
 
     if (typeof onNavigate === "function") onNavigate(path);
     const result = await mod.mount(outlet, { navigate });

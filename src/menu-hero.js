@@ -27,6 +27,37 @@ const GROUP_VW = 820;
 const GROUP_VH = 940;
 const MOBILE_HERO_ZOOM = 1.06;
 
+// 路由切换前后复用同一批已解码立绘。首页完成加载后，单人子菜单首帧即可直接
+// 合成完整群像与柔光，不再从空画布逐张浮现。
+const HERO_IMAGE_CACHE = new Map();
+const HERO_IMAGE_LOADS = new Map();
+
+function heroImageKey(faction, id) {
+  return `${faction}/${id}`;
+}
+
+function loadHeroImage(faction, id) {
+  const key = heroImageKey(faction, id);
+  if (HERO_IMAGE_CACHE.has(key)) return Promise.resolve(HERO_IMAGE_CACHE.get(key));
+  if (HERO_IMAGE_LOADS.has(key)) return HERO_IMAGE_LOADS.get(key);
+
+  const promise = new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      HERO_IMAGE_CACHE.set(key, image);
+      HERO_IMAGE_LOADS.delete(key);
+      resolve(image);
+    };
+    image.onerror = () => {
+      HERO_IMAGE_LOADS.delete(key);
+      resolve(null);
+    };
+    image.src = `${import.meta.env.BASE_URL}assets/portraits/${key}.webp`;
+  });
+  HERO_IMAGE_LOADS.set(key, promise);
+  return promise;
+}
+
 export function startMenuHero(heroCanvas, { faction, signal, mobile = false }) {
   if (!heroCanvas) return;
 
@@ -139,14 +170,17 @@ export function startMenuHero(heroCanvas, { faction, signal, mobile = false }) {
   }
 
   for (const g of GROUP_LAYOUT) {
-    const image = new Image();
-    image.onload = () => {
-      if (signal?.aborted) return;
+    const key = heroImageKey(faction, g.id);
+    if (HERO_IMAGE_CACHE.has(key)) {
+      const image = HERO_IMAGE_CACHE.get(key);
+      if (image) heroImgs[g.id] = image;
+      continue;
+    }
+    loadHeroImage(faction, g.id).then((image) => {
+      if (!image || signal?.aborted) return;
       heroImgs[g.id] = image;
       drawGroup();
-    };
-    image.onerror = () => {};
-    image.src = `${import.meta.env.BASE_URL}assets/portraits/${faction}/${g.id}.webp`;
+    });
   }
 
   window.addEventListener("resize", drawGroup, { signal });
