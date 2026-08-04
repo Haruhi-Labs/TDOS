@@ -684,6 +684,7 @@ function asakuraFlagshipCheck() {
   teamB.split(1);
   const enemySubOk = teamB.castSubSkill("sub1");
   assert(enemyFlagOk && enemySubOk, "朝仓旗舰测试前置敌方增益释放失败");
+  runSteps(sim, TICK_DT);
 
   enemyMain.x = 1180;
   enemyMain.y = 720;
@@ -710,6 +711,64 @@ function asakuraFlagshipCheck() {
   runSteps(sim, 0.2);
   sim.teamA.computeVisibility(sim.teamB);
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能揭示结束后仍持续显示敌方位置");
+}
+
+function asakuraSimultaneousSkillPurgeCheck() {
+  const bladeSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "asakura", sub2: "yuki" },
+      B: { main: "asakura", sub1: "koizumi", sub2: "tsuruya" },
+    },
+  });
+  const bladeTeam = bladeSim.teamA;
+  const purgingTeam = bladeSim.teamB;
+  const asakuraSub = bladeTeam.ships.sub1;
+  bladeTeam.split(1);
+
+  assert(
+    bladeSim.applyActionForSeat("A", { type: "cast_sub_skill", shipKey: "sub1" }),
+    "同tick净化测试前置刀锋女王释放失败",
+  );
+  assert(
+    bladeSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
+    "同tick净化测试前置朝仓旗舰技能释放失败",
+  );
+  assert(asakuraSub.hasEffect("bladeQueenUntil"), "后处理一方错误清除了同tick刚开启的刀锋女王");
+
+  runSteps(bladeSim, TICK_DT);
+  purgingTeam.cooldowns.flagship = 0;
+  for (const ship of purgingTeam.fleetMembersForShip("main")) {
+    ship.energy = ship.maxEnergy;
+  }
+  assert(
+    bladeSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
+    "跨tick净化测试朝仓旗舰技能释放失败",
+  );
+  assert(!asakuraSub.hasEffect("bladeQueenUntil"), "朝仓旗舰技能未清除上一tick已存在的刀锋女王");
+
+  const mirrorSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "asakura", sub1: "haruhi", sub2: "yuki" },
+      B: { main: "asakura", sub1: "koizumi", sub2: "tsuruya" },
+    },
+  });
+  assert(
+    mirrorSim.applyActionForSeat("A", { type: "cast_flagship_skill" }),
+    "朝仓镜像测试A方技能释放失败",
+  );
+  assert(
+    mirrorSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
+    "朝仓镜像测试B方技能释放失败",
+  );
+  assert(
+    mirrorSim.teamA.effects.revealEnemiesUntil > mirrorSim.elapsed
+      && mirrorSim.teamB.effects.revealEnemiesUntil > mirrorSim.elapsed,
+    "朝仓镜像同tick释放仍受座位处理顺序影响",
+  );
 }
 
 function asakuraBladeQueenCheck() {
@@ -1672,6 +1731,7 @@ function main() {
   kyonUniformFireRateCheck();
   haruhiBlindfireCheck();
   asakuraFlagshipCheck();
+  asakuraSimultaneousSkillPurgeCheck();
   asakuraBladeQueenCheck();
   aiFogOfWarCheck();
   aiReactionDelayCheck();

@@ -947,6 +947,9 @@ class Ship {
       brakeCooldownUntil: 0,
       nextShotDamageMultiplier: 1,
     };
+    // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
+    // 后处理的朝仓净化不能因座位处理顺序清掉对方刚刚开启的技能。
+    this.activeSkillEffectStartedTicks = Object.create(null);
   }
 
   setTwinHullMode() {
@@ -1129,12 +1132,34 @@ class Ship {
     return value;
   }
 
-  clearActiveSkillBuffs() {
-    this.effects.critUntil = 0;
-    this.effects.reliableUntil = 0;
-    this.effects.bladeQueenUntil = 0;
-    this.effects.sosBuff = null;
-    this.effects.nextShotDamageMultiplier = 1;
+  markActiveSkillEffectStarted(effectKey) {
+    this.activeSkillEffectStartedTicks[effectKey] = this.team.match.tick;
+  }
+
+  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+    const canClear = (effectKey) => (
+      !preserveCurrentTick
+      || this.activeSkillEffectStartedTicks[effectKey] !== this.team.match.tick
+    );
+    const clearTimedEffect = (effectKey) => {
+      if (!canClear(effectKey)) {
+        return;
+      }
+      this.effects[effectKey] = 0;
+      delete this.activeSkillEffectStartedTicks[effectKey];
+    };
+
+    clearTimedEffect("critUntil");
+    clearTimedEffect("reliableUntil");
+    clearTimedEffect("bladeQueenUntil");
+    if (canClear("sosBuff")) {
+      this.effects.sosBuff = null;
+      delete this.activeSkillEffectStartedTicks.sosBuff;
+    }
+    if (canClear("nextShotDamageMultiplier")) {
+      this.effects.nextShotDamageMultiplier = 1;
+      delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
+    }
   }
 
   routeAnchorShip() {
@@ -1482,6 +1507,7 @@ class Ship {
       damage *= this.effects.nextShotDamageMultiplier;
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "超能力", {}, "#9be0ff");
       this.effects.nextShotDamageMultiplier = 1;
+      delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
     }
 
     if (this.hasEffect("critUntil") && Math.random() < 0.5) {
@@ -1896,6 +1922,7 @@ class Team {
       sponsorUntil: 0,
       revealEnemiesUntil: 0,
     };
+    this.activeSkillEffectStartedTicks = Object.create(null);
 
     const sub1FormationOffset = { x: -36, y: 22 };
     const sub2FormationOffset = { x: -36, y: -22 };
@@ -2226,15 +2253,27 @@ class Team {
 
   setShipEffect(ship, key, duration) {
     ship.effects[key] = this.match.elapsed + duration;
+    ship.markActiveSkillEffectStarted(key);
   }
 
-  clearActiveSkillBuffs() {
-    this.effects.taxiUntil = 0;
-    this.effects.taxiInvulnUntil = 0;
-    this.effects.sponsorUntil = 0;
-    this.effects.revealEnemiesUntil = 0;
+  markActiveSkillEffectStarted(effectKey) {
+    this.activeSkillEffectStartedTicks[effectKey] = this.match.tick;
+  }
+
+  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+    const clearTeamEffect = (effectKey) => {
+      if (preserveCurrentTick && this.activeSkillEffectStartedTicks[effectKey] === this.match.tick) {
+        return;
+      }
+      this.effects[effectKey] = 0;
+      delete this.activeSkillEffectStartedTicks[effectKey];
+    };
+    clearTeamEffect("taxiUntil");
+    clearTeamEffect("taxiInvulnUntil");
+    clearTeamEffect("sponsorUntil");
+    clearTeamEffect("revealEnemiesUntil");
     for (const ship of this.getAllShips()) {
-      ship.clearActiveSkillBuffs();
+      ship.clearActiveSkillBuffs({ preserveCurrentTick });
     }
   }
 
@@ -2362,6 +2401,7 @@ class Team {
       id: buff.id,
       until: this.match.elapsed + 16,
     };
+    ship.markActiveSkillEffectStarted("sosBuff");
     this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, SOS_BUFF_TEXT_KEYS[buff.id] || buff.name, {}, buff.color, buff.name);
   }
 
@@ -2565,6 +2605,8 @@ class Team {
       }
       this.effects.taxiUntil = this.match.elapsed + (meta.duration || 12);
       this.effects.taxiInvulnUntil = this.match.elapsed + (meta.invulnerableDuration || 6);
+      this.markActiveSkillEffectStarted("taxiUntil");
+      this.markActiveSkillEffectStarted("taxiInvulnUntil");
       for (const ship of this.fleetMembersByKey("main")) {
         this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "加速", {}, "#9be0ff");
       }
@@ -2574,6 +2616,7 @@ class Team {
         return false;
       }
       this.effects.sponsorUntil = this.match.elapsed + (meta.duration || 8);
+      this.markActiveSkillEffectStarted("sponsorUntil");
       for (const ship of this.getAllShips()) {
         if (!ship.alive) {
           continue;
@@ -2588,6 +2631,7 @@ class Team {
       const enemyTeam = this.match.enemyTeamBySeat(this.seat);
       enemyTeam.clearActiveSkillBuffs();
       this.effects.revealEnemiesUntil = this.match.elapsed + (meta.duration || 4);
+      this.markActiveSkillEffectStarted("revealEnemiesUntil");
       for (const ship of enemyTeam.getAllShips()) {
         if (!ship.alive) {
           continue;
@@ -2643,6 +2687,7 @@ class Team {
       ok = this.blinkShip(ship, options.targetX, options.targetY, meta.blinkRange || 240);
       if (ok) {
         ship.effects.nextShotDamageMultiplier = 4;
+        ship.markActiveSkillEffectStarted("nextShotDamageMultiplier");
       }
     } else if (ship.characterId === "yuki") {
       this.launchBurstScouts(ship);
