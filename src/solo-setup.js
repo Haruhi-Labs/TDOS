@@ -122,7 +122,9 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
     else if (action.startsWith("difficulty:")) {
       const difficulty = action.split(":")[1];
       setDifficulty(difficulty);
-      conceal(() => onStandard(difficulty));
+      // 先同步挂载不透明的阵容选择层，再隐藏本层，避免两层切换间露出战场一帧。
+      onStandard(difficulty);
+      screen.classList.add("concealed");
     }
   }, { signal: controller.signal });
 
