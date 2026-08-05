@@ -94,11 +94,11 @@ export function battleViewTemplate({
           <section class="controls slim-controls">
             <h2>${t("技能")}</h2>
             <div class="btn-grid">
-              <button id="flagshipBtn">${t("旗舰技能")}</button>
-              <button id="subSkillBtn">${t("分舰技能")}</button>
-              <button id="scoutBtn">${t("派出侦查机")}</button>
-              <button id="autoScoutBtn" type="button">${t("自动侦查：{state}", { state: t("关") })}</button>
-              <button id="brakeBtn" type="button" class="span-2">${t("急刹")}</button>
+              <button id="flagshipBtn"><span class="cooldown-button-label">${t("旗舰技能")}</span></button>
+              <button id="subSkillBtn"><span class="cooldown-button-label">${t("分舰技能")}</span></button>
+              <button id="scoutBtn"><span class="cooldown-button-label">${t("派出侦查机")}</span></button>
+              <button id="autoScoutBtn" type="button"><span class="cooldown-button-label">${t("自动侦查：{state}", { state: t("关") })}</span></button>
+              <button id="brakeBtn" type="button" class="span-2"><span class="cooldown-button-label">${t("急刹")}</span></button>
             </div>
           </section>
         </div>
@@ -129,11 +129,11 @@ ${fleetRowHTML("sub2", t("副二"))}
           <div class="mobile-action-grid">
             <button id="mobileSplitOneBtn" type="button">${t("分离1")}</button>
             <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
-            <button id="mobileBrakeBtn" type="button">${t("急刹")}</button>
-            <button id="mobileFlagshipBtn" type="button">${t("旗舰技")}</button>
-            <button id="mobileScoutBtn" type="button" class="mobile-scout-control" aria-pressed="false" aria-label="${t("侦察：点击释放到中央战区，拖向八个方向选择外围战区")}"><span class="mobile-scout-label">${t("侦察")}</span></button>
-            <button id="mobileSubSkillBtn" type="button">${t("分舰技")}</button>
-            <button id="mobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
+            <button id="mobileBrakeBtn" type="button"><span class="cooldown-button-label">${t("急刹")}</span></button>
+            <button id="mobileFlagshipBtn" type="button"><span class="cooldown-button-label">${t("旗舰技")}</span></button>
+            <button id="mobileScoutBtn" type="button" class="mobile-scout-control" aria-pressed="false" aria-label="${t("侦察：点击释放到中央战区，拖向八个方向选择外围战区")}"><span class="mobile-scout-label cooldown-button-label">${t("侦察")}</span></button>
+            <button id="mobileSubSkillBtn" type="button"><span class="cooldown-button-label">${t("分舰技")}</span></button>
+            <button id="mobileAutoScoutBtn" type="button"><span class="cooldown-button-label">${t("自动侦察")}</span></button>
             <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
             <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
           </div>

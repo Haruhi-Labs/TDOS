@@ -154,6 +154,7 @@ const requiredLinks = [
   ["src/online.js", "./online/result-view.js"],
   ["src/online.js", "./online/lobby-view.js"],
   ["src/online.js", "./online/snapshot-transport.js"],
+  ["src/battle/hud.js", "./cooldown-progress.js"],
   ["src/online/snapshot-transport.js", "../../shared/protocol/ruleset-version.js"],
   ["src/i18n.js", "./i18n/catalog.js"],
   ["src/character-select.js", "./character-select/portraits.js"],

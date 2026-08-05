@@ -1,9 +1,30 @@
 // 共享战斗 HUD 刷新:技能按钮/移动端HUD/全队舰况等纯展示逻辑,单人与在线共用。
 // 约定:第一个参数是各模式 cacheDom 出的 ui 对象(id 已由 battle/template.js 统一),
 // 战斗状态与选中信息全部显式传入,不读各模式的模块级变量。
-import { EMERGENCY_BRAKE_COST, SCOUT_LAUNCH_COST, skillMetaForCharacter } from "../../shared/game-core.js";
+import {
+  AUTO_SCOUT_COOLDOWN_MULTIPLIER,
+  EMERGENCY_BRAKE_COST,
+  MANUAL_SCOUT_COOLDOWN,
+  SCOUT_LAUNCH_COST,
+  skillMetaForCharacter,
+} from "../../shared/game-core.js";
+import { EMERGENCY_BRAKE_COOLDOWN } from "../../shared/game/combat-rules.js";
 import { shipCharacterName, slotLabel as localizedSlotLabel, t } from "../i18n.js";
+import {
+  clearCooldownProgress,
+  mirrorCooldownProgress,
+  setCooldownButtonLabel,
+  setCooldownProgress,
+} from "./cooldown-progress.js";
 import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
+
+const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"];
+
+function scoutCooldownDuration(remaining) {
+  return remaining > MANUAL_SCOUT_COOLDOWN + 0.05
+    ? MANUAL_SCOUT_COOLDOWN * AUTO_SCOUT_COOLDOWN_MULTIPLIER
+    : MANUAL_SCOUT_COOLDOWN;
+}
 
 export function fleetSlotLabel(slotKey) {
   return localizedSlotLabel(slotKey, "short");
@@ -42,6 +63,9 @@ export function updateSkillButtons(ui, own, opts = {}) {
     ui.brakeBtn.disabled = true;
     ui.flagshipBtn.disabled = true;
     ui.subSkillBtn.disabled = true;
+    for (const key of DESKTOP_COOLDOWN_BUTTON_KEYS) {
+      clearCooldownProgress(ui[key]);
+    }
     return;
   }
 
@@ -53,11 +77,14 @@ export function updateSkillButtons(ui, own, opts = {}) {
 
   const scoutLocked = own.skillsDisabled;
   ui.scoutBtn.disabled = scoutLocked || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
-  ui.scoutBtn.textContent = scoutLocked
+  setCooldownButtonLabel(ui.scoutBtn, scoutLocked
     ? t("派出侦查机（已被封印）")
     : (cooldowns.scout || 0) > 0
       ? t("派出侦查机（冷却{seconds}秒）", { seconds: (cooldowns.scout || 0).toFixed(1) })
-      : t("派出侦查机");
+      : t("派出侦查机"));
+  const scoutCooldown = Number(cooldowns.scout) || 0;
+  const scoutDuration = scoutCooldownDuration(scoutCooldown);
+  setCooldownProgress(ui.scoutBtn, scoutCooldown, scoutDuration, "scout");
 
   const autoScoutEnabled = Boolean(own.autoScout?.enabled);
   const autoScoutZoneId = Number(own.autoScout?.zoneId) || selectedZoneId;
@@ -73,16 +100,17 @@ export function updateSkillButtons(ui, own, opts = {}) {
     autoScoutSuffix = t("关·已封印");
   }
   ui.autoScoutBtn.disabled = autoScoutDisabled;
-  ui.autoScoutBtn.textContent = t("自动侦查：{state}", { state: autoScoutSuffix });
+  setCooldownButtonLabel(ui.autoScoutBtn, t("自动侦查：{state}", { state: autoScoutSuffix }));
   ui.autoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
+  setCooldownProgress(ui.autoScoutBtn, autoScoutEnabled ? scoutCooldown : 0, scoutDuration, "auto-scout");
 
   const flagMeta = currentFlagshipMeta(own, fallbackLoadout);
   if (!flagMeta) {
     ui.flagshipBtn.disabled = true;
-    ui.flagshipBtn.textContent = t("旗舰技能");
+    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能"));
   } else if (flagMeta.type === "passive") {
     ui.flagshipBtn.disabled = true;
-    ui.flagshipBtn.textContent = t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") });
+    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") }));
   } else {
     const disabled =
       own.skillsDisabled ||
@@ -90,11 +118,17 @@ export function updateSkillButtons(ui, own, opts = {}) {
       mainEnergy < (flagMeta.cost || 0) ||
       !(mainShip && mainShip.alive);
     ui.flagshipBtn.disabled = disabled;
-    ui.flagshipBtn.textContent =
+    setCooldownButtonLabel(ui.flagshipBtn,
       (cooldowns.flagship || 0) > 0
         ? t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（冷却{seconds}秒）", { seconds: (cooldowns.flagship || 0).toFixed(1) }) })
-        : t("旗舰技能：{name}", { name: flagMeta.name });
+        : t("旗舰技能：{name}", { name: flagMeta.name }));
   }
+  setCooldownProgress(
+    ui.flagshipBtn,
+    cooldowns.flagship,
+    flagMeta?.type === "active" ? flagMeta.cooldown : 0,
+    flagMeta?.id || "flagship",
+  );
 
   const brakeCooldown = Number(selected?.brakeCooldown) || 0;
   const brakeEnergy = Number(selected?.fleetEnergy) || 0;
@@ -112,12 +146,14 @@ export function updateSkillButtons(ui, own, opts = {}) {
     brakeSuffix = t("（制动中）");
   }
   ui.brakeBtn.disabled = brakeDisabled;
-  ui.brakeBtn.textContent = t("急刹{suffix}", { suffix: brakeSuffix });
+  setCooldownButtonLabel(ui.brakeBtn, t("急刹{suffix}", { suffix: brakeSuffix }));
+  setCooldownProgress(ui.brakeBtn, brakeCooldown, EMERGENCY_BRAKE_COOLDOWN, `brake:${selected?.key || "none"}`);
 
   const subMeta = currentSubMeta(selected);
   if (!selected || !subMeta) {
     ui.subSkillBtn.disabled = true;
-    ui.subSkillBtn.textContent = t("分舰技能：切换到副舰后使用");
+    setCooldownButtonLabel(ui.subSkillBtn, t("分舰技能：切换到副舰后使用"));
+    clearCooldownProgress(ui.subSkillBtn);
     return;
   }
 
@@ -137,7 +173,8 @@ export function updateSkillButtons(ui, own, opts = {}) {
     suffix = subMeta.target === "optional_point" ? t("（地图点击闪现，再点按钮原地释放）") : t("（地图点击瞄准）");
   }
   ui.subSkillBtn.disabled = disabled;
-  ui.subSkillBtn.textContent = t("分舰技能：{name}{suffix}", { name: subMeta.name, suffix });
+  setCooldownButtonLabel(ui.subSkillBtn, t("分舰技能：{name}{suffix}", { name: subMeta.name, suffix }));
+  setCooldownProgress(ui.subSkillBtn, cooldown, subMeta.cooldown, `${selected.key}:${subMeta.id}`);
 }
 
 // 移动端战斗 HUD:概要行/提示行/切舰按钮/动作按钮镜像/推进档位高亮。
@@ -181,11 +218,17 @@ export function syncMobileHud(ui, own, opts = {}) {
   ui.mobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
 
   const autoScoutEnabled = Boolean(own.autoScout?.enabled);
-  ui.mobileAutoScoutBtn.textContent = autoScoutEnabled ? t("自侦开") : t("自侦关");
+  setCooldownButtonLabel(ui.mobileAutoScoutBtn, autoScoutEnabled ? t("自侦开") : t("自侦关"));
   ui.mobileAutoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
-  ui.mobileBrakeBtn.textContent = t("急刹");
-  ui.mobileFlagshipBtn.textContent = t("旗舰技");
-  ui.mobileSubSkillBtn.textContent = selected && currentSubMeta(selected) ? currentSubMeta(selected).name : t("分舰技");
+  setCooldownButtonLabel(ui.mobileBrakeBtn, t("急刹"));
+  setCooldownButtonLabel(ui.mobileFlagshipBtn, t("旗舰技"));
+  setCooldownButtonLabel(ui.mobileSubSkillBtn, selected && currentSubMeta(selected) ? currentSubMeta(selected).name : t("分舰技"));
+
+  mirrorCooldownProgress(ui.scoutBtn, ui.mobileScoutBtn);
+  mirrorCooldownProgress(ui.autoScoutBtn, ui.mobileAutoScoutBtn);
+  mirrorCooldownProgress(ui.brakeBtn, ui.mobileBrakeBtn);
+  mirrorCooldownProgress(ui.flagshipBtn, ui.mobileFlagshipBtn);
+  mirrorCooldownProgress(ui.subSkillBtn, ui.mobileSubSkillBtn);
 
   syncThrottleGearControls(ui, selected?.throttle);
 }

@@ -439,6 +439,37 @@ button:active:not(:disabled) {
 }
 button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(0.5); }
 
+/* 冷却阴影覆盖整个按钮并从右向左退去；文字独立置于阴影之上。 */
+.cooldown-button-label {
+  position: relative;
+  z-index: 2;
+}
+button.has-cooldown-progress {
+  isolation: isolate;
+  overflow: hidden;
+  --cooldown-progress: 0;
+}
+button.has-cooldown-progress:disabled {
+  opacity: 0.76;
+  filter: saturate(0.72);
+}
+button.has-cooldown-progress::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 1;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(90deg, #02050bbd 0%, #08131eae 76%, #448f9585 100%);
+  box-shadow:
+    inset -1px 0 0 #b8f0ebcc,
+    inset -9px 0 13px -11px #9fe9e5cc,
+    5px 0 16px #02060e55;
+  transform: scaleX(var(--cooldown-progress));
+  transform-origin: left center;
+  transition: transform 100ms linear;
+}
+
 .btn-link {
   display: inline-flex;
   align-items: center;
@@ -4042,6 +4073,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 @media (prefers-reduced-motion: reduce) {
   #app > *, .ts-content, .page-frame, .lobby-frame { animation: none; }
+  button.has-cooldown-progress::after { transition-duration: 1ms; }
   .mobile-scout-control::before,
   .mobile-scout-label,
   .scout-joystick-base,

@@ -7,6 +7,7 @@ export const SCOUT_LAUNCH_COST = 28;
 export const MANUAL_SCOUT_COOLDOWN = 2.6;
 export const AUTO_SCOUT_COOLDOWN_MULTIPLIER = 2;
 export const EMERGENCY_BRAKE_COST = 18;
+export const EMERGENCY_BRAKE_COOLDOWN = 1.25;
 
 export const FIRE_ARC_BANDS = Object.freeze([
   { startDeg: -60, endDeg: 60, multiplier: 1 },
