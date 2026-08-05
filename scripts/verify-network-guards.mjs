@@ -9,6 +9,7 @@ function delay(ms) {
 const port = 24000 + Math.floor(Math.random() * 1000);
 const url = `ws://127.0.0.1:${port}`;
 let server = null;
+let serverOutput = "";
 const clients = new Set();
 
 class GuardClient {
@@ -93,6 +94,7 @@ class GuardClient {
 }
 
 async function startServer() {
+  serverOutput = "";
   server = spawn(process.execPath, ["server/server.js"], {
     cwd: process.cwd(),
     env: {
@@ -109,23 +111,22 @@ async function startServer() {
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
-  let output = "";
   server.stdout.on("data", (chunk) => {
-    output += String(chunk);
+    serverOutput += String(chunk);
   });
   server.stderr.on("data", (chunk) => {
-    output += String(chunk);
+    serverOutput += String(chunk);
   });
   for (let index = 0; index < 200; index += 1) {
-    if (output.includes("网络对战服务器已启动")) {
+    if (serverOutput.includes("网络对战服务器已启动")) {
       return;
     }
     if (server.exitCode !== null) {
-      throw new Error(`保护测试服务器提前退出：${output}`);
+      throw new Error(`保护测试服务器提前退出：${serverOutput}`);
     }
     await delay(10);
   }
-  throw new Error(`保护测试服务器启动超时：${output}`);
+  throw new Error(`保护测试服务器启动超时：${serverOutput}`);
 }
 
 async function terminateClients() {
@@ -292,6 +293,9 @@ try {
   console.log("网络保护校验通过：大包、心跳、连接、房间、雷达隐私、观战与消息洪泛均已受控。");
 } catch (error) {
   console.error(`网络保护校验失败：${error instanceof Error ? error.stack || error.message : String(error)}`);
+  if (serverOutput.trim()) {
+    console.error(`服务器输出：\n${serverOutput.trim()}`);
+  }
   process.exitCode = 1;
 } finally {
   await stopEverything();

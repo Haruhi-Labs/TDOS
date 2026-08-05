@@ -12,49 +12,32 @@ import {
   TICK_DT,
   normalizeLoadout,
 } from "../shared/game-core.js";
+import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
-  createStatePatch,
-  quantizeNetworkState,
-} from "../shared/network-patch.js";
-
-function envInteger(name, fallback, min, max) {
-  const value = Number(process.env[name]);
-  return Number.isInteger(value) && value >= min && value <= max ? value : fallback;
-}
-
-const PORT = Number(process.env.PORT || 21246);
-const NETWORK_BUILD = "network-guard-20260724-01";
-const NETWORK_PROTOCOL_VERSION = 2;
-const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
-const ROOM_CAPACITY = 2;
-const MAX_CATCHUP_STEPS = 6;
-const LOOP_IDLE_MS = 2;
-const PVP_COUNTDOWN_MS = 3000;
-const MAX_SNAPSHOT_BUFFERED_BYTES = 128 * 1024;
-const SNAPSHOT_KEYFRAME_INTERVAL = SNAPSHOT_RATE * 5;
-const MAX_DELTA_TO_FULL_RATIO = 0.8;
-const PLAYER_STREAM_DIVISORS = [1, 2, 3];
-const SPECTATOR_STREAM_DIVISORS = [2, 3, 5];
-const CONGESTION_BUFFERED_BYTES = 24 * 1024;
-const SEVERE_CONGESTION_BUFFERED_BYTES = 96 * 1024;
-const CONGESTION_INFLIGHT_SNAPSHOTS = 12;
-const SEVERE_CONGESTION_INFLIGHT_SNAPSHOTS = 30;
-const CONGESTION_ACK_AGE_MS = 1200;
-const SEVERE_CONGESTION_ACK_AGE_MS = 3000;
-const STREAM_RECOVERY_STABLE_MS = 4000;
-const LOBBY_BROADCAST_DEBOUNCE_MS = 30;
-const MAX_PAYLOAD_BYTES = envInteger("MAX_PAYLOAD_BYTES", 16 * 1024, 1024, 64 * 1024);
-const MAX_CONNECTIONS = envInteger("MAX_CONNECTIONS", 256, 8, 4096);
-const MAX_ROOMS = envInteger("MAX_ROOMS", 64, 4, 1024);
-const MAX_ACTIVE_ROOMS = envInteger("MAX_ACTIVE_ROOMS", 16, 2, 512);
-const MAX_SPECTATORS_PER_ROOM = envInteger("MAX_SPECTATORS_PER_ROOM", 24, 1, 256);
-const MAX_STREAM_CAPACITY_UNITS = envInteger("MAX_STREAM_CAPACITY_UNITS", 72, 4, 2048);
-const HEARTBEAT_INTERVAL_MS = envInteger("HEARTBEAT_INTERVAL_MS", 30_000, 100, 120_000);
-const NETWORK_METRICS_INTERVAL_MS = envInteger("NETWORK_METRICS_INTERVAL_MS", 60_000, 1000, 600_000);
+  HEARTBEAT_INTERVAL_MS,
+  LOBBY_BROADCAST_DEBOUNCE_MS,
+  LOOP_IDLE_MS,
+  MAX_ACTIVE_ROOMS,
+  MAX_CATCHUP_STEPS,
+  MAX_CONNECTIONS,
+  MAX_PAYLOAD_BYTES,
+  MAX_ROOMS,
+  MAX_SNAPSHOT_BUFFERED_BYTES,
+  MAX_SPECTATORS_PER_ROOM,
+  MAX_STREAM_CAPACITY_UNITS,
+  NETWORK_BUILD,
+  NETWORK_METRICS_INTERVAL_MS,
+  NETWORK_PROTOCOL_VERSION,
+  PORT,
+  PVP_COUNTDOWN_MS,
+  ROOM_CAPACITY,
+  SNAPSHOT_INTERVAL,
+} from "./config.js";
+import { CONTROL_MESSAGE_TYPES, messageCode } from "./protocol.js";
+import { createSnapshotStream } from "./snapshot-stream.js";
 
 const players = new Map();
 const rooms = new Map();
-let nextSnapshotStreamPhase = 0;
 let lobbyBroadcastTimer = null;
 const networkStats = {
   snapshotMessages: 0,
@@ -67,51 +50,12 @@ const networkStats = {
   rateLimitedMessages: 0,
   coalescedInputs: 0,
 };
-const CONTROL_MESSAGE_TYPES = new Set([
-  "set_name",
-  "set_loadout",
-  "list_rooms",
-  "create_room",
-  "join_room",
-  "spectate_room",
-  "join_private",
-  "leave_room",
-]);
-
-const MESSAGE_CODES = {
-  "房间已关闭": "room_closed",
-  "对手离开房间": "opponent_left",
-  "对手断开连接，房间已解散": "opponent_disconnected",
-  "对局结束，已返回大厅": "match_ended_draw",
-  "你已经在房间中": "already_in_room",
-  "房间不存在": "room_not_found",
-  "该房间不接受玩家加入": "room_not_joinable",
-  "该房间不接受观战": "room_not_spectatable",
-  "房间不在等待状态": "room_not_waiting",
-  "房间不在对战状态": "room_not_running",
-  "房间已满或不可加入": "room_full",
-  "消息格式错误": "invalid_message_format",
-  "未知消息类型": "unknown_message_type",
-  "服务器连接数已满": "server_connection_limit",
-  "服务器房间数已满": "server_room_limit",
-  "服务器活跃对局已满": "server_active_room_limit",
-  "服务器实时流容量已满": "server_stream_capacity_limit",
-  "该房间观战人数已满": "room_spectator_limit",
-};
-
-function messageCode(message, fallback = "unknown") {
-  const raw = String(message || "");
-  if (MESSAGE_CODES[raw]) {
-    return MESSAGE_CODES[raw];
-  }
-  if (raw.includes("左翼舰队获胜")) {
-    return "match_ended_left_win";
-  }
-  if (raw.includes("右翼舰队获胜")) {
-    return "match_ended_right_win";
-  }
-  return fallback;
-}
+const {
+  resetSnapshotStream,
+  send,
+  sendSnapshotToPlayer,
+  sendToPlayer,
+} = createSnapshotStream({ networkStats });
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -187,199 +131,6 @@ function createPrivateCode() {
     code = String(Math.floor(Math.random() * 900000 + 100000));
   } while (existing.has(code));
   return code;
-}
-
-function send(ws, payload) {
-  if (!ws || ws.readyState !== 1) {
-    return;
-  }
-  ws.send(JSON.stringify(payload));
-}
-
-function sendToPlayer(player, payload) {
-  if (!player) {
-    return;
-  }
-  send(player.ws, payload);
-}
-
-function resetSnapshotStream(player) {
-  if (!player) {
-    return;
-  }
-  nextSnapshotStreamPhase += 1;
-  player.snapshotStream = {
-    sequence: 0,
-    lastState: null,
-    lastRoomSnapshotSeq: 0,
-    lastKeyframeRoomSeq: 0,
-    forceKeyframe: true,
-    rateTier: 0,
-    phase: nextSnapshotStreamPhase,
-    lastDeliveryAckSeq: 0,
-    lastDeliveryAckAt: Date.now(),
-    healthySince: 0,
-  };
-}
-
-function streamDivisors(options) {
-  return options.spectating ? SPECTATOR_STREAM_DIVISORS : PLAYER_STREAM_DIVISORS;
-}
-
-function updateStreamCongestion(player, now, options) {
-  const stream = player.snapshotStream;
-  const bufferedBytes = Number(player.ws.bufferedAmount) || 0;
-  const inFlight = Math.max(0, stream.sequence - stream.lastDeliveryAckSeq);
-  // 已全部确认时没有在途数据，等待阶段即使很久没有新 ACK 也不属于拥塞。
-  const ackAge = inFlight > 0 ? Math.max(0, now - stream.lastDeliveryAckAt) : 0;
-  const severe =
-    bufferedBytes >= SEVERE_CONGESTION_BUFFERED_BYTES ||
-    inFlight >= SEVERE_CONGESTION_INFLIGHT_SNAPSHOTS ||
-    ackAge >= SEVERE_CONGESTION_ACK_AGE_MS;
-  const congested =
-    severe ||
-    bufferedBytes >= CONGESTION_BUFFERED_BYTES ||
-    inFlight >= CONGESTION_INFLIGHT_SNAPSHOTS ||
-    ackAge >= CONGESTION_ACK_AGE_MS;
-  const maxTier = streamDivisors(options).length - 1;
-  const previousTier = stream.rateTier;
-
-  if (severe && stream.rateTier < maxTier) {
-    stream.rateTier = maxTier;
-    stream.healthySince = 0;
-  } else if (congested && stream.rateTier < 1) {
-    stream.rateTier = 1;
-    stream.healthySince = 0;
-  } else if (congested) {
-    stream.healthySince = 0;
-  } else {
-    const healthy =
-      bufferedBytes < 8 * 1024 &&
-      inFlight <= 5 &&
-      ackAge < 800;
-    if (!healthy || stream.rateTier <= 0) {
-      stream.healthySince = 0;
-    } else if (!stream.healthySince) {
-      stream.healthySince = now;
-    } else if (now - stream.healthySince >= STREAM_RECOVERY_STABLE_MS) {
-      stream.rateTier -= 1;
-      stream.healthySince = 0;
-    }
-  }
-  if (stream.rateTier !== previousTier) {
-    networkStats.streamTierChanges += 1;
-  }
-}
-
-function sendSnapshotToPlayer(player, frame, options = {}) {
-  if (!player || !player.ws || player.ws.readyState !== 1) {
-    return false;
-  }
-  // 战场快照是可替换状态，不应在慢连接上无限排队。积压超过阈值时直接跳过旧帧，
-  // 等发送缓冲恢复后再下发最新快照，避免延迟从数百毫秒滚成数秒并拖高进程内存。
-  if (player.ws.bufferedAmount > MAX_SNAPSHOT_BUFFERED_BYTES) {
-    player.skippedSnapshots = (player.skippedSnapshots || 0) + 1;
-    networkStats.skippedSnapshots += 1;
-    if (player.snapshotStream) {
-      player.snapshotStream.forceKeyframe = true;
-    }
-    return false;
-  }
-
-  if (!player.snapshotStream) {
-    resetSnapshotStream(player);
-  }
-  const stream = player.snapshotStream;
-  const now = Date.now();
-  const supportsDeltaProtocol = Number(player.networkProtocolVersion) >= 2;
-  if (supportsDeltaProtocol) {
-    updateStreamCongestion(player, now, options);
-  } else {
-    stream.rateTier = 0;
-    stream.healthySince = 0;
-  }
-  const divisors = streamDivisors(options);
-  const divisor = divisors[Math.min(stream.rateTier, divisors.length - 1)];
-  if (!stream.forceKeyframe && frame.roomSnapshotSeq % divisor !== stream.phase % divisor) {
-    return false;
-  }
-  const snapshotSeq = stream.sequence + 1;
-  const header = {
-    roomId: frame.roomId,
-    snapshotSeq,
-    serverFrame: frame.roomSnapshotSeq,
-    tick: frame.tick,
-    simTime: frame.simTime,
-    serverTime: frame.serverTime,
-    snapshotRate: SNAPSHOT_RATE / divisor,
-    streamTier: stream.rateTier,
-    ackSeq: Number(options.ackSeq) || 0,
-  };
-  if (options.spectating) {
-    header.spectating = true;
-  }
-  // 长门雷达属于席位私有的间接情报，不进入共享 state / 差量缓存；
-  // 只有该长门玩家自己的快照消息头会携带，对手与观战者均收不到。
-  if (options.radar) {
-    header.radar = options.radar;
-  }
-
-  const keyframeDue =
-    !supportsDeltaProtocol ||
-    stream.forceKeyframe ||
-    !stream.lastState ||
-    frame.roomSnapshotSeq - stream.lastKeyframeRoomSeq >= SNAPSHOT_KEYFRAME_INTERVAL;
-  let serialized = null;
-  let keyframe = keyframeDue;
-
-  if (!keyframeDue) {
-    const baseRoomSeq = stream.lastRoomSnapshotSeq;
-    let patch = frame.patchCache.get(baseRoomSeq);
-    if (!frame.patchCache.has(baseRoomSeq)) {
-      // 同一房间、同一发送档位的连接拥有相同基线。差量树只计算一次，
-      // 玩家与观战扇出时复用结果，避免连接数增加后重复遍历整份战场状态。
-      patch = createStatePatch(stream.lastState, frame.state);
-      frame.patchCache.set(baseRoomSeq, patch);
-    }
-    const deltaPayload = {
-      type: "snapshot_delta",
-      ...header,
-      baseSnapshotSeq: stream.sequence,
-      patch,
-    };
-    const deltaText = JSON.stringify(deltaPayload);
-    const privateBytes = options.radar ? Buffer.byteLength(JSON.stringify(options.radar)) : 0;
-    if (Buffer.byteLength(deltaText) <= (frame.stateBytes + privateBytes) * MAX_DELTA_TO_FULL_RATIO) {
-      serialized = deltaText;
-    } else {
-      keyframe = true;
-    }
-  }
-
-  if (!serialized) {
-    serialized = JSON.stringify({
-      type: "snapshot",
-      ...header,
-      state: frame.state,
-    });
-  }
-
-  player.ws.send(serialized);
-  networkStats.snapshotMessages += 1;
-  networkStats.snapshotRawBytes += Buffer.byteLength(serialized);
-  if (keyframe) {
-    networkStats.keyframes += 1;
-  } else {
-    networkStats.deltas += 1;
-  }
-  stream.sequence = snapshotSeq;
-  stream.lastState = frame.state;
-  stream.lastRoomSnapshotSeq = frame.roomSnapshotSeq;
-  stream.forceKeyframe = false;
-  if (keyframe) {
-    stream.lastKeyframeRoomSeq = frame.roomSnapshotSeq;
-  }
-  return true;
 }
 
 function sendError(player, message) {
