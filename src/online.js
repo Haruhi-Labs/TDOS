@@ -1,5 +1,4 @@
 import {
-  CHARACTER_ORDER,
   CHARACTER_DEFS,
   DEFAULT_TEAM_LOADOUT,
   DEFAULT_WORLD_SIZE,
@@ -14,14 +13,15 @@ import {
 } from "../shared/game-core.js";
 import { applyStatePatch } from "../shared/network-patch.js";
 import { createOnlineStateSync } from "./online/state-sync.js";
-
+import { buildServerUrlCandidates, defaultServerUrl } from "./online/connection-target.js";
 import {
-  getLoadout,
-  setLoadout,
-  getFaction,
-  getNickname as getProfileNickname,
-  setNickname as setProfileNickname,
-} from "./profile.js";
+  createOnlineProfileController,
+  readStoredLoadout,
+  storeLoadout,
+} from "./online/profile-controller.js";
+import { createOnlineResultView } from "./online/result-view.js";
+
+import { getFaction } from "./profile.js";
 
 // 联机选角与单机共用同一套「翻书选角」覆盖层;立绘绘制与单机同源
 import { createCharacterSelect, drawInGamePortrait } from "./character-select.js";
@@ -60,15 +60,12 @@ import {
   drawNoDataHint,
 } from "./battle/render.js";
 import {
-  characterShortName,
   formatClockTime,
   shipCharacterName,
   shipDisplayName,
-  slotLabel as localizedSlotLabel,
   splitLabel as localizedSplitLabel,
   t,
   translateServerText,
-  fleetSideLabel,
 } from "./i18n.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
@@ -79,6 +76,8 @@ let running = false; // 渲染循环开关
 let charSelect = null; // 选角覆盖层（与单机一致），卸载时移除
 let camera = null; // 共享战场相机（src/battle/camera.js），mount 时创建
 let stateSync = null; // 快照插值、外推和显示态平滑
+let profileController = null; // 昵称、档案编队与对应 DOM 同步
+let resultView = null; // 联机结算卡片
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -183,14 +182,10 @@ const SNAPSHOT_HISTORY_SECONDS = 6;
 const PING_INTERVAL_MS = 1000;
 const SNAPSHOT_ACK_INTERVAL_MS = 250;
 const DRAG_SEND_INTERVAL_MS = 75;
-const REMOTE_WS_PORT = 21246;
 const ROUTE_OVERRIDE_MIN_HOLD_MS = 180;
 const ROUTE_OVERRIDE_MAX_HOLD_MS = 1200;
 const ROUTE_MATCH_P2_EPSILON = 30;
 const ROUTE_MATCH_P1_EPSILON = 42;
-const NICKNAME_COOKIE_KEY = "haruhi_online_nickname";
-const NICKNAME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
-const ONLINE_LOADOUT_STORAGE_KEY = "haruhi-online-loadout-v2";
 
 function initApp() {
   app = {
@@ -254,6 +249,11 @@ function initApp() {
     p: Math.random() * TAU,
   })),
   };
+  profileController = createOnlineProfileController({
+    ui,
+    getPlayerLoadout: () => app.playerLoadout,
+  });
+  resultView = createOnlineResultView({ app, ui, log });
   stateSync = createOnlineStateSync({
     app,
     nowMs,
@@ -276,136 +276,6 @@ function nowSecond() {
 
 function nowMs() {
   return Date.now();
-}
-
-function sanitizeNickname(name) {
-  return String(name || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 16);
-}
-
-function readCookie(key) {
-  const target = `${key}=`;
-  const list = document.cookie ? document.cookie.split(";") : [];
-  for (const item of list) {
-    const token = item.trim();
-    if (!token.startsWith(target)) {
-      continue;
-    }
-    return decodeURIComponent(token.slice(target.length));
-  }
-  return "";
-}
-
-function writeCookie(key, value, maxAgeSeconds) {
-  const secureFlag = window.location.protocol === "https:" ? "; Secure" : "";
-  document.cookie = `${key}=${encodeURIComponent(value)}; Max-Age=${maxAgeSeconds}; Path=/; SameSite=Lax${secureFlag}`;
-}
-
-// 编队读写统一走玩家档案（src/profile.js），与单机/调试模式共享同一份身份数据
-function readStoredLoadout() {
-  return getLoadout();
-}
-
-function storeLoadout(loadout) {
-  setLoadout(loadout);
-}
-
-function roleSlotLabel(slotKey) {
-  return localizedSlotLabel(slotKey);
-}
-
-function roleSummaryLine(slotKey, characterId) {
-  const def = CHARACTER_DEFS[characterId];
-  const stat = def.stats;
-  return `${roleSlotLabel(slotKey)} ${def.shortName} | ${t("舰体")}${stat.hp} | ${t("能量")}${stat.energy} | ${t("航速")}${stat.speed} | ${t("机动")}${stat.turnRate.toFixed(2)}`;
-}
-
-function renderLoadoutPreview(loadout) {
-  if (!ui.onlineLoadoutPreview) {
-    return;
-  }
-  ui.onlineLoadoutPreview.innerHTML = "";
-  for (const slotKey of ["main", "sub1", "sub2"]) {
-    const row = document.createElement("div");
-    row.textContent = roleSummaryLine(slotKey, loadout[slotKey]);
-    ui.onlineLoadoutPreview.append(row);
-  }
-}
-
-function updateShipSwitchLabels(loadout) {
-  const labelMap = {
-    main: `${localizedSlotLabel("main", "short")} ${CHARACTER_DEFS[loadout.main].shortName}`,
-    sub1: `${localizedSlotLabel("sub1", "short")} ${CHARACTER_DEFS[loadout.sub1].shortName}`,
-    sub2: `${localizedSlotLabel("sub2", "short")} ${CHARACTER_DEFS[loadout.sub2].shortName}`,
-  };
-  for (const button of ui.shipSwitchButtons) {
-    button.textContent = labelMap[button.dataset.ship] || button.textContent;
-  }
-}
-
-function syncLoadoutControls(loadout) {
-  if (ui.onlineMainRole) {
-    ui.onlineMainRole.value = loadout.main;
-  }
-  if (ui.onlineSub1Role) {
-    ui.onlineSub1Role.value = loadout.sub1;
-  }
-  if (ui.onlineSub2Role) {
-    ui.onlineSub2Role.value = loadout.sub2;
-  }
-  renderLoadoutPreview(loadout);
-  updateShipSwitchLabels(loadout);
-}
-
-function populateLoadoutControls() {
-  for (const select of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role]) {
-    if (!select) {
-      continue;
-    }
-    select.innerHTML = "";
-    for (const characterId of CHARACTER_ORDER) {
-      const def = CHARACTER_DEFS[characterId];
-      const option = document.createElement("option");
-      option.value = characterId;
-      option.textContent = `${def.shortName} · ${def.title}`;
-      select.append(option);
-    }
-  }
-  syncLoadoutControls(app.playerLoadout);
-}
-
-function readLoadoutFromControls() {
-  return normalizeLoadout(
-    {
-      main: ui.onlineMainRole ? ui.onlineMainRole.value : app.playerLoadout.main,
-      sub1: ui.onlineSub1Role ? ui.onlineSub1Role.value : app.playerLoadout.sub1,
-      sub2: ui.onlineSub2Role ? ui.onlineSub2Role.value : app.playerLoadout.sub2,
-    },
-    DEFAULT_TEAM_LOADOUT,
-  );
-}
-
-function updateNicknameDisplay(name) {
-  if (!ui.onlineNicknameValue) {
-    return;
-  }
-  ui.onlineNicknameValue.textContent = t("昵称：{name}", { name: name || "-" });
-}
-
-function setNickname(name, options = {}) {
-  const { persist = true } = options;
-  const safeName = sanitizeNickname(name);
-  if (ui.playerNameInput) {
-    ui.playerNameInput.value = safeName;
-  }
-  updateNicknameDisplay(safeName);
-  if (persist && safeName) {
-    setProfileNickname(safeName); // 写入统一档案，主菜单与其他模式同步
-    writeCookie(NICKNAME_COOKIE_KEY, safeName, NICKNAME_COOKIE_MAX_AGE); // 兼容旧版
-  }
-  return safeName;
 }
 
 function log(message) {
@@ -524,70 +394,6 @@ function bindPressButton(button, handler) {
   });
 }
 
-function defaultServerUrl() {
-  const urls = buildServerUrlCandidates();
-  return urls[0] || "";
-}
-
-function isLocalHostname(hostname) {
-  if (!hostname) {
-    return false;
-  }
-  const host = String(hostname).toLowerCase();
-  if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "0.0.0.0") {
-    return true;
-  }
-  if (host.startsWith("10.") || host.startsWith("192.168.") || host.endsWith(".local")) {
-    return true;
-  }
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) {
-    return true;
-  }
-  return false;
-}
-
-function buildServerUrlCandidates() {
-  const params = new URLSearchParams(window.location.search);
-  const forced = String(params.get("ws") || "").trim();
-  if (forced) {
-    return [forced];
-  }
-
-  const pageProtocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const pageHost = window.location.host || "";
-  const pageHostname = window.location.hostname || "";
-  const localHost = isLocalHostname(pageHostname);
-  const directProtocol = localHost ? "ws" : pageProtocol;
-  const list = [];
-
-  if (pageHost) {
-    // 同源 WS：跟随部署 base（线上 /test-game/ → /test-game/ws/；dev / → /ws/）
-    list.push(`${pageProtocol}://${pageHost}${import.meta.env.BASE_URL}ws/`);
-  }
-  if (pageHostname) {
-    list.push(`${directProtocol}://${pageHostname}:${REMOTE_WS_PORT}/`);
-  } else {
-    list.push(`ws://127.0.0.1:${REMOTE_WS_PORT}/`);
-  }
-  if (localHost) {
-    if (pageHostname !== "127.0.0.1") {
-      list.push(`ws://127.0.0.1:${REMOTE_WS_PORT}/`);
-    }
-    if (pageHostname !== "localhost") {
-      list.push(`ws://localhost:${REMOTE_WS_PORT}/`);
-    }
-  }
-
-  const dedup = [];
-  for (const url of list) {
-    if (!url || dedup.includes(url)) {
-      continue;
-    }
-    dedup.push(url);
-  }
-  return dedup;
-}
-
 function resetConnectionSyncState() {
   app.pingMs = 0;
   app.jitterMs = 0;
@@ -667,142 +473,6 @@ function clearMatchRuntime() {
   app.gameOverLogged = false;
 }
 
-function closeOverlay() {
-  ui.overlay.classList.add("hidden");
-  ui.overlayTitle.textContent = "";
-  app.gameOverLogged = false;
-}
-
-function escapeHtml(value) {
-  return String(value ?? "").replace(/[&<>"']/g, (ch) => ({
-    "&": "&amp;",
-    "<": "&lt;",
-    ">": "&gt;",
-    "\"": "&quot;",
-    "'": "&#39;",
-  })[ch]);
-}
-
-function resultPlayerId(row) {
-  if (!row) {
-    return "-";
-  }
-  if (row.isBot) {
-    return "AI";
-  }
-  const raw = String(row.playerId || "").trim();
-  return raw ? raw.slice(0, 8) : "-";
-}
-
-function resultWinnerText(winnerSeat) {
-  return winnerSeat ? fleetSideLabel(winnerSeat) : t("平局");
-}
-
-// 一侧阵容(主舰高亮 + 两副舰):头像取阵营立绘;在线 own=蓝队、enemy=红队,与战场着色一致
-function onlineResultSideHTML(loadout, faction, sideLabel, sideClass, sideId = "") {
-  const base = import.meta.env.BASE_URL;
-  const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
-  const cards = ["main", "sub1", "sub2"]
-    .map((slot, i) => {
-      const id = safe[slot];
-      const src = `${base}assets/portraits/${faction}/${id}.webp`;
-      const role = localizedSlotLabel(slot, "short");
-      const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
-      return (
-        `<div class="rl-card${slot === "main" ? " rl-main" : ""}" style="--i:${i}">` +
-        `<span class="rl-portrait"><img src="${src}" alt="" loading="lazy" draggable="false"></span>` +
-        `<span class="rl-role">${escapeHtml(role)}</span>` +
-        `<span class="rl-name">${escapeHtml(name)}</span>` +
-        `</div>`
-      );
-    })
-    .join("");
-  return (
-    `<div class="result-side ${sideClass}">` +
-    `<div class="result-side-label">${escapeHtml(sideLabel)}</div>` +
-    `<div class="result-side-id">${t("ID：{id}", { id: escapeHtml(sideId || "-") })}</div>` +
-    `<div class="rl-cards">${cards}</div>` +
-    `</div>`
-  );
-}
-
-// 胜负结算:皮面富卡片(标题 + 双方阵容 VS),与单人同款;磨砂层只作卡片背景,不再裸罩地图/面板。
-// 每条 finished 房态消息都会调用,故首次渲染后用 gameOverLogged 锁住,避免反复重建与重放入场动画。
-function showMatchResultOverlay(winnerSeat) {
-  app.lastWinnerSeat = winnerSeat || null;
-  ui.overlay.classList.remove("hidden");
-  if (app.gameOverLogged) {
-    return;
-  }
-  app.gameOverLogged = true;
-
-  const card = document.getElementById("resultCard");
-  const eyebrowEl = document.getElementById("resultEyebrow");
-  const subEl = document.getElementById("resultSub");
-  const metaEl = document.getElementById("resultDiff");
-  const versusEl = document.getElementById("resultVersus");
-
-  let cls, eyebrow, title, sub, logLine;
-  if (app.spectating) {
-    const winnerName = winnerSeat ? fleetSideLabel(winnerSeat) : "";
-    cls = "result-draw";
-    eyebrow = "SPECTATE";
-    title = winnerName ? t("{seat}获胜", { seat: winnerName }) : t("战斗结束");
-    sub = t("观战结束");
-    logLine = winnerName ? t("战斗结束：{seat}获胜", { seat: winnerName }) : t("战斗结束：平局");
-  } else if (winnerSeat && winnerSeat === app.seat) {
-    cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t("敌方舰队已被击溃");
-    logLine = t("战斗结束：我方舰队获胜");
-  } else if (winnerSeat) {
-    cls = "result-lose"; eyebrow = "DEFEAT"; title = t("失败"); sub = t("我方舰队被歼灭");
-    logLine = t("战斗结束：我方舰队战败");
-  } else {
-    cls = "result-draw"; eyebrow = "STALEMATE"; title = t("战斗结束"); sub = t("双方同归于尽");
-    logLine = t("战斗结束：平局");
-  }
-
-  if (card) {
-    card.classList.remove("result-win", "result-lose", "result-draw");
-    card.classList.add(cls);
-  }
-  if (eyebrowEl) eyebrowEl.textContent = eyebrow;
-  ui.overlayTitle.textContent = title;
-  if (subEl) subEl.textContent = sub;
-  if (metaEl) {
-    const roomId = app.room ? app.room.roomId : "-";
-    const winnerText = resultWinnerText(winnerSeat);
-    metaEl.innerHTML =
-      `<span class="result-diff-label">${t("房间ID")}</span>` +
-      `<span class="result-diff-val rd-normal">${escapeHtml(roomId)}</span>` +
-      `<span class="result-diff-label">${t("胜利方")}</span>` +
-      `<span class="result-diff-val ${winnerSeat ? "rd-normal" : "rd-hard"}">${escapeHtml(winnerText)}</span>`;
-  }
-
-  // 双方阵容固定按 A/B 展示，保证对战双方与观战者看到同一张结算卡。
-  if (versusEl) {
-    const players = (app.room && app.room.players) || [];
-    const rowA = players.find((p) => p.seat === "A");
-    const rowB = players.find((p) => p.seat === "B");
-    const loadoutA = (rowA && rowA.loadout) || app.playerLoadout;
-    const loadoutB = rowB && rowB.loadout;
-    const nameA = (rowA && localizedServerName(rowA.name, rowA.isBot)) || fleetSideLabel("A");
-    const nameB = (rowB && localizedServerName(rowB.name, rowB.isBot)) || fleetSideLabel("B");
-    versusEl.innerHTML =
-      onlineResultSideHTML(loadoutA, "blue", nameA, "result-side-player", resultPlayerId(rowA)) +
-      `<div class="result-vs"><span>VS</span></div>` +
-      onlineResultSideHTML(loadoutB, "red", nameB, "result-side-enemy", resultPlayerId(rowB));
-  }
-
-  // 重新触发入场动画
-  if (card) {
-    card.classList.remove("result-in");
-    void card.offsetWidth;
-    card.classList.add("result-in");
-  }
-
-  log(logLine);
-}
-
 function connectServer() {
   const candidates = buildServerUrlCandidates();
   if (candidates.length === 0) {
@@ -850,7 +520,7 @@ function connectServer() {
       updateConnectionUi();
       log(t("已连接服务器：{url}", { url }));
 
-      const name = setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
+      const name = profileController.setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
       if (name) {
         socketSend({ type: "set_name", name });
       }
@@ -880,7 +550,7 @@ function connectServer() {
       stopPingLoop();
       clearMatchRuntime();
       resetConnectionSyncState();
-      closeOverlay();
+      resultView.close();
       updateConnectionUi();
       log(t("连接已断开"));
     });
@@ -1125,7 +795,7 @@ function applyRoomState(message) {
   }
   if (message.self && message.self.loadout) {
     app.playerLoadout = normalizeLoadout(message.self.loadout, DEFAULT_TEAM_LOADOUT);
-    syncLoadoutControls(app.playerLoadout);
+    profileController.syncLoadoutControls(app.playerLoadout);
   }
 
   updateRoomSummary();
@@ -1140,7 +810,7 @@ function applyRoomState(message) {
   syncResponsiveMode();
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
   if (showBattleView) requestAnimationFrame(() => camera.resizeCanvas());
-  updateShipSwitchLabels(app.playerLoadout);
+  profileController.updateShipSwitchLabels(app.playerLoadout);
   const loadoutLocked = Boolean(app.room && (app.room.status === "countdown" || app.room.status === "running"));
   for (const element of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role, ui.applyLoadoutOnlineBtn]) {
     if (element) {
@@ -1163,10 +833,10 @@ function applyRoomState(message) {
       app.lastWinnerSeat = app.room.winnerSeat;
     }
     const latestWinner = app.latestSnapshot && app.latestSnapshot.state ? app.latestSnapshot.state.winnerSeat : null;
-    showMatchResultOverlay(latestWinner || app.lastWinnerSeat || (app.room ? app.room.winnerSeat : null) || null);
+    resultView.show(latestWinner || app.lastWinnerSeat || (app.room ? app.room.winnerSeat : null) || null);
   } else if (!canBattle && !isCountdown) {
     clearMatchRuntime();
-    closeOverlay();
+    resultView.close();
     ui.hullValue.textContent = "-";
     ui.energyValue.textContent = "-";
     ui.splitValue.textContent = "-";
@@ -1203,7 +873,7 @@ function handleRoomClosed(message) {
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
   clearMatchRuntime();
-  closeOverlay();
+  resultView.close();
   ui.zoneValue.textContent = t("战区 -");
   refreshSkillButtons(null);
 }
@@ -1565,12 +1235,12 @@ function handleSnapshot(message) {
   if (phase !== app.lastMatchPhase) {
     app.lastMatchPhase = phase;
     if (phase === "finished") {
-      showMatchResultOverlay(winner || app.lastWinnerSeat || null);
+      resultView.show(winner || app.lastWinnerSeat || null);
     } else {
-      closeOverlay();
+      resultView.close();
     }
   } else if (phase === "finished" && ui.overlay.classList.contains("hidden")) {
-    showMatchResultOverlay(winner || app.lastWinnerSeat || null);
+    resultView.show(winner || app.lastWinnerSeat || null);
   }
 }
 
@@ -2015,8 +1685,8 @@ function renderFrame() {
 }
 
 function syncLoadoutToServer(logOnSuccess = true) {
-  app.playerLoadout = readLoadoutFromControls();
-  syncLoadoutControls(app.playerLoadout);
+  app.playerLoadout = profileController.readLoadoutFromControls();
+  profileController.syncLoadoutControls(app.playerLoadout);
   storeLoadout(app.playerLoadout);
   const sent = socketSend({ type: "set_loadout", loadout: app.playerLoadout });
   if (logOnSuccess) {
@@ -2028,7 +1698,7 @@ function syncLoadoutToServer(logOnSuccess = true) {
 function openOnlineCharSelect() {
   if (charSelect && typeof charSelect.hide === "function") charSelect.hide();
   charSelect = createCharacterSelect((loadout) => {
-    syncLoadoutControls(loadout); // 写入下拉，复用既有同步机制
+    profileController.syncLoadoutControls(loadout); // 写入下拉，复用既有同步机制
     syncLoadoutToServer(true); // 读取下拉 → app.playerLoadout → 本地档案 → 发服务器
   });
   charSelect.show();
@@ -2089,20 +1759,18 @@ function useSubSkillOnline() {
 
 function bindUiEvents() {
   ui.serverTargetValue.textContent = defaultServerUrl();
-  const savedName = sanitizeNickname(getProfileNickname() || readCookie(NICKNAME_COOKIE_KEY));
-  const fallbackName = t("玩家{num}", { num: Math.floor(Math.random() * 900 + 100) });
-  setNickname(savedName || fallbackName, { persist: true });
+  profileController.initializeNickname();
   ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
   ui.selectedValue.textContent = t("主舰");
-  populateLoadoutControls();
+  profileController.populateLoadoutControls();
 
   for (const select of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role]) {
     if (!select) {
       continue;
     }
     select.addEventListener("change", () => {
-      const normalized = readLoadoutFromControls();
-      syncLoadoutControls(normalized);
+      const normalized = profileController.readLoadoutFromControls();
+      profileController.syncLoadoutControls(normalized);
     });
   }
 
@@ -2125,7 +1793,7 @@ function bindUiEvents() {
   });
 
   ui.applyNameBtn.addEventListener("click", () => {
-    const name = setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
+    const name = profileController.setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
     if (!name) {
       log(t("昵称不能为空"));
       return;
@@ -2175,7 +1843,7 @@ function bindUiEvents() {
     updateRoomSummary();
     setBattleControlsEnabled(false);
     clearMatchRuntime();
-    closeOverlay();
+    resultView.close();
     setRoomHudVisible(true); // 立即切回大厅页
   });
 
@@ -2189,7 +1857,7 @@ function bindUiEvents() {
       app.spectating = false;
       updateRoomSummary();
       setBattleControlsEnabled(false);
-      closeOverlay();
+      resultView.close();
       setRoomHudVisible(true); // 立即切回大厅页
     });
   }
