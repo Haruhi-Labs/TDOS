@@ -24,6 +24,10 @@
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
+- `shared/game/visibility-radar.js`：真实视野、长门雷达扫描、回波生成与私有序列化。
+- `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
+- `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法。
+- `shared/game/collision-system.js`：舰船碰撞、侦察机相撞和刀锋女王接触结算。
 
 只有需要协调多种规则、修改实时战斗状态的逻辑才留在 `game-core.js`。新增纯数据、纯计算或 AI 策略时，应直接放入对应叶模块，再由兼容入口按需导出。
 
@@ -37,6 +41,9 @@
 ### 联机链路
 
 - `src/online/state-sync.js`：客户端快照插值、有限外推、本地航线覆盖和额外舰船同步；不读 DOM，也不管理 WebSocket。
+- `src/online/snapshot-transport.js`：延迟与时钟估计、快照差量解码、确认、排序和历史队列。
+- `src/online/connection-target.js`：同源代理、直连和本地备用 WebSocket 地址策略。
+- `src/online/lobby-view.js`、`profile-controller.js`、`result-view.js`：大厅、玩家档案和结算界面职责。
 - `shared/network-patch.js`：服务端与客户端共用的快照差量格式。
 - `server/config.js`：环境变量、容量和拥塞阈值。
 - `server/protocol.js`：控制消息类型与错误码归类。
@@ -69,9 +76,10 @@
 ## 改动前后的最低验证
 
 1. 运行 `npm run check:modules`，避免边界回退和循环依赖。
-2. 规则或 AI 改动运行 `npm run test:core`。
-3. 联机显示改动运行 `npm run test:online:state`。
-4. 协议、服务端或快照改动运行 `npm run test:network` 与 `npm run test:network:guards`。
-5. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
+2. 运行 `npm run test:api`，避免稳定入口在拆分中意外丢失导出。
+3. 规则或 AI 改动运行 `npm run test:core`。
+4. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
+5. 协议、服务端或快照改动运行 `npm run test:network` 与 `npm run test:network:guards`。
+6. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。

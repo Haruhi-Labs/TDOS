@@ -4,6 +4,10 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE_ROOTS = ["shared", "src", "server"];
+const LOCAL_REFERENCE_FILES = new Set([
+  "shared/game-core.baseline.js",
+  "shared/game-core.fair0.js",
+]);
 
 function walk(relativeDir) {
   const absoluteDir = resolve(ROOT, relativeDir);
@@ -12,7 +16,8 @@ function walk(relativeDir) {
     if (entry.isDirectory()) {
       return walk(relative(ROOT, child));
     }
-    return extname(entry.name) === ".js" ? [child] : [];
+    const relativeFile = relative(ROOT, child).split(sep).join("/");
+    return extname(entry.name) === ".js" && !LOCAL_REFERENCE_FILES.has(relativeFile) ? [child] : [];
   });
 }
 
