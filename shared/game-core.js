@@ -69,6 +69,13 @@ import {
   updateRadarPassive as updateTeamRadarPassive,
 } from "./game/visibility-radar.js";
 import {
+  activateVisionWaveSkill as activateTeamVisionWaveSkill,
+  cancelVisionWaveSkill as cancelTeamVisionWaveSkill,
+  createVisionWaveSkillState,
+  serializeVisionWaves as serializeTeamVisionWaves,
+  updateVisionWaveSkill as updateTeamVisionWaveSkill,
+} from "./game/vision-wave.js";
+import {
   assignFocusTargets as assignTeamFocusTargets,
   fireCandidates as teamFireCandidates,
   focusDamageBudget as attackerFocusDamageBudget,
@@ -477,7 +484,7 @@ class Ship {
       nextShotDamageMultiplier: 1,
     };
     // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
-    // 后处理的朝仓净化不能因座位处理顺序清掉对方刚刚开启的技能。
+    // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
     this.activeSkillEffectStartedTicks = Object.create(null);
   }
 
@@ -1439,7 +1446,6 @@ class Team {
       taxiUntil: 0,
       taxiInvulnUntil: 0,
       sponsorUntil: 0,
-      revealEnemiesUntil: 0,
     };
     this.activeSkillEffectStartedTicks = Object.create(null);
 
@@ -1473,6 +1479,7 @@ class Team {
       scanSequence: 0,
       contacts: new Map(),
     };
+    this.visionWaveSkill = createVisionWaveSkillState();
     this.applyFlagshipPassives(spawnX, spawnY, facing);
 
     this.scouts = [];
@@ -1516,6 +1523,10 @@ class Team {
 
   hasActiveSponsor() {
     return this.effects.sponsorUntil > this.match.elapsed;
+  }
+
+  hasActiveVisionWaveSkill() {
+    return this.visionWaveSkill.activeUntil > this.match.elapsed;
   }
 
   getPlayerShips() {
@@ -1759,6 +1770,9 @@ class Team {
     if (this.hasActiveSponsor()) {
       list.push("神秘赞助人");
     }
+    if (this.hasActiveVisionWaveSkill()) {
+      list.push("我不会绕过你哦");
+    }
     return list;
   }
 
@@ -1794,7 +1808,7 @@ class Team {
     clearTeamEffect("taxiUntil");
     clearTeamEffect("taxiInvulnUntil");
     clearTeamEffect("sponsorUntil");
-    clearTeamEffect("revealEnemiesUntil");
+    cancelTeamVisionWaveSkill(this, { preserveCurrentTick });
     for (const ship of this.getAllShips()) {
       ship.clearActiveSkillBuffs({ preserveCurrentTick });
     }
@@ -1967,6 +1981,7 @@ class Team {
     for (const ship of this.getAllShips()) {
       ship.update(dt);
     }
+    updateTeamVisionWaveSkill(this);
     this.maybeAutoLaunchScout();
     for (const scout of this.scouts) {
       scout.update(dt);
@@ -2153,8 +2168,10 @@ class Team {
       }
       const enemyTeam = this.match.enemyTeamBySeat(this.seat);
       enemyTeam.clearActiveSkillBuffs();
-      this.effects.revealEnemiesUntil = this.match.elapsed + (meta.duration || 4);
-      this.markActiveSkillEffectStarted("revealEnemiesUntil");
+      activateTeamVisionWaveSkill(this, {
+        duration: meta.duration || 6,
+        interval: meta.pulseInterval || 1,
+      });
       for (const ship of enemyTeam.getAllShips()) {
         if (!ship.alive) {
           continue;
@@ -2383,6 +2400,10 @@ class Team {
     return serializeTeamRadarPassive(this);
   }
 
+  serializeVisionWaves() {
+    return serializeTeamVisionWaves(this);
+  }
+
   computeVisibility(enemyTeam) {
     computeTeamVisibility(this, enemyTeam);
   }
@@ -2435,6 +2456,7 @@ class Team {
         sub2: this.cooldowns.sub2,
       },
       visibleEnemyIds: Array.from(this.visibleEnemyIds),
+      visionWaves: this.serializeVisionWaves(),
       ships: {
         main: this.ships.main.serialize(),
         sub1: this.ships.sub1.serialize(),

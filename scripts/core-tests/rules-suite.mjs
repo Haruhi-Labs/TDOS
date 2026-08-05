@@ -776,8 +776,11 @@ function asakuraFlagshipCheck() {
   });
   const teamA = sim.teamA;
   const teamB = sim.teamB;
+  const ownMain = teamA.ships.main;
   const enemyMain = teamB.ships.main;
   const enemySub1 = teamB.ships.sub1;
+  sim.combatEnabled.A = false;
+  sim.combatEnabled.B = false;
 
   const enemyFlagOk = teamB.castFlagshipSkill();
   teamB.split(1);
@@ -785,11 +788,16 @@ function asakuraFlagshipCheck() {
   assert(enemyFlagOk && enemySubOk, "朝仓旗舰测试前置敌方增益释放失败");
   runSteps(sim, TICK_DT);
 
-  enemyMain.x = 1180;
-  enemyMain.y = 720;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
-  enemyMain.route = null;
+  for (const ship of [...teamA.getAllShips(), ...teamB.getAllShips()]) {
+    ship.speed = 0;
+    ship.throttle = 0;
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    ship.route = null;
+  }
+  enemyMain.x = ownMain.x + 500;
+  enemyMain.y = ownMain.y;
+  enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
   sim.teamA.computeVisibility(sim.teamB);
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰测试布置错误，敌方应处于视野外");
 
@@ -800,16 +808,31 @@ function asakuraFlagshipCheck() {
   assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方团队主动增益");
   assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方无敌效果");
   assert(!enemySub1.hasEffect("critUntil"), "朝仓旗舰技能未清除敌方舰船主动增益");
-  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未揭示敌方位置");
-  assert(Math.abs(teamA.effects.revealEnemiesUntil - sim.elapsed - 4) < 1e-6, "朝仓旗舰技能揭示时间不是4秒");
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能仍在施放瞬间全图揭示敌方");
 
-  runSteps(sim, 3.9);
-  sim.teamA.computeVisibility(sim.teamB);
-  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未完整揭示敌方位置4秒");
+  const firstWave = teamA.visionWaveSkill.waves[0];
+  assert(firstWave, "朝仓旗舰技能未立即发射首个视野波");
+  const edgeProgressAtNextPulse = firstWave.speed / firstWave.edgeRadius;
+  assert(
+    edgeProgressAtNextPulse > 0.9 && edgeProgressAtNextPulse < 0.96,
+    "朝仓视野波未在下一波发射时接近地图最远边缘",
+  );
+  assert(firstWave.width >= 1440 * 0.055, "朝仓视野波宽度不足以形成稳定覆盖带");
 
-  runSteps(sim, 0.2);
-  sim.teamA.computeVisibility(sim.teamB);
-  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能揭示结束后仍持续显示敌方位置");
+  let seenByFirstWave = false;
+  for (let step = 0; step < Math.ceil(0.9 / TICK_DT); step += 1) {
+    sim.update(TICK_DT);
+    if (teamA.visibleEnemyIds.has(enemyMain.id)) seenByFirstWave = true;
+  }
+  assert(seenByFirstWave, "朝仓视野波扫过敌舰时未获得真实视野");
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "朝仓视野波离开后仍持续保留敌舰视野");
+
+  runSteps(sim, 4.2);
+  assert(teamA.visionWaveSkill.sequence === 6, "朝仓旗舰技能未在6秒内按每秒一次发射6个视野波");
+  assert(teamA.serialize().visionWaves.length > 0, "朝仓视野波未进入单人/多人共享序列化状态");
+  runSteps(sim, 1.3);
+  assert(!teamA.hasActiveVisionWaveSkill(), "朝仓旗舰技能超过6秒后仍保持激活");
+  assert(teamA.visionWaveSkill.waves.length === 0, "朝仓旗舰技能结束后仍残留过期视野波");
 }
 
 function asakuraSimultaneousSkillPurgeCheck() {
@@ -864,8 +887,10 @@ function asakuraSimultaneousSkillPurgeCheck() {
     "朝仓镜像测试B方技能释放失败",
   );
   assert(
-    mirrorSim.teamA.effects.revealEnemiesUntil > mirrorSim.elapsed
-      && mirrorSim.teamB.effects.revealEnemiesUntil > mirrorSim.elapsed,
+    mirrorSim.teamA.hasActiveVisionWaveSkill()
+      && mirrorSim.teamB.hasActiveVisionWaveSkill()
+      && mirrorSim.teamA.visionWaveSkill.waves.length === 1
+      && mirrorSim.teamB.visionWaveSkill.waves.length === 1,
     "朝仓镜像同tick释放仍受座位处理顺序影响",
   );
 }

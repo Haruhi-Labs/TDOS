@@ -79,13 +79,13 @@ src/
   solo.js             单人对战
   online.js           在线对战页面编排（快照显示状态在 online/state-sync.js）
   character-select.js 翻书式角色选择（立绘在 character-select/portraits.js）
-  battle/             单人/联机共用相机、输入、HUD 与渲染
+  battle/             单人/联机共用相机、输入、HUD 与渲染（雷达、视野波等效果位于 render/）
   i18n/               日英词典与角色文本
   tutorial.js         新手引导教程
   guide.js / credits.js / profile.js …
 shared/
   game-core.js        游戏规则兼容入口与模拟编排
-  game/               角色、规则、推进能量、固定时钟、数学工具与 AI
+  game/               角色、规则、推进能量、视野/雷达、固定时钟、数学工具与 AI
   protocol/           标准战斗动作与规则版本协商
 server/               房间、输入队列、权威循环、协议和快照流
 scripts/              核心、联机、网络与模块边界校验

@@ -53,7 +53,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "朝仓",
       title: "高速猎杀渗透舰",
       flavor: "情报与突进,一往无前的刀锋女王",
-      flagshipSkill: { name: "我不会绕过你哦", description: "涤除敌方全部主动技能增益，并揭示敌方全体位置4秒。" },
+      flagshipSkill: { name: "我不会绕过你哦", description: "涤除敌方全部主动技能增益；随后6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野。" },
       subSkill: { name: "刀锋女王", description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。" },
     },
   },
@@ -111,7 +111,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "朝倉",
       title: "高速狩猟浸透艦",
       flavor: "情報と突進で切り込むブレードクイーン",
-      flagshipSkill: { name: "回り道はしないわよ", description: "敵の全アクティブ強化を解除し、敵全体の位置を4秒間明らかにする。" },
+      flagshipSkill: { name: "回り道はしないわよ", description: "敵の全アクティブ強化を解除する。その後6秒間、1秒ごとに自身を中心とする視界波を放ち、波帯が通過する範囲の実視界を得る。" },
       subSkill: { name: "ブレードクイーン", description: "10秒間、速度×1.45（加速×1.26・旋回×1.12）で当たり判定を無視（敵艦をすり抜け可）。敵艦に接触した瞬間その最大耐久の15%を与え、以後は重なり続ける限り1秒ごとに再度15%を与える。" },
     },
   },
@@ -169,9 +169,8 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "Asakura",
       title: "High-Speed Hunter Infiltrator",
       flavor: "Information and momentum, the Blade Queen pressing forward",
-      flagshipSkill: { name: "I Won't Go Around You", description: "Purges all enemy active-skill buffs and reveals all enemy positions for 4 seconds." },
+      flagshipSkill: { name: "I Won't Go Around You", description: "Purges all enemy active-skill buffs, then emits one circular vision wave per second for 6 seconds, granting true vision only across each wave band." },
       subSkill: { name: "Blade Queen", description: "For 10 seconds, speed ×1.45 (accel ×1.26, turn ×1.12) and ignores collision, phasing through enemy ships; on contact deals 15% of the enemy's max hull, then another 15% every second while overlapping." },
     },
   },
 });
-

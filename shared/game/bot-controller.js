@@ -2422,7 +2422,31 @@ export class BotController {
       return this.team.hullRatio() < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;
     }
     if (characterId === "asakura") {
-      return Boolean(estimate && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel));
+      const now = this.team.match.elapsed;
+      const enemyHasActiveBuff =
+        this.enemyTeam.effects.taxiUntil > now
+        || this.enemyTeam.effects.taxiInvulnUntil > now
+        || this.enemyTeam.effects.sponsorUntil > now
+        || this.enemyTeam.hasActiveVisionWaveSkill()
+        || this.enemyTeam.getAllShips().some((ship) =>
+          ship.hasEffect("critUntil")
+          || ship.hasEffect("reliableUntil")
+          || ship.hasEffect("bladeQueenUntil")
+          || Boolean(ship.activeSosBuff()),
+        );
+      const hasHiddenEnemy = this.enemyTeam.getEntities().some(
+        (enemy) => !this.team.visibleEnemyIds.has(enemy.id),
+      );
+      return enemyHasActiveBuff || Boolean(
+        hasHiddenEnemy
+        && (
+          !estimate
+          || !estimate.visible
+          || estimate.age <= 5
+          || context?.trackableIntel
+          || this.mode === "search"
+        )
+      );
     }
     return true;
   }
@@ -3073,4 +3097,3 @@ export class BotController {
     this.lastTacticalPlan = debugPlan;
   }
 }
-

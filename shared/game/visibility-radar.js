@@ -8,6 +8,7 @@ import {
   normalizeAngle,
   stableRadarNoise,
 } from "./math.js";
+import { visionWavesCoverEntity } from "./vision-wave.js";
 
 const TAU = Math.PI * 2;
 const RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
@@ -113,13 +114,6 @@ export function serializeRadarPassive(team) {
 export function computeVisibility(team, enemyTeam) {
   team.visibleEnemyIds.clear();
   const sensors = team.getVisionSources();
-  if (sensors.length === 0) {
-    if (team.effects.revealEnemiesUntil > team.match.elapsed) {
-      for (const enemy of enemyTeam.getEntities()) team.visibleEnemyIds.add(enemy.id);
-    }
-    return;
-  }
-
   const enemyEntities = enemyTeam.getEntities();
   for (const enemy of enemyEntities) {
     for (const sensor of sensors) {
@@ -128,8 +122,8 @@ export function computeVisibility(team, enemyTeam) {
         break;
       }
     }
-  }
-  if (team.effects.revealEnemiesUntil > team.match.elapsed) {
-    for (const enemy of enemyEntities) team.visibleEnemyIds.add(enemy.id);
+    if (!team.visibleEnemyIds.has(enemy.id) && visionWavesCoverEntity(team, enemy)) {
+      team.visibleEnemyIds.add(enemy.id);
+    }
   }
 }

@@ -153,8 +153,8 @@ export const CHARACTER_DEFS = {
     },
     flagshipSkill: {
       id: "no_escape", name: "我不会绕过你哦", type: "active", cooldown: 24,
-      cost: 64, duration: 4, target: "none",
-      description: "涤除敌方全部主动技能增益，并揭示敌方全体位置4秒。",
+      cost: 64, duration: 6, pulseInterval: 1, target: "none",
+      description: "涤除敌方全部主动技能增益；随后6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野。",
     },
     subSkill: {
       id: "blade_queen", name: "刀锋女王", type: "active", cooldown: 20,

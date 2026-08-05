@@ -11,6 +11,10 @@ import { DEFAULT_WORLD_SIZE, FIRE_ARC_BANDS, clamp, quadraticPoint } from "../..
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
 import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";
+import {
+  drawAsakuraVisionWaves,
+  drawAsakuraVisionWavesMinimap,
+} from "./render/vision-wave.js";
 
 export { drawYukiRadar, drawYukiRadarMinimap };
 
@@ -729,6 +733,14 @@ export function drawMinimap(ctx, frame, rect, view) {
     }
   }
 
+  const visionWaveTeams = spectating ? [state.teams?.A, state.teams?.B] : [ownTeam];
+  drawAsakuraVisionWavesMinimap(
+    ctx,
+    visionWaveTeams,
+    Number(state.elapsed) || 0,
+    rect,
+    Number(state.world?.size) || LOGICAL,
+  );
   drawYukiRadarMinimap(ctx, frame, rect);
 
   const plotShip = (ship, color) => {
@@ -844,6 +856,7 @@ export function drawPauseOverlay(ctx) {
 //   selectedKeyForTeam(team) → 该队高亮舰 key;非观战时敌方应返回 null
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
 //   radar              己方长门旗舰的私有雷达状态；对手与观战帧必须为空
+//   visionWaves        位于各队序列化状态中；对战只绘己方，观战绘制双方
 //   mobileMode         移动端:不画航线曲度旋钮
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer
 export function drawBattleWorld(ctx, frame) {
@@ -863,6 +876,12 @@ export function drawBattleWorld(ctx, frame) {
 
   drawBackground(ctx, frame.stars, elapsed);
   drawZones(ctx, state, frame.selectedZoneId);
+  drawAsakuraVisionWaves(
+    ctx,
+    spectating ? [state.teams?.A, state.teams?.B] : [ownTeam],
+    elapsed,
+    Number(state.world?.size) || LOGICAL,
+  );
   drawYukiRadar(ctx, frame);
 
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制

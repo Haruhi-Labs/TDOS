@@ -54,7 +54,8 @@
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
-- `shared/game/visibility-radar.js`：真实视野、长门雷达扫描、回波生成与私有序列化。
+- `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
+- `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、环带覆盖判定、失效清理与公共状态序列化。
 - `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
 - `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法。
 - `shared/game/collision-system.js`：舰船碰撞、侦察机相撞和刀锋女王接触结算。
@@ -66,6 +67,7 @@
 - `src/battle/camera.js`、`input.js`、`throttle.js`、`hud.js`、`template.js`：分别负责相机、命中与航线输入、推进控件、战斗 HUD 和公共 DOM 骨架。
 - `src/battle/render.js`：单人、联机和观战共用的 Canvas 战场渲染入口。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
+- `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；玩家仅绘制己方效果，观战绘制双方效果。
 - `src/solo.js`、`src/online.js`：只编排各模式生命周期、输入和数据来源，不复制公共战场表现。
 
 ### 联机链路
@@ -100,10 +102,12 @@
 | --- | --- | --- |
 | 推进档位、速度与能量 | `shared/game/throttle.js` | `src/battle/throttle.js`、核心测试 |
 | 角色数值或技能描述元数据 | `shared/game/characters.js` | `src/i18n/character-text.js` |
-| 技能实际生效过程 | `shared/game-core.js` | `shared/game/combat-rules.js`、核心测试 |
+| 技能实际生效过程 | `shared/game-core.js` | 对应 `shared/game/*` 叶模块、核心测试 |
+| 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
 | AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
+| 朝仓视野波视觉 | `src/battle/render/vision-wave.js` | 视野波规则与单人/联机/观战回归 |
 | 联机画面抖动、插值和预测 | `src/online/state-sync.js` | `scripts/verify-online-state-sync.mjs` |
 | 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/action-dispatcher.js`、本地/远程传输测试 |
 | 规则版本与兼容门禁 | `shared/protocol/ruleset-version.js` | `src/online/snapshot-transport.js`、`server/server.js` |
