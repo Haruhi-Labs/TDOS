@@ -90,3 +90,7 @@
 6. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
+
+核心测试已按领域拆到 `scripts/core-tests/`。推进、技能和战斗规则可单独运行
+`npm run test:core:rules`，AI 可运行 `npm run test:core:ai`，教程可运行
+`npm run test:core:tutorial`；`npm run test:core` 仍按原顺序聚合全部领域。

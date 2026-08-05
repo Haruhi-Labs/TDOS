@@ -1,0 +1,945 @@
+import {
+  AUTO_SCOUT_COOLDOWN_MULTIPLIER,
+  CHARACTER_DEFS,
+  ENERGY_GEAR_PROFILES,
+  EMERGENCY_BRAKE_COST,
+  MANUAL_SCOUT_COOLDOWN,
+  MatchSimulation,
+  THROTTLE_GEAR_VALUES,
+  TICK_DT,
+  YUKI_RADAR_ROTATION_SECONDS,
+  energyRateForThrottle,
+  normalizeThrottleToGear,
+  throttleForGear,
+  throttleGearForValue,
+} from "../../shared/game-core.js";
+import { assert, runSteps } from "./helpers.mjs";
+
+function closeRangeCombatCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+
+  const aMain = sim.teamA.ships.main;
+  const bMain = sim.teamB.ships.main;
+
+  aMain.x = 650;
+  aMain.y = 720;
+  aMain.command.x = aMain.x;
+  aMain.command.y = aMain.y;
+  aMain.route = null;
+  aMain.throttle = 0.25;
+
+  bMain.x = 770;
+  bMain.y = 720;
+  bMain.command.x = bMain.x;
+  bMain.command.y = bMain.y;
+  bMain.route = null;
+  bMain.throttle = 0.25;
+
+  for (const ship of [sim.teamA.ships.sub1, sim.teamA.ships.sub2]) {
+    ship.x = aMain.x - 16;
+    ship.y = aMain.y + (ship.key === "sub1" ? 12 : -12);
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    ship.route = null;
+    ship.throttle = 0.25;
+  }
+  for (const ship of [sim.teamB.ships.sub1, sim.teamB.ships.sub2]) {
+    ship.x = bMain.x + 16;
+    ship.y = bMain.y + (ship.key === "sub1" ? 12 : -12);
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    ship.route = null;
+    ship.throttle = 0.25;
+  }
+
+  runSteps(sim, 10);
+
+  assert(sim.teamA.visibleEnemyIds.size > 0, "近距离场景下，A队未建立敌方可见集");
+  assert(sim.teamB.visibleEnemyIds.size > 0, "近距离场景下，B队未建立敌方可见集");
+  assert(sim.teamA.hullRatio() < 0.995 || sim.teamB.hullRatio() < 0.995, "近距离场景下未出现有效伤害");
+}
+
+function speedAndEnergyRuleCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "yuki",
+        sub2: "future1096",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "koizumi",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+
+  assert(Math.round(teamA.ships.main.effectiveSpeed()) === 31, "未分离时主舰队航速未按最慢成员计算");
+  const combinedEnergy = teamA.ships.main.energy + teamA.ships.sub1.energy + teamA.ships.sub2.energy;
+  assert(Math.round(teamA.availableEnergyForShip(teamA.ships.main)) === Math.round(combinedEnergy), "未分离时舰队能量未按全队加总");
+
+  teamA.split(1);
+  assert(Math.round(teamA.ships.main.effectiveSpeed()) === 33, "一级分离后主舰队航速未改为主舰队内最慢者");
+  assert(Math.round(teamA.ships.sub1.effectiveSpeed()) === 31, "一级分离后独立副舰航速异常");
+  assert(Math.round(teamA.availableEnergyForShip(teamA.ships.sub1)) === Math.round(teamA.ships.sub1.energy), "分离后副舰能量未独立计算");
+
+  teamA.split(2);
+  assert(Math.round(teamA.ships.sub2.effectiveSpeed()) === 37, "二级分离后1096独立航速异常");
+}
+
+function throttleGearCheck() {
+  assert(
+    JSON.stringify(THROTTLE_GEAR_VALUES) === JSON.stringify([0, 0.4, 0.7, 1, 1.4]),
+    "统一推进档位映射发生漂移",
+  );
+  assert(throttleForGear(0) === 0 && throttleForGear(4) === 1.4, "档位转推进值异常");
+  assert(throttleGearForValue(0.68) === 2, "推进值未归入最近档位");
+  assert(normalizeThrottleToGear(1.22) === 1.4, "连续推进值未归一到合法档位");
+  assert(normalizeThrottleToGear(undefined, 0) === 0, "无效输入未保留当前P档");
+  assert(ENERGY_GEAR_PROFILES.length === THROTTLE_GEAR_VALUES.length, "能量曲线与推进档位数量不一致");
+
+  for (const character of Object.values(CHARACTER_DEFS)) {
+    const rates = THROTTLE_GEAR_VALUES.map((throttle) => (
+      energyRateForThrottle(character.stats.energyRegen, character.stats.moveDrain, throttle)
+    ));
+    for (let gear = 1; gear < rates.length; gear += 1) {
+      assert(rates[gear - 1] > rates[gear], `${character.name}的能量净变化未随档位严格下降`);
+    }
+    assert(rates[3] > 0, `${character.name}在前进3档无法小幅回能`);
+    assert(rates[4] < 0, `${character.name}在前进4档没有持续耗能`);
+    assert(rates[0] >= 13 && rates[0] <= 19, `${character.name}的P档回能超出合理范围`);
+  }
+
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const main = sim.teamA.ships.main;
+  const parked = sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 0 });
+  assert(parked && main.throttle === 0, "P档动作未被权威模拟接受");
+
+  const invalid = sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: "无效" });
+  assert(!invalid && main.throttle === 0, "非法推进动作未被拒绝或破坏了当前档位");
+
+  const routed = sim.applyActionForSeat("A", {
+    type: "set_route",
+    shipKey: "main",
+    endX: main.x + 400,
+    endY: main.y,
+    throttle: 0,
+  });
+  assert(routed && main.route && main.throttle === 0, "P档下未能保留待执行航线");
+  const startX = main.x;
+  const startRouteProgress = main.route.t;
+  runSteps(sim, 0.5);
+  assert(Math.abs(main.x - startX) < 0.01, "P档舰船仍在移动");
+  assert(Math.abs(main.route.t - startRouteProgress) < 1e-9, "P档仍在暗中推进航线进度");
+
+  const forward = sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 1.22 });
+  assert(forward && main.throttle === 1.4, "前进档未在服务端归一为合法档位");
+  runSteps(sim, 0.5);
+  assert(main.x > startX, "从P档切入前进档后未沿原航线恢复航行");
+
+  main.energy = 50;
+  main.throttle = throttleForGear(0);
+  sim.teamA.updateEnergy(1);
+  const parkedEnergy = main.energy;
+  assert(
+    Math.abs(parkedEnergy - 50 - energyRateForThrottle(main.baseEnergyRegen(), main.moveEnergyDrain(), 0)) < 1e-6,
+    "权威模拟未按P档曲线回能",
+  );
+  main.energy = 50;
+  main.throttle = throttleForGear(4);
+  sim.teamA.updateEnergy(1);
+  assert(main.energy < 50, "权威模拟中的前进4档未实际消耗能量");
+}
+
+function emergencyBrakeCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+
+  main.angle = 0;
+  main.speed = main.effectiveSpeed();
+  main.command.x = main.x + 420;
+  main.command.y = main.y;
+  main.route = null;
+
+  const beforeEnergy = teamA.availableEnergyForShip(main);
+  const ok = sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" });
+  assert(ok, "急刹动作触发失败");
+  assert(teamA.availableEnergyForShip(main) <= beforeEnergy - EMERGENCY_BRAKE_COST + 0.01, "急刹未正确扣除能量");
+  assert(main.speed < main.effectiveSpeed() * 0.4, "急刹未立即显著压低速度");
+
+  runSteps(sim, 0.4);
+  assert(main.speed < 6, "急刹持续期内减速仍不明显");
+  assert(main.effects.brakeCooldownUntil > sim.elapsed, "急刹未进入冷却");
+}
+
+function autoScoutCheck() {
+  const manualSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const manualOk = manualSim.applyActionForSeat("A", { type: "launch_scout", zoneId: 3 });
+  assert(manualOk, "手动侦察机释放失败");
+  assert(Math.abs(manualSim.teamA.cooldowns.scout - MANUAL_SCOUT_COOLDOWN) < 1e-6, "手动侦察机冷却异常");
+
+  const autoSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const autoConfigOk = autoSim.applyActionForSeat("A", { type: "configure_auto_scout", enabled: true, zoneId: 7 });
+  assert(autoConfigOk, "自动侦察开关配置失败");
+
+  runSteps(autoSim, TICK_DT * 1.5);
+
+  assert(autoSim.teamA.scouts.length >= 1, "自动侦察未在可释放时自动派出");
+  assert(autoSim.teamA.scouts[0].zone?.id === 7, "自动侦察未飞向指定战区");
+  assert(Math.abs(autoSim.teamA.cooldowns.scout - MANUAL_SCOUT_COOLDOWN * AUTO_SCOUT_COOLDOWN_MULTIPLIER) < 0.08, "自动侦察未使用双倍冷却");
+  const serialized = autoSim.serializeState().teams.A.autoScout;
+  assert(serialized?.enabled && serialized.zoneId === 7, "自动侦察状态未序列化到战斗快照");
+}
+
+function splitFormationCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+  const sub1 = teamA.ships.sub1;
+  const sub2 = teamA.ships.sub2;
+
+  main.setBezierRoute(undefined, undefined, 980, 720, 1, true);
+  runSteps(sim, 1.2);
+  teamA.split(1);
+  runSteps(sim, 3);
+
+  const sub1Distance = Math.hypot(sub1.x - main.x, sub1.y - main.y);
+  const sub2Distance = Math.hypot(sub2.x - main.x, sub2.y - main.y);
+
+  assert(!sub1.isAttached() && sub1.route, "一级分离后副舰一应进入独立散开航线");
+  assert(sub2.isAttached(), "一级分离后副舰二应保持附着");
+  assert(!sub2.route, "一级分离后副舰二不应被额外分配散开航线");
+  assert(sub2Distance < 28, "一级分离后未被释放的副舰二不应明显散开");
+  assert(sub1Distance > sub2Distance + 35, "一级分离后应只有被释放的副舰一明显脱离编队");
+}
+
+function initialFormationStabilityCheck() {
+  const loadout = {
+    main: "future1096",
+    sub1: "haruhi",
+    sub2: "kyon",
+  };
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: { A: loadout, B: loadout },
+  });
+
+  const formationError = (team, ship) => {
+    const main = team.ships.main;
+    const scale = 0.5;
+    const ox = ship.formationOffset.x * scale;
+    const oy = ship.formationOffset.y * scale;
+    const cos = Math.cos(main.angle);
+    const sin = Math.sin(main.angle);
+    const expectedX = main.x + ox * cos - oy * sin;
+    const expectedY = main.y + ox * sin + oy * cos;
+    return Math.hypot(ship.x - expectedX, ship.y - expectedY);
+  };
+
+  for (const seat of ["A", "B"]) {
+    const team = sim.teamBySeat(seat);
+    for (const ship of [team.ships.sub1, team.ships.sub2, ...team.extraShips]) {
+      assert(formationError(team, ship) < 0.01, `${seat}队附着舰未按自身朝向生成在编队位置`);
+    }
+  }
+
+  runSteps(sim, 3);
+  for (const seat of ["A", "B"]) {
+    const team = sim.teamBySeat(seat);
+    for (const ship of [team.ships.sub1, team.ships.sub2, ...team.extraShips]) {
+      assert(formationError(team, ship) < 0.5, `${seat}队静止开局时附着舰异常散开`);
+      assert(ship.speed < 0.2, `${seat}队静止开局时附着舰仍在自行推进`);
+    }
+  }
+}
+
+function future1096LeaderHandoverCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "future1096",
+        sub1: "haruhi",
+        sub2: "koizumi",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "yuki",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const originalMain = teamA.ships.main;
+  const twin = teamA.extraShips.find((ship) => ship.slotKey === "twin");
+  const expectedMaxHp = Math.round(originalMain.base.hp * 0.75);
+
+  assert(originalMain.maxHp === expectedMaxHp, "1096 主舰舰体上限不是常规旗舰的75%");
+  assert(twin && twin.maxHp === expectedMaxHp, "1096 僚舰舰体上限不是常规旗舰的75%");
+  assert(originalMain.hp === expectedMaxHp && twin.hp === expectedMaxHp, "1096 双舰开局生命值未与舰体上限一致");
+
+  originalMain.takeDamage(originalMain.maxHp * 2, null, sim);
+
+  assert(teamA.ships.main.id === twin.id, "1096 主舰被击毁后未由剩余舰体接管主舰位");
+  assert(teamA.ships.main.alive, "1096 主舰接管后剩余舰体不应死亡");
+  assert(teamA.ships.main.canControl(), "1096 主舰接管后剩余舰体应可继续操作");
+}
+
+function flagshipLossAutoSplitCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+
+  main.takeDamage(main.maxHp * 2, null, sim);
+
+  assert(teamA.splitLevel === 2, "主舰被击毁后剩余舰队未自动完成分离");
+  assert(!teamA.ships.sub1.isAttached(), "主舰被击毁后副舰一仍处于附着状态");
+  assert(!teamA.ships.sub2.isAttached(), "主舰被击毁后副舰二仍处于附着状态");
+  assert(teamA.ships.sub1.route && teamA.ships.sub2.route, "主舰被击毁后自动分离未为剩余副舰生成脱离航线");
+}
+
+function skippedSplitLevelCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const sub2 = teamA.ships.sub2;
+
+  sub1.takeDamage(sub1.maxHp * 2, null, sim);
+
+  assert(teamA.splitLevel === 1, "副舰一未分离时被击毁后，分离层级未自动跳到一级已完成");
+  assert(!teamA.split(1), "副舰一已阵亡时不应仍允许一级分离");
+  assert(teamA.split(2), "副舰一已阵亡时应直接允许二级分离");
+  assert(!sub2.isAttached(), "副舰一已阵亡后，二级分离未正确释放副舰二");
+}
+
+function yukiPassiveCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "yuki",
+        sub1: "haruhi",
+        sub2: "koizumi",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+  const enemyMain = sim.teamB.ships.main;
+  const zoneWidth = sim.zones[0].width;
+
+  assert(!teamA.areSkillsDisabled(), "长门新雷达被动仍错误封印全队技能");
+  const initialRadar = sim.serializeRadarForSeat("A");
+  assert(initialRadar?.active, "长门旗舰雷达未在开局自动启用");
+  assert(Math.abs(initialRadar.rotationSeconds - 20 / 1.5) < 1e-9, "长门雷达旋转速度未提升为原来的1.5倍");
+  assert(initialRadar.angularVelocity < 0, "长门雷达没有沿画布视觉逆时针方向旋转");
+
+  const originalMainPose = { x: main.x, y: main.y, angle: main.angle };
+  const angleBeforeMovement = initialRadar.angle;
+  main.x += 180;
+  main.y -= 110;
+  main.angle += 1.7;
+  sim.elapsed += 1;
+  teamA.updateRadarPassive(sim.teamB, 1);
+  const angleAfterMovement = sim.serializeRadarForSeat("A").angle;
+  const sweptAfterMovement = (angleBeforeMovement - angleAfterMovement + Math.PI * 2) % (Math.PI * 2);
+  assert(
+    Math.abs(sweptAfterMovement - (Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS) < 1e-9,
+    "长门雷达角速度受到旗舰位移、转向或速度状态影响",
+  );
+  Object.assign(main, originalMainPose);
+
+  const alignRadarToBearingZero = () => {
+    teamA.radarPassive.epochAngle = ((Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS) * sim.elapsed;
+    teamA.radarPassive.angle = 0;
+    teamA.radarPassive.contacts.clear();
+    sim.elapsed += TICK_DT;
+  };
+
+  const energyBeforeScan = main.energy;
+  alignRadarToBearingZero();
+  teamA.computeVisibility(sim.teamB);
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达测试前置敌舰应在常规视野外");
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  const mediumRadar = sim.serializeRadarForSeat("A");
+  const mediumContact = mediumRadar.contacts.find((contact) => contact.targetId === enemyMain.id);
+  assert(mediumContact, "长门雷达波扫过视野外敌舰时未生成回波");
+  assert(mediumContact.kind === "afterimage", "适中距离的雷达回波未显示为舰队残影");
+  assert(mediumContact.characterId === enemyMain.characterId, "适中距离的雷达残影未携带角色身份");
+  assert(Math.hypot(enemyMain.x - main.x, enemyMain.y - main.y) <= zoneWidth, "角色识别测试目标不在一个战区宽度内");
+  assert(main.energy === energyBeforeScan, "长门被动雷达错误消耗了能量");
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达回波错误转化成了真实视野");
+
+  enemyMain.x = main.x + zoneWidth + 1;
+  enemyMain.y = main.y;
+  alignRadarToBearingZero();
+  teamA.computeVisibility(sim.teamB);
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  const outsideIdentifyContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
+  assert(outsideIdentifyContact?.kind === "disturbance", "超过一个战区宽度后仍显示可辨识的舰队残影");
+  assert(outsideIdentifyContact.characterId === null, "超过一个战区宽度后仍泄露角色身份");
+
+  enemyMain.x = sim.worldSize - 10;
+  enemyMain.y = main.y;
+  alignRadarToBearingZero();
+  teamA.computeVisibility(sim.teamB);
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  const farContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
+  assert(farContact?.kind === "disturbance", "远距离雷达回波未降级为水面扰动");
+  assert(farContact.characterId === null, "远距离雷达扰动错误泄露了角色身份");
+  assert(farContact.uncertainty > mediumContact.uncertainty, "雷达距离变远后误差范围没有增大");
+  assert(farContact.clarity < mediumContact.clarity, "雷达距离变远后清晰度没有降低");
+  assert(
+    Math.hypot(farContact.x - enemyMain.x, farContact.y - enemyMain.y) <= farContact.uncertainty + 1e-6,
+    "雷达估算位置超出了声明的误差范围",
+  );
+
+  enemyMain.x = main.x + 100;
+  enemyMain.y = main.y;
+  alignRadarToBearingZero();
+  teamA.computeVisibility(sim.teamB);
+  assert(teamA.visibleEnemyIds.has(enemyMain.id), "近距离敌舰未进入任意常规视野");
+  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  assert(
+    !sim.serializeRadarForSeat("A").contacts.some((contact) => contact.targetId === enemyMain.id),
+    "已在常规视野内的敌舰仍显示雷达扫描效果",
+  );
+  assert(enemyMain.nameRevealed, "长门雷达扫过真实视野内敌舰后未永久确认角色名");
+
+  enemyMain.x = main.x + zoneWidth + 120;
+  teamA.computeVisibility(sim.teamB);
+  assert(!teamA.visibleEnemyIds.has(enemyMain.id), "角色名持续显示测试中的敌舰未离开真实视野");
+  assert(
+    sim.teamB.serialize().ships.main.nameRevealed,
+    "敌舰离开真实视野后，长门雷达确认的角色名未沿用持续显示状态",
+  );
+
+  main.takeDamage(main.maxHp * 2, null, sim);
+  assert(!main.alive, "旧版长门复活效果未从新雷达被动中移除");
+  assert(sim.serializeRadarForSeat("A") === null, "长门旗舰被击毁后雷达仍从无来源位置工作");
+}
+
+function koizumiFlagshipInvulnCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "koizumi",
+        sub1: "haruhi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+  const beforeHp = main.hp;
+
+  const castOk = teamA.castFlagshipSkill();
+  assert(castOk, "古泉旗舰技能释放失败");
+  assert(Math.abs(teamA.effects.taxiUntil - sim.elapsed - 12) < 1e-6, "古泉旗舰技能加速未持续12秒");
+  assert(Math.abs(teamA.effects.taxiInvulnUntil - sim.elapsed - 6) < 1e-6, "古泉旗舰技能无敌未持续6秒");
+  assert(Math.abs(teamA.accelerationModifierForShip(main) - 1.75) < 1e-6, "古泉旗舰技能未使全舰队加速度×1.75");
+
+  runSteps(sim, 5.9);
+  main.takeDamage(220, null, sim);
+  assert(main.hp === beforeHp, "古泉旗舰技能前6秒无敌未生效");
+
+  runSteps(sim, 0.2);
+  main.takeDamage(220, null, sim);
+  assert(main.hp < beforeHp, "古泉旗舰技能无敌结束后仍未恢复正常受伤");
+}
+
+function koizumiBlinkStrikeCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "koizumi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const enemyMain = sim.teamB.ships.main;
+
+  teamA.split(1);
+  sub1.energy = sub1.maxEnergy;
+  sub1.x = 720;
+  sub1.y = 720;
+  sub1.angle = 0;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  enemyMain.x = 980;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  const startX = sub1.x;
+  const castOk = teamA.castSubSkill("sub1", { targetX: 1120, targetY: 720 });
+  assert(castOk, "古泉分舰技能闪现释放失败");
+  assert(sub1.x > startX + 200, "古泉分舰技能未闪现到有效距离");
+  assert(sub1.effects.nextShotDamageMultiplier === 4, "古泉分舰技能未为下一次攻击附加4倍伤害");
+
+  sim.teamA.computeVisibility(sim.teamB);
+  sub1.cooldown = 0;
+  sim.projectiles = [];
+  sub1.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 1, "古泉分舰技能后未能正常攻击");
+  assert(Math.round(sim.projectiles[0].damage) === Math.round(sub1.effectiveDamage() * 4), "古泉分舰技能未正确提升下一次攻击伤害");
+  assert(sub1.effects.nextShotDamageMultiplier === 1, "古泉分舰技能的单次强化未在攻击后清除");
+
+  teamA.cooldowns.sub1 = 0;
+  sub1.energy = sub1.maxEnergy;
+  const beforeY = sub1.y;
+  const castInPlaceOk = teamA.castSubSkill("sub1", {});
+  assert(castInPlaceOk, "古泉分舰技能未支持原地闪现释放");
+  assert(Math.abs(sub1.y - beforeY) < 1e-6, "古泉分舰技能原地闪现时不应强制位移");
+}
+
+function beamSkillCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "koizumi",
+        sub2: "future1096",
+      },
+      B: {
+        main: "kyon",
+        sub1: "tsuruya",
+        sub2: "yuki",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const teamB = sim.teamB;
+
+  teamA.split(1);
+  teamA.split(2);
+  teamA.ships.sub2.energy = teamA.ships.sub2.maxEnergy;
+
+  const sub2 = teamA.ships.sub2;
+  const enemyMain = teamB.ships.main;
+  sub2.x = 680;
+  sub2.y = 700;
+  enemyMain.x = 840;
+  enemyMain.y = 700;
+
+  const before = teamB.hullRatio();
+  const enemyFleetHpBefore = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+  const castOk = teamA.castSubSkill("sub2", { targetX: enemyMain.x, targetY: enemyMain.y });
+  assert(castOk, "1096光线触发失败");
+  const chargingBeam = teamA.beams.find((beam) => beam.phase === "charge");
+  assert(chargingBeam, "1096光线未创建蓄力轨迹");
+  assert(Math.abs(chargingBeam.maxLife - 1.05) < 1e-9, "1096光线蓄力时间不是1.05秒");
+  const initialBeamVector = {
+    x: chargingBeam.x2 - chargingBeam.x1,
+    y: chargingBeam.y2 - chargingBeam.y1,
+  };
+  sub2.y += 90;
+  teamA.update(TICK_DT);
+  const movedBeam = teamA.beams.find((beam) => beam.phase === "charge");
+  assert(movedBeam, "1096光线在移动测试中提前结束蓄力");
+  const movedBeamDx = movedBeam.x2 - movedBeam.x1;
+  const movedBeamDy = movedBeam.y2 - movedBeam.y1;
+  const directionCross = initialBeamVector.x * movedBeamDy - initialBeamVector.y * movedBeamDx;
+  const directionScale = Math.max(1, Math.hypot(initialBeamVector.x, initialBeamVector.y) * Math.hypot(movedBeamDx, movedBeamDy));
+  assert(Math.abs(movedBeam.x1 - sub2.x) < 1e-6 && Math.abs(movedBeam.y1 - sub2.y) < 1e-6, "1096光线发射点未跟随舰船移动");
+  assert(
+    Math.abs(directionCross) / directionScale < 1e-9
+      && initialBeamVector.x * movedBeamDx + initialBeamVector.y * movedBeamDy > 0,
+    "1096光线随舰船移动时没有保持原始发射方向",
+  );
+  sub2.y -= 90;
+  teamA.update(TICK_DT);
+
+  runSteps(sim, 0.35);
+  const chargingVisible = teamA.beams.some((beam) => beam.phase === "charge");
+  runSteps(sim, 1.2);
+  const after = teamB.hullRatio();
+  const enemyFleetHpAfter = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+
+  assert(chargingVisible, "1096光线未进入蓄力阶段");
+  assert(after < before, "1096光线未造成伤害");
+  assert(enemyFleetHpBefore - enemyFleetHpAfter >= enemyMain.maxHp * 0.25, "1096光线未命中点击坐标处的目标或伤害明显偏低");
+}
+
+function tsuruyaFlagshipActiveCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "tsuruya",
+        sub1: "haruhi",
+        sub2: "koizumi",
+      },
+      B: {
+        main: "kyon",
+        sub1: "yuki",
+        sub2: "future1096",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const main = teamA.ships.main;
+
+  main.hp = main.maxHp * 0.6;
+  teamA.cooldowns.sub1 = 10;
+  const beforeHp = main.hp;
+  const castOk = teamA.castFlagshipSkill();
+  assert(castOk, "鹤屋旗舰技能释放失败");
+
+  runSteps(sim, 1);
+
+  assert(main.hp > beforeHp + main.maxHp * 0.009, "鹤屋旗舰技能未按每秒1%最大生命恢复");
+  assert(teamA.cooldowns.sub1 < 8.1, "鹤屋旗舰技能未使技能冷却流逝速度翻倍");
+}
+
+function fireArcDensityCheck() {
+  const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const ship = sim.teamA.ships.main;
+  const target = sim.teamB.ships.main;
+
+  ship.x = 720;
+  ship.y = 720;
+  ship.angle = 0;
+  ship.cooldown = 0;
+  target.x = 860;
+  target.y = 720;
+  sim.teamA.computeVisibility(sim.teamB);
+  ship.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 1, "前方射界应允许正常开火");
+  const frontDamage = sim.projectiles[0].damage;
+  const frontCooldown = ship.cooldown;
+
+  sim.projectiles = [];
+  ship.cooldown = 0;
+  target.x = 720;
+  target.y = 860;
+  sim.teamA.computeVisibility(sim.teamB);
+  ship.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 1, "侧舷射界应允许开火");
+  const broadsideDamage = sim.projectiles[0].damage;
+  const broadsideCooldown = ship.cooldown;
+
+  sim.projectiles = [];
+  ship.cooldown = 0;
+  target.x = 600;
+  target.y = 720;
+  sim.teamA.computeVisibility(sim.teamB);
+  ship.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 0, "舰尾 0 倍射界不应开火");
+
+  assert(Math.abs(frontDamage - broadsideDamage) < 1e-6, "射界不应通过修改单发伤害实现");
+  assert(broadsideCooldown < frontCooldown * 0.8, "1.5 倍射界未体现为更高火力密度");
+}
+
+function kyonUniformFireRateCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "haruhi", sub2: "yuki" },
+      B: { main: "koizumi", sub1: "tsuruya", sub2: "future1096" },
+    },
+  });
+  const ship = sim.teamA.ships.main;
+  const target = sim.teamB.ships.main;
+  ship.x = 720;
+  ship.y = 720;
+  ship.angle = 0;
+
+  const directions = [
+    { x: 860, y: 720, label: "正前" },
+    { x: 720, y: 860, label: "侧舷" },
+    { x: 600, y: 720, label: "舰尾" },
+  ];
+  const expectedCooldown = 1 / (ship.effectiveFireRate() * 1.5);
+  for (const direction of directions) {
+    target.x = direction.x;
+    target.y = direction.y;
+    assert(Math.abs(ship.broadsideMultiplier(target) - 1.5) < 1e-6, `阿虚旗舰${direction.label}方向射速不是1.5×`);
+    ship.cooldown = 0;
+    sim.projectiles = [];
+    sim.teamA.computeVisibility(sim.teamB);
+    ship.tryAttack(sim, sim.teamB);
+    assert(sim.projectiles.length === 1, `阿虚旗舰${direction.label}方向未能开火`);
+    assert(Math.abs(ship.cooldown - expectedCooldown) < 1e-6, `阿虚旗舰${direction.label}方向实际射速不是1.5×`);
+  }
+}
+
+function haruhiBlindfireCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "kyon",
+        sub1: "haruhi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "future1096",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const main = teamA.ships.main;
+  const enemyMain = sim.teamB.ships.main;
+
+  teamA.split(1);
+  sub1.x = 720;
+  sub1.y = 720;
+  sub1.angle = 0;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  main.x = 260;
+  main.y = 240;
+  main.command.x = main.x;
+  main.command.y = main.y;
+  main.route = null;
+
+  enemyMain.x = 1090;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "春日盲射测试布置错误，敌方本应处于视野外");
+
+  sub1.cooldown = 0;
+  sim.projectiles = [];
+  sub1.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 0, "春日未开技能时不应攻击视野外目标");
+
+  const castOk = teamA.castSubSkill("sub1");
+  assert(castOk, "春日分舰技能释放失败");
+  sub1.cooldown = 0;
+  sim.projectiles = [];
+  sub1.tryAttack(sim, sim.teamB);
+  assert(sim.projectiles.length === 1, "春日分舰技能未允许对视野外最近敌人进行盲射");
+}
+
+function asakuraFlagshipCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "asakura",
+        sub1: "haruhi",
+        sub2: "yuki",
+      },
+      B: {
+        main: "koizumi",
+        sub1: "haruhi",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const teamB = sim.teamB;
+  const enemyMain = teamB.ships.main;
+  const enemySub1 = teamB.ships.sub1;
+
+  const enemyFlagOk = teamB.castFlagshipSkill();
+  teamB.split(1);
+  const enemySubOk = teamB.castSubSkill("sub1");
+  assert(enemyFlagOk && enemySubOk, "朝仓旗舰测试前置敌方增益释放失败");
+  runSteps(sim, TICK_DT);
+
+  enemyMain.x = 1180;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰测试布置错误，敌方应处于视野外");
+
+  const castOk = teamA.castFlagshipSkill();
+  assert(castOk, "朝仓旗舰技能释放失败");
+  sim.teamA.computeVisibility(sim.teamB);
+
+  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方团队主动增益");
+  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方无敌效果");
+  assert(!enemySub1.hasEffect("critUntil"), "朝仓旗舰技能未清除敌方舰船主动增益");
+  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未揭示敌方位置");
+  assert(Math.abs(teamA.effects.revealEnemiesUntil - sim.elapsed - 4) < 1e-6, "朝仓旗舰技能揭示时间不是4秒");
+
+  runSteps(sim, 3.9);
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未完整揭示敌方位置4秒");
+
+  runSteps(sim, 0.2);
+  sim.teamA.computeVisibility(sim.teamB);
+  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能揭示结束后仍持续显示敌方位置");
+}
+
+function asakuraSimultaneousSkillPurgeCheck() {
+  const bladeSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "asakura", sub2: "yuki" },
+      B: { main: "asakura", sub1: "koizumi", sub2: "tsuruya" },
+    },
+  });
+  const bladeTeam = bladeSim.teamA;
+  const purgingTeam = bladeSim.teamB;
+  const asakuraSub = bladeTeam.ships.sub1;
+  bladeTeam.split(1);
+
+  assert(
+    bladeSim.applyActionForSeat("A", { type: "cast_sub_skill", shipKey: "sub1" }),
+    "同tick净化测试前置刀锋女王释放失败",
+  );
+  assert(
+    bladeSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
+    "同tick净化测试前置朝仓旗舰技能释放失败",
+  );
+  assert(asakuraSub.hasEffect("bladeQueenUntil"), "后处理一方错误清除了同tick刚开启的刀锋女王");
+
+  runSteps(bladeSim, TICK_DT);
+  purgingTeam.cooldowns.flagship = 0;
+  for (const ship of purgingTeam.fleetMembersForShip("main")) {
+    ship.energy = ship.maxEnergy;
+  }
+  assert(
+    bladeSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
+    "跨tick净化测试朝仓旗舰技能释放失败",
+  );
+  assert(!asakuraSub.hasEffect("bladeQueenUntil"), "朝仓旗舰技能未清除上一tick已存在的刀锋女王");
+
+  const mirrorSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "asakura", sub1: "haruhi", sub2: "yuki" },
+      B: { main: "asakura", sub1: "koizumi", sub2: "tsuruya" },
+    },
+  });
+  assert(
+    mirrorSim.applyActionForSeat("A", { type: "cast_flagship_skill" }),
+    "朝仓镜像测试A方技能释放失败",
+  );
+  assert(
+    mirrorSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
+    "朝仓镜像测试B方技能释放失败",
+  );
+  assert(
+    mirrorSim.teamA.effects.revealEnemiesUntil > mirrorSim.elapsed
+      && mirrorSim.teamB.effects.revealEnemiesUntil > mirrorSim.elapsed,
+    "朝仓镜像同tick释放仍受座位处理顺序影响",
+  );
+}
+
+function asakuraBladeQueenCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: {
+        main: "haruhi",
+        sub1: "asakura",
+        sub2: "yuki",
+      },
+      B: {
+        main: "kyon",
+        sub1: "koizumi",
+        sub2: "tsuruya",
+      },
+    },
+  });
+  const teamA = sim.teamA;
+  const sub1 = teamA.ships.sub1;
+  const enemyMain = sim.teamB.ships.main;
+  const baseSpeed = sub1.baseSpeed();
+
+  teamA.split(1);
+  sub1.energy = sub1.maxEnergy;
+  sub1.x = 720;
+  sub1.y = 720;
+  sub1.command.x = sub1.x;
+  sub1.command.y = sub1.y;
+  sub1.route = null;
+  sub1.cooldown = 999;
+  enemyMain.x = sub1.x + sub1.radius + enemyMain.radius;
+  enemyMain.y = 720;
+  enemyMain.command.x = enemyMain.x;
+  enemyMain.command.y = enemyMain.y;
+  enemyMain.route = null;
+  enemyMain.cooldown = 999;
+
+  // 敌方未分离(3 艘同队),受到的伤害有 30% 平摊给同队其它船,故按「敌方编队总血量损失」判定
+  // 才稳健(技能总伤害不变、只是被重新分配)。否则接触主舰只承担 70%,会假性低于阈值。
+  const enemyFleetHp = () => sim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+  const beforeFleetHp = enemyFleetHp();
+  const castOk = teamA.castSubSkill("sub1");
+  assert(castOk, "朝仓分舰技能释放失败");
+  assert(sub1.baseSpeed() > baseSpeed * 1.3, "朝仓分舰技能未显著提升速度");
+
+  runSteps(sim, 1);
+
+  assert(beforeFleetHp - enemyFleetHp() > enemyMain.maxHp * 0.015, "朝仓分舰技能未对接触敌舰造成持续伤害");
+}
+
+export function runRulesSuite() {
+  closeRangeCombatCheck();
+  speedAndEnergyRuleCheck();
+  throttleGearCheck();
+  emergencyBrakeCheck();
+  autoScoutCheck();
+  splitFormationCheck();
+  initialFormationStabilityCheck();
+  future1096LeaderHandoverCheck();
+  flagshipLossAutoSplitCheck();
+  skippedSplitLevelCheck();
+  yukiPassiveCheck();
+  koizumiFlagshipInvulnCheck();
+  koizumiBlinkStrikeCheck();
+  beamSkillCheck();
+  tsuruyaFlagshipActiveCheck();
+  fireArcDensityCheck();
+  kyonUniformFireRateCheck();
+  haruhiBlindfireCheck();
+  asakuraFlagshipCheck();
+  asakuraSimultaneousSkillPurgeCheck();
+  asakuraBladeQueenCheck();
+}
