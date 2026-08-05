@@ -38,7 +38,9 @@ const STEPS = [
     id: "scout",
     phase: 3,
     title: "派出侦察机",
-    body: "侦察机拥有独立视野，可以在舰队之外确认敌舰位置。现在向<b>2号战区</b>派出一架侦察机，观察它带来的额外视野。",
+    body: (mobile) => mobile
+      ? "侦察机拥有独立视野。按住<b>侦察</b>按钮并向上拖动，指向<b>2号战区</b>后松手释放；直接轻点会释放到中央战区。"
+      : "侦察机拥有独立视野，可以在舰队之外确认敌舰位置。现在向<b>2号战区</b>派出一架侦察机，观察它带来的额外视野。",
     wait: "派出一架侦察机",
     illustration: "scoutVision",
     highlight: ["scoutBtn", "mobileScoutBtn"],

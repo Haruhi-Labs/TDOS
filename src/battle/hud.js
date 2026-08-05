@@ -158,7 +158,7 @@ export function syncMobileHud(ui, own, opts = {}) {
   ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
   ui.mobileBattleHint.textContent = pendingSubSkillAim
     ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
-    : t("点舰船切换 · 点战场下航线 · 点右上小地图选战区");
+    : t("点舰船切换 · 点战场下航线 · 拖侦察选择战区");
 
   const buttonStates = {
     main: own.ships.main,

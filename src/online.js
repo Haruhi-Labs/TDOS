@@ -56,6 +56,7 @@ import {
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
 import { createRemoteBattleActionTransport } from "./battle/action-transport.js";
+import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
 import {
   drawBackground,
   drawBattleCountdown,
@@ -1536,14 +1537,24 @@ function bindUiEvents() {
       log(t("侦查机已派往战区 {zone}", { zone: app.selectedZoneId }));
     }
   });
-  bindPressButton(ui.mobileScoutBtn, () => {
-    const seq = sendAction(matchActions.launchScout({
-      zoneId: app.selectedZoneId,
-      shipKey: app.selectedShipKey,
-    }));
-    if (seq !== null) {
-      log(t("侦查机已派往战区 {zone}", { zone: app.selectedZoneId }));
-    }
+  createMobileScoutJoystick({
+    button: ui.mobileScoutBtn,
+    signal: ac?.signal,
+    formatZone: (zoneId) => zoneId === 5 ? t("中央") : t("{zone}区", { zone: zoneId }),
+    formatReadout: (zoneId) => t("松手释放 · {zone}", {
+      zone: zoneId === 5 ? t("中央战区") : t("战区{zone}", { zone: zoneId }),
+    }),
+    onCommit: (zoneId) => {
+      setSelectedZoneId(zoneId, { allowLog: false });
+      const seq = sendAction(matchActions.launchScout({
+        zoneId: app.selectedZoneId,
+        shipKey: app.selectedShipKey,
+      }));
+      if (seq !== null) {
+        log(t("侦查机已派往战区 {zone}", { zone: app.selectedZoneId }));
+      }
+      return seq !== null;
+    },
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScoutOnline);
   bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScoutOnline);

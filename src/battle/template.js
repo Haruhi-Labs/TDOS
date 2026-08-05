@@ -131,8 +131,8 @@ ${fleetRowHTML("sub2", t("副二"))}
             <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
             <button id="mobileBrakeBtn" type="button">${t("急刹")}</button>
             <button id="mobileFlagshipBtn" type="button">${t("旗舰技")}</button>
+            <button id="mobileScoutBtn" type="button" class="mobile-scout-control" aria-pressed="false" aria-label="${t("侦察：点击释放到中央战区，拖向八个方向选择外围战区")}"><span class="mobile-scout-label">${t("侦察")}</span></button>
             <button id="mobileSubSkillBtn" type="button">${t("分舰技")}</button>
-            <button id="mobileScoutBtn" type="button">${t("侦察")}</button>
             <button id="mobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
             <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
             <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
@@ -141,7 +141,7 @@ ${fleetRowHTML("sub2", t("副二"))}
             <span class="mobile-throttle-label">${t("档位")}</span>
             ${throttleGearButtonsHTML("mobile-throttle-btn")}
           </div>
-          <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
+          <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 拖侦察选择战区")}</div>
         </section>
         <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
           <div id="resultCard" class="result-card">

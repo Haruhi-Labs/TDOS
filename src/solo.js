@@ -73,6 +73,7 @@ import {
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
 import { createLocalBattleActionTransport } from "./battle/action-transport.js";
+import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
 import {
   characterShortName,
   shipCharacterName,
@@ -419,7 +420,7 @@ function resetMatch(logMessage = true) {
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
     clearLog();
-    log(app.mobileMode ? t("战斗开始。点战场直接移动，点右上小地图选战区。") : t("战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。"));
+    log(app.mobileMode ? t("战斗开始。点战场直接移动，按住侦察并拖向目标战区。") : t("战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。"));
   }
   updateUi();
 }
@@ -1048,11 +1049,21 @@ function bindUiEvents() {
       log(t("侦查机已派往战区{zone}", { zone: app.selectedZoneId }));
     }
   });
-  bindPressButton(ui.mobileScoutBtn, () => {
-    const ok = applyAction(matchActions.launchScout({ zoneId: app.selectedZoneId, shipKey: app.selectedShipKey }));
-    if (ok) {
-      log(t("侦查机已派往战区{zone}", { zone: app.selectedZoneId }));
-    }
+  createMobileScoutJoystick({
+    button: ui.mobileScoutBtn,
+    signal: ac?.signal,
+    formatZone: (zoneId) => zoneId === 5 ? t("中央") : t("{zone}区", { zone: zoneId }),
+    formatReadout: (zoneId) => t("松手释放 · {zone}", {
+      zone: zoneId === 5 ? t("中央战区") : t("战区{zone}", { zone: zoneId }),
+    }),
+    onCommit: (zoneId) => {
+      setSelectedZoneId(zoneId, { allowLog: false });
+      const ok = applyAction(matchActions.launchScout({ zoneId: app.selectedZoneId, shipKey: app.selectedShipKey }));
+      if (ok) {
+        log(t("侦查机已派往战区{zone}", { zone: app.selectedZoneId }));
+      }
+      return ok;
+    },
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScout);
   bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScout);

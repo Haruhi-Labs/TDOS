@@ -920,6 +920,192 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 .mobile-action-grid > button,
 .mobile-throttle-row { min-height: 42px; }
 
+/* 侦察机八向释放手柄：按压点就是圆心，轻点保留中央战区。 */
+.mobile-scout-control {
+  position: relative;
+  isolation: isolate;
+  touch-action: none;
+  overscroll-behavior: contain;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.mobile-scout-control::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  z-index: 0;
+  border: 1px solid #c8a24e38;
+  border-radius: 50%;
+  opacity: 0.56;
+  transform: scale(0.66);
+  transition: opacity 100ms ease-out, transform 160ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.mobile-scout-control.scout-aiming {
+  border-color: #9de7e8;
+  color: #efffff;
+  background: linear-gradient(180deg, #31676c 0%, #15363c 100%);
+  box-shadow:
+    inset 0 1px 0 #c7ffff77,
+    inset 0 -2px 5px #02060ecc,
+    0 0 14px #62cdd077;
+  transform: none;
+}
+.mobile-scout-control.scout-aiming::before {
+  opacity: 1;
+  transform: scale(1);
+}
+.mobile-scout-label {
+  position: relative;
+  z-index: 1;
+  display: inline-block;
+  transition: opacity 100ms ease-out, transform 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.mobile-scout-control.scout-aiming .mobile-scout-label {
+  transform: scale(0.96);
+}
+
+.scout-joystick {
+  position: fixed;
+  z-index: 90;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.scout-joystick-base {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 158px;
+  height: 158px;
+  border: 1px solid #a8e4dfaa;
+  border-radius: 50%;
+  opacity: 0;
+  overflow: hidden;
+  transform: translate(-50%, -50%) scale(0.9);
+  background:
+    radial-gradient(circle at center, transparent 0 27px, #82e2df12 28px 29px, transparent 30px 51px, #82e2df20 52px 53px, transparent 54px),
+    linear-gradient(90deg, transparent calc(50% - 0.5px), #82e2df27 50%, transparent calc(50% + 0.5px)),
+    linear-gradient(transparent calc(50% - 0.5px), #82e2df27 50%, transparent calc(50% + 0.5px)),
+    radial-gradient(circle at 50% 42%, #204952e8 0%, #102830ed 56%, #08151be8 100%);
+  box-shadow:
+    inset 0 0 0 5px #07121899,
+    inset 0 0 22px #75dcda1f,
+    0 0 0 1px #091116dd,
+    0 8px 30px #01050999,
+    0 0 24px #5ed9d53d;
+  -webkit-backdrop-filter: blur(5px);
+  backdrop-filter: blur(5px);
+  transition: opacity 90ms ease-out, transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scout-joystick-base::before {
+  content: "";
+  position: absolute;
+  inset: 8px;
+  border: 1px dashed #8ee3df36;
+  border-radius: 50%;
+  background: repeating-conic-gradient(from 0deg, #a9efeb55 0deg 1deg, transparent 1deg 44deg, #a9efeb55 44deg 45deg);
+  -webkit-mask: radial-gradient(circle, transparent 0 62px, #000 63px 65px, transparent 66px);
+  mask: radial-gradient(circle, transparent 0 62px, #000 63px 65px, transparent 66px);
+}
+.scout-joystick.is-active .scout-joystick-base {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+.scout-joystick-sector {
+  position: absolute;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid #76c8c599;
+  border-radius: 50%;
+  background: #0a1b21dd;
+  color: #b9dedb;
+  font: 700 0.69rem/1 var(--font-engrave);
+  font-variant-numeric: tabular-nums;
+  box-shadow: inset 0 0 0 1px #02060e99, 0 2px 6px #02060e88;
+  transform: translate(-50%, -50%) scale(0.94);
+  transition: color 90ms ease-out, border-color 90ms ease-out, background 90ms ease-out, box-shadow 90ms ease-out, transform 120ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.scout-joystick-sector[data-zone="1"] { left: 21%; top: 21%; }
+.scout-joystick-sector[data-zone="2"] { left: 50%; top: 11%; }
+.scout-joystick-sector[data-zone="3"] { left: 79%; top: 21%; }
+.scout-joystick-sector[data-zone="4"] { left: 11%; top: 50%; }
+.scout-joystick-sector[data-zone="5"] { display: none; }
+.scout-joystick-sector[data-zone="6"] { left: 89%; top: 50%; }
+.scout-joystick-sector[data-zone="7"] { left: 21%; top: 79%; }
+.scout-joystick-sector[data-zone="8"] { left: 50%; top: 89%; }
+.scout-joystick-sector[data-zone="9"] { left: 79%; top: 79%; }
+.scout-joystick-sector.is-selected {
+  border-color: #f1d486;
+  background: #76551a;
+  color: #fff7db;
+  box-shadow: inset 0 1px 0 #fff2bd77, 0 0 12px #f1c962aa;
+  transform: translate(-50%, -50%) scale(1.12);
+}
+.scout-joystick-thumb {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  width: 45px;
+  height: 45px;
+  border: 2px solid #c8f7f3;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 42% 34%, #6db9ba 0%, #27666b 43%, #12363c 100%);
+  color: #fff8dd;
+  box-shadow:
+    inset 0 2px 3px #e6ffff66,
+    inset 0 -5px 8px #02060e77,
+    0 4px 12px #02060ebb,
+    0 0 0 4px #72d6d329,
+    0 0 16px #72d6d377;
+  will-change: transform;
+}
+.scout-joystick-thumb::before {
+  content: "";
+  position: absolute;
+  inset: 6px;
+  border: 1px solid #e5ffff55;
+  border-radius: 50%;
+}
+.scout-joystick-thumb-zone {
+  position: relative;
+  font: 800 0.86rem/1 var(--font-engrave);
+  text-shadow: 0 1px 2px #02060e;
+}
+.scout-joystick-readout {
+  position: absolute;
+  left: 0;
+  top: -101px;
+  min-width: 128px;
+  padding: 6px 11px;
+  border: 1px solid #83d8d5aa;
+  border-radius: 999px;
+  opacity: 0;
+  background: #0b2026ed;
+  color: #d9f6f3;
+  font: 600 0.72rem/1.2 var(--font-cn);
+  letter-spacing: 0.04em;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 #d8ffff22, 0 4px 14px #02060e99;
+  transform: translate(-50%, 5px);
+  transition: opacity 90ms ease-out, transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+.scout-joystick.is-active .scout-joystick-readout {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.scout-joystick.is-committed .scout-joystick-base { border-color: #f0d488; box-shadow: inset 0 0 20px #f0d48822, 0 0 25px #f0d48855; }
+.scout-joystick.is-rejected .scout-joystick-base { border-color: #d76166; box-shadow: inset 0 0 20px #d7616622, 0 0 25px #d7616655; }
+
 .mobile-throttle-row {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3856,6 +4042,26 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 @media (prefers-reduced-motion: reduce) {
   #app > *, .ts-content, .page-frame, .lobby-frame { animation: none; }
+  .mobile-scout-control::before,
+  .mobile-scout-label,
+  .scout-joystick-base,
+  .scout-joystick-sector,
+  .scout-joystick-readout { transition-duration: 1ms !important; }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  .scout-joystick-base,
+  .scout-joystick-readout {
+    background-color: #0b2026;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
+
+@media (prefers-contrast: more) {
+  .scout-joystick-base,
+  .scout-joystick-readout,
+  .scout-joystick-sector { border-width: 2px; }
 }
 
 /* ═══════════════ 单人战役 / 难度流程 ═══════════════ */
