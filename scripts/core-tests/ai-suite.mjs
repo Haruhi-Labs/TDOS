@@ -426,7 +426,7 @@ function aiCombatScoutThreatCheck() {
 
   const contact = bot.knownEnemyContacts().find((item) => item.id === combatScout.id);
   assert(contact?.combatCapable, "AI默认威胁列表忽略了可见的长门战斗僚机");
-  assert(bot.contactCombatValue(contact) > 0.1, "AI仍把长门战斗僚机按无威胁侦察机估值");
+  assert(bot.contactCombatValue(contact) > 0.17, "AI仍把长门战斗僚机按无威胁侦察机估值");
   assert(
     bot.estimateVisionRange(contact) === CHARACTER_DEFS.yuki.stats.vision,
     "AI未按舰船级视野估算长门战斗僚机感知范围",

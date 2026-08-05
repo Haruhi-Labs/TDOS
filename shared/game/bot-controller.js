@@ -971,7 +971,7 @@ export class BotController {
     }
     const confidence = clamp(contact.confidence ?? 1, 0.2, 1);
     if (contact.kind === "scout") {
-      const baseValue = contact.combatCapable ? 0.14 : 0.08;
+      const baseValue = contact.combatCapable ? 0.21 : 0.08;
       return baseValue * confidence * (contact.visible ? 1 : 0.75);
     }
     if (contact.kind === "wingman") {
@@ -1027,7 +1027,7 @@ export class BotController {
       if (d > radius * 1.2) {
         continue;
       }
-      total += 0.14 * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
+      total += 0.21 * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
     }
     return total;
   }

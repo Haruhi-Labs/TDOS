@@ -254,8 +254,8 @@ function yukiFlagshipCombatScoutCheck() {
   assert(combatScout.attackRange === yukiStats.range, "长门战斗僚机未复用长门常规舰炮射程");
   assert(combatScout.effectiveDamage() === 16, "长门战斗僚机基础伤害不是16");
   assert(
-    Math.abs(combatScout.effectiveFireRate() - yukiStats.fireRate * (2 / 3)) < 1e-9,
-    "长门战斗僚机射速不是常规舰炮的2/3",
+    Math.abs(combatScout.effectiveFireRate() - yukiStats.fireRate) < 1e-9,
+    "长门战斗僚机射速不是常规舰炮射速",
   );
 
   const enemyMain = yukiSim.teamB.ships.main;
@@ -272,8 +272,8 @@ function yukiFlagshipCombatScoutCheck() {
   assert(yukiSim.projectiles[0].sourceId === combatScout.id, "长门战斗僚机弹丸来源标记错误");
   assert(yukiSim.projectiles[0].damage === 16, "长门战斗僚机弹丸伤害不是16");
   assert(
-    Math.abs(combatScout.cooldown - 1 / (yukiStats.fireRate * (2 / 3))) < 1e-9,
-    "长门战斗僚机攻击间隔不是常规舰炮频率的2/3",
+    Math.abs(combatScout.cooldown - 1 / yukiStats.fireRate) < 1e-9,
+    "长门战斗僚机攻击间隔不是常规舰炮频率",
   );
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
