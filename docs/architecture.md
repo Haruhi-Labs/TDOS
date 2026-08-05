@@ -19,6 +19,7 @@
 
 - `shared/game-core.js`：兼容入口与战斗模拟编排。旧调用方可以继续从这里导入稳定 API。
 - `shared/game/constants.js`：世界尺寸、逻辑帧率和快照频率等跨端基础常量。
+- `shared/game/fixed-step-clock.js`：单人和服务端共用的固定逻辑步长、暂停与追帧上限。
 - `shared/game/throttle.js`：推进档位、档位归一化以及推进与能量收支的关系。
 - `shared/game/combat-rules.js`：火力方向、侦察消耗、急刹消耗和雷达转速等独立规则。
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
@@ -87,9 +88,10 @@
 1. 运行 `npm run check:modules`，避免边界回退和循环依赖。
 2. 运行 `npm run test:api`，避免稳定入口在拆分中意外丢失导出。
 3. 规则或 AI 改动运行 `npm run test:core`。
-4. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
-5. 协议、服务端或快照改动运行 `npm run test:network` 与 `npm run test:network:guards`。
-6. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
+4. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
+5. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
+6. 协议、服务端或快照改动运行 `npm run test:network` 与 `npm run test:network:guards`。
+7. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
 

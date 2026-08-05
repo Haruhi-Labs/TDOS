@@ -14,6 +14,7 @@ import {
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
+import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 
 import {
@@ -178,7 +179,7 @@ function initApp() {
   suppressMapClick: false,
   pendingSubSkillAim: null,
   destructionEffects: createShipDestructionEffects(),
-  lastTime: performance.now(),
+  logicClock: createFixedStepClock({ initialTimeMs: performance.now() }),
   gameOverLogged: false,
   tickRunning: false,
   paused: false,
@@ -412,7 +413,7 @@ function resetMatch(logMessage = true) {
   resetShipDestructionEffects(app.destructionEffects);
   app.gameOverLogged = false;
   app.paused = false;
-  app.lastTime = performance.now();
+  app.logicClock.reset(performance.now());
   const mainShip = app.sim.teamA.ships.main;
   camera.reset({ x: mainShip.x, y: mainShip.y });
   updateShipSwitchLabels(app.playerLoadout);
@@ -887,12 +888,14 @@ function render() {
 
 function tick(timestamp) {
   if (!running) return;
-  const dt = clamp((timestamp - app.lastTime) / 1000, 0, 0.05);
-  app.lastTime = timestamp;
-
-  if (!app.paused && app.sim && (!app.state || app.state.phase !== "finished")) {
-    app.sim.update(dt);
-  }
+  const simulationActive = Boolean(
+    !app.paused &&
+    app.sim &&
+    (!app.state || app.state.phase !== "finished")
+  );
+  app.logicClock.advance(timestamp, (stepSeconds) => app.sim.update(stepSeconds), {
+    active: simulationActive,
+  });
   app.state = app.sim ? app.sim.serializeState() : null;
 
   tutorial.update(app.state);
@@ -1395,7 +1398,7 @@ function beginSimulationLoop() {
   if (!running) {
     running = true;
     app.tickRunning = true;
-    app.lastTime = performance.now();
+    app.logicClock.reset(performance.now());
     rafId = requestAnimationFrame(tick);
   }
 }

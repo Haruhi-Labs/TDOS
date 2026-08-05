@@ -1,13 +1,10 @@
 import { TICK_DT } from "../shared/game/constants.js";
+import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import {
   LOOP_IDLE_MS,
   MAX_CATCHUP_STEPS,
   SNAPSHOT_INTERVAL,
 } from "./config.js";
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
 
 export function createMatchRuntime({
   rooms,
@@ -23,8 +20,12 @@ export function createMatchRuntime({
   maxCatchupSteps = MAX_CATCHUP_STEPS,
   loopIdleMs = LOOP_IDLE_MS,
 }) {
-  let lastLoopTimeMs = now();
-  let loopAccumulator = 0;
+  const clock = createFixedStepClock({
+    stepSeconds: tickDt,
+    maxCatchupSteps,
+    maxFrameSeconds: 0.25,
+    initialTimeMs: now(),
+  });
 
   function tickRooms() {
     for (const room of rooms.values()) {
@@ -62,20 +63,7 @@ export function createMatchRuntime({
   }
 
   function advanceLoop(currentTimeMs = now()) {
-    const frameSeconds = clamp((currentTimeMs - lastLoopTimeMs) / 1000, 0, 0.25);
-    lastLoopTimeMs = currentTimeMs;
-    loopAccumulator += frameSeconds;
-
-    let steps = 0;
-    while (loopAccumulator >= tickDt && steps < maxCatchupSteps) {
-      tickRooms();
-      loopAccumulator -= tickDt;
-      steps += 1;
-    }
-    if (steps >= maxCatchupSteps) {
-      loopAccumulator = 0;
-    }
-    return steps;
+    return clock.advance(currentTimeMs, tickRooms);
   }
 
   function runServerLoop() {
