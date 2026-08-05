@@ -1,5 +1,4 @@
 import {
-  CHARACTER_DEFS,
   DEFAULT_TEAM_LOADOUT,
   DEFAULT_WORLD_SIZE,
   EMERGENCY_BRAKE_COST,
@@ -7,19 +6,22 @@ import {
   clamp,
   cloneLoadout,
   distance,
-  lerp,
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
-import { applyStatePatch } from "../shared/network-patch.js";
 import { createOnlineStateSync } from "./online/state-sync.js";
 import { buildServerUrlCandidates, defaultServerUrl } from "./online/connection-target.js";
+import { createOnlineLobbyView } from "./online/lobby-view.js";
 import {
   createOnlineProfileController,
   readStoredLoadout,
   storeLoadout,
 } from "./online/profile-controller.js";
 import { createOnlineResultView } from "./online/result-view.js";
+import {
+  createOnlineSnapshotTransport,
+  DEFAULT_INTERP_MS,
+} from "./online/snapshot-transport.js";
 
 import { getFaction } from "./profile.js";
 
@@ -78,6 +80,8 @@ let camera = null; // 共享战场相机（src/battle/camera.js），mount 时�
 let stateSync = null; // 快照插值、外推和显示态平滑
 let profileController = null; // 昵称、档案编队与对应 DOM 同步
 let resultView = null; // 联机结算卡片
+let lobbyView = null; // 大厅房间列表与摘要
+let snapshotTransport = null; // 延迟测量、差量解码与快照队列
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -174,13 +178,7 @@ const TAU = Math.PI * 2;
 // 客户端视野只覆盖世界一角或地图被裁。坐标运算都在此空间,与画布物理像素解耦;
 // backing store 按设备像素铺满显示区,渲染时整体放大保清晰。
 const LOGICAL = DEFAULT_WORLD_SIZE;
-const DEFAULT_INTERP_MS = 120;
-const MIN_INTERP_MS = 75;
-const MAX_INTERP_MS = 280;
 const MAX_EXTRAPOLATE_MS = 180;
-const SNAPSHOT_HISTORY_SECONDS = 6;
-const PING_INTERVAL_MS = 1000;
-const SNAPSHOT_ACK_INTERVAL_MS = 250;
 const DRAG_SEND_INTERVAL_MS = 75;
 const ROUTE_OVERRIDE_MIN_HOLD_MS = 180;
 const ROUTE_OVERRIDE_MAX_HOLD_MS = 1200;
@@ -254,6 +252,8 @@ function initApp() {
     getPlayerLoadout: () => app.playerLoadout,
   });
   resultView = createOnlineResultView({ app, ui, log });
+  lobbyView = createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer });
+  snapshotTransport = createOnlineSnapshotTransport({ app, nowMs, socketSend, updateConnectionUi, log });
   stateSync = createOnlineStateSync({
     app,
     nowMs,
@@ -316,14 +316,6 @@ function setBattleControlsEnabled(enabled) {
 function setRoomHudVisible(visible) {
   if (ui.lobbyView) ui.lobbyView.hidden = !visible;
   if (ui.battleView) ui.battleView.hidden = visible;
-}
-
-function localizedServerName(name, isBot = false) {
-  const raw = String(name || "").trim();
-  if (!raw || isBot || raw === "空位" || raw === "统合思念体AI") {
-    return translateServerText(raw || "空位");
-  }
-  return raw;
 }
 
 function socketSend(payload) {
@@ -394,71 +386,8 @@ function bindPressButton(button, handler) {
   });
 }
 
-function resetConnectionSyncState() {
-  app.pingMs = 0;
-  app.jitterMs = 0;
-  app.interpDelayMs = DEFAULT_INTERP_MS;
-  app.pingSeq = 0;
-  app.pendingPings.clear();
-  app.rttVarianceMs = 0;
-  app.bestClockRttMs = Infinity;
-  app.clockOffsetMs = 0;
-  app.clockReady = false;
-  app.serverTickRate = 30;
-  app.serverSnapshotRate = 20;
-  app.networkProtocolVersion = 1;
-  app.snapshotIntervalMs = 1000 / app.serverSnapshotRate;
-}
-
-function sendPingProbe() {
-  if (!app.connected) {
-    return;
-  }
-  app.pingSeq += 1;
-  const pingId = app.pingSeq;
-  const clientTime = nowMs();
-  app.pendingPings.set(pingId, clientTime);
-  if (app.pendingPings.size > 40) {
-    const oldestKey = app.pendingPings.keys().next().value;
-    if (oldestKey !== undefined) {
-      app.pendingPings.delete(oldestKey);
-    }
-  }
-  socketSend({
-    type: "ping",
-    pingId,
-    clientTime,
-  });
-}
-
-function startPingLoop() {
-  stopPingLoop();
-  sendPingProbe();
-  app.pingTimer = window.setInterval(sendPingProbe, PING_INTERVAL_MS);
-}
-
-function stopPingLoop() {
-  if (app.pingTimer) {
-    clearInterval(app.pingTimer);
-    app.pingTimer = null;
-  }
-  app.pendingPings.clear();
-}
-
 function clearMatchRuntime() {
-  app.snapshots = [];
-  app.latestSnapshot = null;
-  app.lastSnapshotTick = 0;
-  app.lastSnapshotSeq = 0;
-  app.decodedSnapshotState = null;
-  app.decodedSnapshotSeq = 0;
-  app.lastSnapshotAckSentAt = 0;
-  app.lastAckedSnapshotSeq = 0;
-  app.lastSnapshotArriveAtMs = 0;
-  app.snapshotArrivalMs = 0;
-  app.snapshotArrivalJitterMs = 0;
-  app.snapshotLossRatio = 0;
-  app.snapshotReorderRatio = 0;
+  snapshotTransport.resetMatchState();
   app.smoothEntities.clear();
   app.lastRenderMs = 0;
   app.routeOverrides.clear();
@@ -491,7 +420,7 @@ function connectServer() {
     }
   }
 
-  resetConnectionSyncState();
+  snapshotTransport.resetConnectionState();
   clearMatchRuntime();
   updateConnectionUi();
 
@@ -526,7 +455,7 @@ function connectServer() {
       }
       socketSend({ type: "set_loadout", loadout: app.playerLoadout });
       socketSend({ type: "list_rooms" });
-      startPingLoop();
+      snapshotTransport.startPingLoop();
     });
 
     ws.addEventListener("close", () => {
@@ -544,12 +473,12 @@ function connectServer() {
       app.room = null;
       app.seat = null;
       app.spectating = false;
-      updateRoomSummary();
+      lobbyView.updateRoomSummary();
       setBattleControlsEnabled(false);
       setRoomHudVisible(true);
-      stopPingLoop();
+      snapshotTransport.stopPingLoop();
       clearMatchRuntime();
-      resetConnectionSyncState();
+      snapshotTransport.resetConnectionState();
       resultView.close();
       updateConnectionUi();
       log(t("连接已断开"));
@@ -583,207 +512,6 @@ function disconnectServer() {
   app.ws.close();
 }
 
-function updateRoomSummary() {
-  if (!app.room) {
-    ui.roomSummary.textContent = t("未进入房间");
-    ui.leaveRoomBtn.disabled = true;
-    return;
-  }
-
-  const rows = [];
-  rows.push(t("房间ID：{id}", { id: app.room.roomId }));
-  rows.push(t("类型：{type}", { type: app.room.mode === "ai" ? t("AI 训练") : t("玩家对战") }));
-  rows.push(t("可见性：{visibility}", { visibility: app.room.visibility === "private" ? t("私人") : t("公开") }));
-  if (app.room.visibility === "private" && app.room.code) {
-    rows.push(t("房间号：{code}", { code: app.room.code }));
-  }
-  rows.push(t("状态：{status}", { status: roomStatusText(app.room.status) }));
-  if (Number(app.room.spectatorCount) > 0 || app.spectating) {
-    rows.push(t("观战：{count}", { count: Number(app.room.spectatorCount) || 0 }));
-  }
-  for (const playerRow of app.room.players || []) {
-    const seatText = playerRow.seat === "A" ? t("A位") : t("B位");
-    const suffix = playerRow.isBot ? t("（AI）") : "";
-    const displayName = localizedServerName(playerRow.name, playerRow.isBot);
-    const loadoutText = playerRow.loadout
-      ? ` | ${CHARACTER_DEFS[playerRow.loadout.main].shortName}/${CHARACTER_DEFS[playerRow.loadout.sub1].shortName}/${CHARACTER_DEFS[playerRow.loadout.sub2].shortName}`
-      : "";
-    rows.push(t("{seat}：{name}{suffix}{loadout}", { seat: seatText, name: displayName, suffix, loadout: loadoutText }));
-  }
-
-  ui.roomSummary.textContent = rows.join("\n");
-  ui.leaveRoomBtn.disabled = false;
-}
-
-function roomStatusText(status) {
-  if (status === "waiting") {
-    return t("等待玩家");
-  }
-  if (status === "running") {
-    return t("对战中");
-  }
-  if (status === "countdown") {
-    return t("即将开战");
-  }
-  if (status === "finished") {
-    return t("已结束");
-  }
-  return t("未知");
-}
-
-function updateInterpolationDelay() {
-  const baseBufferMs = Math.max(MIN_INTERP_MS, app.snapshotIntervalMs * 1.35);
-  const latencyBudget = app.pingMs * 0.22;
-  const jitterBudget = Math.max(app.rttVarianceMs, app.snapshotArrivalJitterMs, app.jitterMs) * 1.6;
-  const lossBudget = app.snapshotLossRatio * app.snapshotIntervalMs * 1.6;
-  const reorderBudget = app.snapshotReorderRatio * app.snapshotIntervalMs * 1.1;
-  const target = baseBufferMs + latencyBudget + jitterBudget + lossBudget + reorderBudget + 20;
-  const minDelay = Math.max(MIN_INTERP_MS, app.snapshotIntervalMs * 1.05);
-  const maxDelay = Math.max(MAX_INTERP_MS, app.snapshotIntervalMs * 4.5);
-  app.interpDelayMs = clamp(lerp(app.interpDelayMs, target, 0.28), minDelay, maxDelay);
-  updateConnectionUi();
-}
-
-function handlePong(message) {
-  const recvClientMs = nowMs();
-  const pingId = Number(message.pingId);
-  const fallbackSentMs = Number(message.clientTime) || 0;
-  let sentClientMs = fallbackSentMs;
-  if (Number.isInteger(pingId) && app.pendingPings.has(pingId)) {
-    sentClientMs = app.pendingPings.get(pingId);
-    app.pendingPings.delete(pingId);
-  }
-  if (!sentClientMs) {
-    return;
-  }
-  const rtt = recvClientMs - sentClientMs;
-  if (!Number.isFinite(rtt) || rtt <= 0 || rtt > 5000) {
-    return;
-  }
-
-  if (!Number.isFinite(app.pingMs) || app.pingMs <= 0) {
-    app.pingMs = rtt;
-  } else {
-    app.rttVarianceMs = lerp(app.rttVarianceMs, Math.abs(rtt - app.pingMs), 0.22);
-    app.pingMs = lerp(app.pingMs, rtt, 0.28);
-  }
-
-  const serverRecvMs = Number(message.serverRecvTime);
-  const serverSendMs = Number(message.serverSendTime);
-  const serverTimeMs = Number(message.serverTime);
-  let offsetSample = null;
-  if (Number.isFinite(serverRecvMs) && Number.isFinite(serverSendMs)) {
-    offsetSample = ((serverRecvMs - sentClientMs) + (serverSendMs - recvClientMs)) * 0.5;
-  } else if (Number.isFinite(serverTimeMs)) {
-    offsetSample = serverTimeMs + rtt * 0.5 - recvClientMs;
-  }
-
-  if (Number.isFinite(offsetSample)) {
-    app.bestClockRttMs = Math.min(app.bestClockRttMs + 0.2, rtt);
-    if (!app.clockReady) {
-      app.clockOffsetMs = offsetSample;
-      app.clockReady = true;
-    } else {
-      const tightSample = rtt <= app.bestClockRttMs + 8;
-      const alpha = tightSample ? 0.2 : 0.06;
-      app.clockOffsetMs = lerp(app.clockOffsetMs, offsetSample, alpha);
-    }
-  }
-
-  app.jitterMs = lerp(app.jitterMs, Math.max(app.rttVarianceMs, app.snapshotArrivalJitterMs), 0.18);
-  updateInterpolationDelay();
-}
-
-function handleConnected(message) {
-  app.playerId = message.playerId || null;
-  const build = String(message.build || "").trim();
-  if (build) {
-    log(t("服务器版本：{build}", { build }));
-  } else {
-    log(t("服务器版本信息缺失，可能仍在运行旧版服务端"));
-  }
-  const tickRate = Number(message.tickRate);
-  const snapshotRate = Number(message.snapshotRate);
-  const snapshotIntervalMs = Number(message.snapshotIntervalMs);
-  const protocolVersion = Number(message.protocolVersion);
-  app.networkProtocolVersion = Number.isInteger(protocolVersion) && protocolVersion >= 2 ? protocolVersion : 1;
-  if (Number.isFinite(tickRate) && tickRate >= 5) {
-    app.serverTickRate = tickRate;
-  }
-  if (Number.isFinite(snapshotRate) && snapshotRate >= 2) {
-    app.serverSnapshotRate = snapshotRate;
-    app.snapshotIntervalMs = 1000 / app.serverSnapshotRate;
-  } else if (Number.isFinite(snapshotIntervalMs) && snapshotIntervalMs >= 15) {
-    app.snapshotIntervalMs = snapshotIntervalMs;
-  }
-
-  const serverTime = Number(message.serverTime);
-  if (Number.isFinite(serverTime)) {
-    app.clockOffsetMs = serverTime - nowMs();
-    app.clockReady = true;
-  }
-  if (app.networkProtocolVersion >= 2) {
-    socketSend({
-      type: "protocol_hello",
-      protocolVersion: 2,
-    });
-  }
-  updateInterpolationDelay();
-}
-
-function renderLobbyRooms(rooms) {
-  ui.roomList.innerHTML = "";
-
-  if (!rooms || rooms.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "room-item room-item-empty";
-    empty.textContent = t("当前没有公开房，可先创建一个。");
-    ui.roomList.append(empty);
-    return;
-  }
-
-  for (const room of rooms) {
-    const item = document.createElement("div");
-    item.className = "room-item";
-
-    const title = document.createElement("div");
-    title.className = "room-item-title";
-    title.textContent = `${room.mode === "ai" ? t("AI房") : t("玩家对战房")} · ${room.roomId}`;
-
-    const meta = document.createElement("div");
-    meta.className = "room-item-meta";
-    meta.textContent =
-      t("房主：{host} | 人数：{count}/{capacity} | 状态：{status}", {
-      host: room.hostName === "未知" ? t("未知") : room.hostName,
-      count: room.count,
-      capacity: room.capacity,
-      status: roomStatusText(room.status),
-      }) + ` | ${t("观战：{count}", { count: Number(room.spectatorCount) || 0 })}`;
-
-    const joinBtn = document.createElement("button");
-    joinBtn.textContent = t("加入");
-    joinBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
-    joinBtn.addEventListener("click", () => {
-      syncLoadoutToServer(false);
-      socketSend({ type: "join_room", roomId: room.roomId });
-    });
-
-    const spectateBtn = document.createElement("button");
-    spectateBtn.textContent = t("观战");
-    spectateBtn.disabled = !app.connected || Boolean(app.room) || room.status !== "running";
-    spectateBtn.addEventListener("click", () => {
-      socketSend({ type: "spectate_room", roomId: room.roomId });
-    });
-
-    const actions = document.createElement("div");
-    actions.className = "room-item-actions";
-    actions.append(joinBtn, spectateBtn);
-
-    item.append(title, meta, actions);
-    ui.roomList.append(item);
-  }
-}
-
 function applyRoomState(message) {
   const previousRoomId = app.room ? app.room.roomId : null;
   const previousSpectating = app.spectating;
@@ -798,7 +526,7 @@ function applyRoomState(message) {
     profileController.syncLoadoutControls(app.playerLoadout);
   }
 
-  updateRoomSummary();
+  lobbyView.updateRoomSummary();
 
   const roomStatus = app.room ? app.room.status : null;
   const isCountdown = roomStatus === "countdown";
@@ -869,7 +597,7 @@ function handleRoomClosed(message) {
   app.room = null;
   app.seat = null;
   app.spectating = false;
-  updateRoomSummary();
+  lobbyView.updateRoomSummary();
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
   clearMatchRuntime();
@@ -1047,175 +775,20 @@ function updateBattleStatus(state) {
   }
 }
 
-function updateSnapshotTransportStats(snapshot) {
-  if (!snapshot) {
-    return;
-  }
-  if (app.lastSnapshotArriveAtMs > 0) {
-    const arrivalGap = Math.max(0, snapshot.receivedAtMs - app.lastSnapshotArriveAtMs);
-    if (app.snapshotArrivalMs <= 0) {
-      app.snapshotArrivalMs = arrivalGap;
-    } else {
-      app.snapshotArrivalMs = lerp(app.snapshotArrivalMs, arrivalGap, 0.16);
-    }
-    app.snapshotArrivalJitterMs = lerp(app.snapshotArrivalJitterMs, Math.abs(arrivalGap - app.snapshotIntervalMs), 0.24);
-  }
-  app.lastSnapshotArriveAtMs = snapshot.receivedAtMs;
-
-  if (snapshot.tick < app.lastSnapshotTick) {
-    app.snapshotReorderRatio = lerp(app.snapshotReorderRatio, 1, 0.16);
-  } else {
-    app.snapshotReorderRatio = lerp(app.snapshotReorderRatio, 0, 0.06);
-    app.lastSnapshotTick = Math.max(app.lastSnapshotTick, snapshot.tick);
-  }
-
-  if (snapshot.snapshotSeq > 0) {
-    if (app.lastSnapshotSeq > 0) {
-      if (snapshot.snapshotSeq <= app.lastSnapshotSeq) {
-        app.snapshotReorderRatio = lerp(app.snapshotReorderRatio, 1, 0.22);
-      } else {
-        const lost = Math.max(0, snapshot.snapshotSeq - app.lastSnapshotSeq - 1);
-        const lossSample = lost > 0 ? clamp(lost / 3, 0, 1) : 0;
-        app.snapshotLossRatio = lerp(app.snapshotLossRatio, lossSample, 0.22);
-      }
-    }
-    app.lastSnapshotSeq = Math.max(app.lastSnapshotSeq, snapshot.snapshotSeq);
-  } else {
-    app.snapshotLossRatio = lerp(app.snapshotLossRatio, 0, 0.04);
-  }
-
-  app.jitterMs = lerp(app.jitterMs, Math.max(app.rttVarianceMs, app.snapshotArrivalJitterMs), 0.16);
-}
-
-function insertSnapshot(snapshot) {
-  const existingIndex = app.snapshots.findIndex((item) => item.tick === snapshot.tick);
-  if (existingIndex >= 0) {
-    app.snapshots[existingIndex] = snapshot;
-  } else {
-    app.snapshots.push(snapshot);
-  }
-
-  app.snapshots.sort((a, b) => {
-    if (a.tick !== b.tick) {
-      return a.tick - b.tick;
-    }
-    return a.receivedAtMs - b.receivedAtMs;
-  });
-
-  const latest = app.snapshots[app.snapshots.length - 1] || null;
-  app.latestSnapshot = latest;
-
-  if (!latest) {
-    return;
-  }
-
-  const keepTicks = Math.ceil(app.serverTickRate * SNAPSHOT_HISTORY_SECONDS);
-  const minTick = Math.max(0, latest.tick - keepTicks);
-  while (app.snapshots.length > 0 && app.snapshots[0].tick < minTick) {
-    app.snapshots.shift();
-  }
-  if (app.snapshots.length > 260) {
-    app.snapshots.splice(0, app.snapshots.length - 260);
-  }
-}
-
-function updateSnapshotRate(message) {
-  const snapshotRate = Number(message.snapshotRate);
-  if (!Number.isFinite(snapshotRate) || snapshotRate < 2 || snapshotRate === app.serverSnapshotRate) {
-    return;
-  }
-  app.serverSnapshotRate = snapshotRate;
-  app.snapshotIntervalMs = 1000 / snapshotRate;
-}
-
-function decodeSnapshotState(message) {
-  const snapshotSeq = Number(message.snapshotSeq) || 0;
-  if (message.type === "snapshot") {
-    if (!message.state || typeof message.state !== "object") {
-      return null;
-    }
-    app.decodedSnapshotState = message.state;
-    app.decodedSnapshotSeq = snapshotSeq;
-    return message.state;
-  }
-
-  if (message.type !== "snapshot_delta") {
-    return null;
-  }
-  const baseSnapshotSeq = Number(message.baseSnapshotSeq) || 0;
-  if (!app.decodedSnapshotState || baseSnapshotSeq !== app.decodedSnapshotSeq) {
-    socketSend({
-      type: "snapshot_resync",
-      snapshotSeq: app.decodedSnapshotSeq,
-    });
-    return null;
-  }
-  try {
-    app.decodedSnapshotState = applyStatePatch(app.decodedSnapshotState, message.patch ?? null);
-    app.decodedSnapshotSeq = snapshotSeq;
-    return app.decodedSnapshotState;
-  } catch (_error) {
-    app.decodedSnapshotState = null;
-    app.decodedSnapshotSeq = 0;
-    socketSend({
-      type: "snapshot_resync",
-      snapshotSeq: 0,
-    });
-    return null;
-  }
-}
-
-function sendSnapshotDeliveryAck(snapshotSeq, force = false) {
-  if (app.networkProtocolVersion < 2 || !Number.isInteger(snapshotSeq) || snapshotSeq <= 0) {
-    return;
-  }
-  const now = nowMs();
-  if (!force && now - app.lastSnapshotAckSentAt < SNAPSHOT_ACK_INTERVAL_MS) {
-    return;
-  }
-  if (socketSend({
-    type: "snapshot_ack",
-    snapshotSeq,
-  })) {
-    app.lastSnapshotAckSentAt = now;
-    app.lastAckedSnapshotSeq = snapshotSeq;
-  }
-}
-
 function handleSnapshot(message) {
   if (!app.room || message.roomId !== app.room.roomId) {
     return;
   }
 
-  updateSnapshotRate(message);
-  const state = decodeSnapshotState(message);
-  if (!state) {
-    return;
-  }
-  const snapshotSeq = Number(message.snapshotSeq) || 0;
-  sendSnapshotDeliveryAck(snapshotSeq, message.type === "snapshot");
-  const simTime = Number(message.simTime) || 0;
-  const tickValue = Number(message.tick);
-  const tick = Number.isFinite(tickValue) && tickValue > 0 ? Math.round(tickValue) : Math.max(0, Math.round(simTime * app.serverTickRate));
-  const snapshot = {
-    tick,
-    simTime,
-    serverTimeMs: Number(message.serverTime) || 0,
-    snapshotSeq,
-    receivedAtMs: nowMs(),
-    state,
-    radar: message.radar || null,
-  };
-
-  updateSnapshotTransportStats(snapshot);
-  insertSnapshot(snapshot);
+  const snapshot = snapshotTransport.receiveSnapshot(message);
+  if (!snapshot) return;
 
   if (Number.isInteger(message.ackSeq)) {
     app.ackSeq = Math.max(app.ackSeq, message.ackSeq);
     pruneAckedOverrides(snapshot.state);
   }
 
-  updateInterpolationDelay();
+  snapshotTransport.updateInterpolationDelay();
 
   // HUD 全量 DOM 刷新压到 ~10Hz:20Hz 快照逐条刷文本/进度条会与 rAF 抢主线程(移动端尤甚)
   if (nowMs() - (app.lastHudRefreshMs || 0) >= 95) {
@@ -1255,12 +828,12 @@ function handleServerMessage(raw) {
   const type = String(message.type || "");
 
   if (type === "connected") {
-    handleConnected(message);
+    snapshotTransport.handleConnected(message);
     return;
   }
 
   if (type === "lobby") {
-    renderLobbyRooms(message.rooms || []);
+    lobbyView.renderRooms(message.rooms || []);
     return;
   }
 
@@ -1281,7 +854,7 @@ function handleServerMessage(raw) {
   }
 
   if (type === "pong") {
-    handlePong(message);
+    snapshotTransport.handlePong(message);
     return;
   }
 
@@ -1840,7 +1413,7 @@ function bindUiEvents() {
     app.room = null;
     app.seat = null;
     app.spectating = false;
-    updateRoomSummary();
+    lobbyView.updateRoomSummary();
     setBattleControlsEnabled(false);
     clearMatchRuntime();
     resultView.close();
@@ -1855,7 +1428,7 @@ function bindUiEvents() {
       app.room = null;
       app.seat = null;
       app.spectating = false;
-      updateRoomSummary();
+      lobbyView.updateRoomSummary();
       setBattleControlsEnabled(false);
       resultView.close();
       setRoomHudVisible(true); // 立即切回大厅页
@@ -2426,7 +1999,7 @@ function unmount() {
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
-  stopPingLoop();
+  snapshotTransport.stopPingLoop();
   disconnectServer();
   if (ac) ac.abort();
   ac = null;

@@ -118,6 +118,8 @@ const requiredLinks = [
   ["src/online.js", "./online/connection-target.js"],
   ["src/online.js", "./online/profile-controller.js"],
   ["src/online.js", "./online/result-view.js"],
+  ["src/online.js", "./online/lobby-view.js"],
+  ["src/online.js", "./online/snapshot-transport.js"],
   ["src/i18n.js", "./i18n/catalog.js"],
   ["src/character-select.js", "./character-select/portraits.js"],
   ["src/battle/render.js", "./render/radar.js"],
