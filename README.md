@@ -22,7 +22,7 @@
   - **分离取舍** —— 不分离时编队可分摊伤害、火力集中、共享能量池;分离后开火 ×1.2、获得独立视野、可释放分舰技、走位更灵活,但更脆弱、无法共同承伤、易被各个击破。
   - **碰撞与阻挡** —— 舰船有碰撞体积,相撞会减速;舰船会挡住中途的子弹,替后方承受伤害。
   - **能量** —— 提高推进功率与释放技能都会消耗能量,能量自动回复。
-- **新手教程**:首次游玩自动触发的分步引导,手把手带你上手。
+- **独立新手教程**:从单人游戏的战役菜单进入分步引导，不再与标准对战的首次进入状态耦合。
 - **复古皮装界面**:以「皮装星历名鉴」为主题的复古仿真 UI;角色选择是翻开一本古书。
 
 ## 操作(桌面端)
@@ -56,9 +56,11 @@ npm run test:core    # 核心战斗逻辑校验
 ## 技术架构
 
 - **Vite 单页应用**:单一 `index.html` + History 路由(`src/router.js`),干净无 `.html` 后缀的 URL。每个路由是一个可挂载模块(`mount(root)` → 返回 `unmount()`),切换路由时统一停渲染循环 / 断 WebSocket / 移除监听。
-- **规则内核(单一事实来源)**:`shared/game-core.js` 统一所有游戏规则(舰船运动、分离、技能、视野、AI、战斗结算)。单人、在线客户端与服务端全部由它驱动,保证前后端逻辑一致。
-- **联机服务端**:`server/server.js`(基于 `ws`),与内核同源运行权威模拟。
+- **规则内核(单一事实来源)**:`shared/game-core.js` 保留稳定入口，规则数据、推进能量、数学工具和 AI 分别位于 `shared/game/`；单人、在线客户端与服务端仍由同一内核驱动。
+- **联机服务端**:`server/server.js`(基于 `ws`)负责房间与权威模拟，配置、协议和快照流分别位于 `server/config.js`、`protocol.js`、`snapshot-stream.js`。
 - **渲染**:Canvas 2D,按设备像素绘制,矢量线条像素级清晰。
+
+详细依赖方向、修改定位表和验证要求见 [`docs/architecture.md`](docs/architecture.md)。
 
 ## 项目结构
 
@@ -69,13 +71,17 @@ src/
   router.js           History 路由
   menu.js             主菜单(首页)
   solo.js             单人对战
-  online.js           在线对战客户端
-  character-select.js 翻书式角色选择
+  online.js           在线对战页面编排（快照显示状态在 online/state-sync.js）
+  character-select.js 翻书式角色选择（立绘在 character-select/portraits.js）
+  battle/             单人/联机共用相机、输入、HUD 与渲染
+  i18n/               日英词典与角色文本
   tutorial.js         新手引导教程
   guide.js / credits.js / profile.js …
-shared/game-core.js   游戏规则内核(前后端共享)
-server/server.js      联机 WebSocket 服务端
-scripts/verify-core.mjs  核心逻辑校验
+shared/
+  game-core.js        游戏规则兼容入口与模拟编排
+  game/               规则数据、推进能量、数学工具与 AI
+server/               联机编排、配置、协议和快照流
+scripts/              核心、联机、网络与模块边界校验
 ```
 
 ## 制作人员
