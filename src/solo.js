@@ -14,6 +14,7 @@ import {
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
+import { matchActions } from "../shared/protocol/match-actions.js";
 
 import {
   createCharacterSelect,
@@ -70,6 +71,7 @@ import {
   updateSkillButtons,
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
+import { createLocalBattleActionTransport } from "./battle/action-transport.js";
 import {
   characterShortName,
   shipCharacterName,
@@ -87,6 +89,7 @@ let rafId = 0; // 渲染循环句柄
 let running = false; // 渲染循环开关
 let charSelect = null; // 选角覆盖层引用，卸载时移除
 let setupFlow = null; // 战役 / 难度选择覆盖层
+let actionTransport = null; // 单人本地权威动作入口，与联机传输保持同一接口
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -187,6 +190,11 @@ function initApp() {
     p: Math.random() * TAU,
   })),
   };
+  actionTransport = createLocalBattleActionTransport({
+    getSimulation: () => app.sim,
+    seat: "A",
+    onAccepted: (action) => tutorial.onAction(action),
+  });
 }
 
 // 编队读写统一走玩家档案（src/profile.js），与在线/调试模式共享同一份身份数据
@@ -255,17 +263,13 @@ function clearLog() {
 }
 
 function applyAction(action) {
-  if (!app.sim) {
+  if (!actionTransport) {
     return false;
   }
   if (tutorial.isActive() && !tutorial.allowsAction(action)) {
     return false;
   }
-  const ok = app.sim.applyActionForSeat("A", action);
-  if (ok) {
-    tutorial.onAction(action); // 新手教程:实操步骤据玩家动作推进
-  }
-  return ok;
+  return actionTransport.send(action);
 }
 
 function bindPressButton(button, handler) {
@@ -483,11 +487,10 @@ function setThrottleGear(gear) {
   if (tutorial.isActive() && !tutorial.allowsControl("throttle")) return false;
   const throttle = throttleValueForGear(gear);
   syncThrottleGearControls(ui, throttle);
-  applyAction({
-    type: "set_throttle",
+  applyAction(matchActions.setThrottle({
     shipKey: app.selectedShipKey,
     throttle,
-  });
+  }));
   updateUi();
 }
 
@@ -496,11 +499,10 @@ function syncAutoScoutZone() {
   if (!own?.autoScout?.enabled) {
     return false;
   }
-  return applyAction({
-    type: "configure_auto_scout",
+  return applyAction(matchActions.configureAutoScout({
     enabled: true,
     zoneId: app.selectedZoneId,
-  });
+  }));
 }
 
 function setSelectedZoneId(zoneId, { allowLog = true } = {}) {
@@ -522,11 +524,10 @@ function toggleAutoScout() {
     return false;
   }
   const enabled = !own.autoScout?.enabled;
-  const ok = applyAction({
-    type: "configure_auto_scout",
+  const ok = applyAction(matchActions.configureAutoScout({
     enabled,
     zoneId: app.selectedZoneId,
-  });
+  }));
   if (ok) {
     log(enabled ? t("自动侦查已开启，目标战区{zone}", { zone: app.selectedZoneId }) : t("自动侦查已关闭"));
     updateUi();
@@ -539,10 +540,7 @@ function useEmergencyBrake() {
   if (!ship || !ship.alive || !ship.canControl) {
     return false;
   }
-  const ok = applyAction({
-    type: "emergency_brake",
-    shipKey: ship.key,
-  });
+  const ok = applyAction(matchActions.emergencyBrake(ship.key));
   if (ok) {
     log(t("{ship} 执行急刹", { ship: shipDisplayName(ship) }));
     updateUi();
@@ -574,14 +572,13 @@ function setRouteForSelectedShip(x, y, logRoute = false) {
     return false;
   }
   const throttle = throttleValueForGear(syncThrottleGearControls(ui, ship.throttle));
-  const ok = applyAction({
-    type: "set_route",
+  const ok = applyAction(matchActions.setRoute({
     shipKey: ship.key,
     endX: x,
     endY: y,
     throttle,
     anchorToMain: ship.key === "main",
-  });
+  }));
   if (ok && logRoute) {
     log(t("{ship} 已设置新航线", { ship: shipDisplayName(ship) }));
   }
@@ -912,7 +909,7 @@ function useFlagshipSkill() {
   if (!meta || meta.type !== "active") {
     return;
   }
-  const ok = applyAction({ type: "cast_flagship_skill", zoneId: app.selectedZoneId });
+  const ok = applyAction(matchActions.castFlagshipSkill(app.selectedZoneId));
   if (ok) {
     log(t("旗舰技能 {name} 已发动", { name: meta.name }));
   }
@@ -928,11 +925,10 @@ function useSubSkill() {
   }
   if (meta.target === "point" || meta.target === "optional_point") {
     if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey === selected.key && meta.target === "optional_point") {
-      const ok = applyAction({
-        type: "cast_sub_skill",
+      const ok = applyAction(matchActions.castSubSkill({
         shipKey: selected.key,
         zoneId: app.selectedZoneId,
-      });
+      }));
       app.pendingSubSkillAim = null;
       if (ok) {
         log(t("{ship} 使用 {name}", { ship: shipCharacterName(selected), name: meta.name }));
@@ -949,11 +945,10 @@ function useSubSkill() {
     updateUi();
     return;
   }
-  const ok = applyAction({
-    type: "cast_sub_skill",
+  const ok = applyAction(matchActions.castSubSkill({
     shipKey: selected.key,
     zoneId: app.selectedZoneId,
-  });
+  }));
   if (ok) {
     log(t("{ship} 使用 {name}", { ship: shipCharacterName(selected), name: meta.name }));
   }
@@ -1031,27 +1026,27 @@ function bindUiEvents() {
   }
 
   bindPressButton(ui.splitOneBtn, () => {
-    applyAction({ type: "split", level: 1 });
+    applyAction(matchActions.split(1));
   });
   bindPressButton(ui.mobileSplitOneBtn, () => {
-    applyAction({ type: "split", level: 1 });
+    applyAction(matchActions.split(1));
   });
 
   bindPressButton(ui.splitTwoBtn, () => {
-    applyAction({ type: "split", level: 2 });
+    applyAction(matchActions.split(2));
   });
   bindPressButton(ui.mobileSplitTwoBtn, () => {
-    applyAction({ type: "split", level: 2 });
+    applyAction(matchActions.split(2));
   });
 
   bindPressButton(ui.scoutBtn, () => {
-    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
+    const ok = applyAction(matchActions.launchScout({ zoneId: app.selectedZoneId, shipKey: app.selectedShipKey }));
     if (ok) {
       log(t("侦查机已派往战区{zone}", { zone: app.selectedZoneId }));
     }
   });
   bindPressButton(ui.mobileScoutBtn, () => {
-    const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
+    const ok = applyAction(matchActions.launchScout({ zoneId: app.selectedZoneId, shipKey: app.selectedShipKey }));
     if (ok) {
       log(t("侦查机已派往战区{zone}", { zone: app.selectedZoneId }));
     }
@@ -1134,19 +1129,17 @@ function bindUiEvents() {
     }
 
     if (app.drag.handle === "control") {
-      applyAction({
-        type: "route_control",
+      applyAction(matchActions.routeControl({
         shipKey: app.drag.shipKey,
         controlX: pos.x,
         controlY: pos.y,
-      });
+      }));
     } else {
-      applyAction({
-        type: "route_end",
+      applyAction(matchActions.routeEnd({
         shipKey: app.drag.shipKey,
         endX: pos.x,
         endY: pos.y,
-      });
+      }));
     }
   });
 
@@ -1189,12 +1182,11 @@ function bindUiEvents() {
         return;
       }
       const shipKey = app.pendingSubSkillAim.shipKey;
-      const ok = applyAction({
-        type: "cast_sub_skill",
+      const ok = applyAction(matchActions.castSubSkill({
         shipKey,
         targetX: pos.x,
         targetY: pos.y,
-      });
+      }));
       const ship = ownTeamState()?.ships?.[shipKey];
       const meta = ship ? currentSubMeta(ship) : null;
       app.pendingSubSkillAim = null;
@@ -1215,12 +1207,11 @@ function bindUiEvents() {
 
     if (app.pendingSubSkillAim) {
       const shipKey = app.pendingSubSkillAim.shipKey;
-      const ok = applyAction({
-        type: "cast_sub_skill",
+      const ok = applyAction(matchActions.castSubSkill({
         shipKey,
         targetX: pos.x,
         targetY: pos.y,
-      });
+      }));
       const ship = ownTeamState()?.ships?.[shipKey];
       const meta = ship ? currentSubMeta(ship) : null;
       app.pendingSubSkillAim = null;
@@ -1332,7 +1323,7 @@ function bindUiEvents() {
     // X — launch scout
     if (event.code === "KeyX") {
       event.preventDefault();
-      const ok = applyAction({ type: "launch_scout", zoneId: app.selectedZoneId, shipKey: app.selectedShipKey });
+      const ok = applyAction(matchActions.launchScout({ zoneId: app.selectedZoneId, shipKey: app.selectedShipKey }));
       if (ok) {
         log(t("侦查机已派往战区{zone}", { zone: app.selectedZoneId }));
       }
@@ -1558,6 +1549,7 @@ function unmount() {
     charSelect.hide();
   }
   charSelect = null;
+  actionTransport = null;
   app = null;
 }
 

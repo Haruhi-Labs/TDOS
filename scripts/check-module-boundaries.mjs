@@ -61,8 +61,13 @@ for (const file of files) {
 const leafBoundaries = [
   {
     dir: "shared/game",
-    allowedRoot: "shared/game",
+    allowedRoots: ["shared/game", "shared/protocol"],
     reason: "共享规则叶模块不得反向依赖总入口、界面或服务端",
+  },
+  {
+    dir: "shared/protocol",
+    allowedRoots: ["shared/protocol"],
+    reason: "共享协议定义不得依赖战斗实现、界面或服务端",
   },
   {
     dir: "src/online",
@@ -97,13 +102,16 @@ const leafBoundaries = [
 
 for (const boundary of leafBoundaries) {
   const boundaryDir = resolve(ROOT, boundary.dir);
-  const allowedRoot = boundary.allowedRoot ? resolve(ROOT, boundary.allowedRoot) : null;
+  const allowedRoots = (boundary.allowedRoots || (boundary.allowedRoot ? [boundary.allowedRoot] : []))
+    .map((root) => resolve(ROOT, root));
   const forbiddenTarget = boundary.forbiddenTarget ? resolve(ROOT, boundary.forbiddenTarget) : null;
   for (const file of walk(boundary.dir)) {
     for (const specifier of importSpecifiers(file)) {
       const target = resolveImport(file, specifier);
-      const leavesAllowedRoot = allowedRoot && target !== allowedRoot && !target.startsWith(`${allowedRoot}${sep}`);
-      if (leavesAllowedRoot || (forbiddenTarget && target === forbiddenTarget)) {
+      const leavesAllowedRoots = allowedRoots.length > 0 && !allowedRoots.some(
+        (allowedRoot) => target === allowedRoot || target.startsWith(`${allowedRoot}${sep}`),
+      );
+      if (leavesAllowedRoots || (forbiddenTarget && target === forbiddenTarget)) {
         failures.push(`${display(file)} → ${display(target)}：${boundary.reason}`);
       }
     }
@@ -129,6 +137,11 @@ const requiredLinks = [
   ["shared/game-core.js", "./game/targeting-system.js"],
   ["shared/game-core.js", "./game/action-dispatcher.js"],
   ["shared/game-core.js", "./game/collision-system.js"],
+  ["shared/game/action-dispatcher.js", "../protocol/match-actions.js"],
+  ["src/solo.js", "../shared/protocol/match-actions.js"],
+  ["src/solo.js", "./battle/action-transport.js"],
+  ["src/online.js", "../shared/protocol/match-actions.js"],
+  ["src/online.js", "./battle/action-transport.js"],
   ["src/online.js", "./online/state-sync.js"],
   ["src/online.js", "./online/connection-target.js"],
   ["src/online.js", "./online/profile-controller.js"],

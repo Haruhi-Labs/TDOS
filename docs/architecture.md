@@ -45,6 +45,8 @@
 - `src/online/connection-target.js`：同源代理、直连和本地备用 WebSocket 地址策略。
 - `src/online/lobby-view.js`、`profile-controller.js`、`result-view.js`：大厅、玩家档案和结算界面职责。
 - `shared/network-patch.js`：服务端与客户端共用的快照差量格式。
+- `shared/protocol/match-actions.js`：单人和多人共用的战斗动作名称、构造器与静态载荷校验。
+- `src/battle/action-transport.js`：同一动作协议的本地权威与远程权威传输适配器。
 - `server/config.js`：环境变量、容量和拥塞阈值。
 - `server/protocol.js`：控制消息类型与错误码归类。
 - `server/snapshot-stream.js`：快照发送、关键帧/差量选择、缓冲保护和单连接流控。

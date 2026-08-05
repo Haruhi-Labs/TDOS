@@ -1,4 +1,8 @@
 import { normalizeThrottleToGear } from "./throttle.js";
+import {
+  MATCH_ACTION_TYPES,
+  validateMatchAction,
+} from "../protocol/match-actions.js";
 
 function controllableShip(team, shipKey, { requireRoute = false } = {}) {
   const ship = team.ships[String(shipKey || "main")];
@@ -7,10 +11,11 @@ function controllableShip(team, shipKey, { requireRoute = false } = {}) {
 }
 
 export function applyMatchAction(team, action) {
-  if (!action || typeof action !== "object") return false;
-  const type = String(action.type || "");
+  const validation = validateMatchAction(action);
+  if (!validation.ok) return false;
+  const type = validation.type;
 
-  if (type === "set_route") {
+  if (type === MATCH_ACTION_TYPES.SET_ROUTE) {
     const ship = controllableShip(team, action.shipKey);
     if (!ship) return false;
     const endX = Number(action.endX);
@@ -18,7 +23,6 @@ export function applyMatchAction(team, action) {
     const controlX = Number(action.controlX);
     const controlY = Number(action.controlY);
     const throttle = Number(action.throttle);
-    if (!Number.isFinite(endX) || !Number.isFinite(endY)) return false;
     ship.setBezierRoute(
       Number.isFinite(controlX) ? controlX : undefined,
       Number.isFinite(controlY) ? controlY : undefined,
@@ -30,59 +34,56 @@ export function applyMatchAction(team, action) {
     return true;
   }
 
-  if (type === "route_control") {
+  if (type === MATCH_ACTION_TYPES.ROUTE_CONTROL) {
     const ship = controllableShip(team, action.shipKey, { requireRoute: true });
     if (!ship) return false;
     const controlX = Number(action.controlX);
     const controlY = Number(action.controlY);
-    if (!Number.isFinite(controlX) || !Number.isFinite(controlY)) return false;
     ship.setRouteControl(controlX, controlY, false);
     return true;
   }
 
-  if (type === "route_end") {
+  if (type === MATCH_ACTION_TYPES.ROUTE_END) {
     const ship = controllableShip(team, action.shipKey, { requireRoute: true });
     if (!ship) return false;
     const endX = Number(action.endX);
     const endY = Number(action.endY);
-    if (!Number.isFinite(endX) || !Number.isFinite(endY)) return false;
     ship.setRouteEndpoint(endX, endY, false);
     return true;
   }
 
-  if (type === "set_throttle") {
+  if (type === MATCH_ACTION_TYPES.SET_THROTTLE) {
     const ship = controllableShip(team, action.shipKey);
     if (!ship) return false;
     const throttle = Number(action.throttle);
-    if (!Number.isFinite(throttle)) return false;
     ship.throttle = normalizeThrottleToGear(throttle, ship.throttle);
     return true;
   }
 
-  if (type === "clear_route") {
+  if (type === MATCH_ACTION_TYPES.CLEAR_ROUTE) {
     const ship = controllableShip(team, action.shipKey);
     if (!ship) return false;
     ship.clearRoute();
     return true;
   }
 
-  if (type === "split") {
+  if (type === MATCH_ACTION_TYPES.SPLIT) {
     const level = Number(action.level);
     return level === 1 || level === 2 ? team.split(level) : false;
   }
-  if (type === "launch_scout") {
+  if (type === MATCH_ACTION_TYPES.LAUNCH_SCOUT) {
     return team.launchScout(Number(action.zoneId) || 5, { fromShipKey: action.shipKey });
   }
-  if (type === "configure_auto_scout") {
+  if (type === MATCH_ACTION_TYPES.CONFIGURE_AUTO_SCOUT) {
     return team.configureAutoScout(action.enabled, action.zoneId);
   }
-  if (type === "emergency_brake") {
+  if (type === MATCH_ACTION_TYPES.EMERGENCY_BRAKE) {
     return team.emergencyBrake(String(action.shipKey || "main"));
   }
-  if (type === "cast_flagship_skill") {
+  if (type === MATCH_ACTION_TYPES.CAST_FLAGSHIP_SKILL) {
     return team.castFlagshipSkill(Number(action.zoneId) || 5);
   }
-  if (type === "cast_sub_skill") {
+  if (type === MATCH_ACTION_TYPES.CAST_SUB_SKILL) {
     return team.castSubSkill(String(action.shipKey || "sub1"), {
       zoneId: Number(action.zoneId) || 5,
       targetX: Number(action.targetX),
