@@ -11,6 +11,7 @@
     "start:server": "node server/server.js",
     "test:core": "node scripts/verify-core.mjs",
     "test:network": "node scripts/verify-network-patch.mjs",
+    "test:online:state": "node scripts/verify-online-state-sync.mjs",
     "test:network:guards": "node scripts/verify-network-guards.mjs",
     "test:network:load": "node scripts/network-load-test.mjs"
   },
