@@ -8,10 +8,39 @@
 页面编排（solo.js / online.js / server.js）
   ├─ 领域入口（game-core.js / i18n.js / character-select.js / battle/render.js）
   │    └─ 单一职责模块（shared/game/*、src/i18n/*、src/character-select/*、src/battle/render/*）
-  └─ 基础设施（online/state-sync.js、network-patch.js、server/config|protocol|snapshot-stream.js）
+  └─ 基础设施（shared/protocol/*、battle/action-transport.js、online/*、network-patch.js、server/*）
 ```
 
 依赖只能从上向下。单一职责模块不得反向导入总入口或页面编排器；`npm run check:modules` 会检查相对导入断链、已拆边界的反向依赖和源码循环依赖。
+
+## 权威模型与跨模式同步
+
+项目只维护一套战斗领域规则，但单人和多人把权威模拟放在不同进程：
+
+```text
+单人输入 ─→ 标准动作 ─→ 本地传输适配器 ─→ MatchSimulation（浏览器权威）
+多人输入 ─→ 标准动作 ─→ WebSocket ─→ 输入队列 ─→ MatchSimulation（服务端权威）
+                                                    │
+                                                    └─ 15Hz 快照 ─→ 插值显示
+```
+
+- 角色数值、技能、AI、视野、碰撞、推进和能量规则只定义在 `shared/game/` 与 `shared/game-core.js`。
+- 两条执行链都调用 `shared/game/action-dispatcher.js`，动作名称与载荷来自 `shared/protocol/match-actions.js`。
+- 单人和服务端共用 `shared/game/fixed-step-clock.js`，以固定 30Hz 推进逻辑；联机客户端不自行推进权威战斗状态。
+- `scripts/verify-authority-parity.mjs` 会把同一组动作分别经本地直连和服务端输入队列回放，并逐 tick 比较序列化状态。
+
+因此，规则或角色行为通常只修改一次；需要分别维护的是本地/远程传输和联机显示策略，而不是两套战斗权威。
+
+## 协议版本约定
+
+网络链路有两个不同层次的版本：
+
+- `NETWORK_PROTOCOL_VERSION` 位于 `server/config.js`，描述快照确认、差量等网络能力。
+- `RULESET_VERSION` 位于 `shared/protocol/ruleset-version.js`，描述会影响对局结果的规则语义。
+
+客户端收到 `connected` 后会回送 `protocol_hello`。双方显式声明的规则版本不一致时，服务端阻止开房、加入、观战和战斗输入，客户端同步禁用相关控件。当前仍允许未声明规则版本的旧端进入兼容模式，用于滚动迁移；兼容模式不是版本相同的证明。
+
+修改角色数值、技能效果、碰撞、能量、AI 权威行为或其他会改变结算结果的规则时，应同步递增 `RULESET_VERSION` 并运行 `npm run test:ruleset`。仅修改视觉、文案或不改变规则语义的网络优化时不需要递增。
 
 ## 模块职责
 
@@ -76,6 +105,8 @@
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 联机画面抖动、插值和预测 | `src/online/state-sync.js` | `scripts/verify-online-state-sync.mjs` |
+| 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/action-dispatcher.js`、本地/远程传输测试 |
+| 规则版本与兼容门禁 | `shared/protocol/ruleset-version.js` | `src/online/snapshot-transport.js`、`server/server.js` |
 | 房间模型与席位 | `server/room-registry.js` | `scripts/verify-server-rooms.mjs` |
 | 入房、退房和容量门禁 | `server/room-lifecycle.js` | 协议与网络保护测试 |
 | 输入积压、合并与确认 | `server/input-queue.js` | `scripts/verify-server-runtime.mjs` |
@@ -88,14 +119,18 @@
 
 1. 运行 `npm run check:modules`，避免边界回退和循环依赖。
 2. 运行 `npm run test:api`，避免稳定入口在拆分中意外丢失导出。
-3. 规则或 AI 改动运行 `npm run test:core`。
-4. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
-5. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
-6. 协议、服务端或快照改动运行 `npm run test:network` 与 `npm run test:network:guards`。
-7. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
+3. 新增或修改动作时运行 `npm run test:actions`。
+4. 改动权威规则并递增规则版本时运行 `npm run test:ruleset`。
+5. 规则或 AI 改动运行 `npm run test:core`。
+6. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
+7. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
+8. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
+9. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
 
 核心测试已按领域拆到 `scripts/core-tests/`。推进、技能和战斗规则可单独运行
 `npm run test:core:rules`，AI 可运行 `npm run test:core:ai`，教程可运行
 `npm run test:core:tutorial`；`npm run test:core` 仍按原顺序聚合全部领域。
+
+`npm run test:network:load` 是独立容量压测，不包含在 `test:all` 中。涉及快照频率、拥塞降档、连接或房间容量时，应在隔离环境另行运行，避免把压测流量施加到正式服务。

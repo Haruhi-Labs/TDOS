@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# ⚠ 旧版全量更新辅助脚本，不是当前发布入口。
+# 它会同时更新并重启测试前端和 WebSocket，不适用于测试站单独发布。
+# 现行的不可变发布、进程隔离和回滚约定见 docs/operations.md。
+
 # ===== 可按需修改的配置 =====
 PROJECT_DIR="/root/haruhi-game"
 WEB_NAME="haruhi-web"
