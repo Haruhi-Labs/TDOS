@@ -78,6 +78,15 @@ function runBattle({ index, loadoutA, loadoutB }) {
   });
   instrumentSkills(simulation.teamA, counters);
   instrumentSkills(simulation.teamB, counters);
+  let visionWaveBuffDeferrals = 0;
+  for (const bot of Object.values(simulation.bots)) {
+    const incomingVisionWaveWillPurge = bot.incomingVisionWaveWillPurge.bind(bot);
+    bot.incomingVisionWaveWillPurge = (...args) => {
+      const shouldDefer = incomingVisionWaveWillPurge(...args);
+      if (shouldDefer) visionWaveBuffDeferrals += 1;
+      return shouldDefer;
+    };
+  }
 
   const maxTicks = Math.ceil(MATCH_LIMIT_SECONDS / TICK_DT);
   let minEnergyRatio = 1;
@@ -118,6 +127,7 @@ function runBattle({ index, loadoutA, loadoutB }) {
     minEnergyRatio: Number(minEnergyRatio.toFixed(4)),
     allShipsBlueoutRatio: Number((allShipsBlueoutTicks / Math.max(1, simulation.tick)).toFixed(4)),
     radarContactTicks,
+    visionWaveBuffDeferrals,
     counters,
   };
 }
@@ -168,6 +178,7 @@ const summary = {
   minimumEnergyRatio: Math.min(...results.map((result) => result.minEnergyRatio)),
   maximumBlueoutRatio: Math.max(...results.map((result) => result.allShipsBlueoutRatio)),
   radarContactTicks: results.reduce((sum, result) => sum + result.radarContactTicks, 0),
+  visionWaveBuffDeferrals: results.reduce((sum, result) => sum + result.visionWaveBuffDeferrals, 0),
   skills: totals,
 };
 
@@ -180,6 +191,7 @@ assert(damaged.length === results.length, "存在整局未造成伤害的 AI 对
 assert(summary.completionRate >= 0.7, `AI 对战完成率过低：${summary.completionRate}`);
 assert(summary.maximumBlueoutRatio < 0.12, `双方同时耗尽能量的时间占比过高：${summary.maximumBlueoutRatio}`);
 assert(summary.radarContactTicks > 0, "包含长门旗舰的模拟对战从未产生雷达接触");
+assert(summary.visionWaveBuffDeferrals > 0, "困难 AI 模拟对战从未触发朝仓视野波增益延迟");
 for (const characterId of ["haruhi", "koizumi", "tsuruya", "asakura"]) {
   assert((totals.flagshipCasts[characterId] || 0) > 0, `${characterId} 旗舰主动技能在模拟对战中从未成功释放`);
 }

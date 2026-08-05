@@ -449,6 +449,85 @@ function aiAsakuraVisionWaveDecisionCheck() {
   assert(!enemyMain.hasEffect("critUntil"), "朝仓 AI 释放的视野波未在扫到时净化敌方增益");
 }
 
+function aiVisionWaveBuffCounterplayCheck() {
+  const createScenario = (difficulty) => {
+    const sim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      aiSeats: ["B"],
+      aiDifficulty: difficulty,
+      teamLoadouts: {
+        A: { main: "asakura", sub1: "haruhi", sub2: "yuki" },
+        B: { main: "koizumi", sub1: "kyon", sub2: "future1096" },
+      },
+    });
+    const bot = sim.botBySeat("B");
+    const enemyMain = sim.teamA.ships.main;
+    const aiMain = sim.teamB.ships.main;
+    const kyon = sim.teamB.ships.sub1;
+    sim.teamB.split(1);
+    enemyMain.x = 760;
+    enemyMain.y = 720;
+    enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
+    enemyMain.route = null;
+    aiMain.x = 900;
+    aiMain.y = 720;
+    aiMain.command = { x: aiMain.x, y: aiMain.y };
+    aiMain.route = null;
+    kyon.x = 920;
+    kyon.y = 748;
+    kyon.command = { x: kyon.x, y: kyon.y };
+    kyon.route = null;
+    kyon.hp = kyon.maxHp * 0.6;
+    sim.teamB.computeVisibility(sim.teamA);
+    bot.rememberContact(enemyMain, "visible");
+    assert(sim.teamA.castFlagshipSkill(), `${difficulty} 场景下朝仓视野波释放失败`);
+    const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+    return { sim, bot, context, aiMain, kyon };
+  };
+
+  for (const difficulty of ["hard", "master"]) {
+    const { bot, context, aiMain, kyon } = createScenario(difficulty);
+    assert(
+      !bot.shouldCastFlagshipSkill(context.focus, context),
+      `${difficulty} AI 仍会顶着朝仓视野波释放旗舰增益`,
+    );
+    assert(
+      !bot.shouldCastSubSkill(kyon, context.focus, context),
+      `${difficulty} AI 仍会顶着朝仓视野波释放分舰增益`,
+    );
+    bot.flagshipTimer = 0;
+    bot.subTimers.sub1 = 0;
+    bot.tryFlagshipSkill(context);
+    bot.trySubSkill("sub1", context);
+    assert(aiMain.team.effects.taxiUntil <= bot.team.match.elapsed, `${difficulty} AI 未实际暂缓旗舰增益`);
+    assert(!kyon.hasEffect("reliableUntil"), `${difficulty} AI 未实际暂缓分舰增益`);
+  }
+
+  const normal = createScenario("normal");
+  assert(
+    normal.bot.shouldCastFlagshipSkill(normal.context.focus, normal.context),
+    "普通 AI 被错误加入困难以上的视野波反制逻辑",
+  );
+  assert(
+    normal.bot.shouldCastSubSkill(normal.kyon, normal.context.focus, normal.context),
+    "普通 AI 的分舰增益被错误延迟",
+  );
+
+  const safe = createScenario("hard");
+  safe.sim.teamA.visionWaveSkill.activeUntil = 0;
+  safe.sim.teamA.visionWaveSkill.pulsesRemaining = 0;
+  safe.sim.teamA.visionWaveSkill.waves.length = 0;
+  assert(
+    safe.bot.shouldCastFlagshipSkill(safe.context.focus, safe.context),
+    "视野波结束后困难 AI 没有恢复旗舰增益施放",
+  );
+  assert(
+    safe.bot.shouldCastSubSkill(safe.kyon, safe.context.focus, safe.context),
+    "视野波结束后困难 AI 没有恢复分舰增益施放",
+  );
+}
+
 function aiWoundedDetachedRetreatCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const bot = sim.bot;
@@ -1019,6 +1098,7 @@ export function runAiSuite() {
   aiYukiVisionLeadCheck();
   aiYukiRadarIntelCheck();
   aiAsakuraVisionWaveDecisionCheck();
+  aiVisionWaveBuffCounterplayCheck();
   aiWoundedDetachedRetreatCheck();
   aiSectorEncirclementCheck();
   aiBacklineFlankCheck();

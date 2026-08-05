@@ -2521,6 +2521,78 @@ export class BotController {
     };
   }
 
+  usesAdvancedSkillCounterplay() {
+    return this.difficulty === "hard" || this.difficulty === "master";
+  }
+
+  incomingVisionWaveWillPurge(ships, buffDuration) {
+    if (!this.usesAdvancedSkillCounterplay()) {
+      return false;
+    }
+    const targets = ships.filter((ship) => ship?.alive);
+    const state = this.enemy.visionWaveSkill;
+    const horizon = Math.max(0.2, Number(buffDuration) || 0);
+    if (targets.length === 0 || !state) {
+      return false;
+    }
+
+    const now = this.team.match.elapsed;
+    const waves = state.waves.filter((wave) => wave.expiresAt > now);
+    const willReachWithin = (wave, ship, delay = 0) => {
+      const speed = Math.max(1, Number(wave.speed) || 480);
+      const width = Math.max(0, Number(wave.width) || 0);
+      const currentRadius = Math.max(0, (now - wave.emittedAt) * speed);
+      const targetRadius = distance(wave.x, wave.y, ship.x, ship.y);
+      const contactRadius = width * 0.5 + Math.max(0, Number(ship.radius) || 0);
+      // 波前已经完全越过该舰时不会回头；否则按公开可见的波心、速度和宽度估算到达时间。
+      if (currentRadius - contactRadius > targetRadius) {
+        return false;
+      }
+      const arrival = delay + Math.max(0, targetRadius - contactRadius - currentRadius) / speed;
+      return arrival <= horizon;
+    };
+
+    for (const wave of waves) {
+      if (targets.some((ship) => willReachWithin(wave, ship))) {
+        return true;
+      }
+    }
+
+    // 技能仍会继续发波时，以最新一圈公开波纹的波心预测下一圈。不会读取隐藏朝仓的
+    // 实时坐标；若朝仓正在移动，这只是困难以上 AI 对已见轨迹的合理外推。
+    const hasFuturePulse = state.pulsesRemaining > 0
+      && state.nextPulseAt < state.activeUntil - 1e-9;
+    const latestWave = waves.at(-1);
+    if (!hasFuturePulse || !latestWave) {
+      return false;
+    }
+    const nextPulseDelay = Math.max(0, state.nextPulseAt - now);
+    const projectedWave = {
+      ...latestWave,
+      emittedAt: now,
+    };
+    return targets.some((ship) => willReachWithin(projectedWave, ship, nextPulseDelay));
+  }
+
+  shouldDelayFlagshipBuff(characterId, meta) {
+    if (!["haruhi", "koizumi", "tsuruya", "asakura"].includes(characterId)) {
+      return false;
+    }
+    const targets = characterId === "haruhi"
+      ? [this.team.ships.sub1, this.team.ships.sub2]
+      : this.team.getAllShips();
+    return this.incomingVisionWaveWillPurge(targets, meta?.duration || 6);
+  }
+
+  shouldDelaySubBuff(ship, meta) {
+    if (!ship || !["haruhi", "koizumi", "kyon", "asakura"].includes(ship.characterId)) {
+      return false;
+    }
+    // 古泉的位移即时生效，但四倍下一击仍会被净化；给其一个完成下一次射击的短窗口。
+    const usefulDuration = meta?.duration || (ship.characterId === "koizumi" ? 2.2 : 6);
+    return this.incomingVisionWaveWillPurge([ship], usefulDuration);
+  }
+
   shouldCastFlagshipSkill(estimate, context = this.currentContext) {
     const main = this.team.ships.main;
     const characterId = this.team.mainCharacterId();
@@ -2530,6 +2602,9 @@ export class BotController {
     const meta = skillMetaForCharacter(characterId, "flagship");
     if (!meta || meta.type !== "active") {
       return false; // 被动旗舰(阿虚/有希/1096):没有可主动释放的技能,别空试
+    }
+    if (this.shouldDelayFlagshipBuff(characterId, meta)) {
+      return false;
     }
     if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.1, normalFloor: 0.16, conserveFloor: 0.26 })) {
       return false;
@@ -2594,6 +2669,9 @@ export class BotController {
       return false;
     }
     const meta = skillMetaForCharacter(ship.characterId, "sub");
+    if (this.shouldDelaySubBuff(ship, meta)) {
+      return false;
+    }
     if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: 0.08, normalFloor: 0.14, conserveFloor: 0.24 })) {
       return false;
     }
