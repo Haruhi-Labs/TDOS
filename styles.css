@@ -216,7 +216,9 @@ canvas {
   border-radius: 3px;
   border: 1px solid #160c05;
 }
-.panel::-webkit-scrollbar-thumb:hover { background: var(--gilt); }
+@media (hover: hover) and (pointer: fine) {
+  .panel::-webkit-scrollbar-thumb:hover { background: var(--gilt); }
+}
 
 /* ═══════════════════════════════════════════════════
    标题（烫金压印）
@@ -417,7 +419,7 @@ input[type="text"] {
 input[type="text"]::placeholder { color: var(--text-muted); font-style: italic; }
 
 /* hover 效果只给真正能悬停的指针（桌面鼠标）；触摸设备点一下 :hover 会“粘住”不退，故屏蔽 */
-@media (hover: hover) {
+@media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled),
   .btn-link:hover {
     background: linear-gradient(180deg, #8a6a32 0%, #5a3c16 100%);
@@ -703,10 +705,12 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 /* 用 .battle-panel 前缀提升优先级，压过基础 button:hover 的黄铜渐变 */
-.battle-panel .fleet-row:hover {
-  background: linear-gradient(180deg, #33230f 0%, #1d1206 100%);
-  border-color: var(--gilt);
-  box-shadow: inset 0 1px 0 #6c4a2855, inset 0 -2px 4px #00000066;
+@media (hover: hover) and (pointer: fine) {
+  .battle-panel .fleet-row:hover {
+    background: linear-gradient(180deg, #33230f 0%, #1d1206 100%);
+    border-color: var(--gilt);
+    box-shadow: inset 0 1px 0 #6c4a2855, inset 0 -2px 4px #00000066;
+  }
 }
 .battle-panel .fleet-row.active {
   border-color: var(--gilt-bright);
@@ -1043,7 +1047,9 @@ button.toggle-active {
   cursor: pointer;
   transition: filter 0.15s ease;
 }
-.ts-confirm-actions button:hover { filter: brightness(1.12); }
+@media (hover: hover) and (pointer: fine) {
+  .ts-confirm-actions button:hover { filter: brightness(1.12); }
+}
 .ts-confirm-cancel {
   border: 1px solid var(--brass);
   background: linear-gradient(180deg, #6a4e22 0%, #4a3514 100%);
@@ -1810,7 +1816,9 @@ button.toggle-active {
   transition: all 160ms ease;
   box-shadow: inset 0 1px 0 #6c4a2855;
 }
-.cs-faction-btn:hover:not(.active) { color: var(--gilt-bright); border-color: var(--gilt); }
+@media (hover: hover) and (pointer: fine) {
+  .cs-faction-btn:hover:not(.active) { color: var(--gilt-bright); border-color: var(--gilt); }
+}
 .cs-faction-btn.blue.active {
   border-color: #6fa0ff;
   background: radial-gradient(ellipse at 50% 28%, #2849a8 0%, #14245a 68%, #0c1838 100%);
@@ -2322,10 +2330,12 @@ button.toggle-active {
   transition: all 160ms ease;
   box-shadow: inset 0 1px 0 #6c4a2855;
 }
-.cs-enlist-back:hover:not(:disabled) {
-  border-color: var(--gilt);
-  color: var(--gilt-bright);
-  box-shadow: inset 0 1px 0 #6c4a2855, 0 0 10px #c8a24e44;
+@media (hover: hover) and (pointer: fine) {
+  .cs-enlist-back:hover:not(:disabled) {
+    border-color: var(--gilt);
+    color: var(--gilt-bright);
+    box-shadow: inset 0 1px 0 #6c4a2855, 0 0 10px #c8a24e44;
+  }
 }
 .cs-enlist-back:disabled { opacity: 0.32; cursor: default; }
 
@@ -2348,9 +2358,11 @@ button.toggle-active {
   text-shadow: 0 1px 2px #2a0607;
   box-shadow: inset 0 1px 0 #ff8a6e55, 0 0 14px #b8232a55, 0 2px 6px #00000066;
 }
-.cs-enlist-select:hover {
-  transform: translateY(-1px);
-  box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 22px #d44a4577, 0 3px 8px #00000088;
+@media (hover: hover) and (pointer: fine) {
+  .cs-enlist-select:hover {
+    transform: translateY(-1px);
+    box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 22px #d44a4577, 0 3px 8px #00000088;
+  }
 }
 .cs-enlist-chosen {
   background: linear-gradient(180deg, #6b4d12 0%, #3a2a08 100%);
@@ -2488,10 +2500,12 @@ button.toggle-active {
 }
 /* 按下保持纵向居中 + 轻微缩放（覆盖全局 button:active 的 scale，避免丢失 -50% 居中） */
 .cs-nav-btn:active:not(:disabled) { transform: translateY(-50%) scale(0.96); }
-.cs-nav-btn:hover {
-  background: linear-gradient(180deg, #b8923c, #6b4d12);
-  color: #fff6dc;
-  box-shadow: 0 0 16px #c8a24e88, 0 4px 12px #00000099;
+@media (hover: hover) and (pointer: fine) {
+  .cs-nav-btn:hover {
+    background: linear-gradient(180deg, #b8923c, #6b4d12);
+    color: #fff6dc;
+    box-shadow: 0 0 16px #c8a24e88, 0 4px 12px #00000099;
+  }
 }
 .cs-nav-btn:disabled { opacity: 0.3; cursor: default; }
 .cs-nav-prev { left: -26px; }
@@ -2533,7 +2547,9 @@ button.toggle-active {
   top: 6px;
   box-shadow: inset 0 1px 0 #f0e4c266;
 }
-.cs-tab:hover { top: 2px; color: var(--ink); }
+@media (hover: hover) and (pointer: fine) {
+  .cs-tab:hover { top: 2px; color: var(--ink); }
+}
 .cs-tab.current {
   top: 0;
   background:
@@ -2636,7 +2652,9 @@ button.toggle-active {
   box-shadow: inset 0 1px 0 #ff8a6e66, 0 0 20px #b8232a77, 0 4px 14px #00000099;
   animation: cs-launch-pulse 2.4s ease-in-out infinite;
 }
-.cs-launch.ready:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 28px #d44a4599, 0 6px 18px #000000aa; }
+@media (hover: hover) and (pointer: fine) {
+  .cs-launch.ready:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 28px #d44a4599, 0 6px 18px #000000aa; }
+}
 .cs-launch-glow {
   position: absolute;
   inset: 0;
@@ -2671,7 +2689,9 @@ button.toggle-active {
   border-bottom: 1px solid transparent;
   transition: all 160ms ease;
 }
-.cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
+@media (hover: hover) and (pointer: fine) {
+  .cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
+}
 button.cs-mode-link { appearance: none; -webkit-appearance: none; background: none; border: 0; border-bottom: 1px solid transparent; padding: 0; cursor: pointer; }
 
 /* ═══════════════════════════════════════════════════
@@ -3224,7 +3244,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 .ts-item:focus { outline: none; }
-.ts-item:hover,
 .ts-item:focus-visible {
   background: var(--menu-item-highlight);
   border-left-color: var(--gilt);
@@ -3240,7 +3259,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--brass);
   transition: color 0.18s ease;
 }
-.ts-item:hover .ts-item-no,
 .ts-item:focus-visible .ts-item-no { color: var(--gilt-bright); }
 .ts-item-body { display: flex; flex-direction: column; gap: 1px; flex: 1; }
 .ts-item-label {
@@ -3251,7 +3269,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--text-primary);
   transition: color 0.18s ease, text-shadow 0.18s ease;
 }
-.ts-item:hover .ts-item-label,
 .ts-item:focus-visible .ts-item-label {
   color: var(--gilt-bright);
   text-shadow: 0 0 16px #c8a24e44;
@@ -3269,8 +3286,20 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   transform: translateX(-6px);
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
-.ts-item:hover .ts-item-cue,
 .ts-item:focus-visible .ts-item-cue { opacity: 1; transform: none; }
+@media (hover: hover) and (pointer: fine) {
+  .ts-item:hover {
+    background: var(--menu-item-highlight);
+    border-left-color: var(--gilt);
+    transform: translateX(6px);
+  }
+  .ts-item:hover .ts-item-no { color: var(--gilt-bright); }
+  .ts-item:hover .ts-item-label {
+    color: var(--gilt-bright);
+    text-shadow: 0 0 16px #c8a24e44;
+  }
+  .ts-item:hover .ts-item-cue { opacity: 1; transform: none; }
+}
 
 .ts-foot {
   display: flex;
@@ -3295,7 +3324,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   white-space: nowrap;
   transition: color 0.18s ease, transform 0.18s ease;
 }
-.ts-github:hover { color: var(--gilt-bright); transform: translateY(-1px); }
+@media (hover: hover) and (pointer: fine) {
+  .ts-github:hover { color: var(--gilt-bright); transform: translateY(-1px); }
+}
 .ts-github svg { display: block; filter: drop-shadow(0 1px 2px #02060e88); }
 .ts-github-label { font-size: 0.7rem; letter-spacing: 0.06em; }
 .mmenu-foot .ts-github { margin-left: 2px; }
@@ -3314,7 +3345,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   white-space: nowrap;
   transition: color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
-.ts-group:hover { color: var(--gilt-bright); border-color: var(--brass); transform: translateY(-1px); }
+@media (hover: hover) and (pointer: fine) {
+  .ts-group:hover { color: var(--gilt-bright); border-color: var(--brass); transform: translateY(-1px); }
+}
 .mmenu-foot .ts-group { font-size: 0.7rem; padding: 4px 10px; }
 .ts-language {
   display: inline-flex;
@@ -3449,7 +3482,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   padding: 6px 18px;
   transition: all 0.16s ease;
 }
-.page-back:hover { color: var(--gilt-bright); border-color: var(--gilt); }
+@media (hover: hover) and (pointer: fine) {
+  .page-back:hover { color: var(--gilt-bright); border-color: var(--gilt); }
+}
 .page-title {
   margin: 0;
   font-family: var(--font-title);
@@ -3529,7 +3564,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .credit-role { font-family: var(--font-engrave); font-size: 0.82rem; letter-spacing: 0.34em; color: var(--gilt-bright); }
 .credit-name { font-family: var(--font-cn); font-size: 1.5rem; letter-spacing: 0.1em; color: var(--gilt-pale); text-shadow: 0 1px 10px #02060e80; }
 .credit-link { text-decoration: none; border-bottom: 1px solid #c8a24e66; transition: color 0.16s ease, border-color 0.16s ease; }
-.credit-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt-bright); }
+@media (hover: hover) and (pointer: fine) {
+  .credit-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt-bright); }
+}
 .guide-subtitle { margin: 8px 0 0; font-family: var(--font-engrave); font-size: 1.2rem; letter-spacing: 0.14em; color: var(--gilt-bright); }
 .guide-keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; }
 .guide-key { display: flex; align-items: center; gap: 10px; }
@@ -3698,7 +3735,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--gilt-bright);
   border-color: var(--gilt-deep);
 }
-#openFleetSelectBtn:hover { color: var(--gilt-pale); border-color: var(--gilt); }
+@media (hover: hover) and (pointer: fine) {
+  #openFleetSelectBtn:hover { color: var(--gilt-pale); border-color: var(--gilt); }
+}
 
 /* ═══════════════════════════════════════════════════
    在线大厅 — 独立页面（非覆盖层），与战斗页二选一
@@ -3888,21 +3927,34 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   cursor: pointer;
   transition: color 120ms ease;
 }
-.solo-flow-back:hover,
 .solo-flow-back:focus-visible { color: var(--text-soft); }
-.solo-flow .solo-flow-item:hover:not(:disabled),
-.solo-flow .solo-flow-item:focus-visible,
-.solo-flow .solo-flow-item.active {
+.solo-flow .solo-flow-item:focus-visible {
   background: var(--menu-item-highlight);
   border-left-color: var(--gilt);
   box-shadow: none;
   color: inherit;
   transform: translateX(6px);
 }
+.solo-flow .solo-flow-item.active {
+  background: var(--menu-item-highlight);
+  border-left-color: var(--gilt);
+  box-shadow: none;
+  color: inherit;
+}
+@media (hover: hover) and (pointer: fine) {
+  .solo-flow-back:hover { color: var(--text-soft); }
+  .solo-flow .solo-flow-item:hover:not(:disabled) {
+    background: var(--menu-item-highlight);
+    border-left-color: var(--gilt);
+    box-shadow: none;
+    color: inherit;
+    transform: translateX(6px);
+  }
+}
 .solo-flow-item:active:not(:disabled) {
   background: var(--menu-item-highlight);
   box-shadow: none;
-  transform: translateX(6px);
+  transform: scale(0.985);
 }
 @media (max-width: 720px) {
   .solo-flow-content { width: 100%; padding: 24px 18px; }
@@ -4056,10 +4108,12 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   box-shadow: inset 0 1px 0 #ff8a6e55, 0 0 16px #b8232a55, 0 4px 12px #00000088;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
-.tut-next:hover {
-  transform: translateY(-1px);
-  border-color: var(--gilt-bright);
-  box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 24px #d44a4588, 0 5px 14px #000000aa;
+@media (hover: hover) and (pointer: fine) {
+  .tut-next:hover {
+    transform: translateY(-1px);
+    border-color: var(--gilt-bright);
+    box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 24px #d44a4588, 0 5px 14px #000000aa;
+  }
 }
 .tut-skip {
   margin-left: auto;
@@ -4072,7 +4126,9 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-.tut-skip:hover { color: var(--text-soft); }
+@media (hover: hover) and (pointer: fine) {
+  .tut-skip:hover { color: var(--text-soft); }
+}
 
 /* 被引导控件的金色脉冲高亮 */
 .tut-highlight {
@@ -4118,4 +4174,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   cursor: pointer;
   box-shadow: inset 0 1px 0 #6c4a2877, 0 2px 8px #00000055;
 }
-.guide-replay:hover { filter: brightness(1.12); }
+@media (hover: hover) and (pointer: fine) {
+  .guide-replay:hover { filter: brightness(1.12); }
+}
