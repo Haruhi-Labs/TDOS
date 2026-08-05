@@ -23,61 +23,35 @@ function waveFrame(wave, elapsed) {
   };
 }
 
-function traceWavyRing(ctx, wave, radius, phase, amplitudeScale = 1) {
-  const segments = 96;
-  const amplitude = Math.min(5.5, Math.max(0.7, radius * 0.035)) * amplitudeScale;
+function traceCircle(ctx, wave, radius) {
   ctx.beginPath();
-  for (let index = 0; index <= segments; index += 1) {
-    const angle = (index / segments) * TAU;
-    const wobble =
-      Math.sin(angle * 7 + phase) * amplitude
-      + Math.sin(angle * 13 - phase * 1.35 + (Number(wave.id) || 0)) * amplitude * 0.38;
-    const r = Math.max(0, radius + wobble);
-    const x = wave.x + Math.cos(angle) * r;
-    const y = wave.y + Math.sin(angle) * r;
-    if (index === 0) ctx.moveTo(x, y);
-    else ctx.lineTo(x, y);
-  }
-  ctx.closePath();
+  ctx.arc(wave.x, wave.y, Math.max(0, radius), 0, TAU);
 }
 
 function drawWave(ctx, team, wave, elapsed) {
   const frame = waveFrame(wave, elapsed);
   if (!frame || frame.radius <= 1 || frame.alpha <= 0) return;
   const palette = wavePalette(team);
-  const phase = frame.age * 7.2 + (Number(wave.id) || 0) * 1.73;
+  const phase = frame.age * 5.4 + (Number(wave.id) || 0) * 1.37;
+  const breath = 0.5 + Math.sin(phase) * 0.5;
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
-  ctx.lineJoin = "round";
-  ctx.lineCap = "round";
 
-  // 宽而克制的半透明波带承载真实视野范围；不用逐帧模糊，避免多人场景额外合成开销。
-  ctx.globalAlpha = frame.alpha * 0.075;
+  // 标准圆形的宽波带直接对应真实视野范围；透明度轻微呼吸，保留水波感但不扭曲轮廓。
+  ctx.globalAlpha = frame.alpha * (0.052 + breath * 0.018);
   ctx.strokeStyle = palette.band;
   ctx.lineWidth = frame.width;
-  traceWavyRing(ctx, wave, frame.radius, phase, 0.55);
+  traceCircle(ctx, wave, frame.radius);
   ctx.stroke();
 
-  for (const [offset, strength] of [[-0.5, 0.44], [0.5, 0.34]]) {
-    const edgeRadius = frame.radius + frame.width * offset;
-    if (edgeRadius <= 1) continue;
-    ctx.globalAlpha = frame.alpha * strength;
-    ctx.strokeStyle = palette.edge;
-    ctx.lineWidth = 1.1;
-    traceWavyRing(ctx, wave, edgeRadius, phase + offset * 1.7, 0.9);
-    ctx.stroke();
-  }
-
-  const crestRadius = frame.radius + Math.sin(phase * 0.72) * frame.width * 0.16;
-  ctx.globalAlpha = frame.alpha * 0.62;
+  // 仅保留一条连续波峰。小幅径向起伏不会破坏圆形几何，也避免多层虚线造成粗糙感。
+  const crestOffset = Math.sin(phase * 0.82) * Math.min(4, frame.width * 0.055);
+  ctx.globalAlpha = frame.alpha * (0.46 + breath * 0.08);
   ctx.strokeStyle = palette.crest;
-  ctx.lineWidth = 1.35;
-  ctx.setLineDash([15, 8, 3, 9]);
-  ctx.lineDashOffset = -frame.age * 70;
-  traceWavyRing(ctx, wave, crestRadius, phase * 1.08, 0.72);
+  ctx.lineWidth = 1.2;
+  traceCircle(ctx, wave, frame.radius + crestOffset);
   ctx.stroke();
-  ctx.setLineDash([]);
   ctx.restore();
 }
 

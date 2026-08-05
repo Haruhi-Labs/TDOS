@@ -1,11 +1,11 @@
 import { clamp } from "./math.js";
 
-const EDGE_APPROACH_SECONDS = 1.08;
-const COVERAGE_SECONDS = 0.12;
-const MIN_WIDTH_RATIO = 0.055;
-const MAX_WIDTH_RATIO = 0.13;
+const VISION_WAVE_SPEED = 480;
+const COVERAGE_SECONDS = 0.24;
+const MIN_WIDTH_RATIO = 0.11;
+const MAX_WIDTH_RATIO = 0.26;
 
-function farthestMapEdgeRadius(team, x, y) {
+function farthestMapCornerRadius(team, x, y) {
   const size = team.match.worldSize;
   return Math.max(
     Math.hypot(x, y),
@@ -16,11 +16,11 @@ function farthestMapEdgeRadius(team, x, y) {
   );
 }
 
-function emitVisionWave(team, source, interval) {
+function emitVisionWave(team, source) {
   const state = team.visionWaveSkill;
-  const edgeRadius = farthestMapEdgeRadius(team, source.x, source.y);
-  // 下一圈发射时，上一圈已走完约 92.6% 的最远地图半径。
-  const speed = edgeRadius / Math.max(0.05, interval * EDGE_APPROACH_SECONDS);
+  const edgeRadius = farthestMapCornerRadius(team, source.x, source.y);
+  // 使用全场统一的固定传播速度，避免舰队位置改变波纹节奏。
+  const speed = VISION_WAVE_SPEED;
   // 波带宽度按传播速度缩放，确保30Hz权威判定和15Hz快照都不会漏过整圈视野。
   const width = clamp(
     speed * COVERAGE_SECONDS,
@@ -70,7 +70,7 @@ export function activateVisionWaveSkill(team, options = {}) {
   state.interval = interval;
   state.startedTick = team.match.tick;
   state.waves.length = 0;
-  emitVisionWave(team, source, interval);
+  emitVisionWave(team, source);
   return true;
 }
 
@@ -105,7 +105,7 @@ export function updateVisionWaveSkill(team) {
     && state.nextPulseAt < state.activeUntil - 1e-9
     && now + 1e-9 >= state.nextPulseAt
   ) {
-    emitVisionWave(team, source, state.interval);
+    emitVisionWave(team, source);
     state.pulsesRemaining -= 1;
     state.nextPulseAt += state.interval;
   }
@@ -129,5 +129,13 @@ export function visionWavesCoverEntity(team, entity) {
 }
 
 export function serializeVisionWaves(team) {
-  return team.visionWaveSkill.waves.map((wave) => ({ ...wave }));
+  return team.visionWaveSkill.waves.map((wave) => ({
+    id: wave.id,
+    x: wave.x,
+    y: wave.y,
+    emittedAt: wave.emittedAt,
+    speed: wave.speed,
+    width: wave.width,
+    expiresAt: wave.expiresAt,
+  }));
 }

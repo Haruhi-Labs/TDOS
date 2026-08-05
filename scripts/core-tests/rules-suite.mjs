@@ -812,15 +812,11 @@ function asakuraFlagshipCheck() {
 
   const firstWave = teamA.visionWaveSkill.waves[0];
   assert(firstWave, "朝仓旗舰技能未立即发射首个视野波");
-  const edgeProgressAtNextPulse = firstWave.speed / firstWave.edgeRadius;
-  assert(
-    edgeProgressAtNextPulse > 0.9 && edgeProgressAtNextPulse < 0.96,
-    "朝仓视野波未在下一波发射时接近地图最远边缘",
-  );
-  assert(firstWave.width >= 1440 * 0.055, "朝仓视野波宽度不足以形成稳定覆盖带");
+  assert(firstWave.speed === 480, "朝仓视野波未使用全场统一的固定传播速度");
+  assert(firstWave.width >= 1440 * 0.11, "朝仓视野波宽度未提升到原来的两倍");
 
   let seenByFirstWave = false;
-  for (let step = 0; step < Math.ceil(0.9 / TICK_DT); step += 1) {
+  for (let step = 0; step < Math.ceil(1.4 / TICK_DT); step += 1) {
     sim.update(TICK_DT);
     if (teamA.visibleEnemyIds.has(enemyMain.id)) seenByFirstWave = true;
   }
@@ -830,7 +826,7 @@ function asakuraFlagshipCheck() {
   runSteps(sim, 4.2);
   assert(teamA.visionWaveSkill.sequence === 6, "朝仓旗舰技能未在6秒内按每秒一次发射6个视野波");
   assert(teamA.serialize().visionWaves.length > 0, "朝仓视野波未进入单人/多人共享序列化状态");
-  runSteps(sim, 1.3);
+  runSteps(sim, 3);
   assert(!teamA.hasActiveVisionWaveSkill(), "朝仓旗舰技能超过6秒后仍保持激活");
   assert(teamA.visionWaveSkill.waves.length === 0, "朝仓旗舰技能结束后仍残留过期视野波");
 }
