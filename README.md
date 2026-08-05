@@ -52,6 +52,7 @@ npm run preview      # 预览生产构建
 npm run start:server # 启动联机 WebSocket 服务端
 npm run test:all     # 发布前完整自动化校验
 npm run test:core    # 仅运行规则、AI 与教程校验
+npm run test:ai:simulation # 14 组固定种子双 AI 模拟对战
 ```
 
 开发服务器使用根路径；`npm run build` 默认按测试站 `/test-game/` 基路径构建。正式站根路径构建使用 `VITE_BASE=/ npm run build`，其他子路径使用 `VITE_BASE=/子路径/ npm run build`。

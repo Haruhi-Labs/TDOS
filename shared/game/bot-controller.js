@@ -473,6 +473,82 @@ export class BotController {
     };
   }
 
+  ingestRadarContacts() {
+    if (!this.team.hasYukiFlagship() || !(this.team.radarPassive?.contacts instanceof Map)) {
+      return;
+    }
+
+    const now = this.team.match.elapsed;
+    const enemyShips = new Map(this.enemy.getAllShips().map((ship) => [ship.id, ship]));
+    for (const radarContact of this.team.radarPassive.contacts.values()) {
+      const targetId = Number(radarContact?.targetId ?? radarContact?.id);
+      const detectedAt = Number(radarContact?.detectedAt);
+      const expiresAt = Number(radarContact?.expiresAt);
+      if (
+        !Number.isFinite(targetId)
+        || !Number.isFinite(detectedAt)
+        || !Number.isFinite(radarContact?.x)
+        || !Number.isFinite(radarContact?.y)
+        || (Number.isFinite(expiresAt) && expiresAt <= now)
+        || this.team.visibleEnemyIds.has(targetId)
+      ) {
+        continue;
+      }
+
+      // 雷达本身已经带有位置误差；AI只读取同一份误差接触，不回查舰船真实坐标。
+      // 难度仍影响其理解扫描结果的速度，避免简单难度瞬间响应。
+      const clarity = clamp(Number(radarContact.clarity) || 0.12, 0.08, 0.92);
+      const reactionDelay = clamp(
+        (0.07 + (1 - clarity) * 0.1) * (this.reactionMult || 1),
+        0.04,
+        1.2,
+      );
+      if (now - detectedAt + 1e-9 < reactionDelay) {
+        continue;
+      }
+
+      const existing = this.enemyIntel.entities.get(targetId)
+        || (this.enemyIntel.main?.id === targetId ? this.enemyIntel.main : null);
+      if (existing && existing.seenAt >= detectedAt) {
+        continue;
+      }
+
+      const targetMeta = enemyShips.get(targetId);
+      if (!targetMeta?.alive) {
+        continue;
+      }
+      const identifiedCharacterId = radarContact.characterId && CHARACTER_DEFS[radarContact.characterId]
+        ? radarContact.characterId
+        : null;
+      const zone = this.zoneForPoint(radarContact.x, radarContact.y);
+      const snapshot = {
+        id: targetId,
+        kind: "ship",
+        // 远距离波动本身不能区分旗舰/副舰；角色可辨识后也只记录角色，不借实体 ID
+        // 反查隐藏席位，保证 AI 与玩家拿到的信息等价。
+        key: null,
+        slotKey: null,
+        // 仅在雷达进入可辨识范围后使用角色信息，远距离扫描不会偷看真实阵容身份。
+        characterId: identifiedCharacterId,
+        x: radarContact.x,
+        y: radarContact.y,
+        angle: Number.isFinite(radarContact.angle) ? radarContact.angle : 0,
+        speed: CHARACTER_DEFS[identifiedCharacterId]?.stats?.speed || 31,
+        hp: null,
+        maxHp: null,
+        radius: null,
+        seenAt: detectedAt,
+        zoneId: zone.id,
+        source: "radar",
+        confidence: clamp(0.2 + clarity * 0.74, 0.24, 0.88),
+        uncertainty: clamp(Number(radarContact.uncertainty) || 90, 8, 260),
+        radarExpiresAt: Number.isFinite(expiresAt) ? expiresAt : detectedAt + 3,
+      };
+      this.enemyIntel.entities.set(targetId, snapshot);
+      this.enemyIntel.searchZoneId = snapshot.zoneId;
+    }
+  }
+
   predictEnemyVector(contact) {
     if (!contact) {
       return {
@@ -517,7 +593,13 @@ export class BotController {
 
     let source = contact.source;
     let confidence = 1;
-    if (source === "spawn") {
+    let radarDerived = false;
+    if (source === "radar") {
+      radarDerived = true;
+      const freshDuration = Math.max(0.8, (contact.radarExpiresAt || contact.seenAt + 3) - contact.seenAt);
+      source = age <= freshDuration ? "radar" : "memory";
+      confidence = clamp((contact.confidence ?? 0.42) - age * 0.055, 0.12, 0.88);
+    } else if (source === "spawn") {
       confidence = clamp(0.42 - age * 0.028, 0.14, 0.42);
     } else if (age > TICK_DT * 1.5) {
       source = "memory";
@@ -525,13 +607,15 @@ export class BotController {
     }
 
     let uncertainty = 0;
-    if (source === "spawn") {
+    if (radarDerived) {
+      uncertainty = clamp((contact.uncertainty || 60) + age * 16, 8, 280);
+    } else if (source === "spawn") {
       uncertainty = clamp(90 + age * 20, 90, 230);
     } else if (source === "memory") {
       uncertainty = clamp(14 + age * 28 + (1 - confidence) * 75, 14, 210);
     }
 
-    if (uncertainty > 0) {
+    if (uncertainty > 0 && !radarDerived) {
       const seed = contact.id * 97 + Math.round(contact.seenAt * 10);
       const sideAngle = travel.angle + Math.PI * 0.5;
       const forwardDrift = uncertainty * (0.24 + this.stableNoise(seed, 11) * 0.32);
@@ -551,6 +635,7 @@ export class BotController {
       source,
       confidence,
       uncertainty,
+      radarDerived,
       visible: source === "visible",
     };
   }
@@ -698,6 +783,30 @@ export class BotController {
       }
     }
 
+    // 长门雷达只把带误差的接触注入占据图，不会像真实视野一样把概率坍缩到真值。
+    // 模糊接触铺得更宽，近距离高置信接触则形成更集中的搜索峰。
+    for (const stored of this.enemyIntel.entities.values()) {
+      if (stored.source !== "radar") continue;
+      const contact = this.projectContact(stored, 1.2);
+      if (!contact || contact.age > 9 || contact.confidence < 0.1) continue;
+      const sigma = Math.max(cell * 0.65, contact.uncertainty * 0.62);
+      const radiusCells = clamp(Math.ceil((sigma * 2.2) / cell), 1, 4);
+      const centerX = clamp(Math.floor(contact.x / cell), 0, cols - 1);
+      const centerY = clamp(Math.floor(contact.y / cell), 0, rows - 1);
+      for (let oy = -radiusCells; oy <= radiusCells; oy += 1) {
+        for (let ox = -radiusCells; ox <= radiusCells; ox += 1) {
+          const cx = centerX + ox;
+          const cy = centerY + oy;
+          if (cx < 0 || cx >= cols || cy < 0 || cy >= rows) continue;
+          const px = (cx + 0.5) * cell;
+          const py = (cy + 0.5) * cell;
+          const d = distance(px, py, contact.x, contact.y);
+          const weight = Math.exp(-(d * d) / Math.max(2 * sigma * sigma, 1));
+          w[cy * cols + cx] += weight * contact.confidence * 0.34;
+        }
+      }
+    }
+
     // ③ 兜底：若几乎全被排除(敌一定还在地图某处)→铺一层弱先验，以最后已知/出生点加权，保持有处可搜
     let total = 0;
     for (let i = 0; i < n; i++) total += w[i];
@@ -724,6 +833,7 @@ export class BotController {
   }
 
   refreshIntel() {
+    this.ingestRadarContacts();
     for (const entity of this.enemy.getEntities()) {
       if (this.team.visibleEnemyIds.has(entity.id)) {
         this.queueSighting(entity);
@@ -788,6 +898,22 @@ export class BotController {
     const visibleMain = this.visibleMainContact();
     if (visibleMain) {
       return visibleMain;
+    }
+
+    // 雷达无法判断旗舰席位，但最新扫描到的任意舰船都比陈旧出生点更适合作为搜索焦点。
+    let freshestRadar = null;
+    for (const stored of this.enemyIntel.entities.values()) {
+      if (stored.source !== "radar") continue;
+      const projected = this.projectContact(stored, 1.8);
+      if (
+        projected.age <= 8
+        && (!freshestRadar || stored.seenAt > freshestRadar.seenAt)
+      ) {
+        freshestRadar = { ...projected, seenAt: stored.seenAt };
+      }
+    }
+    if (freshestRadar) {
+      return freshestRadar;
     }
 
     const mainIntel = this.projectContact(this.enemyIntel.main, this.enemyIntel.main?.source === "spawn" ? 0 : 2.6);
@@ -2423,30 +2549,42 @@ export class BotController {
     }
     if (characterId === "asakura") {
       const now = this.team.match.elapsed;
-      const enemyHasActiveBuff =
-        this.enemyTeam.effects.taxiUntil > now
-        || this.enemyTeam.effects.taxiInvulnUntil > now
-        || this.enemyTeam.effects.sponsorUntil > now
-        || this.enemyTeam.hasActiveVisionWaveSkill()
-        || this.enemyTeam.getAllShips().some((ship) =>
-          ship.hasEffect("critUntil")
-          || ship.hasEffect("reliableUntil")
-          || ship.hasEffect("bladeQueenUntil")
-          || Boolean(ship.activeSosBuff()),
+      const visibleShips = this.enemy.getAllShips().filter(
+        (ship) => ship.alive && this.team.visibleEnemyIds.has(ship.id),
+      );
+      let visibleBuffRemaining = 0;
+      if (visibleShips.length > 0) {
+        visibleBuffRemaining = Math.max(
+          0,
+          this.enemy.effects.taxiUntil - now,
+          this.enemy.effects.taxiInvulnUntil - now,
+          this.enemy.effects.sponsorUntil - now,
+          this.enemy.visionWaveSkill.activeUntil - now,
         );
-      const hasHiddenEnemy = this.enemyTeam.getEntities().some(
-        (enemy) => !this.team.visibleEnemyIds.has(enemy.id),
+        for (const ship of visibleShips) {
+          visibleBuffRemaining = Math.max(
+            visibleBuffRemaining,
+            Number(ship.effects.critUntil || 0) - now,
+            Number(ship.effects.reliableUntil || 0) - now,
+            Number(ship.effects.bladeQueenUntil || 0) - now,
+            Number(ship.effects.sosBuff?.until || 0) - now,
+            ship.effects.nextShotDamageMultiplier > 1 ? 6 : 0,
+          );
+        }
+      }
+
+      const waveArrivalSeconds = dist / 480;
+      const canPurgeBeforeExpiry = visibleBuffRemaining > waveArrivalSeconds + 0.2;
+      const hasHiddenEnemyShip = this.enemy.getAllShips().some(
+        (enemy) => enemy.alive && !this.team.visibleEnemyIds.has(enemy.id),
       );
-      return enemyHasActiveBuff || Boolean(
-        hasHiddenEnemy
-        && (
-          !estimate
-          || !estimate.visible
-          || estimate.age <= 5
-          || context?.trackableIntel
-          || this.mode === "search"
-        )
+      const usefulSearchPulse = hasHiddenEnemyShip && Boolean(
+        estimate.source === "radar"
+        || (!estimate.visible && estimate.source !== "spawn" && estimate.age <= 7)
+        || context?.trackableIntel
+        || (this.mode === "search" && (context?.searchRequired || context?.intelUrgency > 0.82)),
       );
+      return canPurgeBeforeExpiry || usefulSearchPulse;
     }
     return true;
   }

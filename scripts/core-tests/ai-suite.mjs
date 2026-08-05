@@ -3,6 +3,7 @@ import {
   SCOUT_LAUNCH_COST,
   TICK_DT,
   energyRateForThrottle,
+  randomAiLoadout,
   throttleForGear,
 } from "../../shared/game-core.js";
 import { assert, runSteps } from "./helpers.mjs";
@@ -341,6 +342,111 @@ function aiYukiVisionLeadCheck() {
   assert(yukiTargetDist > enemyVision + 6, "长门前探仍会直接闯入敌方视野");
   assert(yukiTargetDist < yuki.effectiveVision() - 4, "长门前探距离过远，未利用自身视野锁定敌舰");
   assert(mainTargetDist > yukiTargetDist + 24, "长门前探时主舰未保持更安全的火力支援位置");
+}
+
+function aiYukiRadarIntelCheck() {
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0.34;
+    assert(randomAiLoadout().main === "yuki", "长门旗舰仍未进入随机 AI 主舰池");
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "koizumi", sub2: "tsuruya" },
+      B: { main: "yuki", sub1: "kyon", sub2: "future1096" },
+    },
+  });
+  const bot = sim.botBySeat("B");
+  const aiTeam = sim.teamB;
+  const enemyMain = sim.teamA.ships.main;
+  const radarPoint = { x: 260, y: 250 };
+
+  enemyMain.x = 150;
+  enemyMain.y = 160;
+  enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
+  enemyMain.route = null;
+  sim.elapsed = 1;
+  aiTeam.radarPassive.contacts.set(enemyMain.id, {
+    id: enemyMain.id,
+    targetId: enemyMain.id,
+    x: radarPoint.x,
+    y: radarPoint.y,
+    angle: 0.4,
+    kind: "disturbance",
+    characterId: null,
+    clarity: 0.3,
+    uncertainty: 150,
+    detectedAt: 0.6,
+    expiresAt: 3.8,
+  });
+
+  bot.refreshIntel();
+  const estimate = bot.primaryEnemyEstimate();
+  assert(estimate?.radarDerived && estimate.source === "radar", "长门 AI 未吸收雷达误差接触");
+  assert(estimate.characterId === null, "远距离雷达接触令 AI 提前获知了敌方角色");
+  assert(
+    Math.hypot(estimate.x - radarPoint.x, estimate.y - radarPoint.y) < 60,
+    "长门 AI 未按雷达提供的误差坐标进行判断",
+  );
+  assert(
+    Math.hypot(estimate.x - enemyMain.x, estimate.y - enemyMain.y) > 80,
+    "长门 AI 绕过雷达误差读取了敌舰真实位置",
+  );
+
+  bot.belief.w.fill(0);
+  bot.updateBelief(TICK_DT);
+  const peak = bot.beliefPeak();
+  assert(peak && Math.hypot(peak.x - radarPoint.x, peak.y - radarPoint.y) < 230, "雷达接触未引导 AI 的搜索占据图");
+}
+
+function aiAsakuraVisionWaveDecisionCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "koizumi", sub2: "yuki" },
+      B: { main: "asakura", sub1: "kyon", sub2: "future1096" },
+    },
+  });
+  const bot = sim.botBySeat("B");
+  const aiTeam = sim.teamB;
+  const aiMain = aiTeam.ships.main;
+  const enemyTeam = sim.teamA;
+  const enemyMain = enemyTeam.ships.main;
+
+  aiMain.x = 900;
+  aiMain.y = 720;
+  aiMain.command = { x: aiMain.x, y: aiMain.y };
+  aiMain.route = null;
+  for (const ship of enemyTeam.getAllShips()) {
+    ship.x = 760;
+    ship.y = 720;
+    ship.command = { x: ship.x, y: ship.y };
+    ship.route = null;
+  }
+  aiTeam.computeVisibility(enemyTeam);
+  bot.rememberContact(enemyMain, "visible");
+  const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
+
+  enemyMain.effects.critUntil = sim.elapsed + 0.1;
+  assert(
+    !bot.shouldCastFlagshipSkill(context.focus, context),
+    "朝仓 AI 仍会为来不及净化的即将到期增益浪费技能",
+  );
+
+  enemyMain.effects.critUntil = sim.elapsed + 5;
+  bot.flagshipTimer = 0;
+  bot.tryFlagshipSkill(context);
+  assert(aiTeam.hasActiveVisionWaveSkill(), "朝仓 AI 未对可及时净化的可见增益释放视野波");
+  runSteps(sim, 0.8);
+  assert(!enemyMain.hasEffect("critUntil"), "朝仓 AI 释放的视野波未在扫到时净化敌方增益");
 }
 
 function aiWoundedDetachedRetreatCheck() {
@@ -911,6 +1017,8 @@ export function runAiSuite() {
   aiProbePressureCheck();
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();
+  aiYukiRadarIntelCheck();
+  aiAsakuraVisionWaveDecisionCheck();
   aiWoundedDetachedRetreatCheck();
   aiSectorEncirclementCheck();
   aiBacklineFlankCheck();

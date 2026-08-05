@@ -176,7 +176,9 @@ export const DEFAULT_AI_LOADOUT = Object.freeze({
   sub2: "yuki",
 });
 
-const AI_MAIN_EXCLUDE = new Set(["yuki", "tsuruya"]);
+// 鹤屋旗舰偏纯支援，仍不进入随机 AI 主舰池；长门的新雷达被动已经有专门的
+// 误差情报适配，可以正常作为 AI 主舰参与标准对战。
+const AI_MAIN_EXCLUDE = new Set(["tsuruya"]);
 
 export function randomAiLoadout() {
   const pool = [...CHARACTER_ORDER];
