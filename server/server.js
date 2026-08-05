@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   cloneLoadout,
   DEFAULT_AI_LOADOUT,
-  randomAiLoadout,
   DEFAULT_TEAM_LOADOUT,
   MatchSimulation,
   DEFAULT_WORLD_SIZE,
@@ -17,23 +16,21 @@ import {
   HEARTBEAT_INTERVAL_MS,
   LOBBY_BROADCAST_DEBOUNCE_MS,
   LOOP_IDLE_MS,
-  MAX_ACTIVE_ROOMS,
   MAX_CATCHUP_STEPS,
   MAX_CONNECTIONS,
   MAX_PAYLOAD_BYTES,
-  MAX_ROOMS,
   MAX_SNAPSHOT_BUFFERED_BYTES,
-  MAX_SPECTATORS_PER_ROOM,
   MAX_STREAM_CAPACITY_UNITS,
   NETWORK_BUILD,
   NETWORK_METRICS_INTERVAL_MS,
   NETWORK_PROTOCOL_VERSION,
   PORT,
   PVP_COUNTDOWN_MS,
-  ROOM_CAPACITY,
   SNAPSHOT_INTERVAL,
 } from "./config.js";
 import { CONTROL_MESSAGE_TYPES, messageCode } from "./protocol.js";
+import { createRoomLifecycle } from "./room-lifecycle.js";
+import { createRoomRegistry } from "./room-registry.js";
 import { createSnapshotStream } from "./snapshot-stream.js";
 
 const players = new Map();
@@ -57,33 +54,23 @@ const {
   sendToPlayer,
 } = createSnapshotStream({ networkStats });
 
+const roomRegistry = createRoomRegistry({ players, rooms, resetSnapshotStream });
+const {
+  activeRoomCount,
+  buildLobbyPayload,
+  buildMatchResult,
+  buildRoomStatePayload,
+  findPrivateRoom,
+  getPlayerById,
+  roomSpectators,
+  selectedShipsForRoom,
+  spectatorCount,
+  streamCapacityUnits,
+  validShipKey,
+} = roomRegistry;
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
-}
-
-function activeRoomCount() {
-  let count = 0;
-  for (const room of rooms.values()) {
-    if (room.status === "countdown" || room.status === "running") {
-      count += 1;
-    }
-  }
-  return count;
-}
-
-function streamCapacityUnits() {
-  let units = 0;
-  for (const player of players.values()) {
-    if (!player.roomId) {
-      continue;
-    }
-    const room = rooms.get(player.roomId);
-    if (!room || (room.status !== "countdown" && room.status !== "running")) {
-      continue;
-    }
-    units += player.spectating ? 1 : player.seat ? 2 : 0;
-  }
-  return units;
 }
 
 function consumeRateLimit(player, key, refillPerSecond, capacity, now = Date.now()) {
@@ -111,180 +98,12 @@ function consumeRateLimit(player, key, refillPerSecond, capacity, now = Date.now
   return true;
 }
 
-function createRoomId() {
-  let id = "";
-  do {
-    id = String(Math.floor(Math.random() * 900000 + 100000));
-  } while (rooms.has(id));
-  return id;
-}
-
-function createPrivateCode() {
-  const existing = new Set();
-  for (const room of rooms.values()) {
-    if (room.code) {
-      existing.add(room.code);
-    }
-  }
-  let code = "";
-  do {
-    code = String(Math.floor(Math.random() * 900000 + 100000));
-  } while (existing.has(code));
-  return code;
-}
-
 function sendError(player, message) {
   sendToPlayer(player, {
     type: "error",
     code: messageCode(message, "unknown_error"),
     message,
   });
-}
-
-function getPlayerById(playerId) {
-  if (!playerId) {
-    return null;
-  }
-  return players.get(playerId) || null;
-}
-
-function connectedCount(room) {
-  return [room.seats.A, room.seats.B].filter(Boolean).length;
-}
-
-function roomSpectators(room) {
-  const list = [];
-  if (!room || !room.spectators) {
-    return list;
-  }
-  for (const playerId of [...room.spectators]) {
-    const player = getPlayerById(playerId);
-    if (player && player.roomId === room.id && player.spectating) {
-      list.push(player);
-    } else {
-      room.spectators.delete(playerId);
-    }
-  }
-  return list;
-}
-
-function spectatorCount(room) {
-  return roomSpectators(room).length;
-}
-
-function seatPlayerRows(room) {
-  const rows = [];
-  const pA = getPlayerById(room.seats.A);
-  const pB = getPlayerById(room.seats.B);
-
-  rows.push({
-    seat: "A",
-    name: pA ? pA.name : "空位",
-    playerId: pA ? pA.id : null,
-    loadout: pA ? pA.loadout : null,
-    isBot: false,
-  });
-
-  if (room.mode === "ai") {
-    rows.push({
-      seat: "B",
-      name: "统合思念体AI",
-      playerId: null,
-      loadout: cloneLoadout(room.aiLoadout || DEFAULT_AI_LOADOUT),
-      isBot: true,
-    });
-  } else {
-    rows.push({
-      seat: "B",
-      name: pB ? pB.name : "空位",
-      playerId: pB ? pB.id : null,
-      loadout: pB ? pB.loadout : null,
-      isBot: false,
-    });
-  }
-
-  return rows;
-}
-
-function buildMatchResult(room) {
-  return {
-    roomId: room.id,
-    winnerSeat: room.match ? room.match.winnerSeat : null,
-    finishedAt: Date.now(),
-    players: seatPlayerRows(room).map((row) => ({
-      ...row,
-      loadout: row.loadout ? cloneLoadout(row.loadout) : null,
-    })),
-  };
-}
-
-function displayPlayerRows(room) {
-  if (room && room.result && Array.isArray(room.result.players)) {
-    return room.result.players;
-  }
-  return seatPlayerRows(room);
-}
-
-function buildRoomStatePayload(room, viewerId = null) {
-  const viewer = viewerId ? getPlayerById(viewerId) : null;
-  const isMember = viewer && viewer.roomId === room.id && !viewer.spectating;
-  const result = room.result || null;
-  return {
-    type: "room_state",
-    room: {
-      roomId: room.id,
-      mode: room.mode,
-      visibility: room.visibility,
-      code: room.visibility === "private" && isMember ? room.code : null,
-      status: room.status,
-      countdownEndsAt: room.countdownEndsAt || null,
-      players: displayPlayerRows(room),
-      spectatorCount: spectatorCount(room),
-      winnerSeat: result ? result.winnerSeat : room.match ? room.match.winnerSeat : null,
-      finishedAt: result ? result.finishedAt : room.finishedAt,
-      createdAt: room.createdAt,
-    },
-    self: viewer
-      ? {
-          playerId: viewer.id,
-          seat: viewer.seat,
-          spectating: Boolean(viewer.spectating),
-          loadout: viewer.loadout,
-        }
-      : null,
-  };
-}
-
-function buildLobbyPayload() {
-  const list = [];
-  for (const room of rooms.values()) {
-    if (room.visibility !== "public") {
-      continue;
-    }
-    const host = getPlayerById(room.seats.A);
-    const resultHost = room.result && Array.isArray(room.result.players)
-      ? room.result.players.find((row) => row.seat === "A")
-      : null;
-    list.push({
-      roomId: room.id,
-      mode: room.mode,
-      visibility: room.visibility,
-      status: room.status,
-      count: connectedCount(room),
-      capacity: ROOM_CAPACITY,
-      spectatorCount: spectatorCount(room),
-      hostName: host ? host.name : resultHost ? resultHost.name : "未知",
-      createdAt: room.createdAt,
-    });
-  }
-
-  list.sort((a, b) => b.createdAt - a.createdAt);
-
-  return {
-    type: "lobby",
-    rooms: list,
-    now: Date.now(),
-  };
 }
 
 function flushLobbyBroadcast() {
@@ -331,18 +150,6 @@ function sendRoomStateToMembers(room) {
   }
 }
 
-function assignPlayerToRoom(player, room, seat) {
-  player.roomId = room.id;
-  player.seat = seat;
-  player.spectating = false;
-  player.inputQueue = [];
-  player.lastProcessedSeq = 0;
-  player.lastQueuedSeq = 0;
-  player.selectedShipKey = "main";
-  resetSnapshotStream(player);
-  room.seats[seat] = player.id;
-}
-
 function startMatch(room) {
   if (room.status === "countdown" || room.status === "running") {
     return;
@@ -387,254 +194,6 @@ function startMatch(room) {
     // 倒计时期间先下发静止的初始战场，客户端可展示双方阵容但不能操作。
     sendSnapshot(room);
   }
-}
-
-function closeRoom(roomId, reason = "房间已关闭") {
-  const room = rooms.get(roomId);
-  if (!room) {
-    return;
-  }
-
-  const pA = getPlayerById(room.seats.A);
-  const pB = getPlayerById(room.seats.B);
-  const recipients = new Map();
-
-  for (const p of [pA, pB]) {
-    if (!p) {
-      continue;
-    }
-    recipients.set(p.id, p);
-  }
-  for (const p of roomSpectators(room)) {
-    recipients.set(p.id, p);
-  }
-
-  for (const p of recipients.values()) {
-    p.roomId = null;
-    p.seat = null;
-    p.spectating = false;
-    p.inputQueue = [];
-    p.lastProcessedSeq = 0;
-    p.lastQueuedSeq = 0;
-    resetSnapshotStream(p);
-    sendToPlayer(p, {
-      type: "room_closed",
-      reasonCode: messageCode(reason, "room_closed"),
-      reason,
-    });
-  }
-
-  rooms.delete(roomId);
-  broadcastLobby();
-}
-
-function leaveRoom(player, reasonForOthers = "对手离开房间") {
-  if (!player.roomId) {
-    return;
-  }
-
-  const room = rooms.get(player.roomId);
-  const oldRoomId = player.roomId;
-  if (!room) {
-    player.roomId = null;
-    player.seat = null;
-    player.spectating = false;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
-    resetSnapshotStream(player);
-    return;
-  }
-
-  if (player.spectating) {
-    if (room.spectators) {
-      room.spectators.delete(player.id);
-    }
-    player.roomId = null;
-    player.seat = null;
-    player.spectating = false;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
-    resetSnapshotStream(player);
-    if (room.status === "finished" && connectedCount(room) === 0 && spectatorCount(room) === 0) {
-      rooms.delete(oldRoomId);
-      broadcastLobby();
-      return;
-    }
-    sendRoomStateToMembers(room);
-    broadcastLobby();
-    return;
-  }
-
-  player.roomId = null;
-  player.seat = null;
-  player.spectating = false;
-  player.inputQueue = [];
-  player.lastProcessedSeq = 0;
-  player.lastQueuedSeq = 0;
-  resetSnapshotStream(player);
-
-  if (room.seats.A === player.id) {
-    room.seats.A = null;
-  }
-  if (room.seats.B === player.id) {
-    room.seats.B = null;
-  }
-
-  if (room.status === "countdown" || room.status === "running") {
-    closeRoom(oldRoomId, reasonForOthers);
-    return;
-  }
-
-  if (room.status === "finished") {
-    if (connectedCount(room) === 0 && spectatorCount(room) === 0) {
-      rooms.delete(oldRoomId);
-      broadcastLobby();
-      return;
-    }
-    sendRoomStateToMembers(room);
-    broadcastLobby();
-    return;
-  }
-
-  if (room.seats.A === null && room.seats.B) {
-    const moved = getPlayerById(room.seats.B);
-    room.seats.A = room.seats.B;
-    room.seats.B = null;
-    if (moved) {
-      moved.seat = "A";
-    }
-  }
-
-  if (!room.seats.A && !room.seats.B) {
-    rooms.delete(oldRoomId);
-    broadcastLobby();
-    return;
-  }
-
-  sendRoomStateToMembers(room);
-  broadcastLobby();
-}
-
-function createRoom(player, visibility, mode) {
-  if (player.roomId) {
-    return { ok: false, message: "你已经在房间中" };
-  }
-
-  const safeVisibility = visibility === "private" ? "private" : "public";
-  const safeMode = mode === "ai" ? "ai" : "pvp";
-  if (rooms.size >= MAX_ROOMS) {
-    return { ok: false, message: "服务器房间数已满" };
-  }
-  if (safeMode === "ai" && activeRoomCount() >= MAX_ACTIVE_ROOMS) {
-    return { ok: false, message: "服务器活跃对局已满" };
-  }
-  if (safeMode === "ai" && streamCapacityUnits() + 2 > MAX_STREAM_CAPACITY_UNITS) {
-    return { ok: false, message: "服务器实时流容量已满" };
-  }
-
-  const room = {
-    id: createRoomId(),
-    mode: safeMode,
-    visibility: safeVisibility,
-    code: safeVisibility === "private" ? createPrivateCode() : null,
-    status: "waiting",
-    countdownEndsAt: null,
-    seats: {
-      A: null,
-      B: null,
-    },
-    createdAt: Date.now(),
-    match: null,
-    snapshotAccumulator: 0,
-    snapshotSeq: 0,
-    finishedAt: null,
-    result: null,
-    spectators: new Set(),
-    // AI 房:每房生成一次随机阵容(主舰不含长门/鹤屋),房间展示与开局共用同一份
-    aiLoadout: safeMode === "ai" ? randomAiLoadout() : null,
-  };
-
-  rooms.set(room.id, room);
-  assignPlayerToRoom(player, room, "A");
-
-  if (room.mode === "ai") {
-    startMatch(room);
-  } else {
-    sendRoomStateToMembers(room);
-  }
-
-  broadcastLobby();
-  return { ok: true, room };
-}
-
-function joinRoom(player, room) {
-  if (!room) {
-    return { ok: false, message: "房间不存在" };
-  }
-  if (player.roomId) {
-    return { ok: false, message: "你已经在房间中" };
-  }
-  if (room.mode !== "pvp") {
-    return { ok: false, message: "该房间不接受玩家加入" };
-  }
-  if (room.status !== "waiting") {
-    return { ok: false, message: "房间不在等待状态" };
-  }
-  if (!room.seats.A || room.seats.B) {
-    return { ok: false, message: "房间已满或不可加入" };
-  }
-  if (activeRoomCount() >= MAX_ACTIVE_ROOMS) {
-    return { ok: false, message: "服务器活跃对局已满" };
-  }
-  // 当前1v1开局后会新增两条15Hz玩家流；未来3v3接入时按实际参战人数扩展此权重。
-  if (streamCapacityUnits() + 4 > MAX_STREAM_CAPACITY_UNITS) {
-    return { ok: false, message: "服务器实时流容量已满" };
-  }
-
-  assignPlayerToRoom(player, room, "B");
-  startMatch(room);
-  broadcastLobby();
-  return { ok: true };
-}
-
-function spectateRoom(player, room) {
-  if (!room) {
-    return { ok: false, message: "房间不存在" };
-  }
-  if (player.roomId) {
-    return { ok: false, message: "你已经在房间中" };
-  }
-  if (room.visibility !== "public") {
-    return { ok: false, message: "该房间不接受观战" };
-  }
-  if (room.status !== "running" || !room.match) {
-    return { ok: false, message: "房间不在对战状态" };
-  }
-  if (spectatorCount(room) >= MAX_SPECTATORS_PER_ROOM) {
-    return { ok: false, message: "该房间观战人数已满" };
-  }
-  if (streamCapacityUnits() + 1 > MAX_STREAM_CAPACITY_UNITS) {
-    return { ok: false, message: "服务器实时流容量已满" };
-  }
-
-  player.roomId = room.id;
-  player.seat = null;
-  player.spectating = true;
-  player.inputQueue = [];
-  player.lastProcessedSeq = 0;
-  player.lastQueuedSeq = 0;
-  player.selectedShipKey = "main";
-  resetSnapshotStream(player);
-  if (!room.spectators) {
-    room.spectators = new Set();
-  }
-  room.spectators.add(player.id);
-
-  sendRoomStateToMembers(room);
-  broadcastLobby();
-  return { ok: true };
 }
 
 function handleInput(player, data) {
@@ -707,19 +266,6 @@ function applyQueuedInputs(room) {
   }
 }
 
-function validShipKey(shipKey) {
-  return shipKey === "main" || shipKey === "sub1" || shipKey === "sub2" ? shipKey : "main";
-}
-
-function selectedShipsForRoom(room) {
-  const pA = getPlayerById(room.seats.A);
-  const pB = getPlayerById(room.seats.B);
-  return {
-    A: validShipKey(pA ? pA.selectedShipKey : "main"),
-    B: validShipKey(pB ? pB.selectedShipKey : "main"),
-  };
-}
-
 function buildSnapshotFrame(room, advanceSeq = true) {
   if (!room.match) {
     return null;
@@ -788,6 +334,20 @@ function sendSnapshot(room) {
     });
   }
 }
+
+const {
+  createRoom,
+  joinRoom,
+  leaveRoom,
+  spectateRoom,
+} = createRoomLifecycle({
+  rooms,
+  registry: roomRegistry,
+  sendToPlayer,
+  sendRoomStateToMembers,
+  broadcastLobby,
+  startMatch,
+});
 
 const wss = new WebSocketServer({
   port: PORT,
@@ -941,7 +501,7 @@ wss.on("connection", (ws) => {
 
     if (type === "join_private") {
       const code = String(data.code || "").replace(/\D/g, "").slice(0, 6);
-      const room = [...rooms.values()].find((item) => item.visibility === "private" && item.code === code) || null;
+      const room = findPrivateRoom(code);
       const result = joinRoom(player, room);
       if (!result.ok) {
         sendError(player, result.message);

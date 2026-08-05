@@ -15,9 +15,10 @@
     "test:online:components": "node scripts/verify-online-components.mjs",
     "test:api": "node scripts/verify-public-api.mjs",
     "test:network:guards": "node scripts/verify-network-guards.mjs",
+    "test:server:rooms": "node scripts/verify-server-rooms.mjs",
     "test:network:load": "node scripts/network-load-test.mjs",
     "check:modules": "node scripts/check-module-boundaries.mjs",
-    "test:all": "npm run check:modules && npm run test:api && npm run test:core && npm run test:online:state && npm run test:online:components && npm run test:network && npm run test:network:guards"
+    "test:all": "npm run check:modules && npm run test:api && npm run test:core && npm run test:online:state && npm run test:online:components && npm run test:network && npm run test:server:rooms && npm run test:network:guards"
   },
   "dependencies": {
     "ws": "^8.18.0"

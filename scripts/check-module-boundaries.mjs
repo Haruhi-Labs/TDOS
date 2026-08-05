@@ -87,6 +87,12 @@ const leafBoundaries = [
     forbiddenTarget: "src/battle/render.js",
     reason: "专项渲染模块不得反向依赖通用渲染入口",
   },
+  {
+    dir: "server",
+    allowedRoot: null,
+    forbiddenTarget: "server/server.js",
+    reason: "服务端领域模块不得反向依赖进程入口",
+  },
 ];
 
 for (const boundary of leafBoundaries) {
@@ -135,6 +141,8 @@ const requiredLinks = [
   ["server/server.js", "./config.js"],
   ["server/server.js", "./protocol.js"],
   ["server/server.js", "./snapshot-stream.js"],
+  ["server/server.js", "./room-registry.js"],
+  ["server/server.js", "./room-lifecycle.js"],
 ];
 
 for (const [fileName, specifier] of requiredLinks) {

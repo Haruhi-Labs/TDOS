@@ -48,7 +48,9 @@
 - `server/config.js`：环境变量、容量和拥塞阈值。
 - `server/protocol.js`：控制消息类型与错误码归类。
 - `server/snapshot-stream.js`：快照发送、关键帧/差量选择、缓冲保护和单连接流控。
-- `server/server.js`：连接、房间、匹配生命周期和权威模拟编排。
+- `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。
+- `server/room-lifecycle.js`：创建、加入、离开、关闭房间的生命周期与容量门禁。
+- `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
 
 ### 内容与素材
 
@@ -68,7 +70,8 @@
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 联机画面抖动、插值和预测 | `src/online/state-sync.js` | `scripts/verify-online-state-sync.mjs` |
-| 房间和匹配生命周期 | `server/server.js` | 协议与网络保护测试 |
+| 房间模型与席位 | `server/room-registry.js` | `scripts/verify-server-rooms.mjs` |
+| 入房、退房和容量门禁 | `server/room-lifecycle.js` | 协议与网络保护测试 |
 | 快照带宽和拥塞保护 | `server/snapshot-stream.js`、`server/config.js` | `shared/network-patch.js` |
 | 日英翻译文本 | `src/i18n/messages-ja.js`、`messages-en.js` | `src/i18n/catalog.js` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
