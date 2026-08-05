@@ -1,4 +1,5 @@
 import {
+  CHARACTER_DEFS,
   MatchSimulation,
   SCOUT_LAUNCH_COST,
   TICK_DT,
@@ -403,6 +404,34 @@ function aiYukiRadarIntelCheck() {
   bot.updateBelief(TICK_DT);
   const peak = bot.beliefPeak();
   assert(peak && Math.hypot(peak.x - radarPoint.x, peak.y - radarPoint.y) < 230, "雷达接触未引导 AI 的搜索占据图");
+}
+
+function aiCombatScoutThreatCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["A"],
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "haruhi", sub2: "koizumi" },
+      B: { main: "yuki", sub1: "tsuruya", sub2: "future1096" },
+    },
+  });
+  const bot = sim.botBySeat("A");
+  const aiMain = sim.teamA.ships.main;
+  assert(sim.teamB.launchScout(5), "AI威胁测试未能生成长门战斗僚机");
+  const combatScout = sim.teamB.scouts[0];
+  combatScout.x = aiMain.x + 120;
+  combatScout.y = aiMain.y;
+  bot.rememberContact(combatScout, "visible");
+
+  const contact = bot.knownEnemyContacts().find((item) => item.id === combatScout.id);
+  assert(contact?.combatCapable, "AI默认威胁列表忽略了可见的长门战斗僚机");
+  assert(bot.contactCombatValue(contact) > 0.1, "AI仍把长门战斗僚机按无威胁侦察机估值");
+  assert(
+    bot.estimateVisionRange(contact) === CHARACTER_DEFS.yuki.stats.vision,
+    "AI未按舰船级视野估算长门战斗僚机感知范围",
+  );
+  assert(bot.shipThreatSnapshot(aiMain).sources >= 1, "AI局部威胁判断未计入长门战斗僚机火力");
 }
 
 function aiAsakuraVisionWaveDecisionCheck() {
@@ -1097,6 +1126,7 @@ export function runAiSuite() {
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();
   aiYukiRadarIntelCheck();
+  aiCombatScoutThreatCheck();
   aiAsakuraVisionWaveDecisionCheck();
   aiVisionWaveBuffCounterplayCheck();
   aiWoundedDetachedRetreatCheck();

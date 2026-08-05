@@ -35,7 +35,11 @@ export function isFocusWorthy(team, target) {
 export function assignFocusTargets(team, enemyTeam) {
   const assignments = new Map();
   const remainingHp = new Map();
-  const rankedAttackers = [...team.getAllShips(), ...team.wingmen]
+  const rankedAttackers = [
+    ...team.getAllShips(),
+    ...team.wingmen,
+    ...team.scouts.filter((scout) => scout.combatCapable),
+  ]
     .filter((attacker) => attacker.alive && attacker.cooldown <= 0)
     .map((attacker) => ({ attacker, budget: focusDamageBudget(attacker) }))
     .sort((left, right) => right.budget - left.budget);
@@ -111,4 +115,5 @@ export function stepCombat(team, enemyTeam) {
   if (team.aiFocusLowHp) assignFocusTargets(team, enemyTeam);
   for (const ship of team.getAllShips()) ship.tryAttack(team.match, enemyTeam);
   for (const wingman of team.wingmen) wingman.tryAttack(team.match, enemyTeam);
+  for (const scout of team.scouts) scout.tryAttack(team.match, enemyTeam);
 }

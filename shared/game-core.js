@@ -153,6 +153,14 @@ const SMALL_TARGET_MAX_MISS = 0.3;
 // 分离/单飞(同队仅 1 艘)时开火频率 ×该倍率(火力更猛)。二者由「同队成员数」互斥切换。
 const FORMATION_DAMAGE_SHARE = 0.3;
 const SOLO_FIRE_RATE_BONUS = 1.2;
+// 长门旗舰将本队释放的侦察机改造为战斗僚机。感知、射程和“普通船射速”的基准
+// 统一引用长门舰船基础值；战斗僚机自身的伤害与射速比例集中定义在这里。
+const YUKI_COMBAT_SCOUT_STATS = Object.freeze({
+  vision: CHARACTER_DEFS.yuki.stats.vision,
+  range: CHARACTER_DEFS.yuki.stats.range,
+  damage: 16,
+  fireRate: CHARACTER_DEFS.yuki.stats.fireRate * (2 / 3),
+});
 
 const TEAM_COLORS = {
   A: "#65d9ff",
@@ -1175,7 +1183,15 @@ class Scout {
     this.radius = config.radius || (this.pattern === "burst" ? 3.2 : 3.8);
     this.hp = 1;
     this.maxHp = 1;
-    this.vision = config.vision || (this.pattern === "burst" ? 86 : 95);
+    // 只在释放时根据旗舰判定；即使之后被鹤屋策反，也保留这架侦察机原本的机体能力。
+    this.combatCapable = team.hasYukiFlagship();
+    this.vision = this.combatCapable
+      ? YUKI_COMBAT_SCOUT_STATS.vision
+      : config.vision || (this.pattern === "burst" ? 86 : 95);
+    this.attackRange = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.range : 0;
+    this.damage = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.damage : 0;
+    this.fireRate = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.fireRate : 0;
+    this.cooldown = this.combatCapable ? randomInRange(0, 0.5) : 0;
     this.alive = true;
     this.life = Number.isFinite(config.life) ? config.life : this.pattern === "burst" ? 11 : 28;
     this.anchor = config.anchor || null;
@@ -1242,6 +1258,9 @@ class Scout {
       return;
     }
     this.life -= dt;
+    if (this.combatCapable) {
+      this.cooldown = Math.max(0, this.cooldown - dt);
+    }
     if (this.life <= 0) {
       this.alive = false;
       return;
@@ -1280,6 +1299,44 @@ class Scout {
     if (remaining <= 1e-6) {
       this.mode = "orbit";
     }
+  }
+
+  effectiveDamage() {
+    return this.damage * (this.team.statMult || 1);
+  }
+
+  effectiveFireRate() {
+    return this.fireRate;
+  }
+
+  tryAttack(match, enemyTeam) {
+    if (!this.combatCapable || !this.alive || this.cooldown > 0) {
+      return;
+    }
+    const target = this.team.pickTargetFor(this, enemyTeam);
+    if (!target) {
+      return;
+    }
+
+    const targetDistance = distance(this.x, this.y, target.x, target.y);
+    const predictedX = target.x + (target.speed || 0) * Math.cos(target.angle || 0) * (targetDistance / 300);
+    const predictedY = target.y + (target.speed || 0) * Math.sin(target.angle || 0) * (targetDistance / 300);
+    const spread = clamp(targetDistance / 18, 4, 26);
+    match.projectiles.push(
+      new Projectile({
+        team: this.team,
+        source: this,
+        x: this.x,
+        y: this.y,
+        targetX: match.clampX(predictedX + randomInRange(-spread, spread), 0),
+        targetY: match.clampY(predictedY + randomInRange(-spread, spread), 0),
+        damage: this.effectiveDamage(),
+        speed: 240,
+        hitRadius: 8,
+        color: this.team.projectileColor,
+      }),
+    );
+    this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate());
   }
 
   takeDamage(_amount = 0, _source = null, match = null) {

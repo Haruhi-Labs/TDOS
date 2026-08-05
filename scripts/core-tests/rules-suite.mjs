@@ -236,6 +236,66 @@ function yukiBurstScoutStabilityCheck() {
   assert(maxRadiusError < 1e-6, "长门副舰侦察机未沿稳定圆轨道运动");
 }
 
+function yukiFlagshipCombatScoutCheck() {
+  const yukiSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "yuki", sub1: "haruhi", sub2: "koizumi" },
+      B: { main: "kyon", sub1: "tsuruya", sub2: "future1096" },
+    },
+  });
+  const yukiTeam = yukiSim.teamA;
+  const yukiStats = CHARACTER_DEFS.yuki.stats;
+  assert(yukiTeam.launchScout(5, { fromShipKey: "sub1" }), "长门旗舰队伍未能从副舰释放侦察机");
+  const combatScout = yukiTeam.scouts[0];
+  assert(combatScout.combatCapable, "长门旗舰未将己方侦察机强化为战斗僚机");
+  assert(combatScout.vision === yukiStats.vision, "长门战斗僚机视野未提升到普通舰船级别");
+  assert(combatScout.attackRange === yukiStats.range, "长门战斗僚机未复用长门常规舰炮射程");
+  assert(combatScout.effectiveDamage() === 16, "长门战斗僚机基础伤害不是16");
+  assert(
+    Math.abs(combatScout.effectiveFireRate() - yukiStats.fireRate * (2 / 3)) < 1e-9,
+    "长门战斗僚机射速不是常规舰炮的2/3",
+  );
+
+  const enemyMain = yukiSim.teamB.ships.main;
+  combatScout.x = 680;
+  combatScout.y = 720;
+  combatScout.cooldown = 0;
+  enemyMain.x = 800;
+  enemyMain.y = 720;
+  for (const ship of yukiTeam.getAllShips()) ship.cooldown = 999;
+  yukiTeam.visibleEnemyIds.add(enemyMain.id);
+  yukiSim.projectiles = [];
+  yukiTeam.stepCombat(yukiSim.teamB);
+  assert(yukiSim.projectiles.length === 1, "长门战斗僚机未通过权威战斗循环自动开火");
+  assert(yukiSim.projectiles[0].sourceId === combatScout.id, "长门战斗僚机弹丸来源标记错误");
+  assert(yukiSim.projectiles[0].damage === 16, "长门战斗僚机弹丸伤害不是16");
+  assert(
+    Math.abs(combatScout.cooldown - 1 / (yukiStats.fireRate * (2 / 3))) < 1e-9,
+    "长门战斗僚机攻击间隔不是常规舰炮频率的2/3",
+  );
+  yukiTeam.stepCombat(yukiSim.teamB);
+  assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
+
+  const normalSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+  const normalTeam = normalSim.teamA;
+  assert(normalTeam.launchScout(5), "普通旗舰队伍未能释放对照侦察机");
+  const normalScout = normalTeam.scouts[0];
+  assert(!normalScout.combatCapable, "非长门旗舰的侦察机被错误强化为战斗僚机");
+  assert(normalScout.vision === 95, "非长门旗舰的普通侦察机视野被意外改动");
+  normalScout.x = 680;
+  normalScout.y = 720;
+  const normalEnemy = normalSim.teamB.ships.main;
+  normalEnemy.x = 800;
+  normalEnemy.y = 720;
+  for (const ship of normalTeam.getAllShips()) ship.cooldown = 999;
+  normalTeam.visibleEnemyIds.add(normalEnemy.id);
+  normalSim.projectiles = [];
+  normalTeam.stepCombat(normalSim.teamB);
+  assert(normalSim.projectiles.length === 0, "非长门旗舰的普通侦察机错误开火");
+}
+
 function splitFormationCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const teamA = sim.teamA;
@@ -1010,6 +1070,7 @@ export function runRulesSuite() {
   emergencyBrakeCheck();
   autoScoutCheck();
   yukiBurstScoutStabilityCheck();
+  yukiFlagshipCombatScoutCheck();
   splitFormationCheck();
   initialFormationStabilityCheck();
   future1096LeaderHandoverCheck();

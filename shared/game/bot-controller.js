@@ -213,6 +213,7 @@ export class BotController {
       visible: Boolean(contact.visible || contact.source === "visible"),
       hp: Number.isFinite(contact.hp) ? contact.hp : null,
       maxHp: Number.isFinite(contact.maxHp) ? contact.maxHp : null,
+      combatCapable: Boolean(contact.combatCapable),
     };
   }
 
@@ -467,6 +468,7 @@ export class BotController {
       hp: Number.isFinite(entity.hp) ? entity.hp : null,
       maxHp: Number.isFinite(entity.maxHp) ? entity.maxHp : null,
       radius: Number.isFinite(entity.radius) ? entity.radius : null,
+      combatCapable: Boolean(entity.combatCapable),
       seenAt: this.team.match.elapsed,
       zoneId: zone.id,
       source,
@@ -870,6 +872,9 @@ export class BotController {
     if (contact.kind === "wingman") {
       return 2;
     }
+    if (contact.kind === "scout" && contact.combatCapable) {
+      return 2;
+    }
     return 1;
   }
 
@@ -936,7 +941,7 @@ export class BotController {
       if (!projected || projected.age > maxAge) {
         continue;
       }
-      if (!includeScouts && projected.kind === "scout") {
+      if (!includeScouts && projected.kind === "scout" && !projected.combatCapable) {
         continue;
       }
       contacts.push(projected);
@@ -944,7 +949,7 @@ export class BotController {
 
     const mainEstimate = this.projectContact(this.enemyIntel.main, this.enemyIntel.main?.source === "spawn" ? 0 : 1.8);
     if (mainEstimate && mainEstimate.age <= maxAge && !contacts.some((item) => item.id === mainEstimate.id)) {
-      if (includeScouts || mainEstimate.kind !== "scout") {
+      if (includeScouts || mainEstimate.kind !== "scout" || mainEstimate.combatCapable) {
         contacts.unshift(mainEstimate);
       }
     }
@@ -966,7 +971,8 @@ export class BotController {
     }
     const confidence = clamp(contact.confidence ?? 1, 0.2, 1);
     if (contact.kind === "scout") {
-      return 0.08 * confidence * (contact.visible ? 1 : 0.75);
+      const baseValue = contact.combatCapable ? 0.14 : 0.08;
+      return baseValue * confidence * (contact.visible ? 1 : 0.75);
     }
     if (contact.kind === "wingman") {
       return 0.42 * this.contactHpRatio(contact) * confidence * (contact.visible ? 1 : 0.86);
@@ -1013,6 +1019,16 @@ export class BotController {
       }
       total += 0.36 * clamp(wingman.hp / Math.max(wingman.maxHp, 1), 0.2, 1) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
     }
+    for (const scout of this.team.scouts) {
+      if (!scout.alive || !scout.combatCapable) {
+        continue;
+      }
+      const d = distance(scout.x, scout.y, x, y);
+      if (d > radius * 1.2) {
+        continue;
+      }
+      total += 0.14 * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
+    }
     return total;
   }
 
@@ -1041,7 +1057,7 @@ export class BotController {
       return 165;
     }
     if (contact.kind === "scout") {
-      return 100;
+      return contact.combatCapable ? CHARACTER_DEFS.yuki.stats.vision : 100;
     }
     if (contact.kind === "wingman") {
       return 100;
@@ -1090,12 +1106,14 @@ export class BotController {
     let sources = 0;
     let pressure = 0;
     for (const contact of this.knownEnemyContacts({ maxAge })) {
-      if (contact.kind === "scout") {
+      if (contact.kind === "scout" && !contact.combatCapable) {
         continue;
       }
       const range = contact.kind === "ship"
         ? ((CHARACTER_DEFS[contact.characterId]?.stats?.range || 500) + 70)
-        : 300;
+        : contact.combatCapable
+          ? CHARACTER_DEFS.yuki.stats.range + 70
+          : 300;
       const d = distance(ship.x, ship.y, contact.x, contact.y);
       if (d > range) {
         continue;
@@ -1120,7 +1138,7 @@ export class BotController {
       return null;
     }
     const hostiles = this.knownEnemyContacts({ maxAge }).filter((contact) => {
-      if (contact.kind === "scout") {
+      if (contact.kind === "scout" && !contact.combatCapable) {
         return false;
       }
       return distance(ship.x, ship.y, contact.x, contact.y) <= 360;

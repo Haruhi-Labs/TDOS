@@ -21,7 +21,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "有希",
       title: "高感知统合支援舰",
       flavor: "资讯统合思念体级别的情报能力",
-      flagshipSkill: { name: "资讯统合雷达", description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。" },
+      flagshipSkill: { name: "资讯统合雷达", description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。己方释放的侦察机强化为战斗僚机，获得舰船级视野，并以常规舰炮2/3的射速发射16伤害的子弹。" },
       subSkill: { name: "apm上万", description: "向8个方向各射出一对（共16架）高速侦察机。" },
     },
     future1096: {
@@ -79,7 +79,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "有希",
       title: "高感知統合支援艦",
       flavor: "情報統合思念体級の情報能力",
-      flagshipSkill: { name: "情報統合レーダー", description: "パッシブでレーダーが常時マップ全域を走査し、敵の動向を捉える。距離が近いほど誤差は小さくなり、近距離では敵キャラクターを識別できる。実視界は得られない。" },
+      flagshipSkill: { name: "情報統合レーダー", description: "パッシブでレーダーが常時マップ全域を走査し、敵の動向を捉える。距離が近いほど誤差は小さくなり、近距離では敵キャラクターを識別できる。実視界は得られない。味方が発進させた偵察機は戦闘僚機となり、通常艦と同等の視界を持ち、通常艦砲の2/3の連射速度で16ダメージの弾を発射する。" },
       subSkill: { name: "APM一万超え", description: "8方向それぞれへ一対（計16機）の高速偵察機を放つ。" },
     },
     future1096: {
@@ -137,7 +137,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "Yuki",
       title: "High-Sensor Integrated Support",
       flavor: "Information capability on the level of the Data Overmind",
-      flagshipSkill: { name: "Data Integration Radar", description: "Passively scans the entire map by radar to track enemy movement. Positional error decreases at closer range, and nearby enemy characters can be identified. It never grants true vision." },
+      flagshipSkill: { name: "Data Integration Radar", description: "Passively scans the entire map by radar to track enemy movement. Positional error decreases at closer range, and nearby enemy characters can be identified. It never grants true vision. Friendly scout aircraft become combat wingmen with ship-grade vision, firing 16-damage rounds at two-thirds the standard naval-gun fire rate." },
       subSkill: { name: "APM Overdrive", description: "Launches a pair of high-speed scouts in each of 8 directions (16 total)." },
     },
     future1096: {
