@@ -8,15 +8,12 @@ import {
   DEFAULT_WORLD_SIZE,
   TICK_RATE,
   SNAPSHOT_RATE,
-  TICK_DT,
   normalizeLoadout,
 } from "../shared/game-core.js";
 import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
   HEARTBEAT_INTERVAL_MS,
   LOBBY_BROADCAST_DEBOUNCE_MS,
-  LOOP_IDLE_MS,
-  MAX_CATCHUP_STEPS,
   MAX_CONNECTIONS,
   MAX_PAYLOAD_BYTES,
   MAX_SNAPSHOT_BUFFERED_BYTES,
@@ -26,8 +23,9 @@ import {
   NETWORK_PROTOCOL_VERSION,
   PORT,
   PVP_COUNTDOWN_MS,
-  SNAPSHOT_INTERVAL,
 } from "./config.js";
+import { createInputQueue } from "./input-queue.js";
+import { createMatchRuntime } from "./match-runtime.js";
 import { CONTROL_MESSAGE_TYPES, messageCode } from "./protocol.js";
 import { createRoomLifecycle } from "./room-lifecycle.js";
 import { createRoomRegistry } from "./room-registry.js";
@@ -55,6 +53,7 @@ const {
 } = createSnapshotStream({ networkStats });
 
 const roomRegistry = createRoomRegistry({ players, rooms, resetSnapshotStream });
+const inputQueue = createInputQueue({ networkStats });
 const {
   activeRoomCount,
   buildLobbyPayload,
@@ -68,10 +67,6 @@ const {
   streamCapacityUnits,
   validShipKey,
 } = roomRegistry;
-
-function clamp(value, min, max) {
-  return Math.max(min, Math.min(max, value));
-}
 
 function consumeRateLimit(player, key, refillPerSecond, capacity, now = Date.now()) {
   if (!player.rateLimits) {
@@ -204,66 +199,7 @@ function handleInput(player, data) {
   if (!room || room.status !== "running" || !room.match) {
     return;
   }
-  const seq = Number(data.seq);
-  if (!Number.isInteger(seq) || seq <= 0) {
-    return;
-  }
-  const action = data.action;
-  if (!action || typeof action !== "object") {
-    return;
-  }
-  if (seq <= player.lastProcessedSeq || seq <= (player.lastQueuedSeq || 0)) {
-    return;
-  }
-  player.lastQueuedSeq = seq;
-  const queued = {
-    seq,
-    action,
-  };
-  const replaceable = action.type === "route_control" || action.type === "route_end" || action.type === "set_throttle";
-  const lastQueued = player.inputQueue[player.inputQueue.length - 1];
-  if (
-    replaceable &&
-    lastQueued &&
-    lastQueued.action?.type === action.type &&
-    String(lastQueued.action?.shipKey || "main") === String(action.shipKey || "main")
-  ) {
-    player.inputQueue[player.inputQueue.length - 1] = queued;
-    networkStats.coalescedInputs += 1;
-  } else {
-    player.inputQueue.push(queued);
-  }
-  if (player.inputQueue.length > 90) {
-    player.inputQueue.splice(0, player.inputQueue.length - 90);
-  }
-}
-
-function applyQueuedInputs(room) {
-  for (const seat of ["A", "B"]) {
-    const playerId = room.seats[seat];
-    const player = getPlayerById(playerId);
-    if (!player) {
-      continue;
-    }
-
-    let handled = 0;
-    while (player.inputQueue.length > 0 && handled < 30) {
-      const item = player.inputQueue.shift();
-      if (!item || !Number.isInteger(item.seq)) {
-        continue;
-      }
-      if (item.seq <= player.lastProcessedSeq) {
-        continue;
-      }
-      room.match.applyActionForSeat(seat, item.action);
-      player.lastProcessedSeq = item.seq;
-      handled += 1;
-    }
-
-    if (player.inputQueue.length > 90) {
-      player.inputQueue.splice(0, player.inputQueue.length - 90);
-    }
-  }
+  inputQueue.queueInput(player, data);
 }
 
 function buildSnapshotFrame(room, advanceSeq = true) {
@@ -656,63 +592,16 @@ wss.on("close", () => {
   }
 });
 
-function tickRooms() {
-  for (const room of rooms.values()) {
-    if (room.status === "countdown" && room.match) {
-      if (Date.now() < Number(room.countdownEndsAt || 0)) {
-        continue;
-      }
-      room.status = "running";
-      room.countdownEndsAt = null;
-      sendRoomStateToMembers(room);
-      sendSnapshot(room);
-      broadcastLobby();
-    }
-
-    if (room.status === "running" && room.match) {
-      applyQueuedInputs(room);
-      room.match.update(TICK_DT);
-
-      room.snapshotAccumulator += TICK_DT;
-      while (room.snapshotAccumulator >= SNAPSHOT_INTERVAL) {
-        room.snapshotAccumulator -= SNAPSHOT_INTERVAL;
-        sendSnapshot(room);
-      }
-
-      if (room.match.phase === "finished" && room.status !== "finished") {
-        room.status = "finished";
-        room.finishedAt = Date.now();
-        room.result = buildMatchResult(room);
-        sendSnapshot(room);
-        sendRoomStateToMembers(room);
-        broadcastLobby();
-      }
-    }
-  }
-}
-
-let lastLoopTimeMs = Date.now();
-let loopAccumulator = 0;
-
-function runServerLoop() {
-  const now = Date.now();
-  const frameSec = clamp((now - lastLoopTimeMs) / 1000, 0, 0.25);
-  lastLoopTimeMs = now;
-  loopAccumulator += frameSec;
-
-  let steps = 0;
-  while (loopAccumulator >= TICK_DT && steps < MAX_CATCHUP_STEPS) {
-    tickRooms();
-    loopAccumulator -= TICK_DT;
-    steps += 1;
-  }
-
-  if (steps >= MAX_CATCHUP_STEPS) {
-    loopAccumulator = 0;
-  }
-  setTimeout(runServerLoop, LOOP_IDLE_MS);
-}
-
-runServerLoop();
+const matchRuntime = createMatchRuntime({
+  rooms,
+  applyQueuedInputs(room) {
+    inputQueue.applyQueuedInputs(room, getPlayerById);
+  },
+  sendSnapshot,
+  sendRoomStateToMembers,
+  broadcastLobby,
+  buildMatchResult,
+});
+matchRuntime.runServerLoop();
 
 console.log(`网络对战服务器已启动 ws://localhost:${PORT}`);

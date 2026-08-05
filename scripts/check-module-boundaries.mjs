@@ -143,6 +143,8 @@ const requiredLinks = [
   ["server/server.js", "./snapshot-stream.js"],
   ["server/server.js", "./room-registry.js"],
   ["server/server.js", "./room-lifecycle.js"],
+  ["server/server.js", "./input-queue.js"],
+  ["server/server.js", "./match-runtime.js"],
 ];
 
 for (const [fileName, specifier] of requiredLinks) {

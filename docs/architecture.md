@@ -50,6 +50,8 @@
 - `server/snapshot-stream.js`：快照发送、关键帧/差量选择、缓冲保护和单连接流控。
 - `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。
 - `server/room-lifecycle.js`：创建、加入、离开、关闭房间的生命周期与容量门禁。
+- `server/input-queue.js`：客户端输入顺序、连续操作合并、队列上限和逐帧消费。
+- `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算和追帧保护。
 - `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
 
 ### 内容与素材
@@ -72,6 +74,8 @@
 | 联机画面抖动、插值和预测 | `src/online/state-sync.js` | `scripts/verify-online-state-sync.mjs` |
 | 房间模型与席位 | `server/room-registry.js` | `scripts/verify-server-rooms.mjs` |
 | 入房、退房和容量门禁 | `server/room-lifecycle.js` | 协议与网络保护测试 |
+| 输入积压、合并与确认 | `server/input-queue.js` | `scripts/verify-server-runtime.mjs` |
+| 服务端逻辑帧与快照节拍 | `server/match-runtime.js` | 运行时与网络保护测试 |
 | 快照带宽和拥塞保护 | `server/snapshot-stream.js`、`server/config.js` | `shared/network-patch.js` |
 | 日英翻译文本 | `src/i18n/messages-ja.js`、`messages-en.js` | `src/i18n/catalog.js` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
