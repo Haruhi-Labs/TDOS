@@ -39,9 +39,7 @@ import {
 import {
   buildZones,
   clamp,
-  counterClockwiseSweepDistance,
   distance,
-  distanceSq,
   dot,
   lerp,
   linePointDistance,
@@ -52,10 +50,24 @@ import {
   randomInRange,
   rotateOffset,
   shortestAngleDelta,
-  stableRadarNoise,
   zoneContains,
 } from "./game/math.js";
 import { BotController } from "./game/bot-controller.js";
+import {
+  computeVisibility as computeTeamVisibility,
+  createRadarContact as createTeamRadarContact,
+  radarMaxDistanceFrom as teamRadarMaxDistanceFrom,
+  serializeRadarPassive as serializeTeamRadarPassive,
+  updateRadarPassive as updateTeamRadarPassive,
+} from "./game/visibility-radar.js";
+import {
+  assignFocusTargets as assignTeamFocusTargets,
+  fireCandidates as teamFireCandidates,
+  focusDamageBudget as attackerFocusDamageBudget,
+  isFocusWorthy as isTeamFocusWorthy,
+  pickTargetFor as pickTeamTarget,
+  stepCombat as stepTeamCombat,
+} from "./game/targeting-system.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -103,10 +115,6 @@ const BEAM_HIT_RADIUS = 11;
 const BEAM_DAMAGE_RATIO = 0.28;
 const FUTURE_1096_HULL_RATIO = 0.75;
 const DEG_TO_RAD = Math.PI / 180;
-const YUKI_RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
-const YUKI_RADAR_IDENTIFY_ZONE_WIDTHS = 1;
-const YUKI_RADAR_CONTACT_MIN_LIFE = 2.6;
-const YUKI_RADAR_CONTACT_MAX_LIFE = 3.8;
 const EMERGENCY_BRAKE_DURATION = 0.82;
 const EMERGENCY_BRAKE_COOLDOWN = 1.25;
 const FLAGSHIP_TURN_PENALTIES = {
@@ -2360,277 +2368,49 @@ class Team {
   }
 
   radarMaxDistanceFrom(source) {
-    const size = this.match.worldSize;
-    return Math.max(
-      Math.hypot(source.x, source.y),
-      Math.hypot(size - source.x, source.y),
-      Math.hypot(source.x, size - source.y),
-      Math.hypot(size - source.x, size - source.y),
-      1,
-    );
+    return teamRadarMaxDistanceFrom(this, source);
   }
 
   createRadarContact(target, source) {
-    const radar = this.radarPassive;
-    radar.scanSequence += 1;
-    const targetDistance = distance(source.x, source.y, target.x, target.y);
-    const distanceRatio = clamp(targetDistance / this.radarMaxDistanceFrom(source), 0, 1);
-    const clarity = clamp(0.96 - distanceRatio * 0.86, 0.12, 0.9);
-    const uncertainty = 10 + 210 * distanceRatio * distanceRatio;
-    const seed = target.id * 131 + radar.scanSequence * 977 + this.match.tick * 17;
-    const errorAngle = stableRadarNoise(seed, 1) * TAU;
-    const errorDistance = uncertainty * Math.sqrt(stableRadarNoise(seed, 2));
-    const headingError = (stableRadarNoise(seed, 3) - 0.5) * (0.15 + distanceRatio * 0.9);
-    const identifyDistance = (this.match.worldSize / 3) * YUKI_RADAR_IDENTIFY_ZONE_WIDTHS;
-    const afterimage = targetDistance <= identifyDistance;
-    const life = lerp(YUKI_RADAR_CONTACT_MIN_LIFE, YUKI_RADAR_CONTACT_MAX_LIFE, clarity);
-
-    return {
-      id: target.id,
-      targetId: target.id,
-      x: clamp(target.x + Math.cos(errorAngle) * errorDistance, 8, this.match.worldSize - 8),
-      y: clamp(target.y + Math.sin(errorAngle) * errorDistance, 8, this.match.worldSize - 8),
-      angle: normalizeAngle((Number(target.angle) || 0) + headingError),
-      kind: afterimage ? "afterimage" : "disturbance",
-      characterId: afterimage ? target.characterId : null,
-      clarity,
-      uncertainty,
-      distanceRatio,
-      detectedAt: this.match.elapsed,
-      expiresAt: this.match.elapsed + life,
-      seed: Math.floor(stableRadarNoise(seed, 4) * 1_000_000),
-    };
+    return createTeamRadarContact(this, target, source);
   }
 
   updateRadarPassive(enemyTeam, dt) {
-    const radar = this.radarPassive;
-    const source = this.ships.main;
-    if (!radar || !this.hasYukiFlagship() || !source?.alive) {
-      if (radar) {
-        radar.contacts.clear();
-      }
-      return;
-    }
-
-    const now = this.match.elapsed;
-    const enemyById = new Map(enemyTeam.getAllShips().map((ship) => [ship.id, ship]));
-    for (const [targetId, contact] of radar.contacts) {
-      const target = enemyById.get(targetId);
-      if (!target?.alive || contact.expiresAt <= now || this.visibleEnemyIds.has(targetId)) {
-        radar.contacts.delete(targetId);
-      }
-    }
-
-    // 扫线角度只由对局绝对时间决定，舰队的位移、航向、速度与帧累计误差
-    // 均不会改变其角速度；舰船只作为随动的雷达圆心。
-    const safeDt = Math.max(0, Number(dt) || 0);
-    const previousTime = Math.max(0, now - safeDt);
-    const previousAngle = normalizeAngle(radar.epochAngle - YUKI_RADAR_ANGULAR_SPEED * previousTime);
-    const currentAngle = normalizeAngle(radar.epochAngle - YUKI_RADAR_ANGULAR_SPEED * now);
-    const sweepDistance = Math.min(TAU, YUKI_RADAR_ANGULAR_SPEED * (now - previousTime));
-    radar.angle = currentAngle;
-
-    for (const target of enemyTeam.getAllShips()) {
-      if (!target.alive) {
-        continue;
-      }
-      const bearing = normalizeAngle(Math.atan2(target.y - source.y, target.x - source.x));
-      if (counterClockwiseSweepDistance(previousAngle, bearing) > sweepDistance + 1e-9) {
-        continue;
-      }
-      if (this.visibleEnemyIds.has(target.id)) {
-        // 真实视野内不生成雷达残影，直接复用现有永久名牌状态确认角色身份。
-        target.nameRevealed = true;
-        radar.contacts.delete(target.id);
-        continue;
-      }
-      radar.contacts.set(target.id, this.createRadarContact(target, source));
-    }
+    updateTeamRadarPassive(this, enemyTeam, dt);
   }
 
   serializeRadarPassive() {
-    const source = this.ships.main;
-    if (!this.hasYukiFlagship() || !source?.alive || !this.radarPassive) {
-      return null;
-    }
-    return {
-      active: true,
-      sourceShipId: source.id,
-      angle: this.radarPassive.angle,
-      angularVelocity: -YUKI_RADAR_ANGULAR_SPEED,
-      rotationSeconds: YUKI_RADAR_ROTATION_SECONDS,
-      sampledAt: this.match.elapsed,
-      contacts: [...this.radarPassive.contacts.values()].map((contact) => ({ ...contact })),
-    };
+    return serializeTeamRadarPassive(this);
   }
 
   computeVisibility(enemyTeam) {
-    this.visibleEnemyIds.clear();
-    const sensors = this.getVisionSources();
-    if (sensors.length === 0) {
-      if (this.effects.revealEnemiesUntil > this.match.elapsed) {
-        for (const enemy of enemyTeam.getEntities()) {
-          this.visibleEnemyIds.add(enemy.id);
-        }
-      }
-      return;
-    }
-    const enemyEntities = enemyTeam.getEntities();
-    for (const enemy of enemyEntities) {
-      for (const sensor of sensors) {
-        if (distanceSq(enemy.x, enemy.y, sensor.x, sensor.y) <= sensor.range * sensor.range) {
-          this.visibleEnemyIds.add(enemy.id);
-          break;
-        }
-      }
-    }
-    if (this.effects.revealEnemiesUntil > this.match.elapsed) {
-      for (const enemy of enemyEntities) {
-        this.visibleEnemyIds.add(enemy.id);
-      }
-    }
+    computeTeamVisibility(this, enemyTeam);
   }
 
   // 某攻击者当前可开火的候选目标:已过滤"可见(或春日盲射)+ 进射程",并带上距离与射界密度。
   // 取最近/锁血/集火分配都基于这同一份候选,确保 AI 与玩家走完全一致的命中判定口径。
   fireCandidates(attacker, enemyTeam) {
-    const range = attacker.attackRange || attacker.effectiveRange();
-    const canArc = typeof attacker.broadsideMultiplier === "function";
-    const out = [];
-    for (const target of enemyTeam.getEntities()) {
-      if (!target.alive) {
-        continue;
-      }
-      const d = distance(attacker.x, attacker.y, target.x, target.y);
-      if (d > range) {
-        continue;
-      }
-      const arc = canArc ? attacker.broadsideMultiplier(target) : 1;
-      const blindfire = canArc
-        && attacker.characterId === "haruhi"
-        && attacker.hasEffect("critUntil")
-        && arc > 0;
-      if (!this.visibleEnemyIds.has(target.id) && !blindfire) {
-        continue;
-      }
-      out.push({ target, dist: d, arc });
-    }
-    return out;
+    return teamFireCandidates(this, attacker, enemyTeam);
   }
 
-  // 估算某攻击者约 1.2 秒内可投射的伤害——集火分配里用它判断"某残血已被认领够",
-  // 让后续火力转向下一个最弱目标,从而既优先收残血又不全队过量集火同一个。
   focusDamageBudget(attacker) {
-    const HORIZON = 1.2;
-    if (typeof attacker.effectiveDamage === "function" && typeof attacker.effectiveFireRate === "function") {
-      return Math.max(1, attacker.effectiveDamage() * attacker.effectiveFireRate() * HORIZON);
-    }
-    return Math.max(1, (attacker.damage || 10) * HORIZON); // 僚机:约 1 发/秒
+    return attackerFocusDamageBudget(attacker);
   }
 
-  // 极限难度专属:每个战斗步先做一次全队火力分配——按"每秒火力"从高到低,让每个攻击者
-  // 认领它打得到的、剩余血量最低的敌人;某目标被认领够(预估伤害≥其血量)后,其余火力顺延
-  // 到下一个最弱目标。结果存入 _focusTargets,供 pickTargetFor 取用。
-  // 某目标是否"值得集火去收掉":血量已掉到上限的 focusHpFrac 以下。
   isFocusWorthy(target) {
-    const cap = target.maxHp || target.hp;
-    return cap > 0 && target.hp <= cap * this.focusHpFrac;
+    return isTeamFocusWorthy(this, target);
   }
 
   assignFocusTargets(enemyTeam) {
-    const assign = new Map();
-    const remaining = new Map(); // target.id → 尚未被认领的血量
-    const ranked = [...this.getAllShips(), ...this.wingmen]
-      .filter((a) => a.alive && a.cooldown <= 0)
-      .map((a) => ({ a, budget: this.focusDamageBudget(a) }))
-      .sort((x, y) => y.budget - x.budget);
-    for (const { a, budget } of ranked) {
-      // 只在"残血且打得到"的目标里分配集火;没有这类目标的攻击者不分配,留给 pickTargetFor 取最近。
-      const cands = this.fireCandidates(a, enemyTeam).filter((c) => c.arc > 0 && this.isFocusWorthy(c.target));
-      if (!cands.length) {
-        continue;
-      }
-      let pick = null;
-      let pickRem = Infinity;
-      let pickDist = Infinity;
-      let overflow = null;
-      let overflowHp = Infinity;
-      let overflowDist = Infinity;
-      for (const c of cands) {
-        const rem = remaining.has(c.target.id) ? remaining.get(c.target.id) : c.target.hp;
-        if (rem > 0 && (rem < pickRem || (rem === pickRem && c.dist < pickDist))) {
-          pick = c.target;
-          pickRem = rem;
-          pickDist = c.dist;
-        }
-        if (c.target.hp < overflowHp || (c.target.hp === overflowHp && c.dist < overflowDist)) {
-          overflow = c.target;
-          overflowHp = c.target.hp;
-          overflowDist = c.dist;
-        }
-      }
-      // 还有"没被认领够"的残血就压最弱的那个;都认领够了,溢出火力才压在总血量最低的残血上。
-      const chosen = pick || overflow;
-      if (!chosen) {
-        continue;
-      }
-      assign.set(a.id, chosen);
-      const rem = remaining.has(chosen.id) ? remaining.get(chosen.id) : chosen.hp;
-      remaining.set(chosen.id, rem - budget);
-    }
-    this._focusTargets = assign;
+    assignTeamFocusTargets(this, enemyTeam);
   }
 
   pickTargetFor(attacker, enemyTeam) {
-    const cands = this.fireCandidates(attacker, enemyTeam);
-    if (!cands.length) {
-      return null;
-    }
-    // 极限难度:优先采用本步全队火力分配的结果(避免过量集火);分配目标已死/打不到时再就近兜底。
-    if (this.aiFocusLowHp) {
-      const assigned = this._focusTargets && this._focusTargets.get(attacker.id);
-      if (assigned && assigned.alive && cands.some((c) => c.target === assigned)) {
-        return assigned;
-      }
-      let low = null;
-      let lowHp = Infinity;
-      let lowDist = Infinity;
-      for (const c of cands) {
-        if (c.arc <= 0 || !this.isFocusWorthy(c.target)) {
-          continue;
-        }
-        if (c.target.hp < lowHp || (c.target.hp === lowHp && c.dist < lowDist)) {
-          low = c.target;
-          lowHp = c.target.hp;
-          lowDist = c.dist;
-        }
-      }
-      if (low) {
-        return low;
-      }
-    }
-    // 取最近:全部玩家队 + 非极限AI + 极限兜底(当前无可开火目标时)
-    let nearest = null;
-    let nearestDist = Infinity;
-    for (const c of cands) {
-      if (c.dist < nearestDist) {
-        nearestDist = c.dist;
-        nearest = c.target;
-      }
-    }
-    return nearest;
+    return pickTeamTarget(this, attacker, enemyTeam);
   }
 
   stepCombat(enemyTeam) {
-    if (this.aiFocusLowHp) {
-      this.assignFocusTargets(enemyTeam); // 极限:先做全队火力分配,再依分配开火
-    }
-    for (const ship of this.getAllShips()) {
-      ship.tryAttack(this.match, enemyTeam);
-    }
-    for (const wingman of this.wingmen) {
-      wingman.tryAttack(this.match, enemyTeam);
-    }
+    stepTeamCombat(this, enemyTeam);
   }
 
   serialize() {
