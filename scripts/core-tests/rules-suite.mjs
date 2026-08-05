@@ -196,6 +196,46 @@ function autoScoutCheck() {
   assert(serialized?.enabled && serialized.zoneId === 7, "自动侦察状态未序列化到战斗快照");
 }
 
+function yukiBurstScoutStabilityCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "yuki", sub2: "koizumi" },
+      B: { main: "kyon", sub1: "haruhi", sub2: "tsuruya" },
+    },
+  });
+  sim.combatEnabled.A = false;
+  sim.combatEnabled.B = false;
+  sim.teamA.split(1);
+  assert(sim.teamA.castSubSkill("sub1"), "长门副舰侦察机技能释放失败");
+  assert(sim.teamA.scouts.length === 16, "长门副舰技能未生成完整侦察机群");
+
+  const scout = sim.teamA.scouts[0];
+  runSteps(sim, 2.5);
+  assert(scout.mode === "orbit", "长门副舰侦察机未进入环绕阶段");
+
+  let stoppedFrames = 0;
+  let maxStep = 0;
+  let maxRadiusError = 0;
+  for (let index = 0; index < 60; index += 1) {
+    const previousX = scout.x;
+    const previousY = scout.y;
+    sim.update(TICK_DT);
+    const step = Math.hypot(scout.x - previousX, scout.y - previousY);
+    if (step < 0.05) stoppedFrames += 1;
+    maxStep = Math.max(maxStep, step);
+    maxRadiusError = Math.max(
+      maxRadiusError,
+      Math.abs(Math.hypot(scout.x - scout.anchor.x, scout.y - scout.anchor.y) - scout.anchorRadius),
+    );
+  }
+
+  assert(stoppedFrames === 0, "长门副舰侦察机环绕仍出现走一帧停一帧的抖动");
+  assert(maxStep < 1.1, "长门副舰侦察机环绕单帧位移仍存在跳变");
+  assert(maxRadiusError < 1e-6, "长门副舰侦察机未沿稳定圆轨道运动");
+}
+
 function splitFormationCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const teamA = sim.teamA;
@@ -969,6 +1009,7 @@ export function runRulesSuite() {
   throttleGearCheck();
   emergencyBrakeCheck();
   autoScoutCheck();
+  yukiBurstScoutStabilityCheck();
   splitFormationCheck();
   initialFormationStabilityCheck();
   future1096LeaderHandoverCheck();

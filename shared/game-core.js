@@ -1167,7 +1167,7 @@ class Scout {
     this.team = team;
     this.zone = config.zone || null;
     this.pattern = config.pattern || (this.zone ? "zone" : "burst");
-    this.mode = this.pattern === "zone" ? "transit" : "burst";
+    this.mode = "transit";
     this.x = x;
     this.y = y;
     this.angle = randomInRange(0, TAU);
@@ -1191,8 +1191,9 @@ class Scout {
       this.command.x = this.zone.x + this.zone.width * 0.5;
       this.command.y = this.zone.y + this.zone.height * 0.5;
     } else if (this.anchor) {
-      this.command.x = this.anchor.x;
-      this.command.y = this.anchor.y;
+      const target = this.burstOrbitPoint();
+      this.command.x = target.x;
+      this.command.y = target.y;
     }
     // 若指定了 seekPoint(敌方估计位置)，先直飞该点把视野覆盖到目标，再在战区巡逻——
     // 比"飞战区中心+随机巡逻"更快找到敌人(战区≈480px ≫ 侦察视野≈95px，随机巡逻常错过)。
@@ -1215,15 +1216,25 @@ class Scout {
     };
   }
 
-  updateBurstCommand() {
-    if (!this.anchor) {
-      return;
-    }
-    this.orbitAngle += this.orbitSpeed * 0.08;
-    this.command = {
+  burstOrbitPoint() {
+    return {
       x: this.anchor.x + Math.cos(this.orbitAngle) * this.anchorRadius,
       y: this.anchor.y + Math.sin(this.orbitAngle) * this.anchorRadius,
     };
+  }
+
+  updateBurstOrbit(dt) {
+    if (!this.anchor) {
+      return;
+    }
+    const previousX = this.x;
+    const previousY = this.y;
+    this.orbitAngle = normalizeAngle(this.orbitAngle + this.orbitSpeed * dt);
+    const next = this.burstOrbitPoint();
+    this.x = next.x;
+    this.y = next.y;
+    this.command = next;
+    this.angle = Math.atan2(this.y - previousY, this.x - previousX);
   }
 
   update(dt) {
@@ -1236,22 +1247,29 @@ class Scout {
       return;
     }
 
+    if (this.pattern === "burst" && this.mode === "orbit") {
+      this.updateBurstOrbit(dt);
+      return;
+    }
+
     const dx = this.command.x - this.x;
     const dy = this.command.y - this.y;
     const d = Math.hypot(dx, dy);
-    if (d > 1) {
-      this.x += (dx / d) * this.speed * dt;
-      this.y += (dy / d) * this.speed * dt;
+    const step = Math.min(d, this.speed * dt);
+    if (d > 1e-6 && step > 0) {
+      this.x += (dx / d) * step;
+      this.y += (dy / d) * step;
       this.angle = Math.atan2(dy, dx);
     }
+    const remaining = Math.max(0, d - step);
 
     if (this.pattern === "zone") {
-      if (this.mode === "transit" && d < 12) {
+      if (this.mode === "transit" && remaining < 12) {
         this.mode = "patrol";
         this.randomPatrolPoint();
       } else if (this.mode === "patrol") {
         this.patrolTimer -= dt;
-        if (d < 12 || this.patrolTimer <= 0) {
+        if (remaining < 12 || this.patrolTimer <= 0) {
           this.patrolTimer = randomInRange(1.0, 2.6);
           this.randomPatrolPoint();
         }
@@ -1259,8 +1277,8 @@ class Scout {
       return;
     }
 
-    if (d < 8) {
-      this.updateBurstCommand();
+    if (remaining <= 1e-6) {
+      this.mode = "orbit";
     }
   }
 
