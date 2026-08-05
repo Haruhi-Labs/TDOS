@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import WebSocket from "ws";
+import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -168,6 +169,37 @@ async function connectionLimitCheck() {
   await delay(120);
 }
 
+async function rulesetHandshakeCheck() {
+  const client = await new GuardClient().open();
+  const connected = await client.waitFor((message) => message.type === "connected");
+  assert.equal(connected.rulesetVersion, RULESET_VERSION, "连接响应未声明当前规则版本");
+
+  client.send({
+    type: "protocol_hello",
+    protocolVersion: 2,
+    rulesetVersion: "ruleset-20260701-01",
+  });
+  const mismatch = await client.waitFor(
+    (message) => message.type === "ruleset_mismatch" && !message.blockedType,
+  );
+  assert.equal(mismatch.serverRulesetVersion, RULESET_VERSION, "版本冲突未返回服务端规则版本");
+
+  client.send({ type: "create_room", visibility: "private", mode: "ai" });
+  const blocked = await client.waitFor(
+    (message) => message.type === "ruleset_mismatch" && message.blockedType === "create_room",
+  );
+  assert.equal(blocked.clientRulesetVersion, "ruleset-20260701-01", "拦截结果未保留客户端规则版本");
+
+  client.send({
+    type: "protocol_hello",
+    protocolVersion: 2,
+    rulesetVersion: RULESET_VERSION,
+  });
+  client.send({ type: "create_room", visibility: "private", mode: "ai" });
+  await client.waitFor((message) => message.type === "room_state" && message.room?.status === "running");
+  await terminateClients();
+}
+
 async function yukiRadarPrivacyCheck() {
   const host = await new GuardClient().open();
   const guest = await new GuardClient().open();
@@ -286,11 +318,12 @@ try {
   await oversizedPayloadCheck();
   await heartbeatCheck();
   await connectionLimitCheck();
+  await rulesetHandshakeCheck();
   await yukiRadarPrivacyCheck();
   await spectatorLimitCheck();
   await activeRoomLimitCheck();
   await messageFloodCheck();
-  console.log("网络保护校验通过：大包、心跳、连接、房间、雷达隐私、观战与消息洪泛均已受控。");
+  console.log("网络保护校验通过：大包、心跳、连接、规则握手、房间、雷达隐私、观战与消息洪泛均已受控。");
 } catch (error) {
   console.error(`网络保护校验失败：${error instanceof Error ? error.stack || error.message : String(error)}`);
   if (serverOutput.trim()) {

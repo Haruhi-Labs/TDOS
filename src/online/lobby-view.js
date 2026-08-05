@@ -85,7 +85,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const joinButton = document.createElement("button");
       joinButton.textContent = t("加入");
-      joinButton.disabled = !app.connected || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
+      joinButton.disabled = !app.connected || !app.rulesetCompatible || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
       joinButton.addEventListener("click", () => {
         syncLoadoutToServer(false);
         socketSend({ type: "join_room", roomId: room.roomId });
@@ -93,7 +93,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const spectateButton = document.createElement("button");
       spectateButton.textContent = t("观战");
-      spectateButton.disabled = !app.connected || Boolean(app.room) || room.status !== "running";
+      spectateButton.disabled = !app.connected || !app.rulesetCompatible || Boolean(app.room) || room.status !== "running";
       spectateButton.addEventListener("click", () => {
         socketSend({ type: "spectate_room", roomId: room.roomId });
       });

@@ -1,5 +1,9 @@
 import { clamp, lerp } from "../../shared/game/math.js";
 import { applyStatePatch } from "../../shared/network-patch.js";
+import {
+  evaluateRulesetCompatibility,
+  RULESET_VERSION,
+} from "../../shared/protocol/ruleset-version.js";
 import { t } from "../i18n.js";
 
 export const DEFAULT_INTERP_MS = 120;
@@ -23,6 +27,9 @@ export function createOnlineSnapshotTransport({ app, nowMs, socketSend, updateCo
     app.serverTickRate = 30;
     app.serverSnapshotRate = 20;
     app.networkProtocolVersion = 1;
+    app.serverRulesetVersion = "";
+    app.rulesetStatus = "pending";
+    app.rulesetCompatible = false;
     app.snapshotIntervalMs = 1000 / app.serverSnapshotRate;
   }
 
@@ -136,6 +143,18 @@ export function createOnlineSnapshotTransport({ app, nowMs, socketSend, updateCo
     const snapshotRate = Number(message.snapshotRate);
     const snapshotIntervalMs = Number(message.snapshotIntervalMs);
     const protocolVersion = Number(message.protocolVersion);
+    const rulesetCompatibility = evaluateRulesetCompatibility(message.rulesetVersion);
+    app.serverRulesetVersion = rulesetCompatibility.remoteVersion;
+    app.rulesetStatus = rulesetCompatibility.status;
+    app.rulesetCompatible = rulesetCompatibility.compatible;
+    if (rulesetCompatibility.status === "legacy") {
+      log(t("服务器未声明规则版本，将使用旧版兼容模式"));
+    } else if (!rulesetCompatibility.compatible) {
+      log(t("规则版本不兼容：客户端 {client}，服务器 {server}", {
+        client: RULESET_VERSION,
+        server: rulesetCompatibility.remoteVersion,
+      }));
+    }
     app.networkProtocolVersion = Number.isInteger(protocolVersion) && protocolVersion >= 2 ? protocolVersion : 1;
     if (Number.isFinite(tickRate) && tickRate >= 5) app.serverTickRate = tickRate;
     if (Number.isFinite(snapshotRate) && snapshotRate >= 2) {
@@ -151,7 +170,11 @@ export function createOnlineSnapshotTransport({ app, nowMs, socketSend, updateCo
       app.clockReady = true;
     }
     if (app.networkProtocolVersion >= 2) {
-      socketSend({ type: "protocol_hello", protocolVersion: 2 });
+      socketSend({
+        type: "protocol_hello",
+        protocolVersion: 2,
+        rulesetVersion: RULESET_VERSION,
+      });
     }
     updateInterpolationDelay();
   }

@@ -214,6 +214,9 @@ function initApp() {
   serverTickRate: 30,
   serverSnapshotRate: 20,
   networkProtocolVersion: 1,
+  serverRulesetVersion: "",
+  rulesetStatus: "pending",
+  rulesetCompatible: false,
   snapshotIntervalMs: 1000 / 20,
   snapshots: [],
   latestSnapshot: null,
@@ -268,6 +271,7 @@ function initApp() {
       app.room &&
       app.room.status === "running" &&
       app.connected &&
+      app.rulesetCompatible &&
       app.seat &&
       !app.spectating
     ),
@@ -311,13 +315,23 @@ function log(message) {
 }
 
 function updateConnectionUi() {
-  ui.connectionValue.textContent = app.connected ? t("已连接") : t("未连接");
+  ui.connectionValue.textContent = !app.connected
+    ? t("未连接")
+    : app.rulesetStatus === "mismatch"
+      ? t("规则版本不兼容")
+      : t("已连接");
   ui.pingValue.textContent = app.connected ? `${Math.round(app.pingMs)}ms` : "-";
   ui.jitterValue.textContent = app.connected ? `${Math.round(app.jitterMs)}ms` : "-";
   ui.interpValue.textContent = app.connected ? `${Math.round(app.interpDelayMs)}ms` : "-";
 
   ui.connectBtn.disabled = app.connected;
   ui.disconnectBtn.disabled = !app.connected;
+  const lobbyActionsDisabled = !app.connected || !app.rulesetCompatible || Boolean(app.room);
+  ui.createPublicBtn.disabled = lobbyActionsDisabled;
+  ui.createPrivateBtn.disabled = lobbyActionsDisabled;
+  ui.createAiRoomBtn.disabled = lobbyActionsDisabled;
+  ui.joinCodeBtn.disabled = lobbyActionsDisabled;
+  ui.joinCodeInput.disabled = lobbyActionsDisabled;
 }
 
 function setBattleControlsEnabled(enabled) {
@@ -349,7 +363,7 @@ function isSpectatorMode() {
 }
 
 function canControlBattle() {
-  return Boolean(app && app.connected && app.room && app.room.status === "running" && app.seat && !app.spectating);
+  return Boolean(app && app.connected && app.rulesetCompatible && app.room && app.room.status === "running" && app.seat && !app.spectating);
 }
 
 function validShipKey(shipKey) {
@@ -545,13 +559,14 @@ function applyRoomState(message) {
   }
 
   lobbyView.updateRoomSummary();
+  updateConnectionUi();
 
   const roomStatus = app.room ? app.room.status : null;
   const isCountdown = roomStatus === "countdown";
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
   const showBattleView = isCountdown || canBattle || isFinished;
-  setBattleControlsEnabled(Boolean(canBattle && !app.spectating));
+  setBattleControlsEnabled(Boolean(canBattle && !app.spectating && app.rulesetCompatible));
   setRoomHudVisible(!showBattleView);
   syncResponsiveMode();
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
@@ -616,6 +631,7 @@ function handleRoomClosed(message) {
   app.seat = null;
   app.spectating = false;
   lobbyView.updateRoomSummary();
+  updateConnectionUi();
   setBattleControlsEnabled(false);
   setRoomHudVisible(true);
   clearMatchRuntime();
@@ -847,6 +863,16 @@ function handleServerMessage(raw) {
 
   if (type === "connected") {
     snapshotTransport.handleConnected(message);
+    return;
+  }
+
+  if (type === "ruleset_mismatch") {
+    app.rulesetCompatible = false;
+    app.rulesetStatus = "mismatch";
+    app.serverRulesetVersion = String(message.serverRulesetVersion || app.serverRulesetVersion || "");
+    setBattleControlsEnabled(false);
+    updateConnectionUi();
+    log(t("规则版本不兼容：客户端与服务器无法进入同一场对战"));
     return;
   }
 
@@ -1407,6 +1433,7 @@ function bindUiEvents() {
     app.seat = null;
     app.spectating = false;
     lobbyView.updateRoomSummary();
+    updateConnectionUi();
     setBattleControlsEnabled(false);
     clearMatchRuntime();
     resultView.close();
@@ -1422,6 +1449,7 @@ function bindUiEvents() {
       app.seat = null;
       app.spectating = false;
       lobbyView.updateRoomSummary();
+      updateConnectionUi();
       setBattleControlsEnabled(false);
       resultView.close();
       setRoomHudVisible(true); // 立即切回大厅页

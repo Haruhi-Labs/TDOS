@@ -12,6 +12,10 @@ import {
 } from "../shared/game-core.js";
 import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
+  evaluateRulesetCompatibility,
+  RULESET_VERSION,
+} from "../shared/protocol/ruleset-version.js";
+import {
   HEARTBEAT_INTERVAL_MS,
   LOBBY_BROADCAST_DEBOUNCE_MS,
   MAX_CONNECTIONS,
@@ -26,7 +30,11 @@ import {
 } from "./config.js";
 import { createInputQueue } from "./input-queue.js";
 import { createMatchRuntime } from "./match-runtime.js";
-import { CONTROL_MESSAGE_TYPES, messageCode } from "./protocol.js";
+import {
+  CONTROL_MESSAGE_TYPES,
+  messageCode,
+  RULESET_GUARDED_MESSAGE_TYPES,
+} from "./protocol.js";
 import { createRoomLifecycle } from "./room-lifecycle.js";
 import { createRoomRegistry } from "./room-registry.js";
 import { createSnapshotStream } from "./snapshot-stream.js";
@@ -98,6 +106,17 @@ function sendError(player, message) {
     type: "error",
     code: messageCode(message, "unknown_error"),
     message,
+  });
+}
+
+function sendRulesetMismatch(player, blockedType = "") {
+  sendToPlayer(player, {
+    type: "ruleset_mismatch",
+    code: "ruleset_mismatch",
+    message: "客户端与服务器规则版本不一致",
+    clientRulesetVersion: player.rulesetVersion || "",
+    serverRulesetVersion: RULESET_VERSION,
+    blockedType,
   });
 }
 
@@ -327,6 +346,8 @@ wss.on("connection", (ws) => {
     snapshotStream: null,
     rateLimits: new Map(),
     networkProtocolVersion: 1,
+    rulesetVersion: "",
+    rulesetCompatible: true,
   };
   resetSnapshotStream(player);
 
@@ -337,6 +358,7 @@ wss.on("connection", (ws) => {
     playerId,
     build: NETWORK_BUILD,
     protocolVersion: NETWORK_PROTOCOL_VERSION,
+    rulesetVersion: RULESET_VERSION,
     serverTime: Date.now(),
     tickRate: TICK_RATE,
     snapshotRate: SNAPSHOT_RATE,
@@ -369,6 +391,10 @@ wss.on("connection", (ws) => {
       return;
     }
     if (CONTROL_MESSAGE_TYPES.has(type) && !consumeRateLimit(player, "control", 10, 20, messageNow)) {
+      return;
+    }
+    if (RULESET_GUARDED_MESSAGE_TYPES.has(type) && player.rulesetCompatible === false) {
+      sendRulesetMismatch(player, type);
       return;
     }
 
@@ -469,6 +495,12 @@ wss.on("connection", (ws) => {
           player.snapshotStream.lastDeliveryAckSeq = player.snapshotStream.sequence;
           player.snapshotStream.lastDeliveryAckAt = Date.now();
         }
+      }
+      player.rulesetVersion = String(data.rulesetVersion || "").trim();
+      const rulesetCompatibility = evaluateRulesetCompatibility(player.rulesetVersion);
+      player.rulesetCompatible = rulesetCompatibility.compatible;
+      if (!player.rulesetCompatible) {
+        sendRulesetMismatch(player);
       }
       return;
     }

@@ -2,6 +2,7 @@ import { execFile } from "node:child_process";
 import { spawn } from "node:child_process";
 import { promisify } from "node:util";
 import WebSocket from "ws";
+import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { applyStatePatch } from "../shared/network-patch.js";
 
 const execFileAsync = promisify(execFile);
@@ -175,6 +176,7 @@ class LoadClient {
       this.send({
         type: "protocol_hello",
         protocolVersion: 2,
+        rulesetVersion: RULESET_VERSION,
       });
     }
   }

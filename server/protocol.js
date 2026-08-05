@@ -9,6 +9,15 @@ export const CONTROL_MESSAGE_TYPES = new Set([
   "leave_room",
 ]);
 
+export const RULESET_GUARDED_MESSAGE_TYPES = new Set([
+  "create_room",
+  "join_room",
+  "spectate_room",
+  "join_private",
+  "select_ship",
+  "input",
+]);
+
 const MESSAGE_CODES = {
   "房间已关闭": "room_closed",
   "对手离开房间": "opponent_left",

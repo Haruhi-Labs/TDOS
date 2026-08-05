@@ -9,6 +9,7 @@ import {
   DEFAULT_INTERP_MS,
 } from "../src/online/snapshot-transport.js";
 import { createStatePatch } from "../shared/network-patch.js";
+import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 
 assert.equal(isLocalHostname("localhost"), true);
 assert.equal(isLocalHostname("192.168.1.20"), true);
@@ -85,6 +86,9 @@ const transportApp = {
   serverTickRate: 30,
   serverSnapshotRate: 20,
   networkProtocolVersion: 2,
+  serverRulesetVersion: "",
+  rulesetStatus: "pending",
+  rulesetCompatible: false,
   snapshotIntervalMs: 50,
   snapshots: [],
   latestSnapshot: null,
@@ -114,6 +118,7 @@ const transport = createOnlineSnapshotTransport({
 transport.handleConnected({
   playerId: "player-a",
   protocolVersion: 2,
+  rulesetVersion: RULESET_VERSION,
   tickRate: 30,
   snapshotRate: 15,
   serverTime: 10_025,
@@ -121,7 +126,41 @@ transport.handleConnected({
 assert.equal(transportApp.playerId, "player-a");
 assert.equal(transportApp.serverSnapshotRate, 15);
 assert.equal(transportApp.clockOffsetMs, 25);
-assert.deepEqual(sentMessages.at(-1), { type: "protocol_hello", protocolVersion: 2 });
+assert.equal(transportApp.rulesetCompatible, true);
+assert.equal(transportApp.rulesetStatus, "compatible");
+assert.deepEqual(sentMessages.at(-1), {
+  type: "protocol_hello",
+  protocolVersion: 2,
+  rulesetVersion: RULESET_VERSION,
+});
+
+transport.handleConnected({
+  playerId: "legacy-player",
+  protocolVersion: 1,
+  tickRate: 30,
+  snapshotRate: 15,
+});
+assert.equal(transportApp.rulesetCompatible, true, "未声明规则版本的旧服务端应保持兼容");
+assert.equal(transportApp.rulesetStatus, "legacy");
+
+transport.handleConnected({
+  playerId: "mismatch-player",
+  protocolVersion: 2,
+  rulesetVersion: "ruleset-20260701-01",
+  tickRate: 30,
+  snapshotRate: 15,
+});
+assert.equal(transportApp.rulesetCompatible, false, "显式规则版本冲突必须阻止进入对局");
+assert.equal(transportApp.rulesetStatus, "mismatch");
+
+transport.handleConnected({
+  playerId: "player-a",
+  protocolVersion: 2,
+  rulesetVersion: RULESET_VERSION,
+  tickRate: 30,
+  snapshotRate: 15,
+  serverTime: 10_025,
+});
 
 const fullState = { phase: "running", winnerSeat: null, teams: { A: { hullRatio: 1 }, B: { hullRatio: 1 } } };
 const firstSnapshot = transport.receiveSnapshot({
