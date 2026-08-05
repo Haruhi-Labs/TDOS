@@ -26,9 +26,8 @@ function menuItem({ no, label, sub, action, active = false }) {
 export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
   const controller = new AbortController();
   const faction = getFaction();
-  const mobile = isMobile();
   const screen = document.createElement("section");
-  screen.className = `solo-flow ts-stage ts-faction-${faction}${mobile ? " solo-flow-mobile" : ""}`;
+  screen.className = `solo-flow ts-stage ts-faction-${faction}`;
   screen.innerHTML = `
     <canvas class="ts-bg" aria-hidden="true"></canvas>
     <div class="ts-vignette" aria-hidden="true"></div>
@@ -43,7 +42,7 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
   startMenuHero(screen.querySelector(".ts-hero-img"), {
     faction,
     signal: controller.signal,
-    mobile,
+    mobile: isMobile(),
   });
 
   const panel = screen.querySelector(".solo-flow-panel");

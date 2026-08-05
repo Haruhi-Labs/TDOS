@@ -3858,11 +3858,11 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
+  padding: 11px 18px;
   text-align: left;
-  background: transparent;
-  border-top: 0;
-  border-right: 0;
-  border-bottom: 0;
+  background: var(--menu-item-surface);
+  border: 1px solid var(--brass-dark);
+  border-radius: 12px;
   box-shadow: none;
   text-shadow: none;
   color: inherit;
@@ -3890,18 +3890,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .solo-flow-back:hover,
 .solo-flow-back:focus-visible { color: var(--text-soft); }
-.solo-flow-mobile .solo-flow-item {
-  padding: 11px 18px;
-  border: 1px solid var(--brass-dark);
-  border-radius: 12px;
-  background: var(--menu-item-surface);
-}
-.solo-flow-mobile .solo-flow-item:hover,
-.solo-flow-mobile .solo-flow-item:focus-visible,
-.solo-flow-mobile .solo-flow-item.active {
-  background: var(--menu-item-highlight);
-  border-left-color: var(--gilt);
-}
 .solo-flow .solo-flow-item:hover:not(:disabled),
 .solo-flow .solo-flow-item:focus-visible,
 .solo-flow .solo-flow-item.active {
@@ -3923,7 +3911,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
     -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 42%, transparent 86%);
     mask-image: linear-gradient(180deg, #000 0%, #000 42%, transparent 86%);
   }
-  .solo-flow-item { padding: 12px 10px; }
   .solo-flow-item .ts-item-label { font-size: 1.25rem; }
   .solo-flow-item .ts-item-sub { display: block; font-size: 0.7rem; }
 }
