@@ -124,7 +124,6 @@ export function mount(root, ctx) {
   const ac = new AbortController();
   const { signal } = ac;
 
-  const stage = root.querySelector(".ts-stage");
   const bg = root.querySelector(".ts-bg");
   startStarfield(bg, signal);
 
@@ -159,11 +158,6 @@ export function mount(root, ctx) {
     },
     { signal },
   );
-
-  // 入场后聚焦首项（仅当无键盘焦点环，避免突兀）
-  requestAnimationFrame(() => {
-    if (stage && document.activeElement === document.body) items[0]?.focus({ preventScroll: true });
-  });
 
   return () => ac.abort();
 }

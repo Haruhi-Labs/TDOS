@@ -12,6 +12,7 @@
 
 import "../styles.css";
 import { initI18n } from "./i18n.js";
+import { installInteractionFeedback } from "./interaction-feedback.js";
 import { createRouter } from "./router.js";
 import * as menu from "./menu.js";
 import * as profileView from "./profile-view.js";
@@ -19,6 +20,7 @@ import * as guide from "./guide.js";
 import * as credits from "./credits.js";
 
 initI18n();
+installInteractionFeedback();
 
 const outlet = document.getElementById("app");
 

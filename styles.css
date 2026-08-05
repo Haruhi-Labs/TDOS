@@ -216,7 +216,7 @@ canvas {
   border-radius: 3px;
   border: 1px solid #160c05;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .panel::-webkit-scrollbar-thumb:hover { background: var(--gilt); }
 }
 
@@ -418,8 +418,8 @@ input[type="text"] {
 }
 input[type="text"]::placeholder { color: var(--text-muted); font-style: italic; }
 
-/* hover 仅限非移动布局的精细指针；窄屏或横屏手机即使误报可悬停也不启用。 */
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+/* hover 只由设备真实的悬停与精细指针能力决定，与瞬时按压态彼此独立。 */
+@media (hover: hover) and (pointer: fine) {
   button:hover:not(:disabled),
   .btn-link:hover {
     background: linear-gradient(180deg, #8a6a32 0%, #5a3c16 100%);
@@ -432,8 +432,8 @@ input[type="text"]::placeholder { color: var(--text-muted); font-style: italic; 
       0 2px 6px #02060ea0;
   }
 }
-/* 点击反馈：轻微按压缩放（似移动端），不再上下浮动 */
-button:active:not(:disabled) {
+/* 点击反馈由 pointer 生命周期显式维护，避免触屏浏览器的 :active 粘滞。 */
+button.is-pressing:not(:disabled):not(.mobile-scout-control) {
   transform: scale(0.97);
   box-shadow: inset 0 1px 3px #160c05cc;
 }
@@ -736,7 +736,7 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
 }
 /* 用 .battle-panel 前缀提升优先级，压过基础 button:hover 的黄铜渐变 */
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .battle-panel .fleet-row:hover {
     background: linear-gradient(180deg, #33230f 0%, #1d1206 100%);
     border-color: var(--gilt);
@@ -893,7 +893,7 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   letter-spacing: 0.03em;
   box-shadow: inset 0 1px 0 #b8923c66, inset 0 -2px 4px #160c05cc, 0 1px 2px #02060e99;
 }
-.mobile-menu-btn:active { transform: translateY(1px); }
+.mobile-menu-btn.is-pressing { transform: translateY(1px); }
 
 /* 推进档位条：标签 + 5 档 */
 .mobile-throttle-wrap {
@@ -1264,7 +1264,7 @@ button.toggle-active {
   cursor: pointer;
   transition: filter 0.15s ease;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .ts-confirm-actions button:hover { filter: brightness(1.12); }
 }
 .ts-confirm-cancel {
@@ -2033,7 +2033,7 @@ button.toggle-active {
   transition: all 160ms ease;
   box-shadow: inset 0 1px 0 #6c4a2855;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .cs-faction-btn:hover:not(.active) { color: var(--gilt-bright); border-color: var(--gilt); }
 }
 .cs-faction-btn.blue.active {
@@ -2547,7 +2547,7 @@ button.toggle-active {
   transition: all 160ms ease;
   box-shadow: inset 0 1px 0 #6c4a2855;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .cs-enlist-back:hover:not(:disabled) {
     border-color: var(--gilt);
     color: var(--gilt-bright);
@@ -2575,7 +2575,7 @@ button.toggle-active {
   text-shadow: 0 1px 2px #2a0607;
   box-shadow: inset 0 1px 0 #ff8a6e55, 0 0 14px #b8232a55, 0 2px 6px #00000066;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .cs-enlist-select:hover {
     transform: translateY(-1px);
     box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 22px #d44a4577, 0 3px 8px #00000088;
@@ -2715,9 +2715,9 @@ button.toggle-active {
   box-shadow: inset 0 1px 0 #f0d48866, 0 4px 12px #00000099;
   transition: background 180ms ease, box-shadow 180ms ease, color 180ms ease;
 }
-/* 按下保持纵向居中 + 轻微缩放（覆盖全局 button:active 的 scale，避免丢失 -50% 居中） */
-.cs-nav-btn:active:not(:disabled) { transform: translateY(-50%) scale(0.96); }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+/* 按下保持纵向居中 + 轻微缩放（覆盖全局按压缩放，避免丢失 -50% 居中） */
+.cs-nav-btn.is-pressing:not(:disabled) { transform: translateY(-50%) scale(0.96); }
+@media (hover: hover) and (pointer: fine) {
   .cs-nav-btn:hover {
     background: linear-gradient(180deg, #b8923c, #6b4d12);
     color: #fff6dc;
@@ -2764,7 +2764,7 @@ button.toggle-active {
   top: 6px;
   box-shadow: inset 0 1px 0 #f0e4c266;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .cs-tab:hover { top: 2px; color: var(--ink); }
 }
 .cs-tab.current {
@@ -2869,7 +2869,7 @@ button.toggle-active {
   box-shadow: inset 0 1px 0 #ff8a6e66, 0 0 20px #b8232a77, 0 4px 14px #00000099;
   animation: cs-launch-pulse 2.4s ease-in-out infinite;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .cs-launch.ready:hover { transform: translateY(-1px); box-shadow: inset 0 1px 0 #ff8a6e88, 0 0 28px #d44a4599, 0 6px 18px #000000aa; }
 }
 .cs-launch-glow {
@@ -2906,7 +2906,7 @@ button.toggle-active {
   border-bottom: 1px solid transparent;
   transition: all 160ms ease;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .cs-mode-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt); }
 }
 button.cs-mode-link { appearance: none; -webkit-appearance: none; background: none; border: 0; border-bottom: 1px solid transparent; padding: 0; cursor: pointer; }
@@ -3001,8 +3001,8 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   font-size: 1.8rem;
   line-height: 1;
 }
-/* 按下时瞬间点亮一下（松手即复原），并保持纵向居中（覆盖全局 button:active 的 translateY 下沉） */
-.csm-arrow:active:not(:disabled) {
+/* 按下时瞬间点亮一下（松手即复原），并保持纵向居中。 */
+.csm-arrow.is-pressing:not(:disabled) {
   transform: translateY(-50%) scale(0.93);
   background: linear-gradient(180deg, #8a6a32, #5a3c16);
   border-color: var(--gilt-bright);
@@ -3504,7 +3504,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   transition: opacity 0.18s ease, transform 0.18s ease;
 }
 .ts-item:focus-visible .ts-item-cue { opacity: 1; transform: none; }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .ts-item:hover {
     background: var(--menu-item-highlight);
     border-left-color: var(--gilt);
@@ -3541,7 +3541,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   white-space: nowrap;
   transition: color 0.18s ease, transform 0.18s ease;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .ts-github:hover { color: var(--gilt-bright); transform: translateY(-1px); }
 }
 .ts-github svg { display: block; filter: drop-shadow(0 1px 2px #02060e88); }
@@ -3562,7 +3562,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   white-space: nowrap;
   transition: color 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .ts-group:hover { color: var(--gilt-bright); border-color: var(--brass); transform: translateY(-1px); }
 }
 .mmenu-foot .ts-group { font-size: 0.7rem; padding: 4px 10px; }
@@ -3699,7 +3699,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   padding: 6px 18px;
   transition: all 0.16s ease;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .page-back:hover { color: var(--gilt-bright); border-color: var(--gilt); }
 }
 .page-title {
@@ -3781,7 +3781,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .credit-role { font-family: var(--font-engrave); font-size: 0.82rem; letter-spacing: 0.34em; color: var(--gilt-bright); }
 .credit-name { font-family: var(--font-cn); font-size: 1.5rem; letter-spacing: 0.1em; color: var(--gilt-pale); text-shadow: 0 1px 10px #02060e80; }
 .credit-link { text-decoration: none; border-bottom: 1px solid #c8a24e66; transition: color 0.16s ease, border-color 0.16s ease; }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .credit-link:hover { color: var(--gilt-bright); border-bottom-color: var(--gilt-bright); }
 }
 .guide-subtitle { margin: 8px 0 0; font-family: var(--font-engrave); font-size: 1.2rem; letter-spacing: 0.14em; color: var(--gilt-bright); }
@@ -3952,7 +3952,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--gilt-bright);
   border-color: var(--gilt-deep);
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   #openFleetSelectBtn:hover { color: var(--gilt-pale); border-color: var(--gilt); }
 }
 
@@ -4179,7 +4179,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   box-shadow: none;
   color: inherit;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .solo-flow-back:hover { color: var(--text-soft); }
   .solo-flow .solo-flow-item:hover:not(:disabled) {
     background: var(--menu-item-highlight);
@@ -4189,7 +4189,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
     transform: translateX(6px);
   }
 }
-.solo-flow-item:active:not(:disabled) {
+.solo-flow-item.is-pressing:not(:disabled) {
   background: var(--menu-item-highlight);
   box-shadow: none;
   transform: scale(0.985);
@@ -4346,7 +4346,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   box-shadow: inset 0 1px 0 #ff8a6e55, 0 0 16px #b8232a55, 0 4px 12px #00000088;
   transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .tut-next:hover {
     transform: translateY(-1px);
     border-color: var(--gilt-bright);
@@ -4364,7 +4364,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   text-decoration: underline;
   text-underline-offset: 2px;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .tut-skip:hover { color: var(--text-soft); }
 }
 
@@ -4412,6 +4412,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   cursor: pointer;
   box-shadow: inset 0 1px 0 #6c4a2877, 0 2px 8px #00000055;
 }
-@media (min-width: 821px) and (min-height: 561px) and (hover: hover) and (pointer: fine) {
+@media (hover: hover) and (pointer: fine) {
   .guide-replay:hover { filter: brightness(1.12); }
 }

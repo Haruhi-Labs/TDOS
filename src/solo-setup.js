@@ -79,14 +79,16 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
       <button type="button" class="solo-flow-back" data-action="campaign">‹ ${t("返回战役选择")}</button>`;
   }
 
-  function render(nextStep, direction = "forward", immediate = false) {
+  function render(nextStep, direction = "forward", immediate = false, focusFirst = false) {
     if (changing && !immediate) return;
     const update = () => {
       step = nextStep;
       panel.innerHTML = nextStep === "difficulty" ? difficultyHtml() : campaignHtml();
       panel.className = `solo-flow-panel enter-${direction}`;
       requestAnimationFrame(() => panel.classList.add("ready"));
-      panel.querySelector(".solo-flow-item")?.focus({ preventScroll: true });
+      if (focusFirst) {
+        panel.querySelector(".solo-flow-item")?.focus({ preventScroll: true });
+      }
       changing = false;
     };
     if (immediate || !panel.childElementCount) {
@@ -115,9 +117,10 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
   screen.addEventListener("click", (event) => {
     const action = event.target.closest("[data-action]")?.dataset.action;
     if (!action) return;
-    if (action === "standard") render("difficulty", "forward");
+    const keyboardActivation = event.detail === 0;
+    if (action === "standard") render("difficulty", "forward", false, keyboardActivation);
     else if (action === "tutorial") conceal(() => onTutorial());
-    else if (action === "campaign") render("campaign", "back");
+    else if (action === "campaign") render("campaign", "back", false, keyboardActivation);
     else if (action === "home") onHome();
     else if (action.startsWith("difficulty:")) {
       const difficulty = action.split(":")[1];
@@ -128,19 +131,25 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
     }
   }, { signal: controller.signal });
 
-  screen.addEventListener("keydown", (event) => {
+  window.addEventListener("keydown", (event) => {
+    if (screen.classList.contains("concealed")) {
+      return;
+    }
     const items = Array.from(panel.querySelectorAll(".solo-flow-item"));
-    const index = Math.max(0, items.indexOf(document.activeElement));
+    const index = items.indexOf(document.activeElement);
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       const delta = event.key === "ArrowDown" ? 1 : -1;
-      items[(index + delta + items.length) % items.length]?.focus();
+      const nextIndex = index < 0
+        ? (delta > 0 ? 0 : items.length - 1)
+        : (index + delta + items.length) % items.length;
+      items[nextIndex]?.focus();
     } else if (event.key === "Escape") {
       event.preventDefault();
       if (step === "difficulty") render("campaign", "back");
       else onHome();
     }
-  }, { signal: controller.signal });
+  }, { signal: controller.signal, capture: true });
 
   render("campaign", "forward", true);
 

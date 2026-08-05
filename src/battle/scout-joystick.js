@@ -221,11 +221,6 @@ export function createMobileScoutJoystick({
       originY: event.clientY,
       zoneId: 0,
     };
-    try {
-      button.focus({ preventScroll: true });
-    } catch {
-      button.focus();
-    }
     if (typeof button.setPointerCapture === "function") {
       button.setPointerCapture(event.pointerId);
     }
