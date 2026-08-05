@@ -74,6 +74,7 @@ import {
   createVisionWaveSkillState,
   serializeVisionWaves as serializeTeamVisionWaves,
   updateVisionWaveSkill as updateTeamVisionWaveSkill,
+  visionWavesCoverEntity as teamVisionWavesCoverEntity,
 } from "./game/vision-wave.js";
 import {
   assignFocusTargets as assignTeamFocusTargets,
@@ -673,6 +674,7 @@ class Ship {
   }
 
   clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+    let cleared = false;
     const canClear = (effectKey) => (
       !preserveCurrentTick
       || this.activeSkillEffectStartedTicks[effectKey] !== this.team.match.tick
@@ -680,6 +682,9 @@ class Ship {
     const clearTimedEffect = (effectKey) => {
       if (!canClear(effectKey)) {
         return;
+      }
+      if (this.hasEffect(effectKey)) {
+        cleared = true;
       }
       this.effects[effectKey] = 0;
       delete this.activeSkillEffectStartedTicks[effectKey];
@@ -689,13 +694,20 @@ class Ship {
     clearTimedEffect("reliableUntil");
     clearTimedEffect("bladeQueenUntil");
     if (canClear("sosBuff")) {
+      if (this.activeSosBuff()) {
+        cleared = true;
+      }
       this.effects.sosBuff = null;
       delete this.activeSkillEffectStartedTicks.sosBuff;
     }
     if (canClear("nextShotDamageMultiplier")) {
+      if (this.effects.nextShotDamageMultiplier > 1) {
+        cleared = true;
+      }
       this.effects.nextShotDamageMultiplier = 1;
       delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
     }
+    return cleared;
   }
 
   routeAnchorShip() {
@@ -1797,10 +1809,14 @@ class Team {
     this.activeSkillEffectStartedTicks[effectKey] = this.match.tick;
   }
 
-  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+  clearActiveTeamSkillBuffs({ preserveCurrentTick = true } = {}) {
+    let cleared = false;
     const clearTeamEffect = (effectKey) => {
       if (preserveCurrentTick && this.activeSkillEffectStartedTicks[effectKey] === this.match.tick) {
         return;
+      }
+      if (Number(this.effects[effectKey] || 0) > this.match.elapsed) {
+        cleared = true;
       }
       this.effects[effectKey] = 0;
       delete this.activeSkillEffectStartedTicks[effectKey];
@@ -1808,10 +1824,26 @@ class Team {
     clearTeamEffect("taxiUntil");
     clearTeamEffect("taxiInvulnUntil");
     clearTeamEffect("sponsorUntil");
-    cancelTeamVisionWaveSkill(this, { preserveCurrentTick });
-    for (const ship of this.getAllShips()) {
-      ship.clearActiveSkillBuffs({ preserveCurrentTick });
+    if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
+      cleared = true;
     }
+    return cleared;
+  }
+
+  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+    let cleared = this.clearActiveTeamSkillBuffs({ preserveCurrentTick });
+    for (const ship of this.getAllShips()) {
+      if (ship.clearActiveSkillBuffs({ preserveCurrentTick })) {
+        cleared = true;
+      }
+    }
+    return cleared;
+  }
+
+  clearActiveSkillBuffsForShip(ship, { preserveCurrentTick = true } = {}) {
+    const teamCleared = this.clearActiveTeamSkillBuffs({ preserveCurrentTick });
+    const shipCleared = ship?.clearActiveSkillBuffs({ preserveCurrentTick }) || false;
+    return teamCleared || shipCleared;
   }
 
   configureAutoScout(enabled, zoneId = 5) {
@@ -2166,18 +2198,10 @@ class Team {
       if (!this.spendEnergyForShip("main", meta.cost || 0)) {
         return false;
       }
-      const enemyTeam = this.match.enemyTeamBySeat(this.seat);
-      enemyTeam.clearActiveSkillBuffs();
       activateTeamVisionWaveSkill(this, {
         duration: meta.duration || 6,
         interval: meta.pulseInterval || 1,
       });
-      for (const ship of enemyTeam.getAllShips()) {
-        if (!ship.alive) {
-          continue;
-        }
-        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, "#ff9db5");
-      }
       ok = true;
     }
 
@@ -2687,6 +2711,28 @@ export class MatchSimulation {
     this.floatingTexts = this.floatingTexts.filter((label) => label.life > 0);
   }
 
+  resolveVisionWavePurges() {
+    // 先同时采集双方命中，再执行净化，避免A席先结算并清掉B方视野波后，
+    // B方同一逻辑帧已经扫到的目标因座位顺序而失效。
+    const targetsFromA = this.teamB.getAllShips().filter(
+      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamA, ship),
+    );
+    const targetsFromB = this.teamA.getAllShips().filter(
+      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamB, ship),
+    );
+
+    const applyPurges = (targetTeam, targets) => {
+      for (const ship of targets) {
+        if (!targetTeam.clearActiveSkillBuffsForShip(ship)) {
+          continue;
+        }
+        this.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, "#ff9db5");
+      }
+    };
+    applyPurges(this.teamB, targetsFromA);
+    applyPurges(this.teamA, targetsFromB);
+  }
+
   update(dt = TICK_DT) {
     if (this.phase !== "running") {
       return;
@@ -2706,6 +2752,7 @@ export class MatchSimulation {
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();
     this.resolveScoutClashes();
+    this.resolveVisionWavePurges();
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
     this.teamA.updateRadarPassive(this.teamB, safeDt);

@@ -4,8 +4,8 @@ const TAU = Math.PI * 2;
 
 function wavePalette(team) {
   return team?.seat === "B"
-    ? { band: "#ff6f9f", edge: "#ffd2df", crest: "#ff9ec2" }
-    : { band: "#5ec8ff", edge: "#d5f5ff", crest: "#9ce4ff" };
+    ? { band: "#ff6f9f" }
+    : { band: "#5ec8ff" };
 }
 
 function waveFrame(wave, elapsed) {
@@ -38,19 +38,11 @@ function drawWave(ctx, team, wave, elapsed) {
   ctx.save();
   ctx.globalCompositeOperation = "screen";
 
-  // 标准圆形的宽波带直接对应真实视野范围；透明度轻微呼吸，保留水波感但不扭曲轮廓。
+  // 标准圆形的宽波带直接对应真实视野范围；仅以透明度呼吸表现水波，不叠加中心描边。
   ctx.globalAlpha = frame.alpha * (0.052 + breath * 0.018);
   ctx.strokeStyle = palette.band;
   ctx.lineWidth = frame.width;
   traceCircle(ctx, wave, frame.radius);
-  ctx.stroke();
-
-  // 仅保留一条连续波峰。小幅径向起伏不会破坏圆形几何，也避免多层虚线造成粗糙感。
-  const crestOffset = Math.sin(phase * 0.82) * Math.min(4, frame.width * 0.055);
-  ctx.globalAlpha = frame.alpha * (0.46 + breath * 0.08);
-  ctx.strokeStyle = palette.crest;
-  ctx.lineWidth = 1.2;
-  traceCircle(ctx, wave, frame.radius + crestOffset);
   ctx.stroke();
   ctx.restore();
 }
@@ -99,10 +91,6 @@ export function drawAsakuraVisionWavesMinimap(
       ctx.lineWidth = clamp(frame.width * radiusScale, 1.4, 6);
       ctx.beginPath();
       ctx.arc(x, y, frame.radius * radiusScale, 0, TAU);
-      ctx.stroke();
-      ctx.globalAlpha = frame.alpha * 0.72;
-      ctx.strokeStyle = palette.edge;
-      ctx.lineWidth = 0.8;
       ctx.stroke();
     }
   }

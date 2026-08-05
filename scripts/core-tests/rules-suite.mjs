@@ -798,6 +798,9 @@ function asakuraFlagshipCheck() {
   enemyMain.x = ownMain.x + 500;
   enemyMain.y = ownMain.y;
   enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
+  enemySub1.x = ownMain.x + 900;
+  enemySub1.y = ownMain.y;
+  enemySub1.command = { x: enemySub1.x, y: enemySub1.y };
   sim.teamA.computeVisibility(sim.teamB);
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰测试布置错误，敌方应处于视野外");
 
@@ -805,9 +808,9 @@ function asakuraFlagshipCheck() {
   assert(castOk, "朝仓旗舰技能释放失败");
   sim.teamA.computeVisibility(sim.teamB);
 
-  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方团队主动增益");
-  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方无敌效果");
-  assert(!enemySub1.hasEffect("critUntil"), "朝仓旗舰技能未清除敌方舰船主动增益");
+  assert(teamB.effects.taxiUntil > sim.elapsed, "朝仓旗舰技能仍在施放瞬间净化敌方团队增益");
+  assert(teamB.effects.taxiInvulnUntil > sim.elapsed, "朝仓旗舰技能仍在施放瞬间净化敌方无敌效果");
+  assert(enemySub1.hasEffect("critUntil"), "朝仓旗舰技能仍在施放瞬间净化敌方舰船增益");
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能仍在施放瞬间全图揭示敌方");
 
   const firstWave = teamA.visionWaveSkill.waves[0];
@@ -822,6 +825,13 @@ function asakuraFlagshipCheck() {
   }
   assert(seenByFirstWave, "朝仓视野波扫过敌舰时未获得真实视野");
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "朝仓视野波离开后仍持续保留敌舰视野");
+  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓视野波扫到敌舰后未清除团队主动增益");
+  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓视野波扫到敌舰后未清除团队无敌效果");
+  assert(enemySub1.hasEffect("critUntil"), "尚未被视野波扫到的敌舰被提前净化");
+
+  runSteps(sim, 0.7);
+  assert(!enemySub1.hasEffect("critUntil"), "敌舰被视野波扫到后未清除自身主动增益");
+  assert(sim.floatingTexts.some((item) => item.textKey === "净化"), "视野波净化生效时未显示反馈");
 
   runSteps(sim, 4.2);
   assert(teamA.visionWaveSkill.sequence === 6, "朝仓旗舰技能未在6秒内按每秒一次发射6个视野波");
@@ -853,18 +863,15 @@ function asakuraSimultaneousSkillPurgeCheck() {
     bladeSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
     "同tick净化测试前置朝仓旗舰技能释放失败",
   );
-  assert(asakuraSub.hasEffect("bladeQueenUntil"), "后处理一方错误清除了同tick刚开启的刀锋女王");
-
+  assert(asakuraSub.hasEffect("bladeQueenUntil"), "朝仓旗舰技能仍在施放瞬间清除刀锋女王");
+  asakuraSub.x = purgingTeam.ships.main.x;
+  asakuraSub.y = purgingTeam.ships.main.y;
+  asakuraSub.command = { x: asakuraSub.x, y: asakuraSub.y };
+  asakuraSub.route = null;
+  asakuraSub.speed = 0;
+  asakuraSub.throttle = 0;
   runSteps(bladeSim, TICK_DT);
-  purgingTeam.cooldowns.flagship = 0;
-  for (const ship of purgingTeam.fleetMembersForShip("main")) {
-    ship.energy = ship.maxEnergy;
-  }
-  assert(
-    bladeSim.applyActionForSeat("B", { type: "cast_flagship_skill" }),
-    "跨tick净化测试朝仓旗舰技能释放失败",
-  );
-  assert(!asakuraSub.hasEffect("bladeQueenUntil"), "朝仓旗舰技能未清除上一tick已存在的刀锋女王");
+  assert(!asakuraSub.hasEffect("bladeQueenUntil"), "朝仓视野波扫到目标后未清除刀锋女王");
 
   const mirrorSim = new MatchSimulation({
     mode: "pvp",
@@ -874,6 +881,16 @@ function asakuraSimultaneousSkillPurgeCheck() {
       B: { main: "asakura", sub1: "koizumi", sub2: "tsuruya" },
     },
   });
+  const mirrorMainA = mirrorSim.teamA.ships.main;
+  const mirrorMainB = mirrorSim.teamB.ships.main;
+  mirrorMainA.x = mirrorMainB.x = 720;
+  mirrorMainA.y = mirrorMainB.y = 720;
+  for (const ship of [mirrorMainA, mirrorMainB]) {
+    ship.command = { x: ship.x, y: ship.y };
+    ship.route = null;
+    ship.speed = 0;
+    ship.throttle = 0;
+  }
   assert(
     mirrorSim.applyActionForSeat("A", { type: "cast_flagship_skill" }),
     "朝仓镜像测试A方技能释放失败",
@@ -888,6 +905,11 @@ function asakuraSimultaneousSkillPurgeCheck() {
       && mirrorSim.teamA.visionWaveSkill.waves.length === 1
       && mirrorSim.teamB.visionWaveSkill.waves.length === 1,
     "朝仓镜像同tick释放仍受座位处理顺序影响",
+  );
+  runSteps(mirrorSim, TICK_DT);
+  assert(
+    !mirrorSim.teamA.hasActiveVisionWaveSkill() && !mirrorSim.teamB.hasActiveVisionWaveSkill(),
+    "双方视野波同帧互相扫到时仍受A/B席结算顺序影响",
   );
 }
 

@@ -733,7 +733,7 @@ export function drawMinimap(ctx, frame, rect, view) {
     }
   }
 
-  const visionWaveTeams = spectating ? [state.teams?.A, state.teams?.B] : [ownTeam];
+  const visionWaveTeams = [state.teams?.A, state.teams?.B];
   drawAsakuraVisionWavesMinimap(
     ctx,
     visionWaveTeams,
@@ -856,7 +856,7 @@ export function drawPauseOverlay(ctx) {
 //   selectedKeyForTeam(team) → 该队高亮舰 key;非观战时敌方应返回 null
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
 //   radar              己方长门旗舰的私有雷达状态；对手与观战帧必须为空
-//   visionWaves        位于各队序列化状态中；对战只绘己方，观战绘制双方
+//   visionWaves        位于各队序列化状态中；所有视角都绘制双方，但只有施放方获得波带视野
 //   mobileMode         移动端:不画航线曲度旋钮
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer
 export function drawBattleWorld(ctx, frame) {
@@ -878,7 +878,7 @@ export function drawBattleWorld(ctx, frame) {
   drawZones(ctx, state, frame.selectedZoneId);
   drawAsakuraVisionWaves(
     ctx,
-    spectating ? [state.teams?.A, state.teams?.B] : [ownTeam],
+    [state.teams?.A, state.teams?.B],
     elapsed,
     Number(state.world?.size) || LOGICAL,
   );

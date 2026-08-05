@@ -76,13 +76,15 @@ export function activateVisionWaveSkill(team, options = {}) {
 
 export function cancelVisionWaveSkill(team, { preserveCurrentTick = true } = {}) {
   const state = team.visionWaveSkill;
-  if (!state) return;
-  if (preserveCurrentTick && state.startedTick === team.match.tick) return;
+  if (!state) return false;
+  if (preserveCurrentTick && state.startedTick === team.match.tick) return false;
+  const cleared = state.activeUntil > team.match.elapsed || state.waves.length > 0;
   state.activeUntil = 0;
   state.nextPulseAt = 0;
   state.pulsesRemaining = 0;
   state.startedTick = -1;
   state.waves.length = 0;
+  return cleared;
 }
 
 export function updateVisionWaveSkill(team) {

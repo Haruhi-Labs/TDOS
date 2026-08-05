@@ -67,7 +67,7 @@
 - `src/battle/camera.js`、`input.js`、`throttle.js`、`hud.js`、`template.js`：分别负责相机、命中与航线输入、推进控件、战斗 HUD 和公共 DOM 骨架。
 - `src/battle/render.js`：单人、联机和观战共用的 Canvas 战场渲染入口。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
-- `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；玩家仅绘制己方效果，观战绘制双方效果。
+- `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；双方都能看到波纹，但只有施放方获得波带覆盖区域的真实视野。
 - `src/solo.js`、`src/online.js`：只编排各模式生命周期、输入和数据来源，不复制公共战场表现。
 
 ### 联机链路
