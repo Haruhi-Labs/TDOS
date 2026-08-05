@@ -116,6 +116,8 @@ const requiredLinks = [
   ["shared/game-core.js", "./game/throttle.js"],
   ["shared/game-core.js", "./game/visibility-radar.js"],
   ["shared/game-core.js", "./game/targeting-system.js"],
+  ["shared/game-core.js", "./game/action-dispatcher.js"],
+  ["shared/game-core.js", "./game/collision-system.js"],
   ["src/online.js", "./online/state-sync.js"],
   ["src/online.js", "./online/connection-target.js"],
   ["src/online.js", "./online/profile-controller.js"],

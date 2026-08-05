@@ -53,6 +53,14 @@ import {
   zoneContains,
 } from "./game/math.js";
 import { BotController } from "./game/bot-controller.js";
+import { applyMatchAction } from "./game/action-dispatcher.js";
+import {
+  COLLISION_SLOW_DURATION,
+  COLLISION_SLOW_FLOOR,
+  resolveBladeQueenContacts as resolveMatchBladeQueenContacts,
+  resolveScoutClashes as resolveMatchScoutClashes,
+  resolveShipCollisions as resolveMatchShipCollisions,
+} from "./game/collision-system.js";
 import {
   computeVisibility as computeTeamVisibility,
   createRadarContact as createTeamRadarContact,
@@ -137,14 +145,6 @@ const SMALL_TARGET_MAX_MISS = 0.3;
 // 分离/单飞(同队仅 1 艘)时开火频率 ×该倍率(火力更猛)。二者由「同队成员数」互斥切换。
 const FORMATION_DAMAGE_SHARE = 0.3;
 const SOLO_FIRE_RATE_BONUS = 1.2;
-// 朝仓「刀锋女王」:接触敌舰瞬间即打满一跳,之后每持续重叠 INTERVAL 秒再打一跳,每跳 = 目标最大生命值 FRACTION。
-const BLADE_QUEEN_HIT_INTERVAL = 1; // 斩击间隔(秒)
-const BLADE_QUEEN_HIT_FRACTION = 0.15; // 单跳伤害占目标最大生命值比例
-// 撞击:相撞瞬间把速度压到「地板」,之后给一段粘滞时间让速度线性慢慢恢复到正常(而非一撞就立刻回满)。
-const COLLISION_SLOW_DURATION = 3; // 粘滞时长(秒):速度在这段时间内从地板回升到正常
-const COLLISION_SLOW_FLOOR = 0.5; // 撞击瞬间速度上限压到正常速度的该比例,随时间回升至 1
-const COLLISION_RELEASE_MARGIN = 30; // 迟滞:两船分开超过相切+该余量才算"脱离",之内不重复触发减速——
-// 避免编队/集火时一堆船反复擦碰被永久压速(那会拖垮 AI 走位)。一次擦碰只减速一回,3 秒内恢复。
 
 const TEAM_COLORS = {
   A: "#65d9ff",
@@ -2601,243 +2601,21 @@ export class MatchSimulation {
   }
 
   applyAction(team, action) {
-    if (!action || typeof action !== "object") {
-      return false;
-    }
-
-    const type = String(action.type || "");
-
-    if (type === "set_route") {
-      const shipKey = String(action.shipKey || "main");
-      const ship = team.ships[shipKey];
-      if (!ship || !ship.alive || !ship.canControl()) {
-        return false;
-      }
-      const endX = Number(action.endX);
-      const endY = Number(action.endY);
-      const controlX = Number(action.controlX);
-      const controlY = Number(action.controlY);
-      const throttle = Number(action.throttle);
-      if (!Number.isFinite(endX) || !Number.isFinite(endY)) {
-        return false;
-      }
-      ship.setBezierRoute(
-        Number.isFinite(controlX) ? controlX : undefined,
-        Number.isFinite(controlY) ? controlY : undefined,
-        endX,
-        endY,
-        Number.isFinite(throttle) ? throttle : ship.throttle,
-        action.anchorToMain !== false,
-      );
-      return true;
-    }
-
-    if (type === "route_control") {
-      const shipKey = String(action.shipKey || "main");
-      const ship = team.ships[shipKey];
-      if (!ship || !ship.alive || !ship.canControl() || !ship.route) {
-        return false;
-      }
-      const controlX = Number(action.controlX);
-      const controlY = Number(action.controlY);
-      if (!Number.isFinite(controlX) || !Number.isFinite(controlY)) {
-        return false;
-      }
-      ship.setRouteControl(controlX, controlY, false);
-      return true;
-    }
-
-    if (type === "route_end") {
-      const shipKey = String(action.shipKey || "main");
-      const ship = team.ships[shipKey];
-      if (!ship || !ship.alive || !ship.canControl() || !ship.route) {
-        return false;
-      }
-      const endX = Number(action.endX);
-      const endY = Number(action.endY);
-      if (!Number.isFinite(endX) || !Number.isFinite(endY)) {
-        return false;
-      }
-      ship.setRouteEndpoint(endX, endY, false);
-      return true;
-    }
-
-    if (type === "set_throttle") {
-      const shipKey = String(action.shipKey || "main");
-      const ship = team.ships[shipKey];
-      if (!ship || !ship.alive || !ship.canControl()) {
-        return false;
-      }
-      const throttle = Number(action.throttle);
-      if (!Number.isFinite(throttle)) {
-        return false;
-      }
-      ship.throttle = normalizeThrottleToGear(throttle, ship.throttle);
-      return true;
-    }
-
-    if (type === "clear_route") {
-      const shipKey = String(action.shipKey || "main");
-      const ship = team.ships[shipKey];
-      if (!ship || !ship.alive || !ship.canControl()) {
-        return false;
-      }
-      ship.clearRoute();
-      return true;
-    }
-
-    if (type === "split") {
-      const level = Number(action.level);
-      if (level === 1 || level === 2) {
-        return team.split(level);
-      }
-      return false;
-    }
-
-    if (type === "launch_scout") {
-      const zoneId = Number(action.zoneId) || 5;
-      return team.launchScout(zoneId, { fromShipKey: action.shipKey });
-    }
-
-    if (type === "configure_auto_scout") {
-      return team.configureAutoScout(action.enabled, action.zoneId);
-    }
-
-    if (type === "emergency_brake") {
-      const shipKey = String(action.shipKey || "main");
-      return team.emergencyBrake(shipKey);
-    }
-
-    if (type === "cast_flagship_skill") {
-      const zoneId = Number(action.zoneId) || 5;
-      return team.castFlagshipSkill(zoneId);
-    }
-
-    if (type === "cast_sub_skill") {
-      const shipKey = String(action.shipKey || "sub1");
-      return team.castSubSkill(shipKey, {
-        zoneId: Number(action.zoneId) || 5,
-        targetX: Number(action.targetX),
-        targetY: Number(action.targetY),
-      });
-    }
-
-    return false;
+    return applyMatchAction(team, action);
   }
 
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
   // (用上一帧的接触集做迟滞判定),持续贴着不再反复减速,避免被一路压停。同队编队跟随的舰不互撞。
   resolveShipCollisions() {
-    const ships = [...this.teamA.getAllShips(), ...this.teamB.getAllShips()].filter((s) => s.alive);
-    const prevContacts = this._contactPairs || new Set();
-    const contacts = new Set();
-    for (let i = 0; i < ships.length; i++) {
-      for (let j = i + 1; j < ships.length; j++) {
-        const a = ships[i];
-        const b = ships[j];
-        if (a.team === b.team && (a.isAttached() || b.isAttached())) {
-          continue;
-        }
-        // 刀锋女王:激活期间无视碰撞体积,可径直穿过/重叠任何舰船(不推挤、不减速),
-        // 以持续维持体积重叠 → 由 resolveBladeQueenContacts 每秒造成大额切割伤害。
-        if (a.hasEffect("bladeQueenUntil") || b.hasEffect("bladeQueenUntil")) {
-          continue;
-        }
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const d = Math.hypot(dx, dy);
-        const minD = a.radius + b.radius;
-        const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
-        if (d > 0 && d < minD) {
-          // 重叠:推到刚好相切
-          const nx = dx / d;
-          const ny = dy / d;
-          const push = (minD - d) * 0.5;
-          a.x = this.clampX(a.x - nx * push, 8);
-          a.y = this.clampY(a.y - ny * push, 8);
-          b.x = this.clampX(b.x + nx * push, 8);
-          b.y = this.clampY(b.y + ny * push, 8);
-          // 仅"刚发生碰撞"(上一帧还没接触)时触发减速:把速度立即压到地板,并开启粘滞期,
-          // 之后由 collisionSpeedFactor 在 COLLISION_SLOW_DURATION 秒内让速度上限慢慢回升。
-          if (!prevContacts.has(key)) {
-            const until = this.elapsed + COLLISION_SLOW_DURATION;
-            a.collisionSlowUntil = Math.max(a.collisionSlowUntil, until);
-            b.collisionSlowUntil = Math.max(b.collisionSlowUntil, until);
-            a.speed = Math.min(a.speed, a.effectiveSpeed() * COLLISION_SLOW_FLOOR);
-            b.speed = Math.min(b.speed, b.effectiveSpeed() * COLLISION_SLOW_FLOOR);
-          }
-          contacts.add(key);
-        } else if (prevContacts.has(key) && d < minD + COLLISION_RELEASE_MARGIN) {
-          // 迟滞带内仍视为接触中:不减速、不判脱离,避免在相切边界反复触发
-          contacts.add(key);
-        }
-      }
-    }
-    this._contactPairs = contacts;
+    resolveMatchShipCollisions(this);
   }
 
   resolveScoutClashes() {
-    for (const scoutA of this.teamA.scouts) {
-      if (!scoutA.alive) {
-        continue;
-      }
-      for (const scoutB of this.teamB.scouts) {
-        if (!scoutB.alive) {
-          continue;
-        }
-        if (distance(scoutA.x, scoutA.y, scoutB.x, scoutB.y) <= scoutA.radius + scoutB.radius + 2) {
-          scoutA.takeDamage(1, null, this);
-          scoutB.takeDamage(1, null, this);
-        }
-      }
-    }
+    resolveMatchScoutClashes(this);
   }
 
   resolveBladeQueenContacts() {
-    const pairs = [
-      [this.teamA, this.teamB],
-      [this.teamB, this.teamA],
-    ];
-    const now = this.elapsed;
-    for (const [team, enemyTeam] of pairs) {
-      for (const ship of team.getAllShips()) {
-        if (!ship.alive || !ship.hasEffect("bladeQueenUntil")) {
-          continue;
-        }
-        // 每个朝仓维护「对各目标上次斩击时刻」,实现:接触瞬间即打满一跳,之后每 BLADE_QUEEN_HIT_INTERVAL 秒再打一跳。
-        // 离开重叠后不清计时 → 再贴上也须距上次满一个间隔才会再触发,避免反复蹭进蹭出刷伤害。
-        let hitLog = ship._bladeHitAt;
-        if (!hitLog) {
-          hitLog = ship._bladeHitAt = new Map();
-        }
-        for (const target of enemyTeam.getAllShips()) {
-          if (!target.alive) {
-            continue;
-          }
-          if (distance(ship.x, ship.y, target.x, target.y) > ship.radius + target.radius + 4) {
-            continue; // 未重叠:保留计时,不结算
-          }
-          const last = hitLog.get(target.id);
-          if (last !== undefined && now - last < BLADE_QUEEN_HIT_INTERVAL) {
-            continue; // 距上次斩击不足一个间隔,尚未到下一跳
-          }
-          hitLog.set(target.id, now);
-          // 单跳爆发:目标最大生命值 15%
-          target.takeDamage(target.maxHp * BLADE_QUEEN_HIT_FRACTION, ship, this);
-          // 醒目的猩红斩击闪:每跳迸数簇火花,读作一记决定性「斩」
-          for (let s = 0; s < 3; s += 1) {
-            const off = randomInRange(0, target.radius + 6);
-            const ang = randomInRange(0, TAU);
-            this.spawnBurst(
-              this.clampX(target.x + Math.cos(ang) * off, 0),
-              this.clampY(target.y + Math.sin(ang) * off, 0),
-              s % 2 === 0 ? "#ff2d55" : "#ff8aa0",
-              randomInRange(7, 12),
-            );
-          }
-        }
-      }
-    }
+    resolveMatchBladeQueenContacts(this);
   }
 
   checkVictory() {
