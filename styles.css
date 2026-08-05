@@ -58,6 +58,8 @@
   --danger: var(--oxblood-bright);
   --line-gold: #6b4d12;
   --line-navy: #1d2f6a;
+  --menu-item-surface: #160c05aa;
+  --menu-item-highlight: linear-gradient(90deg, #f0d4881f, transparent 82%);
 
   /* ── 字体 ── */
   --font-title: "Cinzel Decorative", "Cinzel", "STKaiti", "KaiTi", serif;
@@ -3058,7 +3060,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   padding: 11px 18px;
   border: 1px solid var(--brass-dark);
   border-radius: 12px;
-  background: #160c05aa;
+  background: var(--menu-item-surface);
 }
 .mmenu .ts-item-no { color: var(--gilt); }
 .mmenu .ts-item-label { font-size: 1.3rem; }
@@ -3224,7 +3226,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .ts-item:focus { outline: none; }
 .ts-item:hover,
 .ts-item:focus-visible {
-  background: linear-gradient(90deg, #f0d4881f, transparent 82%);
+  background: var(--menu-item-highlight);
   border-left-color: var(--gilt);
   transform: translateX(6px);
 }
@@ -3853,15 +3855,21 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .solo-flow-heading { margin-bottom: clamp(18px, 3vh, 32px); }
 .solo-flow-item {
+  appearance: none;
+  -webkit-appearance: none;
   width: 100%;
   text-align: left;
-  background: none;
+  background: transparent;
   border-top: 0;
   border-right: 0;
   border-bottom: 0;
+  box-shadow: none;
+  text-shadow: none;
+  color: inherit;
+  font: inherit;
 }
 .solo-flow-item.active {
-  background: linear-gradient(90deg, #f0d48818, transparent 82%);
+  background: var(--menu-item-highlight);
   border-left-color: var(--gilt);
 }
 .solo-flow-item.active .ts-item-no::after {
@@ -3882,6 +3890,32 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .solo-flow-back:hover,
 .solo-flow-back:focus-visible { color: var(--text-soft); }
+.solo-flow-mobile .solo-flow-item {
+  padding: 11px 18px;
+  border: 1px solid var(--brass-dark);
+  border-radius: 12px;
+  background: var(--menu-item-surface);
+}
+.solo-flow-mobile .solo-flow-item:hover,
+.solo-flow-mobile .solo-flow-item:focus-visible,
+.solo-flow-mobile .solo-flow-item.active {
+  background: var(--menu-item-highlight);
+  border-left-color: var(--gilt);
+}
+.solo-flow .solo-flow-item:hover:not(:disabled),
+.solo-flow .solo-flow-item:focus-visible,
+.solo-flow .solo-flow-item.active {
+  background: var(--menu-item-highlight);
+  border-left-color: var(--gilt);
+  box-shadow: none;
+  color: inherit;
+  transform: translateX(6px);
+}
+.solo-flow-item:active:not(:disabled) {
+  background: var(--menu-item-highlight);
+  box-shadow: none;
+  transform: translateX(6px);
+}
 @media (max-width: 720px) {
   .solo-flow-content { width: 100%; padding: 24px 18px; }
   .solo-flow .ts-hero { width: 100%; opacity: 0.42; }
