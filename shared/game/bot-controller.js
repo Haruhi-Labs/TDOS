@@ -979,7 +979,7 @@ export class BotController {
     }
 
     const stats = CHARACTER_DEFS[contact.characterId]?.stats || null;
-    const roleFactor = contact.slotKey === "main" ? 1.28 : contact.slotKey === "twin" ? 0.72 : 0.98;
+    const roleFactor = contact.slotKey === "main" ? 1.28 : 0.98;
     const rangeFactor = stats ? clamp(stats.range / 520, 0.84, 1.18) : 1;
     const dpsFactor = stats ? clamp((stats.damage / Math.max(stats.fireRate, 0.22)) / 58, 0.78, 1.32) : 1;
     return roleFactor * rangeFactor * dpsFactor * (0.34 + 0.66 * this.contactHpRatio(contact)) * confidence * (contact.visible ? 1 : 0.92);
@@ -2619,7 +2619,7 @@ export class BotController {
     }
     const meta = skillMetaForCharacter(characterId, "flagship");
     if (!meta || meta.type !== "active") {
-      return false; // 被动旗舰(阿虚/有希/1096):没有可主动释放的技能,别空试
+      return false; // 被动旗舰(阿虚/有希):没有可主动释放的技能,别空试
     }
     if (this.shouldDelayFlagshipBuff(characterId, meta)) {
       return false;
@@ -2636,6 +2636,24 @@ export class BotController {
     if (characterId === "koizumi") {
       return (estimate.visible || estimate.age <= 6 || this.mode === "search" || this.mode === "recover")
         && ((context?.skillAggression || 0) > 0.1 || (context?.trackableIntel) || this.energyProfile("main").high);
+    }
+    if (characterId === "future1096") {
+      const form = this.team.future1096Form;
+      const hull = this.team.hullRatio();
+      const pressure = Number(context?.defensivePressure) || 0;
+      const aggression = Number(context?.skillAggression) || 0;
+      if (!form) {
+        return Boolean(
+          estimate.source !== "spawn"
+          && (estimate.visible || estimate.age <= 3)
+          && hull > 0.58
+          && (aggression > 0.18 || context?.trackableIntel),
+        );
+      }
+      if (form === "A") {
+        return hull < 0.62 || pressure > 0.58 || this.mode === "recover";
+      }
+      return hull > 0.48 && pressure < 0.42 && aggression > 0.46;
     }
     if (characterId === "tsuruya") {
       return this.team.hullRatio() < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;

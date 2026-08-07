@@ -100,7 +100,7 @@ const interpolated = sync.interpolateSnapshotState(
 );
 assert.equal(interpolated.elapsed, 0.5, "对局时间插值异常");
 assert.equal(interpolated.teams.A.ships.main.x, 20, "主舰位置插值异常");
-assert.equal(interpolated.teams.A.extraShips[0].x, 26, "1096额外舰船插值异常");
+assert.equal(interpolated.teams.A.extraShips[0].x, 26, "额外舰船插值异常");
 assert.equal(interpolated.projectiles[0].x, 30, "弹体位置插值异常");
 
 const extrapolationSource = battleState(2);

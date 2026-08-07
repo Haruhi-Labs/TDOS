@@ -88,8 +88,9 @@ export const CHARACTER_DEFS = {
       damage: 20, fireRate: 0.54, radius: 8 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "past_future_me", name: "过去与未来的我", type: "passive",
-      description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的75%。",
+      id: "past_future_me", name: "过去与未来的我", type: "active", cooldown: 10,
+      target: "none",
+      description: "初始无形态。首次使用进入A形态：全队射速×2、生命上限×0.5、航速×1.5；再次使用进入B形态：全队射速×0.5、生命上限×2、航速×0.5。此后每次使用交替切换，冷却10秒。",
     },
     subSkill: {
       id: "beam_1096", name: "1096光线", type: "active", cooldown: 12,
@@ -200,7 +201,6 @@ export function slotLabel(slotKey) {
   if (slotKey === "main") return "主舰";
   if (slotKey === "sub1") return "副舰一";
   if (slotKey === "sub2") return "副舰二";
-  if (slotKey === "twin") return "僚舰";
   return "舰船";
 }
 

@@ -974,6 +974,44 @@ function aiHighEnergySkillAggressionCheck() {
   assert(aiTeam.ships.sub1.hasEffect("critUntil"), "AI高能接敌时未积极释放分舰技能");
 }
 
+function aiFuture1096FormDecisionCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "haruhi", sub2: "yuki" },
+      B: { main: "future1096", sub1: "koizumi", sub2: "asakura" },
+    },
+  });
+  const bot = sim.bot;
+  const aiTeam = sim.teamB;
+  const enemyMain = sim.teamA.ships.main;
+  bot.rememberContact(enemyMain, "visible");
+  const estimate = bot.primaryEnemyEstimate();
+
+  bot.flagshipTimer = 0;
+  bot.tryFlagshipSkill({
+    focus: estimate,
+    skillAggression: 1,
+    trackableIntel: true,
+    defensivePressure: 0.1,
+  });
+  assert(aiTeam.future1096Form === "A", "1096 AI 接敌时未主动进入A形态");
+
+  for (const ship of aiTeam.getPlayerShips()) {
+    ship.hp = ship.maxHp * 0.5;
+  }
+  aiTeam.cooldowns.flagship = 0;
+  bot.flagshipTimer = 0;
+  bot.tryFlagshipSkill({
+    focus: estimate,
+    skillAggression: 0.1,
+    trackableIntel: true,
+    defensivePressure: 0.8,
+  });
+  assert(aiTeam.future1096Form === "B", "1096 AI 承压时未切换到B形态");
+}
+
 function aiEmergencyEnergyReserveCheck() {
   const sim = new MatchSimulation({
     mode: "ai",
@@ -1137,6 +1175,7 @@ export function runAiSuite() {
   aiEnergyThrottleHysteresisCheck();
   aiScoutEnergyReserveCheck();
   aiHighEnergySkillAggressionCheck();
+  aiFuture1096FormDecisionCheck();
   aiEmergencyEnergyReserveCheck();
   aiPressureCheck();
   aiEdgeRecoveryCheck();

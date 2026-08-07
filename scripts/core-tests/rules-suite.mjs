@@ -359,7 +359,7 @@ function initialFormationStabilityCheck() {
   }
 }
 
-function future1096LeaderHandoverCheck() {
+function future1096FormSwitchCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
     worldSize: 1440,
@@ -377,19 +377,47 @@ function future1096LeaderHandoverCheck() {
     },
   });
   const teamA = sim.teamA;
-  const originalMain = teamA.ships.main;
-  const twin = teamA.extraShips.find((ship) => ship.slotKey === "twin");
-  const expectedMaxHp = Math.round(originalMain.base.hp * 0.75);
+  const ships = teamA.getPlayerShips();
+  const baseline = new Map(ships.map((ship) => [ship.id, {
+    maxHp: ship.maxHp,
+    speed: ship.baseSpeed(),
+    fireRate: ship.effectiveFireRate(),
+  }]));
 
-  assert(originalMain.maxHp === expectedMaxHp, "1096 主舰舰体上限不是常规旗舰的75%");
-  assert(twin && twin.maxHp === expectedMaxHp, "1096 僚舰舰体上限不是常规旗舰的75%");
-  assert(originalMain.hp === expectedMaxHp && twin.hp === expectedMaxHp, "1096 双舰开局生命值未与舰体上限一致");
+  assert(teamA.future1096Form === null, "1096 旗舰开局不应预设形态");
+  assert(teamA.extraShips.length === 0, "1096 旧版双舰被动仍在生成僚舰");
+  for (const ship of ships) ship.cooldown = 0.8;
 
-  originalMain.takeDamage(originalMain.maxHp * 2, null, sim);
+  assert(sim.applyActionForSeat("A", { type: "cast_flagship_skill" }), "1096 首次切换A形态失败");
+  assert(teamA.future1096Form === "A", "1096 首次使用未进入A形态");
+  assert(teamA.cooldowns.flagship === 10, "1096 旗舰技能冷却不是10秒");
+  assert(!teamA.castFlagshipSkill(), "1096 旗舰技能在冷却中仍可切换形态");
+  for (const ship of ships) {
+    const base = baseline.get(ship.id);
+    assert(ship.maxHp === Math.round(base.maxHp * 0.5), "A形态未使全队生命上限变为50%");
+    assert(Math.abs(ship.hp - ship.maxHp) < 1e-9, "A形态未保持舰船当前生命比例");
+    assert(Math.abs(ship.baseSpeed() / base.speed - 1.5) < 1e-9, "A形态未使全队航速变为150%");
+    assert(Math.abs(ship.effectiveFireRate() / base.fireRate - 2) < 1e-9, "A形态未使全队射速变为200%");
+    assert(Math.abs(ship.cooldown - 0.4) < 1e-9, "A形态未同步换算当前攻击间隔");
+    ship.hp = ship.maxHp * 0.4;
+    ship.cooldown = 0.25;
+  }
 
-  assert(teamA.ships.main.id === twin.id, "1096 主舰被击毁后未由剩余舰体接管主舰位");
-  assert(teamA.ships.main.alive, "1096 主舰接管后剩余舰体不应死亡");
-  assert(teamA.ships.main.canControl(), "1096 主舰接管后剩余舰体应可继续操作");
+  teamA.cooldowns.flagship = 0;
+  assert(teamA.castFlagshipSkill(), "1096 切换B形态失败");
+  assert(teamA.future1096Form === "B", "1096 第二次使用未进入B形态");
+  for (const ship of ships) {
+    const base = baseline.get(ship.id);
+    assert(ship.maxHp === Math.round(base.maxHp * 2), "B形态未使全队生命上限变为200%");
+    assert(Math.abs(ship.hp / ship.maxHp - 0.4) < 1e-9, "B形态切换没有保持当前生命比例");
+    assert(Math.abs(ship.baseSpeed() / base.speed - 0.5) < 1e-9, "B形态未使全队航速变为50%");
+    assert(Math.abs(ship.effectiveFireRate() / base.fireRate - 0.5) < 1e-9, "B形态未使全队射速变为50%");
+    assert(Math.abs(ship.cooldown - 1) < 1e-9, "B形态未同步换算当前攻击间隔");
+  }
+
+  assert(teamA.serialize().future1096Form === "B", "1096 当前形态未进入权威快照");
+  teamA.cooldowns.flagship = 0;
+  assert(teamA.castFlagshipSkill() && teamA.future1096Form === "A", "1096 后续使用没有交替回到A形态");
 }
 
 function flagshipLossAutoSplitCheck() {
@@ -1073,7 +1101,7 @@ export function runRulesSuite() {
   yukiFlagshipCombatScoutCheck();
   splitFormationCheck();
   initialFormationStabilityCheck();
-  future1096LeaderHandoverCheck();
+  future1096FormSwitchCheck();
   flagshipLossAutoSplitCheck();
   skippedSplitLevelCheck();
   yukiPassiveCheck();

@@ -127,7 +127,6 @@ export function slotLabel(slotKey, style = "long") {
     main: { long: t("主舰"), short: t("主舰"), tiny: t("主") },
     sub1: { long: t("副舰一"), short: t("副一"), tiny: t("一") },
     sub2: { long: t("副舰二"), short: t("副二"), tiny: t("二") },
-    twin: { long: t("1096僚舰"), short: t("僚舰"), tiny: t("僚舰") },
     wingman: { long: t("僚机"), short: t("僚机"), tiny: t("僚机") },
     scout: { long: t("侦察机"), short: t("侦察机"), tiny: t("侦察机") },
   };

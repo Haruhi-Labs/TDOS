@@ -245,8 +245,8 @@ export function drawCurveKnob(ctx, p) {
 }
 
 function shipHullDrawScale(ship) {
-  const baseScale = ship.key === "main" ? 0.72 : ship.key === "twin" ? 0.56 : 0.62;
-  const baseRadius = ship.key === "main" ? 10 : ship.key === "twin" ? 8 : 9;
+  const baseScale = ship.key === "main" ? 0.72 : 0.62;
+  const baseRadius = ship.key === "main" ? 10 : 9;
   return baseScale * ((ship.radius || baseRadius) / baseRadius);
 }
 

@@ -110,7 +110,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     };
   }
   
-  // 1096 双子舰等额外舰船与编制舰使用同一套舰船插值，不能按普通单位直接跳快照。
+  // 额外舰船与编制舰使用同一套舰船插值，不能按普通单位直接跳快照。
   function interpolateShipList(previousList, nextList, t) {
     const prev = Array.isArray(previousList) ? previousList : [];
     const next = Array.isArray(nextList) ? nextList : [];

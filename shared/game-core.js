@@ -130,7 +130,11 @@ const BEAM_VISUAL_DURATION = 0.26;
 const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
 const BEAM_DAMAGE_RATIO = 0.28;
-const FUTURE_1096_HULL_RATIO = 0.75;
+const FUTURE_1096_FORMS = Object.freeze({
+  A: Object.freeze({ hp: 0.5, speed: 1.5, fireRate: 2 }),
+  B: Object.freeze({ hp: 2, speed: 0.5, fireRate: 0.5 }),
+});
+const FUTURE_1096_BASE_FORM = Object.freeze({ hp: 1, speed: 1, fireRate: 1 });
 const DEG_TO_RAD = Math.PI / 180;
 const EMERGENCY_BRAKE_DURATION = 0.82;
 const FLAGSHIP_TURN_PENALTIES = {
@@ -497,11 +501,6 @@ class Ship {
     this.activeSkillEffectStartedTicks = Object.create(null);
   }
 
-  setTwinHullMode() {
-    this.maxHp = Math.round(this.base.hp * FUTURE_1096_HULL_RATIO);
-    this.hp = Math.min(this.hp, this.maxHp);
-  }
-
   isAttached() {
     if (!this.attachToMain) {
       return false;
@@ -583,6 +582,8 @@ class Ship {
         value *= 1.12;
       }
     }
+
+    value *= this.team.future1096StatMultiplier(statKey);
 
     return value;
   }
@@ -1534,6 +1535,7 @@ class Team {
       taxiInvulnUntil: 0,
       sponsorUntil: 0,
     };
+    this.future1096Form = null;
     this.activeSkillEffectStartedTicks = Object.create(null);
 
     const sub1FormationOffset = { x: -36, y: 22 };
@@ -1567,29 +1569,10 @@ class Team {
       contacts: new Map(),
     };
     this.visionWaveSkill = createVisionWaveSkillState();
-    this.applyFlagshipPassives(spawnX, spawnY, facing);
 
     this.scouts = [];
     this.wingmen = [];
     this.beams = [];
-  }
-
-  applyFlagshipPassives(spawnX, spawnY, facing) {
-    if (this.mainCharacterId() === "future1096") {
-      this.ships.main.setTwinHullMode();
-      const twinFormationOffset = { x: -52, y: 0 };
-      const twinSpawnOffset = rotateOffset(twinFormationOffset.x * 0.5, twinFormationOffset.y * 0.5, facing);
-      const twin = new Ship(this, "twin", spawnX + twinSpawnOffset.x, spawnY + twinSpawnOffset.y, facing, {
-        slotKey: "twin",
-        roleLabel: "1096僚舰",
-        characterId: "future1096",
-        isAuxiliary: true,
-        attachToMain: true,
-      });
-      twin.setTwinHullMode();
-      twin.formationOffset = twinFormationOffset;
-      this.extraShips.push(twin);
-    }
   }
 
   mainCharacterId() {
@@ -1606,6 +1589,48 @@ class Team {
 
   hasTsuruyaFlagship() {
     return this.mainCharacterId() === "tsuruya";
+  }
+
+  future1096FormDefinition(form = this.future1096Form) {
+    return FUTURE_1096_FORMS[form] || FUTURE_1096_BASE_FORM;
+  }
+
+  future1096StatMultiplier(statKey) {
+    if (this.mainCharacterId() !== "future1096") {
+      return 1;
+    }
+    const form = this.future1096FormDefinition();
+    if (statKey === "speed") return form.speed;
+    if (statKey === "fireRate") return form.fireRate;
+    return 1;
+  }
+
+  switchFuture1096Form() {
+    if (this.mainCharacterId() !== "future1096") {
+      return false;
+    }
+    const previous = this.future1096FormDefinition();
+    const nextForm = this.future1096Form === "A" ? "B" : "A";
+    const next = this.future1096FormDefinition(nextForm);
+    this.future1096Form = nextForm;
+
+    for (const ship of this.getPlayerShips()) {
+      const hpRatio = ship.maxHp > 0 ? clamp(ship.hp / ship.maxHp, 0, 1) : 0;
+      const unmodifiedMaxHp = ship.maxHp / previous.hp;
+      ship.maxHp = Math.max(1, Math.round(unmodifiedMaxHp * next.hp));
+      ship.hp = ship.alive ? ship.maxHp * hpRatio : 0;
+      ship.cooldown = Math.max(0, ship.cooldown * (previous.fireRate / next.fireRate));
+      if (ship.alive) {
+        this.match.spawnFloatingTextKey(
+          ship.x + 10,
+          ship.y - 12,
+          `${nextForm}形态`,
+          {},
+          nextForm === "A" ? "#8eefff" : "#ffd28e",
+        );
+      }
+    }
+    return true;
   }
 
   hasActiveSponsor() {
@@ -1625,7 +1650,7 @@ class Team {
   }
 
   // 难度数值缩放:按 mult 缩放本队所有舰船的最大/当前血量(伤害缩放在 effectiveDamage 中按 statMult 动态生效)。
-  // 幂等——以已生效的 statMult 为基准取比值,重复调用同一倍率不再叠加;在舰船构造(含半血旗舰)之后调用。
+  // 幂等——以已生效的 statMult 为基准取比值,重复调用同一倍率不再叠加。
   applyAiStatMult(mult) {
     const m = Number(mult) > 0 ? Number(mult) : 1;
     const prev = this.statMult || 1;
@@ -1860,6 +1885,9 @@ class Team {
     if (this.hasActiveVisionWaveSkill()) {
       list.push("我不会绕过你哦");
     }
+    if (this.mainCharacterId() === "future1096" && this.future1096Form) {
+      list.push(`${this.future1096Form}形态`);
+    }
     return list;
   }
 
@@ -1978,29 +2006,6 @@ class Team {
     this.splitLevel = level;
   }
 
-  promoteTwinToMain(match = null) {
-    if (this.ships.main.alive) {
-      return false;
-    }
-    const twin = this.extraShips.find((ship) => ship.slotKey === "twin" && ship.alive);
-    if (!twin) {
-      return false;
-    }
-    this.extraShips = this.extraShips.filter((ship) => ship !== twin);
-    twin.key = "main";
-    twin.slotKey = "main";
-    twin.isAuxiliary = false;
-    twin.attachToMain = false;
-    twin.roleLabel = "主舰";
-    twin.name = `${twin.roleLabel}·${twin.character.name}`;
-    twin.formationOffset = { x: 0, y: 0 };
-    this.ships.main = twin;
-    if (match) {
-      match.spawnFloatingTextKey(twin.x + 8, twin.y - 12, "主舰接管", {}, "#8ef8ff");
-    }
-    return true;
-  }
-
   releaseShipAfterFlagshipLoss(ship, lateralSign = 1) {
     if (!ship || !ship.alive) {
       return;
@@ -2021,7 +2026,6 @@ class Team {
   }
 
   resolvePostCasualtyState(match = null) {
-    this.promoteTwinToMain(match);
     this.normalizeSplitLevel();
 
     if (!this.ships.main.alive) {
@@ -2256,6 +2260,8 @@ class Team {
         this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "加速", {}, "#9be0ff");
       }
       ok = true;
+    } else if (characterId === "future1096") {
+      ok = this.switchFuture1096Form();
     } else if (characterId === "tsuruya") {
       if (!this.spendEnergyForShip("main", meta.cost || 0)) {
         return false;
@@ -2543,6 +2549,7 @@ class Team {
       energy: this.fleetEnergyForShip("main").current,
       maxEnergy: this.fleetEnergyForShip("main").max,
       hullRatio: this.hullRatio(),
+      future1096Form: this.future1096Form,
       skillsDisabled: this.areSkillsDisabled(),
       autoScout: {
         enabled: this.autoScout.enabled,

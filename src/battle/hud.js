@@ -112,16 +112,24 @@ export function updateSkillButtons(ui, own, opts = {}) {
     ui.flagshipBtn.disabled = true;
     setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") }));
   } else {
+    const flagshipCooldown = cooldowns.flagship || 0;
+    const isFuture1096FormSkill = flagMeta.id === "past_future_me";
+    const currentFuture1096Form = own.future1096Form ? t(`${own.future1096Form}形态`) : t("无形态");
+    const nextFuture1096Form = t(own.future1096Form === "A" ? "B形态" : "A形态");
     const disabled =
       own.skillsDisabled ||
-      (cooldowns.flagship || 0) > 0 ||
+      flagshipCooldown > 0 ||
       mainEnergy < (flagMeta.cost || 0) ||
       !(mainShip && mainShip.alive);
     ui.flagshipBtn.disabled = disabled;
-    setCooldownButtonLabel(ui.flagshipBtn,
-      (cooldowns.flagship || 0) > 0
-        ? t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（冷却{seconds}秒）", { seconds: (cooldowns.flagship || 0).toFixed(1) }) })
-        : t("旗舰技能：{name}", { name: flagMeta.name }));
+    const suffix = isFuture1096FormSkill
+      ? flagshipCooldown > 0
+        ? t("（{current}·冷却{seconds}秒）", { current: currentFuture1096Form, seconds: flagshipCooldown.toFixed(1) })
+        : t("（{current}→{next}）", { current: currentFuture1096Form, next: nextFuture1096Form })
+      : flagshipCooldown > 0
+        ? t("（冷却{seconds}秒）", { seconds: flagshipCooldown.toFixed(1) })
+        : "";
+    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix }));
   }
   setCooldownProgress(
     ui.flagshipBtn,

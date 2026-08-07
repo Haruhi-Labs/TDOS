@@ -29,7 +29,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "1096",
       title: "高速光束突击舰",
       flavor: "mikuru bea----m!!!",
-      flagshipSkill: { name: "过去与未来的我", description: "旗舰位额外生成1艘1096僚舰，两舰舰体上限各为常规旗舰的75%。" },
+      flagshipSkill: { name: "过去与未来的我", description: "初始无形态。首次使用进入A形态：全队射速×2、生命上限×0.5、航速×1.5；再次使用进入B形态：全队射速×0.5、生命上限×2、航速×0.5。此后每次使用交替切换，冷却10秒。" },
       subSkill: { name: "1096光线", description: "蓄力1.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。" },
     },
     kyon: {
@@ -87,7 +87,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "1096",
       title: "高速ビーム突撃艦",
       flavor: "みくるびーーーむ!!!",
-      flagshipSkill: { name: "過去と未来のわたし", description: "旗艦枠に追加の1096僚艦を生成。2隻の耐久上限は通常旗艦のそれぞれ75%。" },
+      flagshipSkill: { name: "過去と未来のわたし", description: "初期状態は無形態。初回使用でA形態（全艦の連射×2・耐久上限×0.5・速度×1.5）、次の使用でB形態（連射×0.5・耐久上限×2・速度×0.5）へ移行する。以後は使用ごとに交互切替。クールダウン10秒。" },
       subSkill: { name: "1096ビーム", description: "1.05秒チャージ後、指定方向へビームを発射。命中した各敵艦にその最大耐久の28%のダメージを与える。" },
     },
     kyon: {
@@ -145,7 +145,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "1096",
       title: "High-Speed Beam Assault Ship",
       flavor: "mikuru bea----m!!!",
-      flagshipSkill: { name: "Past and Future Me", description: "Spawns an extra 1096 wingman in the flagship slot; both ships have 75% of a normal flagship's max hull each." },
+      flagshipSkill: { name: "Past and Future Me", description: "Starts without a form. First use enters Form A: fleet fire rate ×2, max hull ×0.5, and speed ×1.5. Next use enters Form B: fire rate ×0.5, max hull ×2, and speed ×0.5. Further uses alternate forms. 10-second cooldown." },
       subSkill: { name: "1096 Beam", description: "After a 1.05s charge, fires a beam in the chosen direction, dealing 28% of max hull to each enemy ship it hits." },
     },
     kyon: {
