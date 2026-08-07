@@ -24,11 +24,20 @@ function interpolateRoute(previous, current, ratio) {
   if (!previous && !current) {
     return null;
   }
-  if (!previous && current) {
-    return ratio < 0.35 ? null : cloneRoute(current);
+  if (!previous || !current) {
+    return cloneRoute(current);
   }
-  if (previous && !current) {
-    return ratio > 0.65 ? null : cloneRoute(previous);
+
+  const sameEndpoint = Math.hypot(
+    previous.p2.x - current.p2.x,
+    previous.p2.y - current.p2.y,
+  ) <= 0.5;
+  const sameAnchorMode = (previous.anchorToMain !== false) === (current.anchorToMain !== false);
+  const progressDidNotReset = (Number(current.t) || 0) + 1e-4 >= (Number(previous.t) || 0);
+  if (!sameEndpoint || !sameAnchorMode || !progressDidNotReset) {
+    // 新建、清除或改道是一次输入状态切换，不是物体运动；若在两条航线之间插值，
+    // 右键下达命令后会短暂画出一条从未存在过的中间航线。
+    return cloneRoute(current);
   }
   return {
     anchorToMain: current.anchorToMain !== false,

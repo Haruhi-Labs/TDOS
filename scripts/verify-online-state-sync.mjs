@@ -103,6 +103,56 @@ assert.equal(interpolated.teams.A.ships.main.x, 20, "主舰位置插值异常");
 assert.equal(interpolated.teams.A.extraShips[0].x, 26, "额外舰船插值异常");
 assert.equal(interpolated.projectiles[0].x, 30, "弹体位置插值异常");
 
+previousState.teams.A.ships.main.route = {
+  anchorToMain: true,
+  p0: { x: 10, y: 20 },
+  p1: { x: 30, y: 20 },
+  p2: { x: 50, y: 20 },
+  t: 0.6,
+};
+nextState.teams.A.ships.main.route = {
+  anchorToMain: true,
+  p0: { x: 30, y: 20 },
+  p1: { x: 60, y: 30 },
+  p2: { x: 90, y: 40 },
+  t: 0,
+};
+const rerouted = sync.interpolateSnapshotState(
+  { tick: 30, state: previousState },
+  { tick: 31, state: nextState },
+  0.2,
+);
+assert.deepEqual(
+  rerouted.teams.A.ships.main.route.p2,
+  { x: 90, y: 40 },
+  "新航线被错误插值为不存在的中间态",
+);
+
+previousState.teams.A.ships.main.route = {
+  anchorToMain: true,
+  p0: { x: 10, y: 20 },
+  p1: { x: 30, y: 20 },
+  p2: { x: 90, y: 40 },
+  t: 0.2,
+};
+nextState.teams.A.ships.main.route = {
+  anchorToMain: true,
+  p0: { x: 20, y: 20 },
+  p1: { x: 40, y: 24 },
+  p2: { x: 90, y: 40 },
+  t: 0.4,
+};
+const progressingRoute = sync.interpolateSnapshotState(
+  { tick: 31, state: previousState },
+  { tick: 32, state: nextState },
+  0.5,
+);
+assert.deepEqual(
+  progressingRoute.teams.A.ships.main.route.p0,
+  { x: 15, y: 20 },
+  "同一航线的自然推进没有保持平滑插值",
+);
+
 const extrapolationSource = battleState(2);
 extrapolationSource.teams.A.ships.main.x = 95;
 extrapolationSource.teams.A.ships.main.speed = 100;
