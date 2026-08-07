@@ -43,11 +43,13 @@ function aiFogOfWarCheck() {
 function aiReactionDelayCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const bot = sim.bot;
+  const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
   const spawnIntel = { x: bot.enemyIntel.main.x, y: bot.enemyIntel.main.y };
 
-  enemyMain.x = 860;
-  enemyMain.y = 720;
+  // 反应延迟测试显式把目标放进视野；出生点距离属于独立平衡参数。
+  enemyMain.x = aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65);
+  enemyMain.y = aiMain.y;
   enemyMain.angle = Math.PI;
   enemyMain.command.x = enemyMain.x;
   enemyMain.command.y = enemyMain.y;

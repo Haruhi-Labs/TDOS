@@ -2730,8 +2730,11 @@ export class MatchSimulation {
     this.winnerSeat = null;
 
     const centerY = worldSize * 0.5;
-    const leftX = worldSize * 0.35;
-    const rightX = worldSize * 0.65;
+    const zoneWidth = worldSize / 3;
+    const spawnRetreat = zoneWidth * 0.25;
+    // 双方沿各自后方退四分之一战区，保持关于地图中心完全对称。
+    const leftX = worldSize * 0.35 - spawnRetreat;
+    const rightX = worldSize * 0.65 + spawnRetreat;
 
     this.teamA = new Team(this, "A", teamNames.A || "玩家A舰队", leftX, centerY, 0, {
       loadout: teamLoadouts.A || DEFAULT_TEAM_LOADOUT,

@@ -322,6 +322,29 @@ function splitFormationCheck() {
   assert(sub1Distance > sub2Distance + 35, "一级分离后应只有被释放的副舰一明显脱离编队");
 }
 
+function initialSpawnPositionCheck() {
+  const worldSize = 1440;
+  const zoneWidth = worldSize / 3;
+  const retreatDistance = zoneWidth * 0.25;
+  const sim = new MatchSimulation({ mode: "pvp", worldSize });
+  const aMain = sim.teamA.ships.main;
+  const bMain = sim.teamB.ships.main;
+  const zoneIdAt = (ship) => sim.zones.find((zone) => (
+    ship.x >= zone.x
+    && ship.x <= zone.x + zone.width
+    && ship.y >= zone.y
+    && ship.y <= zone.y + zone.height
+  ))?.id;
+
+  assert(Math.abs(aMain.x - (worldSize * 0.35 - retreatDistance)) < 1e-9, "A方未向己方后方移动四分之一战区");
+  assert(Math.abs(bMain.x - (worldSize * 0.65 + retreatDistance)) < 1e-9, "B方未向己方后方移动四分之一战区");
+  assert(Math.abs(aMain.y - worldSize * 0.5) < 1e-9, "A方出生点纵坐标发生意外变化");
+  assert(Math.abs(bMain.y - worldSize * 0.5) < 1e-9, "B方出生点纵坐标发生意外变化");
+  assert(Math.abs((worldSize - bMain.x) - aMain.x) < 1e-9, "双方出生点不再关于地图中心对称");
+  assert(zoneIdAt(aMain) === 4, "A方出生点未落入己方中路战区");
+  assert(zoneIdAt(bMain) === 6, "B方出生点未落入己方中路战区");
+}
+
 function initialFormationStabilityCheck() {
   const loadout = {
     main: "future1096",
@@ -548,6 +571,10 @@ function yukiPassiveCheck() {
     sim.elapsed += TICK_DT;
   };
 
+  // 出生点间距属于对局平衡参数；雷达分档测试显式摆到「一个战区内」的适中距离，
+  // 避免出生点调整意外改变本用例要验证的雷达语义。
+  enemyMain.x = main.x + zoneWidth * 0.85;
+  enemyMain.y = main.y;
   const energyBeforeScan = main.energy;
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
@@ -1233,6 +1260,7 @@ export function runRulesSuite() {
   yukiBurstScoutStabilityCheck();
   yukiFlagshipCombatScoutCheck();
   splitFormationCheck();
+  initialSpawnPositionCheck();
   initialFormationStabilityCheck();
   future1096FormSwitchCheck();
   flagshipLossAutoSplitCheck();
