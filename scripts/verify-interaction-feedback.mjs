@@ -42,7 +42,15 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
     );
     await page.mouse.up();
   }
-  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => resolve())));
+  // 松手后按钮会按基础样式执行最长 160ms 的回弹过渡；等待视觉状态真正稳定，
+  // 避免只等一帧时偶发读到接近 1、但尚未结束的缩放矩阵。
+  await page.waitForFunction(() => {
+    const element = document.querySelector(".pv-faction-btn.red");
+    return element
+      && !element.classList.contains("is-pressing")
+      && document.activeElement !== element
+      && getComputedStyle(element).transform === "none";
+  }, null, { timeout: 1000 });
 
   const state = await button.evaluate((element) => ({
     pressing: element.classList.contains("is-pressing"),
