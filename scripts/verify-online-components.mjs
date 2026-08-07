@@ -8,6 +8,7 @@ import {
   createOnlineSnapshotTransport,
   DEFAULT_INTERP_MS,
 } from "../src/online/snapshot-transport.js";
+import { createThrottleCommandState } from "../src/online/throttle-command-state.js";
 import { createStatePatch } from "../shared/network-patch.js";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 
@@ -200,4 +201,24 @@ transport.resetMatchState();
 assert.equal(transportApp.snapshots.length, 0);
 assert.equal(transportApp.decodedSnapshotState, null);
 
-console.log("联机组件校验通过：连接目标、时钟校准、快照差量、确认与队列维护保持一致。");
+const throttleCommands = createThrottleCommandState({ maxAckHoldMs: 1200 });
+assert.equal(throttleCommands.valueFor("main", 1), 1);
+assert.equal(throttleCommands.record("main", 12, 1.4, 20_000), true);
+assert.equal(
+  throttleCommands.valueFor("main", 1),
+  1.4,
+  "换挡往返期间不应被旧权威快照覆盖",
+);
+throttleCommands.reconcile({ ackSeq: 11, ships: { main: { throttle: 1 } }, nowMs: 20_050 });
+assert.equal(throttleCommands.valueFor("main", 1), 1.4, "未确认换挡被过早清除");
+throttleCommands.reconcile({ ackSeq: 12, ships: { main: { throttle: 1 } }, nowMs: 20_100 });
+assert.equal(throttleCommands.valueFor("main", 1), 1.4, "刚确认但尚未反映的换挡没有保留等待窗口");
+throttleCommands.reconcile({ ackSeq: 12, ships: { main: { throttle: 1.4 } }, nowMs: 20_150 });
+assert.equal(throttleCommands.valueFor("main", 1.4), 1.4, "权威快照确认换挡后档位异常");
+
+throttleCommands.record("sub1", 13, 0.7, 21_000);
+throttleCommands.reconcile({ ackSeq: 13, ships: { sub1: { throttle: 1 } }, nowMs: 21_100 });
+throttleCommands.reconcile({ ackSeq: 13, ships: { sub1: { throttle: 1 } }, nowMs: 22_301 });
+assert.equal(throttleCommands.valueFor("sub1", 1), 1, "未生效的换挡意图超时后仍覆盖权威状态");
+
+console.log("联机组件校验通过：连接目标、时钟校准、快照差量、换挡确认与队列维护保持一致。");

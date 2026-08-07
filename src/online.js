@@ -23,6 +23,7 @@ import {
   createOnlineSnapshotTransport,
   DEFAULT_INTERP_MS,
 } from "./online/snapshot-transport.js";
+import { createThrottleCommandState } from "./online/throttle-command-state.js";
 
 import { getFaction } from "./profile.js";
 
@@ -86,6 +87,7 @@ let resultView = null; // 联机结算卡片
 let lobbyView = null; // 大厅房间列表与摘要
 let snapshotTransport = null; // 延迟测量、差量解码与快照队列
 let actionTransport = null; // 统一动作协议的远程传输适配器
+let throttleCommandState = null; // 每艘舰待权威快照确认的换挡意图
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -266,6 +268,7 @@ function initApp() {
   });
   lobbyView = createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer });
   snapshotTransport = createOnlineSnapshotTransport({ app, nowMs, socketSend, updateConnectionUi, log });
+  throttleCommandState = createThrottleCommandState();
   stateSync = createOnlineStateSync({
     app,
     nowMs,
@@ -429,6 +432,7 @@ function clearMatchRuntime() {
   app.smoothEntities.clear();
   app.lastRenderMs = 0;
   app.routeOverrides.clear();
+  throttleCommandState.clear();
   app.drag = null;
   app.lastRenderState = null;
   app.lastMatchPhase = null;
@@ -705,7 +709,8 @@ function syncPowerFromSelectedShip(team) {
   if (!ship) {
     return;
   }
-  const gear = syncThrottleGearControls(ui, ship.throttle);
+  const throttle = throttleCommandState.valueFor(app.selectedShipKey, ship.throttle);
+  const gear = syncThrottleGearControls(ui, throttle);
   app.throttle = throttleValueForGear(gear);
 }
 
@@ -1051,6 +1056,12 @@ function pruneAckedOverrides(snapshotState) {
   const own = teamBySeat(snapshotState, app.seat);
   const ownShips = own && own.ships ? own.ships : null;
 
+  throttleCommandState.reconcile({
+    ackSeq: app.ackSeq,
+    ships: ownShips,
+    nowMs: now,
+  });
+
   for (const [shipKey, override] of app.routeOverrides) {
     if (!override || !override.route) {
       app.routeOverrides.delete(shipKey);
@@ -1088,17 +1099,28 @@ function pruneAckedOverrides(snapshotState) {
 }
 
 function setThrottleGear(gear, shouldSend = true) {
-  app.throttle = throttleValueForGear(gear);
-  syncThrottleGearControls(ui, app.throttle);
+  const throttle = throttleValueForGear(gear);
+  app.throttle = throttle;
+  syncThrottleGearControls(ui, throttle);
 
   if (!shouldSend) {
     return true;
   }
 
-  return sendAction(matchActions.setThrottle({
-    shipKey: app.selectedShipKey,
-    throttle: app.throttle,
-  })) !== null;
+  const shipKey = app.selectedShipKey;
+  const seq = sendAction(matchActions.setThrottle({ shipKey, throttle }));
+  if (seq === null) {
+    return false;
+  }
+  throttleCommandState.record(shipKey, seq, throttle, nowMs());
+  return true;
+}
+
+function throttleForShipCommand(ship) {
+  if (!ship) {
+    return app.throttle;
+  }
+  return throttleCommandState.valueFor(ship.key, ship.throttle);
 }
 
 function currentBattleState() {
@@ -1629,7 +1651,7 @@ function bindUiEvents() {
         shipKey: ship.key,
         endX: pos.x,
         endY: pos.y,
-        throttle: app.throttle,
+        throttle: throttleForShipCommand(ship),
         anchorToMain: ship.key === "main",
       }));
       if (seq !== null) {
@@ -1745,7 +1767,7 @@ function bindUiEvents() {
         shipKey: ship.key,
         endX: pos.x,
         endY: pos.y,
-        throttle: app.throttle,
+        throttle: throttleForShipCommand(ship),
         anchorToMain: ship.key === "main",
       }));
       if (seq !== null) {
@@ -1871,7 +1893,7 @@ function bindUiEvents() {
         shipKey: ship.key,
         endX: cx,
         endY: cy,
-        throttle: app.throttle,
+        throttle: throttleForShipCommand(ship),
         anchorToMain: ship.key === "main",
       }));
       if (seq !== null) {
