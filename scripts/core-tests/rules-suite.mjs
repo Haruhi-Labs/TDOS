@@ -214,6 +214,10 @@ function yukiBurstScoutStabilityCheck() {
   const scout = sim.teamA.scouts[0];
   runSteps(sim, 2.5);
   assert(scout.mode === "orbit", "长门副舰侦察机未进入环绕阶段");
+  assert(
+    Math.abs(scout.orbitSpeed) >= 2.4 && Math.abs(scout.orbitSpeed) <= 4.8,
+    "长门副舰侦察机未保持高速环绕角速度",
+  );
 
   let stoppedFrames = 0;
   let maxStep = 0;
@@ -232,7 +236,7 @@ function yukiBurstScoutStabilityCheck() {
   }
 
   assert(stoppedFrames === 0, "长门副舰侦察机环绕仍出现走一帧停一帧的抖动");
-  assert(maxStep < 1.1, "长门副舰侦察机环绕单帧位移仍存在跳变");
+  assert(maxStep < 3, "长门副舰侦察机环绕单帧位移仍存在异常跳变");
   assert(maxRadiusError < 1e-6, "长门副舰侦察机未沿稳定圆轨道运动");
 }
 

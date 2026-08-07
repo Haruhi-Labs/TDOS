@@ -1294,7 +1294,8 @@ class Scout {
     this.anchor = config.anchor || null;
     this.anchorRadius = config.anchorRadius || 22;
     this.orbitAngle = randomInRange(0, TAU);
-    this.orbitSpeed = randomInRange(0.8, 1.6) * (Math.random() < 0.5 ? -1 : 1);
+    const orbitSpeedRange = this.pattern === "burst" ? [2.4, 4.8] : [0.8, 1.6];
+    this.orbitSpeed = randomInRange(...orbitSpeedRange) * (Math.random() < 0.5 ? -1 : 1);
     this.command = {
       x: x,
       y: y,
