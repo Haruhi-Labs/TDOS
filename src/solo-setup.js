@@ -1,4 +1,4 @@
-import { getDifficulty, getFaction, setDifficulty } from "./profile.js";
+import { getFaction, setDifficulty } from "./profile.js";
 import { startStarfield } from "./starfield.js";
 import { startMenuHero } from "./menu-hero.js";
 import { isMobile } from "./mobile.js";
@@ -11,9 +11,9 @@ const DIFFICULTIES = [
   { key: "master", no: "IV", label: "极限", sub: "敌方数值 ×1.2 · 最快反应与智能集火" },
 ];
 
-function menuItem({ no, label, sub, action, active = false }) {
+function menuItem({ no, label, sub, action }) {
   return `
-    <button type="button" class="ts-item solo-flow-item${active ? " active" : ""}" data-action="${action}">
+    <button type="button" class="ts-item solo-flow-item" data-action="${action}">
       <span class="ts-item-no">${no}</span>
       <span class="ts-item-body">
         <span class="ts-item-label">${t(label)}</span>
@@ -65,7 +65,6 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
   }
 
   function difficultyHtml() {
-    const current = getDifficulty();
     return `
       <header class="ts-head solo-flow-heading">
         <div class="ts-seal" role="img" aria-label="${t("SOS团")}"></div>
@@ -74,7 +73,7 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
         <div class="ts-rule"></div>
       </header>
       <nav class="ts-menu" aria-label="${t("选择难度")}">
-        ${DIFFICULTIES.map((item) => menuItem({ ...item, action: `difficulty:${item.key}`, active: item.key === current })).join("")}
+        ${DIFFICULTIES.map((item) => menuItem({ ...item, action: `difficulty:${item.key}` })).join("")}
       </nav>
       <button type="button" class="solo-flow-back" data-action="campaign">‹ ${t("返回战役选择")}</button>`;
   }

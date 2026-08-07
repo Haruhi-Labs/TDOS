@@ -4148,15 +4148,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: inherit;
   font: inherit;
 }
-.solo-flow-item.active {
-  background: var(--menu-item-highlight);
-  border-left-color: var(--gilt);
-}
-.solo-flow-item.active .ts-item-no::after {
-  content: "•";
-  margin-left: 0.35em;
-  color: var(--gilt-bright);
-}
 .solo-flow-back {
   margin-top: 22px;
   padding: 8px 2px;
@@ -4175,12 +4166,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   box-shadow: none;
   color: inherit;
   transform: translateX(6px);
-}
-.solo-flow .solo-flow-item.active {
-  background: var(--menu-item-highlight);
-  border-left-color: var(--gilt);
-  box-shadow: none;
-  color: inherit;
 }
 @media (hover: hover) and (pointer: fine) {
   .solo-flow-back:hover { color: var(--text-soft); }

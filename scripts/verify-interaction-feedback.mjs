@@ -91,6 +91,19 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
     true,
     `${name}战役菜单仍应支持键盘选择`,
   );
+  await campaignItem.click();
+  const normalDifficultyItem = page.locator('.solo-flow-item[data-action="difficulty:normal"]');
+  await normalDifficultyItem.waitFor({ state: "visible" });
+  assert.equal(
+    await page.locator(".solo-flow-item.active").count(),
+    0,
+    `${name}难度菜单不得把上次选择保留为粘滞高亮`,
+  );
+  assert.equal(
+    await normalDifficultyItem.evaluate((element) => element.classList.contains("active")),
+    false,
+    `${name}普通难度不得默认显示长期选中态`,
+  );
 
   await context.close();
 }
