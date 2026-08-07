@@ -448,6 +448,7 @@ button.has-cooldown-progress {
   isolation: isolate;
   overflow: hidden;
   --cooldown-progress: 0;
+  --cooldown-offset: -100%;
 }
 button.has-cooldown-progress:disabled {
   opacity: 0.76;
@@ -465,9 +466,11 @@ button.has-cooldown-progress::after {
     inset -1px 0 0 #b8f0ebcc,
     inset -9px 0 13px -11px #9fe9e5cc,
     5px 0 16px #02060e55;
-  transform: scaleX(var(--cooldown-progress));
-  transform-origin: left center;
+  /* 整层平移可保持渐变、圆角和发光边缘的固定形状，避免 scaleX 压缩造成亚像素闪动。 */
+  transform: translate3d(var(--cooldown-offset), 0, 0);
   transition: transform 100ms linear;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 .btn-link {

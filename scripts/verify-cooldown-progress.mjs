@@ -55,4 +55,22 @@ assert.ok(
   "切换舰船后按新技能的冷却周期计算",
 );
 
+const stableButton = fakeButton();
+assert.equal(setCooldownProgress(stableButton, 8, 10, "flagship"), 0.8, "冷却遮罩初始比例异常");
+assert.equal(
+  setCooldownProgress(stableButton, 8.08, 10, "flagship"),
+  0.8,
+  "同一轮冷却的小幅校时回跳仍会令遮罩反向抖动",
+);
+assert.equal(
+  stableButton.style.getPropertyValue("--cooldown-offset"),
+  "-20.000%",
+  "冷却遮罩未转换为稳定的整层平移距离",
+);
+assert.equal(
+  setCooldownProgress(stableButton, 9, 10, "flagship"),
+  0.9,
+  "真正的新一轮冷却未能重新覆盖按钮",
+);
+
 console.log("冷却按钮阴影进度计算检查通过");

@@ -51,6 +51,7 @@ export function clearCooldownProgress(button) {
   if (!button) return;
   button.classList.remove("has-cooldown-progress");
   button.style.removeProperty("--cooldown-progress");
+  button.style.removeProperty("--cooldown-offset");
   cooldownStateByButton.delete(button);
 }
 
@@ -63,24 +64,36 @@ export function setCooldownProgress(button, remaining, suggestedDuration, cycleK
   }
 
   const previous = cooldownStateByButton.get(button);
+  const sameCycle = button.classList.contains("has-cooldown-progress")
+    && previous?.cycleKey === String(cycleKey)
+    && safeRemaining <= finiteNonNegative(previous?.remaining) + COOLDOWN_RESTART_EPSILON;
   const duration = resolveCooldownDuration({
     remaining: safeRemaining,
     suggestedDuration,
     previousRemaining: previous?.remaining,
     previousDuration: previous?.duration,
-    active: button.classList.contains("has-cooldown-progress")
-      && previous?.cycleKey === String(cycleKey),
+    active: sameCycle,
   });
-  const ratio = cooldownProgressRatio(safeRemaining, duration);
+  // 快照校时或浮点误差可能让剩余时间短暂上跳；同一轮冷却的遮罩只能单向退去，
+  // 避免边缘在相邻帧之间左右往返。真正的新一轮冷却仍由阈值和 cycleKey 识别。
+  const visualRemaining = sameCycle
+    ? Math.min(safeRemaining, finiteNonNegative(previous?.visualRemaining ?? previous?.remaining))
+    : safeRemaining;
+  const ratio = cooldownProgressRatio(visualRemaining, duration);
   cooldownStateByButton.set(button, {
     remaining: safeRemaining,
+    visualRemaining,
     duration,
     cycleKey: String(cycleKey),
     ratio,
   });
   const visualRatio = ratio.toFixed(4);
+  const visualOffset = `${(-100 * (1 - ratio)).toFixed(3)}%`;
   if (button.style.getPropertyValue("--cooldown-progress") !== visualRatio) {
     button.style.setProperty("--cooldown-progress", visualRatio);
+  }
+  if (button.style.getPropertyValue("--cooldown-offset") !== visualOffset) {
+    button.style.setProperty("--cooldown-offset", visualOffset);
   }
   button.classList.add("has-cooldown-progress");
   return ratio;
@@ -97,8 +110,12 @@ export function mirrorCooldownProgress(source, target) {
     cooldownStateByButton.set(target, { ...sourceState });
   }
   const visualRatio = source.style.getPropertyValue("--cooldown-progress") || "0";
+  const visualOffset = source.style.getPropertyValue("--cooldown-offset") || "-100%";
   if (target.style.getPropertyValue("--cooldown-progress") !== visualRatio) {
     target.style.setProperty("--cooldown-progress", visualRatio);
+  }
+  if (target.style.getPropertyValue("--cooldown-offset") !== visualOffset) {
+    target.style.setProperty("--cooldown-offset", visualOffset);
   }
   target.classList.add("has-cooldown-progress");
 }
