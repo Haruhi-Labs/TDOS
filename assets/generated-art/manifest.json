@@ -1,0 +1,41 @@
+{
+  "style_anchor": "透明底二维日系动画游戏全身立绘，复古太空海军制服与金色细节，清晰轮廓，平涂赛璐璐光影，和现有角色选择页的 2000 年代动画立绘一致，无文字、无标志",
+  "assets": [
+    {
+      "id": "shamisen_portrait_blue",
+      "kind": "character_portrait",
+      "usage": "蓝方三味线角色选择、舰队侧边立绘与头像",
+      "target_path": "public/assets/portraits/blue/shamisen.webp",
+      "raw_path": "assets/generated-art/raw/shamisen_blue.key.png",
+      "dimensions": "1200x1600",
+      "format": "webp",
+      "transparent": true,
+      "alpha_strategy": "hard-cutout",
+      "key_color": "#ff00ff",
+      "key_tolerance": 42,
+      "key_alpha_threshold": 8,
+      "style_anchor": "use manifest style_anchor",
+      "prompt": "绘制角色‘三味线’的全身角色立绘：一只聪明、略显慵懒的成年雄性三花猫，白色为主的毛色，头顶和背部有自然的黑色、暖橙色斑块，琥珀色眼睛，表情沉着又带一点猫科动物的狡黠。它保持真实家猫的四足身体结构，三分之二侧面站姿，尾巴自然上扬，不要拟人成人类，不要人手。穿一件为猫设计、剪裁简洁的深海军蓝复古太空舰队短披肩与蓝色领巾，带少量金色滚边和小型舰队徽章，但不遮挡主要毛色与轮廓。完整身体、四只爪和尾巴全部在画面内，角色占画面约 78%，位于中央，清晰利落的二维日系动画赛璐璐风格，细节密度和现有角色立绘相符，无文字、无道具、无地面阴影。技术背景要求：将孤立角色置于完全平坦纯色 #ff00ff 色键背景上。不要渲染真实透明，不要棋盘格，不要渐变、纹理、阴影、辉光、反射、场景或背景图案。角色不得接触画面边缘，并避免在角色设计中使用品红色。",
+      "status": "accepted",
+      "notes": "内置图像生成完成；经色键移除与边缘连通去溢色处理，1200x1600 WebP alpha 范围 0..255，并在深海军蓝底上完成合成目检。"
+    },
+    {
+      "id": "shamisen_portrait_red",
+      "kind": "character_portrait",
+      "usage": "红方三味线角色选择、舰队侧边立绘与头像",
+      "target_path": "public/assets/portraits/red/shamisen.webp",
+      "raw_path": "assets/generated-art/raw/shamisen_red.key.png",
+      "dimensions": "1200x1600",
+      "format": "webp",
+      "transparent": true,
+      "alpha_strategy": "hard-cutout",
+      "key_color": "#ff00ff",
+      "key_tolerance": 42,
+      "key_alpha_threshold": 8,
+      "style_anchor": "use manifest style_anchor",
+      "prompt": "严格保持蓝方三味线立绘的猫、姿态、比例、表情、毛色斑块、构图与绘画细节完全一致，只把深海军蓝短披肩和蓝色领巾改为克制的舰队朱红色，保留金色滚边与徽章。背景继续保持完全平坦纯色 #ff00ff，无文字、无道具、无阴影、无渐变、无图案。",
+      "status": "accepted",
+      "notes": "由蓝方源图做阵营配色编辑；经同一色键/去溢色流程处理，1200x1600 WebP alpha 范围 0..255，并与蓝方并排完成构图一致性目检。"
+    }
+  ]
+}

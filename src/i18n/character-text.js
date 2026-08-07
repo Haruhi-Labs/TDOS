@@ -56,6 +56,14 @@ export const CHARACTER_TEXT = Object.freeze({
       flagshipSkill: { name: "我不会绕过你哦", description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益。敌方也能看见视野波。" },
       subSkill: { name: "刀锋女王", description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。" },
     },
+    shamisen: {
+      name: "三味线",
+      shortName: "三味线",
+      title: "连击型灵巧舰",
+      flavor: "会说话的三花猫，悄无声息地留下抓痕",
+      flagshipSkill: { name: "主舰能力待定", description: "主舰能力仍在设计中，当前不会产生额外效果。" },
+      subSkill: { name: "猫爪乱舞", description: "12秒内自身子弹变为猫爪。命中同一敌舰5次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。" },
+    },
   },
   ja: {
     haruhi: {
@@ -114,6 +122,14 @@ export const CHARACTER_TEXT = Object.freeze({
       flagshipSkill: { name: "回り道はしないわよ", description: "6秒間、1秒ごとに自身を中心とする視界波を放ち、波帯の実視界を得る。波に触れた敵艦のアクティブ強化を解除する。敵側にも視界波は見える。" },
       subSkill: { name: "ブレードクイーン", description: "10秒間、速度×1.45（加速×1.26・旋回×1.12）で当たり判定を無視（敵艦をすり抜け可）。敵艦に接触した瞬間その最大耐久の15%を与え、以後は重なり続ける限り1秒ごとに再度15%を与える。" },
     },
+    shamisen: {
+      name: "シャミセン",
+      shortName: "シャミセン",
+      title: "連撃型機動艦",
+      flavor: "言葉を話す三毛猫、音もなく爪痕を残す",
+      flagshipSkill: { name: "旗艦能力未定", description: "旗艦能力は設計中で、現在は追加効果を持たない。" },
+      subSkill: { name: "猫爪乱舞", description: "12秒間、自身の弾が猫の足跡弾になる。同じ敵艦に5回命中すると爪痕が爆発し、追加で80ダメージ。爪痕は8秒間更新されないと消える。" },
+    },
   },
   en: {
     haruhi: {
@@ -171,6 +187,14 @@ export const CHARACTER_TEXT = Object.freeze({
       flavor: "Information and momentum, the Blade Queen pressing forward",
       flagshipSkill: { name: "I Won't Go Around You", description: "Emits one circular vision wave per second for 6 seconds, granting true vision across each band and purging active-skill buffs from enemy ships it sweeps. Enemies can see the waves." },
       subSkill: { name: "Blade Queen", description: "For 10 seconds, speed ×1.45 (accel ×1.26, turn ×1.12) and ignores collision, phasing through enemy ships; on contact deals 15% of the enemy's max hull, then another 15% every second while overlapping." },
+    },
+    shamisen: {
+      name: "Shamisen",
+      shortName: "Shamisen",
+      title: "Agile Combo Ship",
+      flavor: "A talking calico cat that leaves claw marks without a sound",
+      flagshipSkill: { name: "Flagship Ability Pending", description: "The flagship ability is still being designed and currently grants no additional effect." },
+      subSkill: { name: "Claw Barrage", description: "For 12 seconds, shots become cat paws. Hitting the same enemy ship 5 times detonates the marks for 80 bonus damage. Marks fade if not refreshed for 8 seconds." },
     },
   },
 });

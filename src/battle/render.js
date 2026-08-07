@@ -332,6 +332,42 @@ export function drawShipNameLabel(ctx, ship, accent) {
   ctx.restore();
 }
 
+// 猫爪命中计数：五个极简抓痕槽位直接贴在舰体状态条上方，敌我双方使用同一快照字段。
+// 每个槽位由三道短抓痕构成，点亮数量就是当前连击层数，不依赖文字与本地化。
+function drawClawMarkCounter(ctx, ship) {
+  const marks = ship?.clawMarks;
+  const stacks = Math.max(0, Math.round(Number(marks?.stacks) || 0));
+  if (!ship?.alive || stacks <= 0) {
+    return;
+  }
+  const required = clamp(Math.round(Number(marks.required) || 5), 1, 5);
+  const color = marks.color || "#ffd0e4";
+  const slotWidth = 5.2;
+  const totalWidth = required * slotWidth;
+  const startX = ship.x - totalWidth * 0.5 + 1.2;
+  const topY = ship.y - ship.radius - 20;
+
+  ctx.save();
+  ctx.lineCap = "round";
+  ctx.lineWidth = 1.15;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 3;
+  for (let slot = 0; slot < required; slot += 1) {
+    const active = slot < stacks;
+    ctx.globalAlpha = active ? 0.96 : 0.16;
+    ctx.strokeStyle = active ? color : "#dbe7f2";
+    const x = startX + slot * slotWidth;
+    for (let cut = 0; cut < 3; cut += 1) {
+      const offset = cut * 1.15;
+      ctx.beginPath();
+      ctx.moveTo(x + offset, topY + 4.2);
+      ctx.lineTo(x + 2.1 + offset, topY);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 // forceName:观战模式下双方名牌常驻(观众没有"己方",需要清楚看到每艘舰是谁)
 export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, forceName = false) {
   if (!ship || !ship.alive) {
@@ -383,6 +419,7 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth, 3);
   ctx.fillStyle = "#6ad8ff";
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
+  drawClawMarkCounter(ctx, ship);
 
   // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
   // 敌方默认隐藏名字,仅当其角色名已永久确认(视野内施放技能或被长门雷达扫中)时才显示。
@@ -526,10 +563,27 @@ export function drawProjectile(ctx, projectile, isOwnTeam) {
     ctx.globalAlpha = 1;
   }
 
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.arc(projectile.x, projectile.y, projectile.radius || 2, 0, TAU);
-  ctx.fill();
+  if (projectile.visualKind === "cat_paw") {
+    const angle = dist > 1e-3 ? Math.atan2(dy, dx) : 0;
+    ctx.translate(projectile.x, projectile.y);
+    ctx.rotate(angle + Math.PI * 0.5);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.ellipse(0, 1.3, 3.1, 2.5, 0, 0, TAU);
+    ctx.fill();
+    for (const toe of [[-2.8, -1.5], [-1, -2.8], [1, -2.8], [2.8, -1.5]]) {
+      ctx.beginPath();
+      ctx.ellipse(toe[0], toe[1], 1.05, 1.3, 0, 0, TAU);
+      ctx.fill();
+    }
+  } else {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, projectile.radius || 2, 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
 }
 

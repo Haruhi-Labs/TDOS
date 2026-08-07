@@ -350,10 +350,24 @@ class Burst {
 }
 
 class Projectile {
-  constructor({ team, source, x, y, targetX, targetY, damage, speed = 240, hitRadius = 8, color }) {
+  constructor({
+    team,
+    source,
+    x,
+    y,
+    targetX,
+    targetY,
+    damage,
+    speed = 240,
+    hitRadius = 8,
+    color,
+    visualKind = "shell",
+    claw = null,
+  }) {
     this.id = nextEntityId();
     this.kind = "projectile";
     this.team = team;
+    this.source = source || null;
     this.sourceId = source ? source.id : null;
     this.x = x;
     this.y = y;
@@ -363,6 +377,8 @@ class Projectile {
     this.speed = speed;
     this.hitRadius = hitRadius;
     this.color = color || team.projectileColor;
+    this.visualKind = visualKind;
+    this.claw = claw ? { ...claw } : null;
     this.radius = 2;
     this.alive = true;
     // 发射点(射手开火时的位置),用于尾击判定:看来袭方向落在目标哪个射界
@@ -425,10 +441,17 @@ class Projectile {
         rear = true;
       }
     }
-    hitTarget.takeDamage(damage, null, match);
+    hitTarget.takeDamage(damage, this.source, match);
     match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(damage)}`, rear ? "#ffb066" : "#ffd178");
     if (rear) {
       match.spawnFloatingTextKey(hitTarget.x + 12, hitTarget.y - 22, "尾击", {}, "#ff9d5a");
+    }
+    if (this.claw && hitTarget.kind === "ship" && hitTarget.alive) {
+      hitTarget.registerClawHit({
+        ...this.claw,
+        sourceSeat: this.team.seat,
+        color: this.color,
+      }, match, this.source);
     }
     match.spawnBurst(hitTarget.x, hitTarget.y, "#ffdb9b", 7);
   }
@@ -447,6 +470,7 @@ class Projectile {
       alive: this.alive,
       radius: this.radius,
       color: this.color,
+      visualKind: this.visualKind,
     };
   }
 }
@@ -491,10 +515,18 @@ class Ship {
       critUntil: 0,
       reliableUntil: 0,
       bladeQueenUntil: 0,
+      catPawUntil: 0,
       sosBuff: null,
       brakeUntil: 0,
       brakeCooldownUntil: 0,
       nextShotDamageMultiplier: 1,
+    };
+    this.clawMarks = {
+      sourceSeat: null,
+      stacks: 0,
+      required: 5,
+      expiresAt: 0,
+      color: "#ffc0bd",
     };
     // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
     // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
@@ -703,6 +735,7 @@ class Ship {
     clearTimedEffect("critUntil");
     clearTimedEffect("reliableUntil");
     clearTimedEffect("bladeQueenUntil");
+    clearTimedEffect("catPawUntil");
     if (canClear("sosBuff")) {
       if (this.activeSosBuff()) {
         cleared = true;
@@ -921,6 +954,46 @@ class Ship {
     this.route = null;
   }
 
+  activeClawMarks() {
+    if (this.clawMarks.stacks > 0 && this.clawMarks.expiresAt <= this.team.match.elapsed) {
+      this.clawMarks.sourceSeat = null;
+      this.clawMarks.stacks = 0;
+      this.clawMarks.expiresAt = 0;
+    }
+    return this.clawMarks;
+  }
+
+  registerClawHit(claw, match, source = null) {
+    if (!this.alive || !claw) {
+      return false;
+    }
+    const marks = this.activeClawMarks();
+    const sourceSeat = claw.sourceSeat || null;
+    if (marks.stacks > 0 && marks.sourceSeat !== sourceSeat) {
+      marks.stacks = 0;
+    }
+    marks.sourceSeat = sourceSeat;
+    marks.required = Math.max(1, Math.round(Number(claw.triggerHits) || 5));
+    marks.stacks += 1;
+    marks.expiresAt = this.team.match.elapsed + Math.max(0.5, Number(claw.markDuration) || 8);
+    marks.color = claw.color || marks.color;
+
+    if (marks.stacks < marks.required) {
+      return false;
+    }
+
+    marks.stacks = 0;
+    marks.expiresAt = 0;
+    const burstDamage = Math.max(0, Number(claw.burstDamage) || 0);
+    if (burstDamage > 0) {
+      this.takeDamage(burstDamage, source, match);
+      match.spawnFloatingTextKey(this.x + 10, this.y - 20, "猫爪爆发", {}, "#ffd0e4");
+      match.spawnFloatingText(this.x + 8, this.y - 8, `-${Math.round(burstDamage)}`, "#ff8fbd");
+      match.spawnBurst(this.x, this.y, "#ff8fbd", 12);
+    }
+    return true;
+  }
+
   update(dt) {
     if (!this.alive) {
       return;
@@ -1073,6 +1146,9 @@ class Ship {
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
 
+    const catPawMeta = this.characterId === "shamisen" && this.hasEffect("catPawUntil")
+      ? this.character.subSkill
+      : null;
     match.projectiles.push(
       new Projectile({
         team: this.team,
@@ -1084,7 +1160,15 @@ class Ship {
         damage,
         speed: 240,
         hitRadius: 8,
-        color: this.team.projectileColor,
+        color: catPawMeta ? (this.team.seat === "A" ? "#8fe8ff" : "#ff9eb8") : this.team.projectileColor,
+        visualKind: catPawMeta ? "cat_paw" : "shell",
+        claw: catPawMeta
+          ? {
+              triggerHits: catPawMeta.triggerHits || 5,
+              burstDamage: catPawMeta.burstDamage || 0,
+              markDuration: catPawMeta.markDuration || 8,
+            }
+          : null,
       }),
     );
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
@@ -1155,6 +1239,17 @@ class Ship {
       braking: this.isEmergencyBraking(),
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
+      catPawVolley: this.hasEffect("catPawUntil"),
+      clawMarks: (() => {
+        const marks = this.activeClawMarks();
+        return {
+          sourceSeat: marks.sourceSeat,
+          stacks: marks.stacks,
+          required: marks.required,
+          expiresIn: Math.max(0, marks.expiresAt - this.team.match.elapsed),
+          color: marks.color,
+        };
+      })(),
       nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
       buffs: this.team.listShipBuffs(this),
       route: this.route
@@ -1878,6 +1973,9 @@ class Team {
     if (ship.hasEffect("bladeQueenUntil")) {
       list.push("刀锋女王");
     }
+    if (ship.hasEffect("catPawUntil")) {
+      list.push("猫爪乱舞");
+    }
     if (ship.isEmergencyBraking()) {
       list.push("急刹");
     }
@@ -2361,6 +2459,9 @@ class Team {
       }
     } else if (ship.characterId === "asakura") {
       this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
+      ok = true;
+    } else if (ship.characterId === "shamisen") {
+      this.setShipEffect(ship, "catPawUntil", meta.duration || 12);
       ok = true;
     }
 

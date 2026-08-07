@@ -601,6 +601,7 @@ export const EN_MESSAGES = {
     "加速": "Speed Up",
     "赞助": "Sponsor",
     "净化": "Cleanse",
+    "猫爪爆发": "Claw Burst",
     "钞能力 x{count}": "Money Power x{count}",
     "宇宙人": "Alien",
     "超能力者": "Esper",

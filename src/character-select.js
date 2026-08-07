@@ -43,7 +43,7 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 // 立绘是否真实存在（CHARACTER_THEMES 里 tsuruya/asakura 暂无图）
 const HAS_PORTRAIT = new Set([
-  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura",
+  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura", "shamisen",
 ]);
 
 // 把单页内容渲染为 HTML 字符串（base 与 flipper 共享同一份模板）
@@ -624,7 +624,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     updateLaunch();
   }
 
-  // 随机编队：从 7 人里抽 3 名不重复，填满 主/副一/副二，书页翻到主舰；可反复点重抽
+  // 随机编队：从角色池抽 3 名不重复，填满 主/副一/副二，书页翻到主舰；可反复点重抽
   function randomFill() {
     finishFlip();
     const pool = CHARACTER_ORDER.slice();

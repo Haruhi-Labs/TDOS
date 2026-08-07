@@ -1,0 +1,20 @@
+{
+  "input": "assets/generated-art/raw/shamisen_blue.key.png",
+  "output": "public/assets/portraits/blue/shamisen.webp",
+  "original_size": [
+    1086,
+    1448
+  ],
+  "removed_background_pixels": 1125692,
+  "removed_key_spill_pixels": 8347,
+  "trimmed_alpha": false,
+  "final_size": [
+    1200,
+    1600
+  ],
+  "format": "webp",
+  "alpha_range": [
+    0,
+    255
+  ]
+}

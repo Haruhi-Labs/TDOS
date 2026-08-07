@@ -8,6 +8,7 @@ export const CHARACTER_ORDER = [
   "kyon",
   "tsuruya",
   "asakura",
+  "shamisen",
 ];
 
 export const CHARACTER_DEFS = {
@@ -163,6 +164,28 @@ export const CHARACTER_DEFS = {
       description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。",
     },
   },
+  shamisen: {
+    id: "shamisen",
+    name: "三味线",
+    shortName: "三味线",
+    title: "连击型灵巧舰",
+    flavor: "会说话的三花猫，悄无声息地留下抓痕",
+    stats: {
+      hp: 720, energy: 150, speed: 39, turnRate: 0.55, accel: 1.28,
+      energyRegen: 13.6, moveDrain: 7.4, vision: 174, range: 500,
+      damage: 18, fireRate: 0.7, radius: 7 * SHIP_HULL_SIZE_SCALE,
+    },
+    flagshipSkill: {
+      id: "shamisen_flagship_pending", name: "主舰能力待定", type: "passive",
+      description: "主舰能力仍在设计中，当前不会产生额外效果。",
+    },
+    subSkill: {
+      id: "cat_paw_barrage", name: "猫爪乱舞", type: "active", cooldown: 22,
+      cost: 52, duration: 12, target: "none", triggerHits: 5,
+      burstDamage: 80, markDuration: 8,
+      description: "12秒内自身子弹变为猫爪。命中同一敌舰5次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。",
+    },
+  },
 };
 
 export const DEFAULT_TEAM_LOADOUT = Object.freeze({
@@ -177,9 +200,9 @@ export const DEFAULT_AI_LOADOUT = Object.freeze({
   sub2: "yuki",
 });
 
-// 鹤屋旗舰偏纯支援，仍不进入随机 AI 主舰池；长门的新雷达被动已经有专门的
-// 误差情报适配，可以正常作为 AI 主舰参与标准对战。
-const AI_MAIN_EXCLUDE = new Set(["tsuruya"]);
+// 鹤屋旗舰偏纯支援，仍不进入随机 AI 主舰池；三味线主舰能力尚未设计，也暂不进入。
+// 长门的新雷达被动已经有专门的误差情报适配，可以正常作为 AI 主舰参与标准对战。
+const AI_MAIN_EXCLUDE = new Set(["tsuruya", "shamisen"]);
 
 export function randomAiLoadout() {
   const pool = [...CHARACTER_ORDER];

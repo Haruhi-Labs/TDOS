@@ -2,6 +2,7 @@ import {
   CHARACTER_ORDER,
   MatchSimulation,
   TICK_DT,
+  __resetEntityIds,
 } from "../shared/game-core.js";
 
 const MATCH_LIMIT_SECONDS = 240;
@@ -23,11 +24,14 @@ function seededRandom(seed) {
 }
 
 function loadoutAt(index) {
-  const size = CHARACTER_ORDER.length;
+  // 三味线的主舰能力仍在设计中，综合 AI 回归只让它作为分舰参战，避免无技能主舰污染结论。
+  const mainOrder = CHARACTER_ORDER.filter((characterId) => characterId !== "shamisen");
+  const main = mainOrder[index % mainOrder.length];
+  const subOrder = CHARACTER_ORDER.filter((characterId) => characterId !== main);
   return {
-    main: CHARACTER_ORDER[index % size],
-    sub1: CHARACTER_ORDER[(index + 1) % size],
-    sub2: CHARACTER_ORDER[(index + 2) % size],
+    main,
+    sub1: subOrder[(index + 1) % subOrder.length],
+    sub2: subOrder[(index + 2) % subOrder.length],
   };
 }
 
@@ -63,6 +67,7 @@ function mergeCounters(target, source) {
 }
 
 function runBattle({ index, loadoutA, loadoutB }) {
+  __resetEntityIds(1);
   const counters = {
     flagshipAttempts: {},
     flagshipCasts: {},

@@ -1184,6 +1184,8 @@ export class BotController {
         ? 0.28
         : ship.characterId === "asakura"
           ? 0.24
+          : ship.characterId === "shamisen"
+            ? 0.22
           : 0.12;
     return vitality.value + visionEdge + characterBias;
   }
@@ -2255,7 +2257,7 @@ export class BotController {
         plan.roles[ship.key] = "intel";
       } else if (retreatShip && ship.id === retreatShip.id) {
         plan.roles[ship.key] = "rear";
-      } else if (ship.characterId === "future1096" || ship.characterId === "asakura") {
+      } else if (["future1096", "asakura", "shamisen"].includes(ship.characterId)) {
         plan.roles[ship.key] = "flank";
       } else if (this.shipVitality(ship).healthy && ((context?.pressureDrive || 0) > 0.42 || (context?.isolatedTargetScore || 0) > 0.34)) {
         plan.roles[ship.key] = "front";
@@ -2603,7 +2605,7 @@ export class BotController {
   }
 
   shouldDelaySubBuff(ship, meta) {
-    if (!ship || !["haruhi", "koizumi", "kyon", "asakura"].includes(ship.characterId)) {
+    if (!ship || !["haruhi", "koizumi", "kyon", "asakura", "shamisen"].includes(ship.characterId)) {
       return false;
     }
     // 古泉的位移即时生效，但四倍下一击仍会被净化；给其一个完成下一次射击的短窗口。
@@ -2755,6 +2757,14 @@ export class BotController {
         && (estimate.visible || estimate.age <= 2.4)
         && dist <= ship.effectiveRange() * 0.95
         && (((context?.skillAggression) || 0) > 0.14 || context?.killWindow || context?.combatUrgency > 0.5),
+      );
+    }
+    if (ship.characterId === "shamisen") {
+      return Boolean(
+        estimate
+        && (estimate.visible || estimate.age <= 2.2)
+        && dist <= ship.effectiveRange() * 1.12
+        && (((context?.skillAggression) || 0) > 0.12 || context?.killWindow || this.energyProfile(ship).high),
       );
     }
     return true;

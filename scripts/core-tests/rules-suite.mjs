@@ -1138,6 +1138,88 @@ function asakuraBladeQueenCheck() {
   assert(beforeFleetHp - enemyFleetHp() > enemyMain.maxHp * 0.015, "朝仓分舰技能未对接触敌舰造成持续伤害");
 }
 
+function shamisenCatPawCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "shamisen", sub2: "koizumi" },
+      B: { main: "kyon", sub1: "tsuruya", sub2: "yuki" },
+    },
+  });
+  const teamA = sim.teamA;
+  const teamB = sim.teamB;
+  teamA.split(1);
+  teamB.split(1);
+  teamB.split(2);
+  const shamisen = teamA.ships.sub1;
+  const target = teamB.ships.main;
+
+  shamisen.x = 560;
+  shamisen.y = 720;
+  shamisen.angle = 0;
+  shamisen.command = { x: shamisen.x, y: shamisen.y };
+  shamisen.route = null;
+  target.x = 700;
+  target.y = 720;
+  target.angle = Math.PI;
+  target.command = { x: target.x, y: target.y };
+  target.route = null;
+  for (const ship of [teamB.ships.sub1, teamB.ships.sub2]) {
+    ship.x = 1200;
+    ship.y = ship.key === "sub1" ? 1200 : 1240;
+    ship.command = { x: ship.x, y: ship.y };
+    ship.route = null;
+  }
+  teamA.visibleEnemyIds = new Set([target.id]);
+
+  const cast = teamA.castSubSkill("sub1");
+  assert(cast, "三味线分舰技能释放失败");
+  assert(shamisen.hasEffect("catPawUntil"), "三味线分舰技能没有进入猫爪弹状态");
+  assert(teamA.cooldowns.sub1 === CHARACTER_DEFS.shamisen.subSkill.cooldown, "三味线技能冷却未引用角色定义");
+
+  const hpBefore = target.hp;
+  const shotDamage = shamisen.effectiveDamage();
+  for (let hit = 1; hit <= 5; hit += 1) {
+    shamisen.cooldown = 0;
+    sim.projectiles = [];
+    shamisen.tryAttack(sim, teamB);
+    assert(sim.projectiles.length === 1, `三味线第${hit}发猫爪弹未生成`);
+    const projectile = sim.projectiles[0];
+    assert(projectile.visualKind === "cat_paw", "技能期间子弹没有切换为猫爪外观");
+    projectile.x = target.x;
+    projectile.y = target.y;
+    projectile.targetX = target.x;
+    projectile.targetY = target.y;
+    projectile.resolveImpact(sim);
+    projectile.alive = false;
+
+    if (hit < 5) {
+      assert(target.clawMarks.stacks === hit, `第${hit}次命中后的抓痕层数异常`);
+      assert(target.serialize().clawMarks.stacks === hit, "抓痕层数未进入权威快照");
+    }
+  }
+
+  const expectedLoss = shotDamage * 5 + CHARACTER_DEFS.shamisen.subSkill.burstDamage;
+  assert(Math.abs((hpBefore - target.hp) - expectedLoss) < 1e-7, "三味线五层抓痕没有结算预期爆发伤害");
+  assert(target.clawMarks.stacks === 0, "三味线五层爆发后没有清空抓痕计数");
+
+  shamisen.cooldown = 0;
+  sim.projectiles = [];
+  shamisen.tryAttack(sim, teamB);
+  const expiringProjectile = sim.projectiles[0];
+  expiringProjectile.x = target.x;
+  expiringProjectile.y = target.y;
+  expiringProjectile.resolveImpact(sim);
+  assert(target.clawMarks.stacks === 1, "三味线爆发后的新抓痕无法重新计数");
+  sim.elapsed += CHARACTER_DEFS.shamisen.subSkill.markDuration + 0.01;
+  assert(target.activeClawMarks().stacks === 0, "三味线抓痕超过持续时间后没有消退");
+
+  sim.tick += 1;
+  teamA.clearActiveSkillBuffsForShip(shamisen);
+  assert(!shamisen.hasEffect("catPawUntil"), "朝仓净化逻辑无法移除三味线猫爪弹增益");
+}
+
 export function runRulesSuite() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
@@ -1162,4 +1244,5 @@ export function runRulesSuite() {
   asakuraFlagshipCheck();
   asakuraSimultaneousSkillPurgeCheck();
   asakuraBladeQueenCheck();
+  shamisenCatPawCheck();
 }

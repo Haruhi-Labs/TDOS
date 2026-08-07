@@ -1,0 +1,27 @@
+{
+  "batch": "shamisen_portraits",
+  "assets": [
+    {
+      "id": "shamisen_portrait_blue",
+      "source_path": "assets/generated-art/raw/shamisen_blue.key.png",
+      "raw_path": "assets/generated-art/raw/shamisen_blue.key.png",
+      "target_path": "public/assets/portraits/blue/shamisen.webp",
+      "commands": [
+        "node scripts/artasset.mjs process assets/generated-art/raw/shamisen_blue.key.png public/assets/portraits/blue/shamisen.webp --remove-bg-color '#ff00ff' --bg-threshold 110 --remove-key-spill 2 --size 1200x1600 --fit contain --format webp --webp-quality 92"
+      ],
+      "status": "accepted",
+      "notes": "深海军蓝披肩版本；透明边缘已在实际界面同系深色底上合成检查。"
+    },
+    {
+      "id": "shamisen_portrait_red",
+      "source_path": "assets/generated-art/raw/shamisen_red.key.png",
+      "raw_path": "assets/generated-art/raw/shamisen_red.key.png",
+      "target_path": "public/assets/portraits/red/shamisen.webp",
+      "commands": [
+        "node scripts/artasset.mjs process assets/generated-art/raw/shamisen_red.key.png public/assets/portraits/red/shamisen.webp --remove-bg-color '#ff00ff' --bg-threshold 110 --remove-key-spill 2 --size 1200x1600 --fit contain --format webp --webp-quality 92"
+      ],
+      "status": "accepted",
+      "notes": "朱红披肩版本；角色姿态、毛色与构图同蓝方保持一致。"
+    }
+  ]
+}

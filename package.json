@@ -14,6 +14,7 @@
     "test:core:ai": "node scripts/verify-core.mjs ai",
     "test:core:tutorial": "node scripts/verify-core.mjs tutorial",
     "test:ai:simulation": "node scripts/simulate-ai-battles.mjs",
+    "test:ai:shamisen": "node scripts/simulate-shamisen-balance.mjs",
     "test:network": "node scripts/verify-network-patch.mjs",
     "test:online:state": "node scripts/verify-online-state-sync.mjs",
     "test:online:components": "node scripts/verify-online-components.mjs",
