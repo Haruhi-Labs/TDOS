@@ -62,7 +62,7 @@ npm run test:ai:simulation # 14 组固定种子双 AI 模拟对战
 
 - **Vite 单页应用**:单一 `index.html` + History 路由(`src/router.js`),干净无 `.html` 后缀的 URL。每个路由是一个可挂载模块(`mount(root)` → 返回 `unmount()`),切换路由时统一停渲染循环 / 断 WebSocket / 移除监听。
 - **规则内核(单一事实来源)**:`shared/game-core.js` 保留稳定入口，角色、规则、推进能量、数学工具和 AI 分别位于 `shared/game/`。单人模式在浏览器本地运行这套权威模拟，多人模式在服务端运行同一套模拟；在线客户端只发送标准动作并显示权威快照，不维护第二份战斗规则。
-- **统一动作与时钟**:`shared/protocol/match-actions.js` 定义单人/多人共用动作，`src/battle/action-transport.js` 只区分本地或远程传输；单人和服务端共用固定 30Hz 逻辑时钟，服务端以 15Hz 下发快照并由客户端插值显示。
+- **统一动作、时钟与显示插值**:`shared/protocol/match-actions.js` 定义单人/多人共用动作，`src/battle/action-transport.js` 只区分本地或远程传输；单人和服务端共用固定 30Hz 逻辑时钟，单人逻辑帧与多人 15Hz 快照都通过 `src/battle/state-interpolation.js` 生成平滑显示状态，且从不写回权威模拟。
 - **规则版本保护**:`shared/protocol/ruleset-version.js` 在客户端与服务端之间协商规则版本。显式版本冲突会阻止进入对局；未声明版本的旧端暂时走兼容模式。
 - **联机服务端**:`server/server.js`(基于 `ws`)只负责编排连接和消息；房间注册、生命周期、输入队列、比赛循环与快照流已拆到 `server/` 下的独立模块。
 - **渲染**:Canvas 2D,按设备像素绘制,矢量线条像素级清晰。
@@ -80,7 +80,7 @@ src/
   solo.js             单人对战
   online.js           在线对战页面编排（快照显示状态在 online/state-sync.js）
   character-select.js 翻书式角色选择（立绘在 character-select/portraits.js）
-  battle/             单人/联机共用相机、输入、HUD 与渲染（雷达、视野波等效果位于 render/）
+  battle/             单人/联机共用相机、输入、HUD、显示插值与渲染（专项效果位于 render/）
   i18n/               日英词典与角色文本
   tutorial.js         新手引导教程
   guide.js / credits.js / profile.js …

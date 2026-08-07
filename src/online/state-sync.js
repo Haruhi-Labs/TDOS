@@ -1,4 +1,9 @@
 import { clamp, distance, lerp, shortestAngleDelta } from "../../shared/game/math.js";
+import {
+  advanceProjectile,
+  cloneRoute,
+  interpolateBattleState,
+} from "../battle/state-interpolation.js";
 
 export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs }) {
   const LOGICAL = worldSize;
@@ -23,26 +28,6 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     return ship.route || null;
   }
   
-  function clonePoint(point) {
-    if (!point) {
-      return { x: 0, y: 0 };
-    }
-    return { x: point.x, y: point.y };
-  }
-  
-  function cloneRoute(route) {
-    if (!route) {
-      return null;
-    }
-    return {
-      anchorToMain: route.anchorToMain !== false,
-      p0: clonePoint(route.p0),
-      p1: clonePoint(route.p1),
-      p2: clonePoint(route.p2),
-      t: Number(route.t) || 0,
-    };
-  }
-  
   function getDisplayRouteForShip(team, ship) {
     const route = getRouteForShip(ship);
     if (!route) {
@@ -58,217 +43,6 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
       y: anchor.y,
     };
     return output;
-  }
-  
-  function interpolateRoute(a, b, t) {
-    if (!a && !b) {
-      return null;
-    }
-    if (!a && b) {
-      return t < 0.35 ? null : cloneRoute(b);
-    }
-    if (a && !b) {
-      return t > 0.65 ? null : cloneRoute(a);
-    }
-    return {
-      anchorToMain: b.anchorToMain !== false,
-      p0: {
-        x: lerp(a.p0.x, b.p0.x, t),
-        y: lerp(a.p0.y, b.p0.y, t),
-      },
-      p1: {
-        x: lerp(a.p1.x, b.p1.x, t),
-        y: lerp(a.p1.y, b.p1.y, t),
-      },
-      p2: {
-        x: lerp(a.p2.x, b.p2.x, t),
-        y: lerp(a.p2.y, b.p2.y, t),
-      },
-      t: lerp(Number(a.t) || 0, Number(b.t) || 0, t),
-    };
-  }
-  
-  function interpolateShip(a, b, t) {
-    if (!a || !b) {
-      return b || a || null;
-    }
-  
-    const bothAlive = a.alive && b.alive;
-    if (!bothAlive) {
-      return t < 0.5 ? a : b;
-    }
-  
-    return {
-      ...b,
-      x: lerp(a.x, b.x, t),
-      y: lerp(a.y, b.y, t),
-      angle: a.angle + shortestAngleDelta(a.angle, b.angle) * t,
-      speed: lerp(a.speed, b.speed, t),
-      hp: lerp(a.hp, b.hp, t),
-      throttle: lerp(a.throttle, b.throttle, t),
-      route: interpolateRoute(a.route, b.route, t),
-    };
-  }
-  
-  // 额外舰船与编制舰使用同一套舰船插值，不能按普通单位直接跳快照。
-  function interpolateShipList(previousList, nextList, t) {
-    const prev = Array.isArray(previousList) ? previousList : [];
-    const next = Array.isArray(nextList) ? nextList : [];
-    const prevMap = new Map(prev.map((ship) => [ship.id, ship]));
-    return next.map((ship) => {
-      const previous = prevMap.get(ship.id);
-      return previous ? interpolateShip(previous, ship, t) : ship;
-    });
-  }
-  
-  function interpolateUnitList(previousList, nextList, t) {
-    const prev = Array.isArray(previousList) ? previousList : [];
-    const next = Array.isArray(nextList) ? nextList : [];
-    const prevMap = new Map(prev.map((item) => [item.id, item]));
-    const result = [];
-  
-    for (const current of next) {
-      const old = prevMap.get(current.id);
-      if (old && old.alive && current.alive) {
-        const oldAngle = Number.isFinite(old.angle) ? old.angle : 0;
-        const currentAngle = Number.isFinite(current.angle) ? current.angle : oldAngle;
-        result.push({
-          ...current,
-          x: lerp(old.x, current.x, t),
-          y: lerp(old.y, current.y, t),
-          angle: oldAngle + shortestAngleDelta(oldAngle, currentAngle) * t,
-          hp: Number.isFinite(old.hp) && Number.isFinite(current.hp) ? lerp(old.hp, current.hp, t) : current.hp,
-          life: Number.isFinite(old.life) && Number.isFinite(current.life) ? lerp(old.life, current.life, t) : current.life,
-        });
-      } else {
-        result.push(current);
-      }
-    }
-    return result;
-  }
-  
-  function interpolateBeamList(previousList, nextList, t) {
-    const prev = Array.isArray(previousList) ? previousList : [];
-    const next = Array.isArray(nextList) ? nextList : [];
-    const prevMap = new Map(prev.map((item) => [item.id, item]));
-    const result = [];
-  
-    for (const current of next) {
-      const old = prevMap.get(current.id);
-      if (old) {
-        result.push({
-          ...current,
-          x1: lerp(old.x1, current.x1, t),
-          y1: lerp(old.y1, current.y1, t),
-          x2: lerp(old.x2, current.x2, t),
-          y2: lerp(old.y2, current.y2, t),
-          progress: Number.isFinite(old.progress) && Number.isFinite(current.progress)
-            ? lerp(old.progress, current.progress, t)
-            : current.progress,
-          life: Number.isFinite(old.life) && Number.isFinite(current.life) ? lerp(old.life, current.life, t) : current.life,
-          maxLife: Number.isFinite(old.maxLife) && Number.isFinite(current.maxLife)
-            ? lerp(old.maxLife, current.maxLife, t)
-            : current.maxLife,
-        });
-      } else {
-        result.push(current);
-      }
-    }
-    return result;
-  }
-  
-  // 子弹是「恒速直线飞向 target」的确定性弹道,可做精确航位推算
-  function advanceProjectile(projectile, dt) {
-    const speed = Number(projectile.speed) || 0;
-    const dx = projectile.targetX - projectile.x;
-    const dy = projectile.targetY - projectile.y;
-    const remaining = Math.hypot(dx, dy);
-    if (speed <= 0 || remaining < 1e-3) {
-      return projectile;
-    }
-    const step = clamp(speed * dt, -remaining * 4, remaining); // 向前不越过目标;向后(回退)限幅
-    return {
-      ...projectile,
-      x: projectile.x + (dx / remaining) * step,
-      y: projectile.y + (dy / remaining) * step,
-    };
-  }
-  
-  function interpolateProjectileList(previousList, nextList, t, spanSeconds) {
-    const prev = Array.isArray(previousList) ? previousList : [];
-    const next = Array.isArray(nextList) ? nextList : [];
-    const prevMap = new Map(prev.map((item) => [item.id, item]));
-    const result = [];
-  
-    for (const current of next) {
-      const old = prevMap.get(current.id);
-      if (old && old.alive && current.alive) {
-        result.push({
-          ...current,
-          x: lerp(old.x, current.x, t),
-          y: lerp(old.y, current.y, t),
-        });
-      } else {
-        // 两帧之间新生的子弹:沿弹道回退 (1-t)*span,让它从炮口平滑飞出,
-        // 而不是整个插值区间冻结在快照位置(连发时表现为颗颗子弹出生即卡顿)
-        result.push(advanceProjectile(current, -(1 - t) * (spanSeconds || 0)));
-      }
-    }
-    return result;
-  }
-  
-  function interpolateVisualList(previousList, nextList, t) {
-    const prev = Array.isArray(previousList) ? previousList : [];
-    const next = Array.isArray(nextList) ? nextList : [];
-    const prevMap = new Map(prev.map((item) => [item.id, item]));
-    const result = [];
-  
-    for (const current of next) {
-      const old = prevMap.get(current.id);
-      if (old) {
-        result.push({
-          ...current,
-          x: lerp(old.x, current.x, t),
-          y: lerp(old.y, current.y, t),
-          radius: Number.isFinite(old.radius) && Number.isFinite(current.radius) ? lerp(old.radius, current.radius, t) : current.radius,
-          life: Number.isFinite(old.life) && Number.isFinite(current.life) ? lerp(old.life, current.life, t) : current.life,
-        });
-      } else {
-        result.push(current);
-      }
-    }
-    return result;
-  }
-  
-  function interpolateTeam(a, b, t) {
-    if (!a || !b) {
-      return b || a || null;
-    }
-  
-    return {
-      ...b,
-      energy: lerp(a.energy, b.energy, t),
-      hullRatio: lerp(a.hullRatio, b.hullRatio, t),
-      autoScout: {
-        enabled: Boolean(b.autoScout?.enabled),
-        zoneId: Number(b.autoScout?.zoneId) || 5,
-      },
-      cooldowns: {
-        scout: lerp(a.cooldowns?.scout || 0, b.cooldowns?.scout || 0, t),
-        flagship: lerp(a.cooldowns?.flagship || 0, b.cooldowns?.flagship || 0, t),
-        sub1: lerp(a.cooldowns?.sub1 || 0, b.cooldowns?.sub1 || 0, t),
-        sub2: lerp(a.cooldowns?.sub2 || 0, b.cooldowns?.sub2 || 0, t),
-      },
-      ships: {
-        main: interpolateShip(a.ships.main, b.ships.main, t),
-        sub1: interpolateShip(a.ships.sub1, b.ships.sub1, t),
-        sub2: interpolateShip(a.ships.sub2, b.ships.sub2, t),
-      },
-      extraShips: interpolateShipList(a.extraShips, b.extraShips, t),
-      scouts: interpolateUnitList(a.scouts, b.scouts, t),
-      wingmen: interpolateUnitList(a.wingmen, b.wingmen, t),
-      beams: interpolateBeamList(a.beams, b.beams, t),
-    };
   }
   
   function extrapolateShip(ship, dt) {
@@ -432,24 +206,9 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
   }
   
   function interpolateSnapshotState(previousSnapshot, nextSnapshot, t) {
-    return {
-      ...nextSnapshot.state,
-      elapsed: lerp(previousSnapshot.state.elapsed, nextSnapshot.state.elapsed, t),
-      phase: nextSnapshot.state.phase,
-      winnerSeat: nextSnapshot.state.winnerSeat,
-      projectiles: interpolateProjectileList(
-        previousSnapshot.state.projectiles,
-        nextSnapshot.state.projectiles,
-        t,
-        Math.max(1, nextSnapshot.tick - previousSnapshot.tick) / app.serverTickRate,
-      ),
-      bursts: interpolateVisualList(previousSnapshot.state.bursts, nextSnapshot.state.bursts, t),
-      floatingTexts: interpolateVisualList(previousSnapshot.state.floatingTexts, nextSnapshot.state.floatingTexts, t),
-      teams: {
-        A: interpolateTeam(previousSnapshot.state.teams.A, nextSnapshot.state.teams.A, t),
-        B: interpolateTeam(previousSnapshot.state.teams.B, nextSnapshot.state.teams.B, t),
-      },
-    };
+    return interpolateBattleState(previousSnapshot.state, nextSnapshot.state, t, {
+      spanSeconds: Math.max(1, nextSnapshot.tick - previousSnapshot.tick) / app.serverTickRate,
+    });
   }
   
   function getRenderState() {

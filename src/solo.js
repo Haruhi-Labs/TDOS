@@ -8,6 +8,7 @@ import {
   randomAiLoadout,
   EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
+  TICK_DT,
   clamp,
   cloneLoadout,
   distance,
@@ -74,6 +75,7 @@ import {
 import { battleViewTemplate } from "./battle/template.js";
 import { createLocalBattleActionTransport } from "./battle/action-transport.js";
 import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
+import { interpolateBattleState } from "./battle/state-interpolation.js";
 import {
   characterShortName,
   shipCharacterName,
@@ -168,6 +170,9 @@ function initApp() {
   app = {
   sim: null,
   state: null,
+  renderPreviousState: null,
+  renderCurrentState: null,
+  renderState: null,
   campaign: "standard",
   playerLoadout: readStoredLoadout(),
   enemyLoadout: cloneLoadout(DEFAULT_AI_LOADOUT),
@@ -406,6 +411,9 @@ function resetMatch(logMessage = true) {
   }
   app.sim = createSimulation();
   app.state = app.sim.serializeState();
+  app.renderPreviousState = app.state;
+  app.renderCurrentState = app.state;
+  app.renderState = app.state;
   app.selectedShipKey = "main";
   app.selectedZoneId = 5;
   app.drag = null;
@@ -818,14 +826,14 @@ function drawTutorialIllustration(kind) {
   ctx.restore();
 }
 
-function render() {
-  if (!app.state) {
+function render(state = app.state) {
+  if (!state) {
     return;
   }
 
   const tutorialIllustration = tutorial.isActive() ? tutorial.getIllustration() : null;
   if (app.mobileMode && tutorialIllustration === "moveTarget") {
-    const main = ownTeamState()?.ships?.main;
+    const main = state.teams?.A?.ships?.main;
     if (main?.alive) {
       // 第一阶段同时框住起始舰队与目标点，避免移动端自动跟随把唯一合法落点推到视野外。
       camera.centerCameraOn(
@@ -852,11 +860,12 @@ function render() {
   ); // 世界/相机空间
 
   // 战场本体全部交给共享渲染层(src/battle/render.js),单人只负责喂本地仿真状态
-  const own = ownTeamState();
+  const own = state.teams?.A || null;
+  const enemy = state.teams?.B || null;
   const frame = {
-    state: app.state,
+    state,
     ownTeam: own,
-    enemyTeam: enemyTeamState(),
+    enemyTeam: enemy,
     spectating: false,
     radar: app.sim ? app.sim.serializeRadarForSeat("A") : null,
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
@@ -875,7 +884,7 @@ function render() {
   ctx.restore();
 
   // 屏幕空间:角色立绘、移动端小地图、暂停遮罩
-  const activeShip = selectedShipState();
+  const activeShip = own?.ships?.[app.selectedShipKey] || null;
   if (activeShip && activeShip.alive) {
     drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, app.playerColor);
   }
@@ -894,14 +903,41 @@ function tick(timestamp) {
     app.sim &&
     (!app.state || app.state.phase !== "finished")
   );
-  app.logicClock.advance(timestamp, (stepSeconds) => app.sim.update(stepSeconds), {
+  const stepCount = app.logicClock.advance(timestamp, (stepSeconds) => {
+    app.renderPreviousState = app.renderCurrentState || app.state || app.sim.serializeState();
+    app.sim.update(stepSeconds);
+    app.renderCurrentState = app.sim.serializeState();
+  }, {
     active: simulationActive,
   });
-  app.state = app.sim ? app.sim.serializeState() : null;
+  if (app.sim) {
+    app.state = stepCount > 0 ? app.renderCurrentState : app.sim.serializeState();
+    if (stepCount === 0) {
+      // 输入动作会在两个逻辑 tick 之间立即改变仿真；同步离散字段，位置仍由前一权威帧平滑过渡。
+      app.renderCurrentState = app.state;
+    }
+  } else {
+    app.state = null;
+  }
+
+  const shouldInterpolate = Boolean(
+    simulationActive &&
+    app.state?.phase !== "finished" &&
+    app.renderPreviousState &&
+    app.renderCurrentState
+  );
+  app.renderState = shouldInterpolate
+    ? interpolateBattleState(
+      app.renderPreviousState,
+      app.renderCurrentState,
+      app.logicClock.getAccumulatorSeconds() / TICK_DT,
+      { spanSeconds: TICK_DT },
+    )
+    : app.state;
 
   tutorial.update(app.state);
   updateUi();
-  render();
+  render(app.renderState);
 
   rafId = requestAnimationFrame(tick);
 }
@@ -1529,7 +1565,7 @@ export function mount(root) {
   camera = createBattleCamera({
     canvas,
     isMobile: () => app.mobileMode,
-    getTrackedShip: () => selectedShipState(),
+    getTrackedShip: () => app.renderState?.teams?.A?.ships?.[app.selectedShipKey] || selectedShipState(),
     onZoomChanged: () => updateUi(),
   });
   ac = new AbortController();

@@ -18,15 +18,16 @@
 项目只维护一套战斗领域规则，但单人和多人把权威模拟放在不同进程：
 
 ```text
-单人输入 ─→ 标准动作 ─→ 本地传输适配器 ─→ MatchSimulation（浏览器权威）
+单人输入 ─→ 标准动作 ─→ 本地传输适配器 ─→ MatchSimulation（浏览器权威）─→ 30Hz 逻辑帧 ─┐
 多人输入 ─→ 标准动作 ─→ WebSocket ─→ 输入队列 ─→ MatchSimulation（服务端权威）
                                                     │
-                                                    └─ 15Hz 快照 ─→ 插值显示
+                                                    └─ 15Hz 快照 ─────────────┴─→ 共享插值显示
 ```
 
 - 角色数值、技能、AI、视野、碰撞、推进和能量规则只定义在 `shared/game/` 与 `shared/game-core.js`。
 - 两条执行链都调用 `shared/game/action-dispatcher.js`，动作名称与载荷来自 `shared/protocol/match-actions.js`。
 - 单人和服务端共用 `shared/game/fixed-step-clock.js`，以固定 30Hz 推进逻辑；联机客户端不自行推进权威战斗状态。
+- `src/battle/state-interpolation.js` 只在相邻权威状态之间生成显示副本；单人教程、技能、AI 与联机输入确认均不读取或写回这个显示副本。
 - `scripts/verify-authority-parity.mjs` 会把同一组动作分别经本地直连和服务端输入队列回放，并逐 tick 比较序列化状态。
 
 因此，规则或角色行为通常只修改一次；需要分别维护的是本地/远程传输和联机显示策略，而不是两套战斗权威。
@@ -66,13 +67,14 @@
 
 - `src/battle/camera.js`、`input.js`、`throttle.js`、`hud.js`、`template.js`：分别负责相机、命中与航线输入、推进控件、战斗 HUD 和公共 DOM 骨架。
 - `src/battle/render.js`：单人、联机和观战共用的 Canvas 战场渲染入口。
+- `src/battle/state-interpolation.js`：单人逻辑帧与联机快照共用的纯显示插值，统一处理舰船、侦察机、僚机、弹体、光束和视觉效果。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
 - `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；双方都能看到波纹，但只有施放方获得波带覆盖区域的真实视野。
 - `src/solo.js`、`src/online.js`：只编排各模式生命周期、输入和数据来源，不复制公共战场表现。
 
 ### 联机链路
 
-- `src/online/state-sync.js`：客户端快照插值、有限外推、本地航线覆盖和额外舰船同步；不读 DOM，也不管理 WebSocket。
+- `src/online/state-sync.js`：客户端快照时间轴采样、有限外推、本地航线覆盖和显示稳定；具体状态插值复用战斗界面的纯插值模块，不读 DOM，也不管理 WebSocket。
 - `src/online/snapshot-transport.js`：延迟与时钟估计、快照差量解码、确认、排序和历史队列。
 - `src/online/connection-target.js`：同源代理、直连和本地备用 WebSocket 地址策略。
 - `src/online/lobby-view.js`、`profile-controller.js`、`result-view.js`：大厅、玩家档案和结算界面职责。
@@ -108,7 +110,8 @@
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 朝仓视野波视觉 | `src/battle/render/vision-wave.js` | 视野波规则与单人/联机/观战回归 |
-| 联机画面抖动、插值和预测 | `src/online/state-sync.js` | `scripts/verify-online-state-sync.mjs` |
+| 单人/联机画面抖动与状态插值 | `src/battle/state-interpolation.js` | `src/solo.js`、`src/online/state-sync.js`、`scripts/verify-online-state-sync.mjs` |
+| 联机快照时间轴、外推和预测 | `src/online/state-sync.js` | `src/online/snapshot-transport.js`、`scripts/verify-online-state-sync.mjs` |
 | 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/action-dispatcher.js`、本地/远程传输测试 |
 | 规则版本与兼容门禁 | `shared/protocol/ruleset-version.js` | `src/online/snapshot-transport.js`、`server/server.js` |
 | 房间模型与席位 | `server/room-registry.js` | `scripts/verify-server-rooms.mjs` |
