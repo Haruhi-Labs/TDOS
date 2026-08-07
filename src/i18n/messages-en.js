@@ -412,6 +412,7 @@ export const EN_MESSAGES = {
     "三秒后开战": "Battle starts in three seconds",
     "准备开战": "Prepare for Battle",
     "观战结束": "Spectating ended",
+    "房间将在{seconds}秒后关闭": "Room closes in {seconds}s",
     "{seat}获胜": "{seat} wins",
     "战斗结束：{seat}获胜": "Battle ended: {seat} wins",
     "房间关闭": "Room closed",

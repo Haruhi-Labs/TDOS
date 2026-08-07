@@ -82,6 +82,7 @@ function roomRegistryCheck() {
   harness.registry.assignSpectatorToRoom(spectator, room);
   room.status = "running";
   room.match = { winnerSeat: null };
+  room.closesAt = 9999;
 
   assert.equal(room.createdAt, 1234, "房间创建时间应由房间模型统一保存");
   assert.match(room.id, /^\d{6}$/, "房间编号应保持六位数字协议");
@@ -98,6 +99,7 @@ function roomRegistryCheck() {
   assert.equal(memberPayload.room.code, room.code, "房间成员应继续收到私有口令");
   assert.equal(outsiderPayload.room.code, null, "非成员不得从房间状态获取私有口令");
   assert.deepEqual(memberPayload.room.players.map((row) => row.seat), ["A", "B"], "房间状态席位顺序应稳定");
+  assert.equal(memberPayload.room.closesAt, 9999, "房间状态应下发服务端权威关闭截止时间");
 
   room.visibility = "public";
   const lobby = harness.registry.buildLobbyPayload(5678);
@@ -163,7 +165,42 @@ function spectatorLifecycleCheck() {
   assert.equal(harness.rooms.has(room.id), true, "观战者离开不得关闭仍在运行的房间");
 }
 
+function finishedRoomForcedCloseCheck() {
+  const harness = createHarness();
+  const playerA = createPlayer("a", "玩家甲");
+  const playerB = createPlayer("b", "玩家乙");
+  const spectator = createPlayer("s", "观战者");
+  for (const player of [playerA, playerB, spectator]) {
+    harness.players.set(player.id, player);
+  }
+
+  const room = harness.registry.createRoomRecord("public", "pvp", 100);
+  harness.rooms.set(room.id, room);
+  harness.registry.assignPlayerToRoom(playerA, room, "A");
+  harness.registry.assignPlayerToRoom(playerB, room, "B");
+  harness.registry.assignSpectatorToRoom(spectator, room);
+  room.status = "finished";
+  room.finishedAt = 200;
+  room.closesAt = 10_200;
+  room.result = harness.registry.buildMatchResult(room, room.finishedAt);
+
+  harness.lifecycle.leaveRoom(playerB, "对手断开连接，房间已解散");
+  assert.equal(harness.rooms.has(room.id), true, "结算后一名玩家关闭浏览器时房间应保留到倒计时结束");
+  assert.equal(playerB.roomId, null, "断线玩家应立即清除房间状态");
+
+  harness.lifecycle.closeRoom(room.id, "对局结束，已返回大厅");
+  assert.equal(harness.rooms.has(room.id), false, "强制关闭后房间必须从房间列表移除");
+  assert.equal(playerA.roomId, null, "强制关闭应清理仍在线的参战玩家");
+  assert.equal(spectator.roomId, null, "强制关闭应清理仍在线的观战者");
+  assert.deepEqual(
+    harness.sent.map((entry) => entry.payload.reasonCode),
+    ["match_ended_draw", "match_ended_draw"],
+    "仍在线的房间成员应收到统一结算关闭通知",
+  );
+}
+
 roomRegistryCheck();
 roomLifecycleCheck();
 spectatorLifecycleCheck();
-console.log("服务端房间契约校验通过：房间模型、席位、生命周期和观战行为保持稳定。");
+finishedRoomForcedCloseCheck();
+console.log("服务端房间契约校验通过：房间模型、席位、生命周期、结算回收和观战行为保持稳定。");

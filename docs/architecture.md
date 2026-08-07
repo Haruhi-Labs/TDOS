@@ -86,7 +86,7 @@
 - `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。
 - `server/room-lifecycle.js`：创建、加入、离开、关闭房间的生命周期与容量门禁。
 - `server/input-queue.js`：客户端输入顺序、连续操作合并、队列上限和逐帧消费。
-- `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算和追帧保护。
+- `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算、结算后 10 秒强制回收房间和追帧保护。
 - `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
 
 ### 内容与素材

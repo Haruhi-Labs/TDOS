@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { createInputQueue } from "../server/input-queue.js";
+import { FINISHED_ROOM_CLOSE_DELAY_MS } from "../server/config.js";
 import { createMatchRuntime } from "../server/match-runtime.js";
 
 function createPlayer(id) {
@@ -68,6 +69,8 @@ function matchLifecycleCheck() {
   let snapshots = 0;
   let roomStates = 0;
   let lobbyBroadcasts = 0;
+  let roomCloses = 0;
+  let closeReason = null;
   let updates = 0;
   const room = {
     id: "room",
@@ -84,13 +87,19 @@ function matchLifecycleCheck() {
       },
     },
   };
+  const rooms = new Map([[room.id, room]]);
   const runtime = createMatchRuntime({
-    rooms: new Map([[room.id, room]]),
+    rooms,
     applyQueuedInputs() { inputApplications += 1; },
     sendSnapshot() { snapshots += 1; },
     sendRoomStateToMembers() { roomStates += 1; },
     broadcastLobby() { lobbyBroadcasts += 1; },
     buildMatchResult(target) { return { roomId: target.id, finishedAt: time }; },
+    closeRoom(roomId, reason) {
+      roomCloses += 1;
+      closeReason = reason;
+      rooms.delete(roomId);
+    },
     now: () => time,
     schedule() {},
     tickDt: 0.1,
@@ -113,6 +122,20 @@ function matchLifecycleCheck() {
   assert.equal(roomStates, 2, "倒计时结束与结算时均应广播房间状态");
   assert.equal(lobbyBroadcasts, 2, "房间关键状态变化均应刷新大厅");
   assert.equal(room.result.roomId, room.id, "结算数据应来自统一结果构建器");
+  assert.equal(
+    room.closesAt,
+    room.finishedAt + FINISHED_ROOM_CLOSE_DELAY_MS,
+    "结算房间应设置服务端权威的十秒关闭截止时间",
+  );
+
+  time = room.closesAt - 1;
+  runtime.tickRooms();
+  assert.equal(roomCloses, 0, "十秒倒计时结束前不得提前关闭结算房间");
+  time = room.closesAt;
+  runtime.tickRooms();
+  assert.equal(roomCloses, 1, "十秒倒计时到点后必须强制关闭结算房间");
+  assert.equal(closeReason, "对局结束，已返回大厅", "自动回收应使用统一结算关闭原因");
+  assert.equal(rooms.has(room.id), false, "自动回收后房间不得继续留在注册表中");
 }
 
 function catchupLimitCheck() {
@@ -133,6 +156,7 @@ function catchupLimitCheck() {
     sendRoomStateToMembers() {},
     broadcastLobby() {},
     buildMatchResult() { return null; },
+    closeRoom() {},
     now: () => 0,
     schedule() {},
     tickDt: 0.1,
@@ -147,4 +171,4 @@ function catchupLimitCheck() {
 inputQueueCheck();
 matchLifecycleCheck();
 catchupLimitCheck();
-console.log("服务端运行时校验通过：输入合并、顺序确认、倒计时、快照与追帧上限保持稳定。");
+console.log("服务端运行时校验通过：输入合并、顺序确认、开局倒计时、结算强制回收、快照与追帧上限保持稳定。");

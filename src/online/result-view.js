@@ -62,8 +62,39 @@ function resultSideHtml(loadout, faction, sideLabel, sideClass, sideId = "") {
   );
 }
 
-export function createOnlineResultView({ app, ui, log }) {
+export function createOnlineResultView({ app, ui, log, now = Date.now }) {
+  let closeCountdownTimer = null;
+  let resultSubtitle = "";
+
+  function stopCloseCountdown() {
+    if (closeCountdownTimer !== null) {
+      clearInterval(closeCountdownTimer);
+      closeCountdownTimer = null;
+    }
+  }
+
+  function updateCloseCountdown() {
+    const subElement = document.getElementById("resultSub");
+    const closesAt = Number(app.room?.closesAt) || 0;
+    if (!subElement || !resultSubtitle || closesAt <= 0) {
+      if (subElement && resultSubtitle) subElement.textContent = resultSubtitle;
+      stopCloseCountdown();
+      return;
+    }
+    const seconds = Math.max(0, Math.ceil((closesAt - now()) / 1000));
+    subElement.textContent = `${resultSubtitle} · ${t("房间将在{seconds}秒后关闭", { seconds })}`;
+  }
+
+  function syncCloseCountdown() {
+    updateCloseCountdown();
+    if (Number(app.room?.closesAt) > 0 && closeCountdownTimer === null) {
+      closeCountdownTimer = setInterval(updateCloseCountdown, 200);
+    }
+  }
+
   function close() {
+    stopCloseCountdown();
+    resultSubtitle = "";
     ui.overlay.classList.add("hidden");
     ui.overlayTitle.textContent = "";
     app.gameOverLogged = false;
@@ -72,7 +103,10 @@ export function createOnlineResultView({ app, ui, log }) {
   function show(winnerSeat) {
     app.lastWinnerSeat = winnerSeat || null;
     ui.overlay.classList.remove("hidden");
-    if (app.gameOverLogged) return;
+    if (app.gameOverLogged) {
+      syncCloseCountdown();
+      return;
+    }
     app.gameOverLogged = true;
 
     const card = document.getElementById("resultCard");
@@ -119,7 +153,9 @@ export function createOnlineResultView({ app, ui, log }) {
     }
     if (eyebrowElement) eyebrowElement.textContent = eyebrow;
     ui.overlayTitle.textContent = title;
-    if (subElement) subElement.textContent = subtitle;
+    resultSubtitle = subtitle;
+    if (subElement) subElement.textContent = resultSubtitle;
+    syncCloseCountdown();
     if (metaElement) {
       const roomId = app.room ? app.room.roomId : "-";
       const winnerText = winnerSeat ? fleetSideLabel(winnerSeat) : t("平局");

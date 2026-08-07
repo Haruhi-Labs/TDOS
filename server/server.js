@@ -17,6 +17,7 @@ import {
 } from "../shared/protocol/ruleset-version.js";
 import {
   HEARTBEAT_INTERVAL_MS,
+  FINISHED_ROOM_CLOSE_DELAY_MS,
   LOBBY_BROADCAST_DEBOUNCE_MS,
   MAX_CONNECTIONS,
   MAX_PAYLOAD_BYTES,
@@ -191,6 +192,7 @@ function startMatch(room) {
   room.snapshotAccumulator = 0;
   room.snapshotSeq = 0;
   room.finishedAt = null;
+  room.closesAt = null;
   room.result = null;
 
   for (const seat of ["A", "B"]) {
@@ -291,6 +293,7 @@ function sendSnapshot(room) {
 }
 
 const {
+  closeRoom,
   createRoom,
   joinRoom,
   leaveRoom,
@@ -633,6 +636,8 @@ const matchRuntime = createMatchRuntime({
   sendRoomStateToMembers,
   broadcastLobby,
   buildMatchResult,
+  closeRoom,
+  finishedRoomCloseDelayMs: FINISHED_ROOM_CLOSE_DELAY_MS,
 });
 matchRuntime.runServerLoop();
 

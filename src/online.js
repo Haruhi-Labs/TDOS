@@ -258,7 +258,12 @@ function initApp() {
     ui,
     getPlayerLoadout: () => app.playerLoadout,
   });
-  resultView = createOnlineResultView({ app, ui, log });
+  resultView = createOnlineResultView({
+    app,
+    ui,
+    log,
+    now: () => stateSync?.estimateServerNowMs?.() ?? Date.now(),
+  });
   lobbyView = createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer });
   snapshotTransport = createOnlineSnapshotTransport({ app, nowMs, socketSend, updateConnectionUi, log });
   stateSync = createOnlineStateSync({
@@ -2021,6 +2026,8 @@ function unmount() {
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
+  resultView?.close();
+  resultView = null;
   snapshotTransport.stopPingLoop();
   disconnectServer();
   if (ac) ac.abort();

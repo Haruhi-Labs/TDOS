@@ -1,6 +1,7 @@
 import { TICK_DT } from "../shared/game/constants.js";
 import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import {
+  FINISHED_ROOM_CLOSE_DELAY_MS,
   LOOP_IDLE_MS,
   MAX_CATCHUP_STEPS,
   SNAPSHOT_INTERVAL,
@@ -13,6 +14,8 @@ export function createMatchRuntime({
   sendRoomStateToMembers,
   broadcastLobby,
   buildMatchResult,
+  closeRoom,
+  finishedRoomCloseDelayMs = FINISHED_ROOM_CLOSE_DELAY_MS,
   now = Date.now,
   schedule = setTimeout,
   tickDt = TICK_DT,
@@ -20,6 +23,9 @@ export function createMatchRuntime({
   maxCatchupSteps = MAX_CATCHUP_STEPS,
   loopIdleMs = LOOP_IDLE_MS,
 }) {
+  const closeDelayMs = Number.isFinite(Number(finishedRoomCloseDelayMs))
+    ? Math.max(0, Number(finishedRoomCloseDelayMs))
+    : FINISHED_ROOM_CLOSE_DELAY_MS;
   const clock = createFixedStepClock({
     stepSeconds: tickDt,
     maxCatchupSteps,
@@ -29,8 +35,18 @@ export function createMatchRuntime({
 
   function tickRooms() {
     for (const room of rooms.values()) {
+      const currentTime = now();
+      if (
+        room.status === "finished"
+        && Number(room.closesAt) > 0
+        && currentTime >= Number(room.closesAt)
+      ) {
+        closeRoom(room.id, "对局结束，已返回大厅");
+        continue;
+      }
+
       if (room.status === "countdown" && room.match) {
-        if (now() < Number(room.countdownEndsAt || 0)) {
+        if (currentTime < Number(room.countdownEndsAt || 0)) {
           continue;
         }
         room.status = "running";
@@ -52,8 +68,9 @@ export function createMatchRuntime({
 
         if (room.match.phase === "finished" && room.status !== "finished") {
           room.status = "finished";
-          room.finishedAt = now();
-          room.result = buildMatchResult(room);
+          room.finishedAt = currentTime;
+          room.closesAt = currentTime + closeDelayMs;
+          room.result = buildMatchResult(room, currentTime);
           sendSnapshot(room);
           sendRoomStateToMembers(room);
           broadcastLobby();

@@ -13,6 +13,7 @@ export const ROOM_CAPACITY = 2;
 export const MAX_CATCHUP_STEPS = 6;
 export const LOOP_IDLE_MS = 2;
 export const PVP_COUNTDOWN_MS = 3000;
+export const FINISHED_ROOM_CLOSE_DELAY_MS = 10_000;
 export const MAX_SNAPSHOT_BUFFERED_BYTES = 128 * 1024;
 export const SNAPSHOT_KEYFRAME_INTERVAL = SNAPSHOT_RATE * 5;
 export const MAX_DELTA_TO_FULL_RATIO = 0.8;

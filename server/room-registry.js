@@ -156,6 +156,7 @@ export function createRoomRegistry({
         spectatorCount: spectatorCount(room),
         winnerSeat: result ? result.winnerSeat : room.match ? room.match.winnerSeat : null,
         finishedAt: result ? result.finishedAt : room.finishedAt,
+        closesAt: room.closesAt || null,
         createdAt: room.createdAt,
       },
       self: viewer
@@ -248,6 +249,7 @@ export function createRoomRegistry({
       snapshotAccumulator: 0,
       snapshotSeq: 0,
       finishedAt: null,
+      closesAt: null,
       result: null,
       spectators: new Set(),
       // AI 房每房生成一次随机阵容，房间展示与开局共用同一份。
