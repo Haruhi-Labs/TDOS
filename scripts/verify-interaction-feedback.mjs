@@ -105,6 +105,31 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
     `${name}普通难度不得默认显示长期选中态`,
   );
 
+  await normalDifficultyItem.click();
+  const pageArrow = page.locator(isMobile ? ".csm-next" : ".cs-nav-next");
+  await pageArrow.waitFor({ state: "visible" });
+  const arrowBoxBefore = await pageArrow.boundingBox();
+  assert.ok(arrowBoxBefore, `${name}翻页按钮应当可见`);
+  const arrowCenterBefore = arrowBoxBefore.y + arrowBoxBefore.height / 2;
+  await page.mouse.move(
+    arrowBoxBefore.x + arrowBoxBefore.width / 2,
+    arrowCenterBefore,
+  );
+  await page.mouse.down();
+  const arrowBoxPressed = await pageArrow.boundingBox();
+  assert.ok(arrowBoxPressed, `${name}按下翻页按钮时应当保持可见`);
+  const arrowCenterPressed = arrowBoxPressed.y + arrowBoxPressed.height / 2;
+  assert.equal(
+    await pageArrow.evaluate((element) => element.classList.contains("is-pressing")),
+    true,
+    `${name}翻页按钮按下期间应当显示瞬时反馈`,
+  );
+  assert.ok(
+    Math.abs(arrowCenterPressed - arrowCenterBefore) < 0.75,
+    `${name}翻页按钮按下时不得丢失纵向居中位移`,
+  );
+  await page.mouse.up();
+
   await context.close();
 }
 
