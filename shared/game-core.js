@@ -1016,8 +1016,18 @@ class Ship {
       const lookLead = 0.04 + speedRatio * 0.12;
       const lookT = clamp(this.route.t + lookLead, 0, 1);
       const lookAhead = quadraticPoint(this.route.p0, this.route.p1, this.route.p2, lookT);
-      navTargetX = lookAhead.x;
-      navTargetY = lookAhead.y;
+      // 曲率约束可能为靠近边界的掉头航线生成地图外控制点。曲线本身可以保留，
+      // 但导航前视点若也落到地图外，舰船会保持正常内部航速朝边界外航行，
+      // 实际位置却被边界钳住，视觉上就像换挡后熄火。此时直接朝地图内的航线终点
+      // 脱离边界；单纯钳制前视点可能恰好落在舰船脚下，反而触发到点停车。
+      const lookAheadOutside = (
+        lookAhead.x < 8
+        || lookAhead.x > match.worldSize - 8
+        || lookAhead.y < 8
+        || lookAhead.y > match.worldSize - 8
+      );
+      navTargetX = lookAheadOutside ? this.route.p2.x : lookAhead.x;
+      navTargetY = lookAheadOutside ? this.route.p2.y : lookAhead.y;
     }
 
     const navDx = navTargetX - this.x;

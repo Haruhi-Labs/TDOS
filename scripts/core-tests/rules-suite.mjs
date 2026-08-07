@@ -155,6 +155,53 @@ function throttleGearCheck() {
   assert(main.energy < 50, "权威模拟中的前进4档未实际消耗能量");
 }
 
+function boundaryRouteThrottleCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "shamisen", sub2: "yuki" },
+    },
+  });
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
+  sim.teamA.splitLevel = 1;
+
+  const ship = sim.teamA.ships.sub1;
+  ship.x = 386.8224975466728;
+  ship.y = 81.78382992744446;
+  ship.angle = -1.8277443451855133;
+  ship.speed = 39.80041355709545;
+  ship.setBezierRoute(
+    792.2996597643942,
+    472.72552649490535,
+    48,
+    366.6995639011146,
+    throttleForGear(2),
+    false,
+  );
+  runSteps(sim, 3.1);
+
+  assert(ship.route?.p1.y < 8, "边界换挡回归场景未生成地图外控制点");
+  assert(
+    sim.teamA.availableEnergyForShip(ship) >= ship.maxEnergy * 0.99,
+    "边界换挡回归场景没有保持满能量",
+  );
+  const startX = ship.x;
+  const startY = ship.y;
+  const shifted = sim.applyActionForSeat("A", {
+    type: "set_throttle",
+    shipKey: "sub1",
+    throttle: throttleForGear(3),
+  });
+  assert(shifted && ship.throttle === throttleForGear(3), "三味线分舰切入前进3档失败");
+  runSteps(sim, 0.5);
+  assert(
+    Math.hypot(ship.x - startX, ship.y - startY) >= 8,
+    "地图外航线前视点令满能量三味线换挡后视觉停转",
+  );
+}
+
 function emergencyBrakeCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const teamA = sim.teamA;
@@ -1255,6 +1302,7 @@ export function runRulesSuite() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
   throttleGearCheck();
+  boundaryRouteThrottleCheck();
   emergencyBrakeCheck();
   autoScoutCheck();
   yukiBurstScoutStabilityCheck();
