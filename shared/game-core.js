@@ -1612,6 +1612,7 @@ class Team {
     const previous = this.future1096FormDefinition();
     const nextForm = this.future1096Form === "A" ? "B" : "A";
     const next = this.future1096FormDefinition(nextForm);
+    const speedRatio = next.speed / previous.speed;
     this.future1096Form = nextForm;
 
     for (const ship of this.getPlayerShips()) {
@@ -1619,6 +1620,9 @@ class Team {
       const unmodifiedMaxHp = ship.maxHp / previous.hp;
       ship.maxHp = Math.max(1, Math.round(unmodifiedMaxHp * next.hp));
       ship.hp = ship.alive ? ship.maxHp * hpRatio : 0;
+      // 形态切换改变的是整套舰体性能，当前航速也按新旧上限同比换算。
+      // 否则 A 形态虽然目标航速已提升 50%，实际航速仍要用原加速度缓慢追赶，体感近乎没有变化。
+      ship.speed = ship.alive ? Math.max(0, ship.speed * speedRatio) : 0;
       ship.cooldown = Math.max(0, ship.cooldown * (previous.fireRate / next.fireRate));
       if (ship.alive) {
         this.match.spawnFloatingTextKey(

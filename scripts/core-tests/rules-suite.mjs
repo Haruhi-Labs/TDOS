@@ -378,9 +378,13 @@ function future1096FormSwitchCheck() {
   });
   const teamA = sim.teamA;
   const ships = teamA.getPlayerShips();
+  for (const ship of ships) {
+    ship.speed = ship.baseSpeed() * 0.8;
+  }
   const baseline = new Map(ships.map((ship) => [ship.id, {
     maxHp: ship.maxHp,
     speed: ship.baseSpeed(),
+    actualSpeed: ship.speed,
     fireRate: ship.effectiveFireRate(),
   }]));
 
@@ -397,9 +401,27 @@ function future1096FormSwitchCheck() {
     assert(ship.maxHp === Math.round(base.maxHp * 0.5), "A形态未使全队生命上限变为50%");
     assert(Math.abs(ship.hp - ship.maxHp) < 1e-9, "A形态未保持舰船当前生命比例");
     assert(Math.abs(ship.baseSpeed() / base.speed - 1.5) < 1e-9, "A形态未使全队航速变为150%");
+    assert(Math.abs(ship.speed / base.actualSpeed - 1.5) < 1e-9, "A形态未立即把全队实际航速提升50%");
     assert(Math.abs(ship.effectiveFireRate() / base.fireRate - 2) < 1e-9, "A形态未使全队射速变为200%");
     assert(Math.abs(ship.cooldown - 0.4) < 1e-9, "A形态未同步换算当前攻击间隔");
     ship.hp = ship.maxHp * 0.4;
+    ship.cooldown = 0.25;
+  }
+
+  const movingMain = teamA.ships.main;
+  const movingMainBase = baseline.get(movingMain.id);
+  const startX = movingMain.x;
+  movingMain.command.x = movingMain.x + 600;
+  movingMain.command.y = movingMain.y;
+  runSteps(sim, 0.25);
+  assert(
+    movingMain.x - startX > movingMainBase.actualSpeed * 0.25 * 1.25,
+    "A形态切换后的短时实际位移未体现显著提速",
+  );
+  // 还原为切换瞬间的状态，隔离后续 B 形态倍率断言。
+  for (const ship of ships) {
+    const base = baseline.get(ship.id);
+    ship.speed = base.actualSpeed * 1.5;
     ship.cooldown = 0.25;
   }
 
@@ -411,6 +433,7 @@ function future1096FormSwitchCheck() {
     assert(ship.maxHp === Math.round(base.maxHp * 2), "B形态未使全队生命上限变为200%");
     assert(Math.abs(ship.hp / ship.maxHp - 0.4) < 1e-9, "B形态切换没有保持当前生命比例");
     assert(Math.abs(ship.baseSpeed() / base.speed - 0.5) < 1e-9, "B形态未使全队航速变为50%");
+    assert(Math.abs(ship.speed / base.actualSpeed - 0.5) < 1e-9, "B形态未立即把全队实际航速降为50%");
     assert(Math.abs(ship.effectiveFireRate() / base.fireRate - 0.5) < 1e-9, "B形态未使全队射速变为50%");
     assert(Math.abs(ship.cooldown - 1) < 1e-9, "B形态未同步换算当前攻击间隔");
   }
@@ -418,6 +441,10 @@ function future1096FormSwitchCheck() {
   assert(teamA.serialize().future1096Form === "B", "1096 当前形态未进入权威快照");
   teamA.cooldowns.flagship = 0;
   assert(teamA.castFlagshipSkill() && teamA.future1096Form === "A", "1096 后续使用没有交替回到A形态");
+  for (const ship of ships) {
+    const base = baseline.get(ship.id);
+    assert(Math.abs(ship.speed / base.actualSpeed - 1.5) < 1e-9, "B形态切回A形态时实际航速没有同步恢复");
+  }
 }
 
 function flagshipLossAutoSplitCheck() {
