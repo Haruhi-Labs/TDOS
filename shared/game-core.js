@@ -131,10 +131,10 @@ const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
 const BEAM_DAMAGE_RATIO = 0.28;
 const FUTURE_1096_FORMS = Object.freeze({
-  A: Object.freeze({ hp: 0.5, speed: 1.5, fireRate: 2 }),
-  B: Object.freeze({ hp: 2, speed: 0.5, fireRate: 0.5 }),
+  A: Object.freeze({ damageTaken: 2, speed: 1.5, fireRate: 2 }),
+  B: Object.freeze({ damageTaken: 0.5, speed: 0.5, fireRate: 0.5 }),
 });
-const FUTURE_1096_BASE_FORM = Object.freeze({ hp: 1, speed: 1, fireRate: 1 });
+const FUTURE_1096_BASE_FORM = Object.freeze({ damageTaken: 1, speed: 1, fireRate: 1 });
 const DEG_TO_RAD = Math.PI / 180;
 const EMERGENCY_BRAKE_DURATION = 0.82;
 const FLAGSHIP_TURN_PENALTIES = {
@@ -675,6 +675,7 @@ class Ship {
     if (this.hasEffect("reliableUntil")) {
       value *= 0.84;
     }
+    value *= this.team.future1096DamageTakenMultiplier();
     return value;
   }
 
@@ -1605,6 +1606,13 @@ class Team {
     return 1;
   }
 
+  future1096DamageTakenMultiplier() {
+    if (this.mainCharacterId() !== "future1096") {
+      return 1;
+    }
+    return this.future1096FormDefinition().damageTaken;
+  }
+
   switchFuture1096Form() {
     if (this.mainCharacterId() !== "future1096") {
       return false;
@@ -1616,10 +1624,6 @@ class Team {
     this.future1096Form = nextForm;
 
     for (const ship of this.getPlayerShips()) {
-      const hpRatio = ship.maxHp > 0 ? clamp(ship.hp / ship.maxHp, 0, 1) : 0;
-      const unmodifiedMaxHp = ship.maxHp / previous.hp;
-      ship.maxHp = Math.max(1, Math.round(unmodifiedMaxHp * next.hp));
-      ship.hp = ship.alive ? ship.maxHp * hpRatio : 0;
       // 形态切换改变的是整套舰体性能，当前航速也按新旧上限同比换算。
       // 否则 A 形态虽然目标航速已提升 50%，实际航速仍要用原加速度缓慢追赶，体感近乎没有变化。
       ship.speed = ship.alive ? Math.max(0, ship.speed * speedRatio) : 0;

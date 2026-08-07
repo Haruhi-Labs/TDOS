@@ -90,7 +90,7 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "past_future_me", name: "过去与未来的我", type: "active", cooldown: 10,
       target: "none",
-      description: "初始无形态。首次使用进入A形态：全队射速×2、生命上限×0.5、航速×1.5；再次使用进入B形态：全队射速×0.5、生命上限×2、航速×0.5。此后每次使用交替切换，冷却10秒。",
+      description: "初始无形态。首次使用进入A形态：全队射速×2、受到伤害×2（易伤）、航速×1.5；再次使用进入B形态：全队射速×0.5、受到伤害×0.5（减伤50%）、航速×0.5。此后每次使用交替切换，冷却10秒。",
     },
     subSkill: {
       id: "beam_1096", name: "1096光线", type: "active", cooldown: 12,

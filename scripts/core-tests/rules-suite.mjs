@@ -383,6 +383,7 @@ function future1096FormSwitchCheck() {
   }
   const baseline = new Map(ships.map((ship) => [ship.id, {
     maxHp: ship.maxHp,
+    hp: ship.hp,
     speed: ship.baseSpeed(),
     actualSpeed: ship.speed,
     fireRate: ship.effectiveFireRate(),
@@ -398,15 +399,28 @@ function future1096FormSwitchCheck() {
   assert(!teamA.castFlagshipSkill(), "1096 旗舰技能在冷却中仍可切换形态");
   for (const ship of ships) {
     const base = baseline.get(ship.id);
-    assert(ship.maxHp === Math.round(base.maxHp * 0.5), "A形态未使全队生命上限变为50%");
-    assert(Math.abs(ship.hp - ship.maxHp) < 1e-9, "A形态未保持舰船当前生命比例");
+    assert(ship.maxHp === base.maxHp, "A形态不应再改变全队生命上限");
+    assert(ship.hp === base.hp, "A形态切换不应改变全队当前生命");
+    assert(Math.abs(ship.damageTakenMultiplier() - 2) < 1e-9, "A形态未使全队受到伤害变为200%");
     assert(Math.abs(ship.baseSpeed() / base.speed - 1.5) < 1e-9, "A形态未使全队航速变为150%");
     assert(Math.abs(ship.speed / base.actualSpeed - 1.5) < 1e-9, "A形态未立即把全队实际航速提升50%");
     assert(Math.abs(ship.effectiveFireRate() / base.fireRate - 2) < 1e-9, "A形态未使全队射速变为200%");
     assert(Math.abs(ship.cooldown - 0.4) < 1e-9, "A形态未同步换算当前攻击间隔");
+    const hpBeforeDamage = ship.hp;
+    ship.takeDamage(20, null, sim, false);
+    assert(Math.abs(hpBeforeDamage - ship.hp - 40) < 1e-9, "A形态易伤未在最终承伤阶段生效");
     ship.hp = ship.maxHp * 0.4;
     ship.cooldown = 0.25;
   }
+
+  const maxHpDamageProbe = teamA.ships.main;
+  maxHpDamageProbe.hp = maxHpDamageProbe.maxHp;
+  maxHpDamageProbe.takeDamage(maxHpDamageProbe.maxHp * 0.1, null, sim, false);
+  assert(
+    Math.abs(maxHpDamageProbe.hp - maxHpDamageProbe.maxHp * 0.8) < 1e-9,
+    "A形态未对按最大生命值结算的伤害应用易伤，或仍在改写生命上限",
+  );
+  maxHpDamageProbe.hp = maxHpDamageProbe.maxHp * 0.4;
 
   const movingMain = teamA.ships.main;
   const movingMainBase = baseline.get(movingMain.id);
@@ -430,12 +444,16 @@ function future1096FormSwitchCheck() {
   assert(teamA.future1096Form === "B", "1096 第二次使用未进入B形态");
   for (const ship of ships) {
     const base = baseline.get(ship.id);
-    assert(ship.maxHp === Math.round(base.maxHp * 2), "B形态未使全队生命上限变为200%");
-    assert(Math.abs(ship.hp / ship.maxHp - 0.4) < 1e-9, "B形态切换没有保持当前生命比例");
+    assert(ship.maxHp === base.maxHp, "B形态不应再改变全队生命上限");
+    assert(Math.abs(ship.hp / ship.maxHp - 0.4) < 1e-9, "B形态切换不应改变当前生命");
+    assert(Math.abs(ship.damageTakenMultiplier() - 0.5) < 1e-9, "B形态未使全队受到伤害降为50%");
     assert(Math.abs(ship.baseSpeed() / base.speed - 0.5) < 1e-9, "B形态未使全队航速变为50%");
     assert(Math.abs(ship.speed / base.actualSpeed - 0.5) < 1e-9, "B形态未立即把全队实际航速降为50%");
     assert(Math.abs(ship.effectiveFireRate() / base.fireRate - 0.5) < 1e-9, "B形态未使全队射速变为50%");
     assert(Math.abs(ship.cooldown - 1) < 1e-9, "B形态未同步换算当前攻击间隔");
+    const hpBeforeDamage = ship.hp;
+    ship.takeDamage(20, null, sim, false);
+    assert(Math.abs(hpBeforeDamage - ship.hp - 10) < 1e-9, "B形态减伤未在最终承伤阶段生效");
   }
 
   assert(teamA.serialize().future1096Form === "B", "1096 当前形态未进入权威快照");
@@ -443,6 +461,8 @@ function future1096FormSwitchCheck() {
   assert(teamA.castFlagshipSkill() && teamA.future1096Form === "A", "1096 后续使用没有交替回到A形态");
   for (const ship of ships) {
     const base = baseline.get(ship.id);
+    assert(ship.maxHp === base.maxHp, "B形态切回A形态时生命上限发生变化");
+    assert(Math.abs(ship.damageTakenMultiplier() - 2) < 1e-9, "B形态切回A形态时易伤没有恢复");
     assert(Math.abs(ship.speed / base.actualSpeed - 1.5) < 1e-9, "B形态切回A形态时实际航速没有同步恢复");
   }
 }
