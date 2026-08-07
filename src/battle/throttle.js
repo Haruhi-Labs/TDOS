@@ -27,6 +27,13 @@ export function syncThrottleGearControls(ui, throttle) {
   return gear;
 }
 
+// 单人动作会先更新本地权威模拟，显示快照要到下一个固定逻辑帧才刷新。
+// 控制链必须优先读取模拟舰船，否则同帧续设航线会把旧显示档位写回权威状态。
+export function localThrottleForShip(simulatedShip, renderedShip = null) {
+  const throttle = simulatedShip?.throttle ?? renderedShip?.throttle;
+  return throttleValueForGear(throttleGearForValue(throttle));
+}
+
 // 保留现有 1/2/3 切舰快捷键：档位直达使用 Shift+1–4，Q/E 用于逐档切换。
 export function throttleGearFromShortcut(event, currentThrottle) {
   if (!event || event.isComposing || event.ctrlKey || event.metaKey || event.altKey) {

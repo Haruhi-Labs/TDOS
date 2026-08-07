@@ -9,6 +9,8 @@ import {
   createLocalBattleActionTransport,
   createRemoteBattleActionTransport,
 } from "../src/battle/action-transport.js";
+import { localThrottleForShip } from "../src/battle/throttle.js";
+import { MatchSimulation } from "../shared/game-core.js";
 
 const actions = [
   matchActions.setRoute({ shipKey: "main", endX: 300, endY: 400, throttle: 1 }),
@@ -74,5 +76,33 @@ connected = false;
 assert.equal(remoteTransport.send(matchActions.split(1)), null, "断线状态不得分配或发送动作序号");
 assert.equal(sequence, 41, "被拒绝的动作不得消耗输入序号");
 assert.equal(remoteTransport.send({ type: "未知" }), null, "远程传输不得发送未知动作");
+
+const soloSimulation = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
+const staleRenderedShip = soloSimulation.serializeState().teams.A.ships.main;
+const soloTransport = createLocalBattleActionTransport({
+  getSimulation: () => soloSimulation,
+  seat: "A",
+});
+assert.equal(
+  soloTransport.send(matchActions.setThrottle({ shipKey: "main", throttle: 1.4 })),
+  true,
+  "单人换挡动作未被本地权威模拟接受",
+);
+const localCommandThrottle = localThrottleForShip(
+  soloSimulation.teamA.ships.main,
+  staleRenderedShip,
+);
+assert.equal(localCommandThrottle, 1.4, "单人控制链错误采用了上一逻辑帧的显示档位");
+assert.equal(
+  soloTransport.send(matchActions.setRoute({
+    shipKey: "main",
+    endX: soloSimulation.teamA.ships.main.x + 400,
+    endY: soloSimulation.teamA.ships.main.y,
+    throttle: localCommandThrottle,
+  })),
+  true,
+  "单人换挡后同帧续设航线失败",
+);
+assert.equal(soloSimulation.teamA.ships.main.throttle, 1.4, "单人同帧续设航线把档位回滚到了旧显示态");
 
 console.log("战斗动作协议校验通过：动作构造、校验及本地/远程传输接口保持统一。");

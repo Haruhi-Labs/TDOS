@@ -59,6 +59,7 @@ import {
 } from "./battle/camera.js";
 import { routeHandleAtPoint, zoneFromPoint } from "./battle/input.js";
 import {
+  localThrottleForShip,
   syncThrottleGearControls,
   throttleGearFromShortcut,
   throttleLabelForValue,
@@ -490,7 +491,7 @@ function syncPowerFromSelected() {
   if (!ship) {
     return;
   }
-  syncThrottleGearControls(ui, ship.throttle);
+  syncThrottleGearControls(ui, localThrottleForShip(selectedShipSim(), ship));
 }
 
 function setThrottleGear(gear) {
@@ -581,7 +582,8 @@ function setRouteForSelectedShip(x, y, logRoute = false) {
   if (!ship || !ship.alive || !ship.canControl) {
     return false;
   }
-  const throttle = throttleValueForGear(syncThrottleGearControls(ui, ship.throttle));
+  const throttle = localThrottleForShip(selectedShipSim(), ship);
+  syncThrottleGearControls(ui, throttle);
   const ok = applyAction(matchActions.setRoute({
     shipKey: ship.key,
     endX: x,
@@ -1293,7 +1295,10 @@ function bindUiEvents() {
       return;
     }
 
-    const throttleGear = throttleGearFromShortcut(event, selectedShipState()?.throttle);
+    const throttleGear = throttleGearFromShortcut(
+      event,
+      localThrottleForShip(selectedShipSim(), selectedShipState()),
+    );
     if (throttleGear !== null) {
       event.preventDefault();
       if (!tutorial.isActive()) setThrottleGear(throttleGear);
