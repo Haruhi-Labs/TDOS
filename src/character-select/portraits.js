@@ -107,6 +107,12 @@ function pkey(charId, color) {
   return `${color}/${charId}`;
 }
 
+// 公共目录中的立绘没有构建哈希；资源内容发生替换时改用新文件名，避免线上长期缓存继续命中旧图。
+export function getPortraitAssetUrl(charId, color = "blue") {
+  const fileName = charId === "shamisen" ? "shamisen-paw" : charId;
+  return `${import.meta.env.BASE_URL}assets/portraits/${color}/${fileName}.webp`;
+}
+
 export function loadPortraitImage(charId, color = "blue") {
   const key = pkey(charId, color);
   if (imageCache.has(key)) {
@@ -123,7 +129,7 @@ export function loadPortraitImage(charId, color = "blue") {
       imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `${import.meta.env.BASE_URL}assets/portraits/${color}/${charId}.webp`;
+    img.src = getPortraitAssetUrl(charId, color);
   });
   imageCache.set(key, promise);
   return promise;

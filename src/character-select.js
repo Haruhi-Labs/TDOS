@@ -11,6 +11,7 @@ import {
   TEAM_COLORS,
   getLoadedPortraitImage,
   getPortrait,
+  getPortraitAssetUrl,
   invalidatePortrait,
   loadPortraitImage,
 } from "./character-select/portraits.js";
@@ -667,7 +668,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
       els.icon.style.backgroundSize = "cover";
       els.icon.style.backgroundPosition = "center 20%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        els.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
+        els.icon.style.backgroundImage = `url(${getPortraitAssetUrl(charId, state.color)})`;
       } else {
         const mini = getPortrait(charId, 120, 120, state.color);
         els.icon.style.backgroundImage = `url(${mini.toDataURL()})`;
@@ -1198,7 +1199,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
 
   function portraitUrl(charId) {
     if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
+      return `url(${getPortraitAssetUrl(charId, state.color)})`;
     }
     return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
   }
@@ -1220,7 +1221,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
       s.icon.style.backgroundSize = "cover";
       s.icon.style.backgroundPosition = "center 16%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        s.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
+        s.icon.style.backgroundImage = `url(${getPortraitAssetUrl(charId, state.color)})`;
       } else {
         s.icon.style.backgroundImage = `url(${getPortrait(charId, 120, 120, state.color).toDataURL()})`;
       }
