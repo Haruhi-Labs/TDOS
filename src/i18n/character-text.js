@@ -5,7 +5,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "春日",
       title: "团长型火力旗舰",
       flavor: "可靠的领导者与突击手",
-      flagshipSkill: { name: "我在这里！", description: "广播自身位置，16秒内全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害；每次使用随机找到一位特殊人士，获得一种常驻支援。" },
+      flagshipSkill: { name: "我在这里！", description: "广播自身位置，16秒内令敌方持续获得对春日的真实视野，同时全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害。每次使用随机解锁一种常驻支援。" },
       subSkill: { name: "神说会赢的", description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。" },
     },
     koizumi: {
@@ -71,7 +71,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "ハルヒ",
       title: "団長型火力旗艦",
       flavor: "頼れる指揮官であり突撃手",
-      flagshipSkill: { name: "私はここにいる！", description: "自身の位置を放送し、16秒間、全艦隊の速度・機動・射程・視界・ダメージ・連射を15%強化し、被ダメージを15%軽減。使用ごとに特別な人物を1人見つけ、恒久支援を得る。" },
+      flagshipSkill: { name: "私はここにいる！", description: "自身の位置を放送し、16秒間は敵にハルヒの実視界を与える。同時に全艦隊の速度・機動・射程・視界・ダメージ・連射を15%強化し、被ダメージを15%軽減。使用ごとに恒久支援を1つ解放する。" },
       subSkill: { name: "神様が勝つと言っている", description: "8秒間、自身の攻撃が50%でクリティカルになり、3倍ダメージを与える。射界と射程内の最寄り敵へ盲射できる。" },
     },
     koizumi: {
@@ -137,7 +137,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "Haruhi",
       title: "Firepower Flagship Commander",
       flavor: "A reliable leader and shock attacker",
-      flagshipSkill: { name: "I'm Here!", description: "Broadcasts Haruhi's position and grants the fleet +15% speed, handling, range, vision, damage and fire rate with 15% damage reduction for 16 seconds. Each use finds a special person and unlocks permanent support." },
+      flagshipSkill: { name: "I'm Here!", description: "Broadcasts Haruhi's position. For 16 seconds, enemies gain true vision of her while the fleet gains +15% speed, handling, range, vision, damage and fire rate with 15% damage reduction. Each use unlocks one permanent support." },
       subSkill: { name: "God Says We Win", description: "For 8 seconds, attacks have a 50% critical chance for triple damage and can blind-fire at the nearest enemy within firing arc and range." },
     },
     koizumi: {

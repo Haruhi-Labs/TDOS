@@ -9,6 +9,7 @@ import {
   stableRadarNoise,
 } from "./math.js";
 import { visionWavesCoverEntity } from "./vision-wave.js";
+import { haruhiBoostActive } from "./haruhi-flagship.js";
 
 const TAU = Math.PI * 2;
 const RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
@@ -125,5 +126,11 @@ export function computeVisibility(team, enemyTeam) {
     if (!team.visibleEnemyIds.has(enemy.id) && visionWavesCoverEntity(team, enemy)) {
       team.visibleEnemyIds.add(enemy.id);
     }
+  }
+  // “我在这里！”持续期间，春日本舰向敌方提供真实视野；只暴露春日本人，
+  // 不把同队分舰一并全图揭示，也不依赖一次性的广播浮字。
+  const haruhi = enemyTeam.ships?.main;
+  if (haruhi?.alive && haruhiBoostActive(enemyTeam)) {
+    team.visibleEnemyIds.add(haruhi.id);
   }
 }

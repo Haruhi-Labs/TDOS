@@ -1058,7 +1058,15 @@ function haruhiFlagshipReworkCheck() {
     damage: haruhi.effectiveDamage(),
     fireRate: haruhi.effectiveFireRate(),
   };
+  teamB.computeVisibility(teamA);
+  assert(!teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能测试前置错误，本舰原本就处于敌方真实视野");
   assert(teamA.castFlagshipSkill(), "春日旗舰技能首次释放失败");
+  teamB.computeVisibility(teamA);
+  assert(teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能期间没有向敌方显示本舰真实视野");
+  assert(
+    !teamB.visibleEnemyIds.has(teamA.ships.sub1.id) && !teamB.visibleEnemyIds.has(teamA.ships.sub2.id),
+    "春日旗舰技能错误地把两艘分舰一并全图暴露",
+  );
   assert(Math.abs(teamA.effects.haruhiBoostUntil - 16) < 1e-9, "春日全队强化没有保留原技能16秒持续时间");
   assert(Math.abs(haruhi.effectiveSpeed() / baseStats.speed - 1.15) < 1e-9, "春日旗舰技能未提升15%航速");
   assert(Math.abs(haruhi.effectiveTurnRate() / baseStats.turnRate - 1.15) < 1e-9, "春日旗舰技能未提升15%机动");
@@ -1088,7 +1096,7 @@ function haruhiFlagshipReworkCheck() {
   );
 
   runSteps(sim, 6.05);
-  assert(teamA.scouts.length === 2, "宇宙人没有每6秒释放两架战斗僚机");
+  assert(teamA.scouts.length === 1, "宇宙人没有每6秒释放一架战斗僚机");
   assert(teamA.scouts.every((scout) => scout.combatCapable), "宇宙人释放的僚机没有长门旗舰战斗能力");
   assert(
     teamA.scouts.every((scout) => scout.damage === 16 && scout.vision === CHARACTER_DEFS.yuki.stats.vision),
@@ -1196,6 +1204,16 @@ function haruhiFlagshipReworkCheck() {
   runSteps(sim, HARUHI_OTHERWORLDER_KNOCKBACK_DURATION * 0.6);
   assert(!target.forcedKnockback, "异世界人击退完成后仍在锁定敌方控制");
   assert(target.speed < 2, "异世界人击退完成后敌舰没有从接近零速重新加速");
+
+  teamA.effects.haruhiBoostUntil = sim.elapsed;
+  haruhi.x = 120;
+  haruhi.y = 120;
+  for (const ship of teamB.getAllShips()) {
+    ship.x = 1240;
+    ship.y = 1240;
+  }
+  teamB.computeVisibility(teamA);
+  assert(!teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能结束后仍被敌方全图真实看见");
 }
 
 function asakuraFlagshipCheck() {

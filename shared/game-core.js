@@ -2310,14 +2310,11 @@ class Team {
   launchHaruhiAlienWingmen(ship) {
     const zone = this.zoneForPoint(ship.x, ship.y);
     const releaseAngle = randomInRange(0, TAU);
-    for (const side of [-1, 1]) {
-      const angle = releaseAngle + (side < 0 ? Math.PI : 0);
-      const spawnRadius = ship.radius + 12;
-      const x = this.match.clampX(ship.x + Math.cos(angle) * spawnRadius, 8);
-      const y = this.match.clampY(ship.y + Math.sin(angle) * spawnRadius, 8);
-      this.scouts.push(new Scout(this, x, y, { zone, combatCapable: true }));
-      this.match.spawnBurst(x, y, "#8fe8ff", 5);
-    }
+    const spawnRadius = ship.radius + 12;
+    const x = this.match.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
+    const y = this.match.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
+    this.scouts.push(new Scout(this, x, y, { zone, combatCapable: true }));
+    this.match.spawnBurst(x, y, "#8fe8ff", 5);
   }
 
   launchHaruhiRandomBeam(ship) {
