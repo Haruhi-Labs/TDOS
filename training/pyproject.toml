@@ -1,0 +1,22 @@
+[project]
+name = "haruhi-rl-training"
+version = "0.1.0"
+description = "《射手座之日》通用全控制强化学习训练工具"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  "gymnasium>=1.1,<2",
+  "numpy>=2,<3",
+  "pyyaml>=6,<7",
+  "tensorboard>=2.19,<3",
+  "torch>=2.7,<3",
+  "torchrl>=0.8,<1",
+  "tqdm>=4.67,<5",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8,<10",
+]
+
+[tool.uv]
+package = false
