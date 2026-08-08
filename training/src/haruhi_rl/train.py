@@ -118,6 +118,7 @@ def main() -> int:
     seed = int(run_config["seed"])
     _seed_everything(seed)
     device = _device(str(run_config.get("device", "auto")))
+    collection_device = _device(str(run_config.get("collection_device", "cpu")))
     model_config = PolicyConfig(**config.get("model", {}))
     ppo_config = PpoConfig(**config.get("ppo", {}))
     tensor_limits = TensorLimits(**config.get("tensor_limits", {}))
@@ -156,11 +157,14 @@ def main() -> int:
         max_episode_seconds=float(environment_config.get("max_episode_seconds", 180)),
         stream_offset=int(environment_config.get("stream_offset", 0)),
     )
+    model.to(collection_device)
+    if device.type == "mps" and collection_device.type != "mps":
+        torch.mps.empty_cache()
     collector = SelfPlayCollector(
         bridge,
         model,
         scheduler,
-        device=device,
+        device=collection_device,
         tensor_limits=tensor_limits,
     )
 
@@ -210,6 +214,8 @@ def main() -> int:
                 details={
                     "training_mode": training_mode,
                     "collection_rounds": collection_rounds,
+                    "collection_device": str(collection_device),
+                    "optimization_device": str(device),
                     **_resource_details(current_resources),
                 },
             )
@@ -231,12 +237,14 @@ def main() -> int:
                         details={
                             "training_mode": training_mode,
                             "collection_rounds": collection_rounds,
+                            "collection_device": str(collection_device),
                             **_resource_details(progress_resources),
                         },
                     )
                     last_heartbeat_at = now
 
             collected = []
+            collection_started = time.perf_counter()
             try:
                 maximum_steps = int(environment_config["maximum_collection_steps"])
                 if training_mode == "league":
@@ -246,7 +254,7 @@ def main() -> int:
                         model_config,
                         scheduler,
                         registry,
-                        device=device,
+                        device=collection_device,
                         tensor_limits=tensor_limits,
                     )
                     round_collector = league_collector.collect_complete_episodes
@@ -291,6 +299,7 @@ def main() -> int:
                 )
                 print(f"采集期间资源保护已暂停训练，检查点：{path}", file=sys.stderr)
                 return 75
+            collection_seconds = time.perf_counter() - collection_started
             episode_metrics = _episode_metrics(rollout.completed_episodes)
             for episode in rollout.completed_episodes:
                 if episode.get("opponentId"):
@@ -302,9 +311,18 @@ def main() -> int:
                 state="running",
                 phase="optimizing",
                 update=update,
-                details={"training_mode": training_mode, **episode_metrics},
+                details={
+                    "training_mode": training_mode,
+                    "collection_device": str(collection_device),
+                    "optimization_device": str(device),
+                    "collection_seconds": collection_seconds,
+                    **episode_metrics,
+                },
             )
+            model.to(device)
+            optimization_started = time.perf_counter()
             training_metrics = trainer.update(rollout)
+            optimization_seconds = time.perf_counter() - optimization_started
             after_update_resources = read_resource_snapshot(data_root)
             after_update_decision = evaluate_resource_safety(after_update_resources)
             if not after_update_decision.allowed:
@@ -345,8 +363,15 @@ def main() -> int:
             last_metrics = {
                 "update": update,
                 "device": str(device),
+                "collection_device": str(collection_device),
                 "training_mode": training_mode,
                 "valid_seat_steps": int(rollout.valid.sum()),
+                "collection_seconds": collection_seconds,
+                "collection_seat_steps_per_second": int(rollout.valid.sum()) / max(
+                    collection_seconds,
+                    1e-9,
+                ),
+                "optimization_seconds": optimization_seconds,
                 "league_size": len(registry.entries),
                 "league_rating": registry.current_rating,
                 **episode_metrics,
@@ -389,7 +414,8 @@ def main() -> int:
             )
             del rollout
             gc.collect()
-            if device.type == "mps":
+            model.to(collection_device)
+            if device.type == "mps" and collection_device.type != "mps":
                 torch.mps.empty_cache()
 
         completed_path, _ = save_checkpoint(

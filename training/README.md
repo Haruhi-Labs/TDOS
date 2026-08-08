@@ -82,4 +82,4 @@ scripts/run-rl.zsh python -m pytest
 
 初始配置只并行运行 2 局以限制 16GB 机器的峰值内存，但会让同一冻结策略串行完成 4 轮采集，再把 8 局轨迹沿样本维对齐合并后执行一次 PPO 更新。填充时间步不参与回报、损失或熵统计，从而在不增加并发压力的情况下降低纯终局回报的更新方差。
 
-首次长跑前使用 `scripts/train-rl.zsh --config training/configs/universal-pilot-v0.yaml` 完成 3 次同规格更新，验证最终模型、8 局/更新采集方式和 MPS 优化阶段的真实峰值。pilot 使用独立运行名，不会与正式 `universal-v0` 的指标、联赛或检查点混写。
+首次长跑前使用 `scripts/train-rl.zsh --config training/configs/universal-pilot-v1.yaml` 完成 3 次同规格更新，验证最终模型、8 局/更新采集方式和 MPS 优化阶段的真实峰值。实测小批量循环推理在 CPU 上约为 MPS 的 12 倍，因此默认由 CPU 采集、MPS 仅负责 PPO 优化；每次更新会记录两阶段耗时与采集吞吐。pilot 使用独立运行名，不会与正式 `universal-v0` 的指标、联赛或检查点混写；`universal-pilot-v0.yaml` 保留首轮 MPS 全流程基线。

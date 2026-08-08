@@ -1,10 +1,10 @@
 run:
-  name: universal-v0
+  name: universal-pilot-v1
   data_root: /Volumes/data/haruhi-rl
-  seed: 20260808
+  seed: 20260809
   device: auto
   collection_device: cpu
-  updates: 1000
+  updates: 3
   checkpoint_every: 1
 
 environment:
@@ -13,10 +13,8 @@ environment:
   decision_ticks: 3
   max_episode_seconds: 180
   maximum_collection_steps: 1802
-  # 保持仅 2 局并行以控制峰值内存，同一冻结策略串行采 4 轮后再更新。
   rounds_per_update: 4
 
-# 初版只训练 1v1，使用较紧容量降低完整局内存；网络结构本身不依赖这些数量。
 tensor_limits:
   own_ships: 4
   own_auxiliaries: 64
@@ -48,4 +46,4 @@ ppo:
 
 league:
   warmup_updates: 1
-  snapshot_every: 5
+  snapshot_every: 1
