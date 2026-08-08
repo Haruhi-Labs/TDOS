@@ -7,6 +7,7 @@ import gc
 import json
 import random
 import sys
+import time
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any
@@ -29,6 +30,7 @@ from .model import HaruhiUniversalPolicy, PolicyConfig
 from .ppo import PpoConfig, RecurrentPpoTrainer
 from .resources import GIB, evaluate_resource_safety, read_resource_snapshot
 from .rollout import SelfPlayCollector
+from .run_status import RunStatusWriter
 from .seeds import EpisodeSeedScheduler
 from .tensors import TensorLimits
 
@@ -86,6 +88,15 @@ def _seed_everything(seed: int) -> None:
     torch.manual_seed(seed)
 
 
+def _resource_details(snapshot: Any) -> dict[str, float | None]:
+    return {
+        "system_free_gib": snapshot.system_free_bytes / GIB,
+        "data_free_gib": snapshot.data_free_bytes / GIB,
+        "swap_free_gib": None if snapshot.swap_free_bytes is None else snapshot.swap_free_bytes / GIB,
+        "process_rss_gib": snapshot.process_rss_bytes / GIB,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="训练《射手座之日》通用全控制策略")
     parser.add_argument("--config", default="training/configs/universal-v0.yaml")
@@ -132,6 +143,8 @@ def main() -> int:
 
     run_directory = data_root / "runs" / run_name
     metrics_path = run_directory / "metrics.jsonl"
+    status_writer = RunStatusWriter(data_root, run_name)
+    status_writer.write(state="running", phase="initializing", update=start_update)
     writer = SummaryWriter(log_dir=str(run_directory / "tensorboard"))
     last_metrics: dict[str, Any] = {}
     bridge = NodeBatchBridge(
@@ -150,8 +163,10 @@ def main() -> int:
         tensor_limits=tensor_limits,
     )
 
+    current_update = start_update
     try:
         for update in range(start_update + 1, int(run_config["updates"]) + 1):
+            current_update = update
             current_resources = read_resource_snapshot(data_root)
             decision = evaluate_resource_safety(current_resources)
             if not decision.allowed:
@@ -167,16 +182,55 @@ def main() -> int:
                     status="paused_resource_guard",
                     metrics={**last_metrics, "pause_reasons": list(decision.reasons)},
                 )
+                status_writer.write(
+                    state="paused_resource_guard",
+                    phase="before_collection",
+                    update=update - 1,
+                    details={
+                        "checkpoint": str(path),
+                        "reasons": list(decision.reasons),
+                        **_resource_details(current_resources),
+                    },
+                )
                 print(f"资源保护已暂停训练，检查点：{path}", file=sys.stderr)
                 return 75
 
-            def progress_guard(_step: int) -> None:
-                progress_decision = evaluate_resource_safety(read_resource_snapshot(data_root))
+            training_mode = (
+                "league"
+                if registry.entries and update > int(config.get("league", {}).get("warmup_updates", 1))
+                else "live_self_play"
+            )
+            status_writer.write(
+                state="running",
+                phase="collecting",
+                update=update,
+                phase_step=0,
+                details={"training_mode": training_mode, **_resource_details(current_resources)},
+            )
+            last_heartbeat_at = time.monotonic()
+
+            def progress_guard(step: int) -> None:
+                nonlocal last_heartbeat_at
+                progress_resources = read_resource_snapshot(data_root)
+                progress_decision = evaluate_resource_safety(progress_resources)
                 if not progress_decision.allowed:
                     raise TrainingResourcePause(progress_decision.reasons)
+                now = time.monotonic()
+                if now - last_heartbeat_at >= 5:
+                    status_writer.write(
+                        state="running",
+                        phase="collecting",
+                        update=update,
+                        phase_step=step,
+                        details={
+                            "training_mode": training_mode,
+                            **_resource_details(progress_resources),
+                        },
+                    )
+                    last_heartbeat_at = now
 
             try:
-                if registry.entries and update > int(config.get("league", {}).get("warmup_updates", 1)):
+                if training_mode == "league":
                     league_collector = LeagueSelfPlayCollector(
                         bridge,
                         model,
@@ -190,13 +244,11 @@ def main() -> int:
                         maximum_steps=int(environment_config["maximum_collection_steps"]),
                         progress_hook=progress_guard,
                     )
-                    training_mode = "league"
                 else:
                     rollout = collector.collect_complete_episodes(
                         maximum_steps=int(environment_config["maximum_collection_steps"]),
                         progress_hook=progress_guard,
                     )
-                    training_mode = "live_self_play"
             except TrainingResourcePause as pause:
                 gc.collect()
                 if device.type == "mps":
@@ -213,6 +265,12 @@ def main() -> int:
                     status="paused_resource_guard",
                     metrics={**last_metrics, "pause_reasons": list(pause.reasons)},
                 )
+                status_writer.write(
+                    state="paused_resource_guard",
+                    phase="collection",
+                    update=update - 1,
+                    details={"checkpoint": str(path), "reasons": list(pause.reasons)},
+                )
                 print(f"采集期间资源保护已暂停训练，检查点：{path}", file=sys.stderr)
                 return 75
             episode_metrics = _episode_metrics(rollout.completed_episodes)
@@ -222,8 +280,15 @@ def main() -> int:
                         str(episode["opponentId"]),
                         float(episode["learnerScore"]),
                     )
+            status_writer.write(
+                state="running",
+                phase="optimizing",
+                update=update,
+                details={"training_mode": training_mode, **episode_metrics},
+            )
             training_metrics = trainer.update(rollout)
-            after_update_decision = evaluate_resource_safety(read_resource_snapshot(data_root))
+            after_update_resources = read_resource_snapshot(data_root)
+            after_update_decision = evaluate_resource_safety(after_update_resources)
             if not after_update_decision.allowed:
                 del rollout
                 gc.collect()
@@ -245,6 +310,16 @@ def main() -> int:
                         **episode_metrics,
                         **training_metrics,
                         "pause_reasons": list(after_update_decision.reasons),
+                    },
+                )
+                status_writer.write(
+                    state="paused_resource_guard",
+                    phase="after_optimization",
+                    update=update,
+                    details={
+                        "checkpoint": str(path),
+                        "reasons": list(after_update_decision.reasons),
+                        **_resource_details(after_update_resources),
                     },
                 )
                 print(f"更新后资源保护已暂停训练，检查点：{path}", file=sys.stderr)
@@ -288,12 +363,18 @@ def main() -> int:
                     registry.register_checkpoint(manifest)
                 else:
                     registry.save()
+            status_writer.write(
+                state="running",
+                phase="update_complete",
+                update=update,
+                details=last_metrics,
+            )
             del rollout
             gc.collect()
             if device.type == "mps":
                 torch.mps.empty_cache()
 
-        save_checkpoint(
+        completed_path, _ = save_checkpoint(
             data_root=data_root,
             run_name=run_name,
             update=int(run_config["updates"]),
@@ -305,6 +386,27 @@ def main() -> int:
             status="completed",
             metrics=last_metrics,
         )
+        status_writer.write(
+            state="completed",
+            phase="completed",
+            update=int(run_config["updates"]),
+            details={"checkpoint": str(completed_path), **last_metrics},
+        )
+    except KeyboardInterrupt:
+        status_writer.write(
+            state="interrupted",
+            phase="interrupted",
+            update=current_update,
+        )
+        raise
+    except Exception as error:
+        status_writer.write(
+            state="failed",
+            phase="exception",
+            update=current_update,
+            details={"error_type": type(error).__name__, "error": str(error)},
+        )
+        raise
     finally:
         bridge.close()
         writer.close()

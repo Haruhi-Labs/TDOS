@@ -76,4 +76,4 @@ scripts/run-rl.zsh python -m pytest
 
 `shared/training/browser-policy.js` 管理浏览器推理会话、GRU 隐状态和回合重置，并在加载时强制校验观察/动作/张量版本、输入输出顺序及模型 SHA-256。它不被当前游戏入口引用，也不包含 ONNX Runtime 依赖；只有达标候选经明确接入后才会增加客户端下载与推理开销。
 
-`scripts/status-rl.zsh` 不加载 Torch，只读取数据盘上的运行心跳、最后指标、检查点、联赛与评测摘要，并附带当前资源安全判定。运行进程消失或心跳超过十分钟会显示为 `stale`；尚未启动且资源不足会显示为 `blocked_resources`。
+`scripts/status-rl.zsh` 不加载 Torch，只读取数据盘上的运行心跳、最后指标、检查点、联赛与评测摘要，并附带当前资源安全判定。训练会在采集、优化、检查点、资源暂停、异常和完成阶段原子更新心跳；采集期心跳按墙钟限频，不会因外置盘频繁同步写入拖慢模拟。运行进程消失或心跳超过十分钟会显示为 `stale`；尚未启动且资源不足会显示为 `blocked_resources`。
