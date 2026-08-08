@@ -3294,19 +3294,25 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   padding: calc(env(safe-area-inset-top, 0px) + 16px) 18px calc(env(safe-area-inset-bottom, 0px) + 14px);
 }
 .mmenu-head { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
-.mmenu-list { gap: 9px; }
+.mmenu-list,
+.solo-flow-mobile .ts-menu { gap: 9px; }
 .mmenu-foot { display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7px; font-family: var(--font-cn); font-size: 0.7rem; letter-spacing: 0.12em; color: var(--text-muted); }
 .mmenu-foot .ts-foot-actions { gap: 16px; }
-.mmenu .ts-item {
+.mmenu .ts-item,
+.solo-flow-mobile .ts-item {
   padding: 11px 18px;
   border: 1px solid var(--brass-dark);
   border-radius: 12px;
   background: var(--menu-item-surface);
 }
-.mmenu .ts-item-no { color: var(--gilt); }
-.mmenu .ts-item-label { font-size: 1.3rem; }
-.mmenu .ts-item-sub { display: none; } /* 移动端隐藏副标题，单行更紧凑，给群像 hero 让出竖向空间 */
-.mmenu .ts-item-cue { opacity: 1; transform: none; }
+.mmenu .ts-item-no,
+.solo-flow-mobile .ts-item-no { color: var(--gilt); }
+.mmenu .ts-item-label,
+.solo-flow-mobile .ts-item-label { font-size: 1.3rem; }
+.mmenu .ts-item-sub,
+.solo-flow-mobile .ts-item-sub { display: none; } /* 移动端隐藏副标题，单行更紧凑，给群像 hero 让出竖向空间 */
+.mmenu .ts-item-cue,
+.solo-flow-mobile .ts-item-cue { opacity: 1; transform: none; }
 /* 横屏 / 矮窗：菜单收紧成两列，仍一屏 */
 @media (max-height: 560px) {
   .mmenu-head .ts-subtitle { display: none; }
@@ -3453,15 +3459,24 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 
 .ts-menu { display: flex; flex-direction: column; gap: 4px; }
 .ts-item {
+  appearance: none;
+  -webkit-appearance: none;
   position: relative;
   display: flex;
   align-items: center;
   gap: 16px;
   padding: 13px 18px 13px 14px;
+  border: 0;
+  border-left: 2px solid transparent;
   border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-shadow: none;
   text-decoration: none;
   cursor: pointer;
-  border-left: 2px solid transparent;
   transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease;
 }
 .ts-item:focus { outline: none; }
@@ -3509,9 +3524,12 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .ts-item:focus-visible .ts-item-cue { opacity: 1; transform: none; }
 @media (hover: hover) and (pointer: fine) {
-  .ts-item:hover {
+  .ts-item:hover:not(:disabled) {
     background: var(--menu-item-highlight);
+    border-color: currentColor;
     border-left-color: var(--gilt);
+    box-shadow: none;
+    color: inherit;
     transform: translateX(6px);
   }
   .ts-item:hover .ts-item-no { color: var(--gilt-bright); }
@@ -3520,6 +3538,20 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
     text-shadow: 0 0 16px #c8a24e44;
   }
   .ts-item:hover .ts-item-cue { opacity: 1; transform: none; }
+  .mmenu .ts-item:hover:not(:disabled),
+  .solo-flow-mobile .ts-item:hover:not(:disabled) {
+    border-color: var(--brass-dark);
+    border-left-color: var(--gilt);
+  }
+}
+.ts-item.is-pressing {
+  background: var(--menu-item-highlight);
+  border-left-color: var(--gilt);
+  box-shadow: none;
+  transform: none;
+}
+@media (hover: hover) and (pointer: fine) {
+  .ts-item:hover.is-pressing { transform: translateX(6px); }
 }
 
 .ts-foot {
@@ -4114,7 +4146,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   pointer-events: none;
   transition: opacity 320ms ease, visibility 0s linear 320ms;
 }
-.solo-flow-content { width: min(650px, 94%); }
+.solo-flow-content { width: min(560px, 94%); }
 .solo-flow-panel { width: 100%; }
 .solo-flow-panel.enter-forward { opacity: 0; transform: translateX(34px); }
 .solo-flow-panel.enter-back { opacity: 0; transform: translateX(-34px); }
@@ -4136,18 +4168,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .solo-flow-heading { margin-bottom: clamp(18px, 3vh, 32px); }
 .solo-flow-item {
-  appearance: none;
-  -webkit-appearance: none;
   width: 100%;
-  padding: 11px 18px;
-  text-align: left;
-  background: var(--menu-item-surface);
-  border: 1px solid var(--brass-dark);
-  border-radius: 12px;
-  box-shadow: none;
-  text-shadow: none;
-  color: inherit;
-  font: inherit;
 }
 .solo-flow-back {
   margin-top: 22px;
@@ -4161,27 +4182,8 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   transition: color 120ms ease;
 }
 .solo-flow-back:focus-visible { color: var(--text-soft); }
-.solo-flow .solo-flow-item:focus-visible {
-  background: var(--menu-item-highlight);
-  border-left-color: var(--gilt);
-  box-shadow: none;
-  color: inherit;
-  transform: translateX(6px);
-}
 @media (hover: hover) and (pointer: fine) {
   .solo-flow-back:hover { color: var(--text-soft); }
-  .solo-flow .solo-flow-item:hover:not(:disabled) {
-    background: var(--menu-item-highlight);
-    border-left-color: var(--gilt);
-    box-shadow: none;
-    color: inherit;
-    transform: translateX(6px);
-  }
-}
-.solo-flow-item.is-pressing:not(:disabled) {
-  background: var(--menu-item-highlight);
-  box-shadow: none;
-  transform: scale(0.985);
 }
 @media (max-width: 720px) {
   .solo-flow-content { width: 100%; padding: 24px 18px; }
@@ -4190,8 +4192,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
     -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 42%, transparent 86%);
     mask-image: linear-gradient(180deg, #000 0%, #000 42%, transparent 86%);
   }
-  .solo-flow-item .ts-item-label { font-size: 1.25rem; }
-  .solo-flow-item .ts-item-sub { display: block; font-size: 0.7rem; }
 }
 
 /* AI推演：对照旧AI开关 */

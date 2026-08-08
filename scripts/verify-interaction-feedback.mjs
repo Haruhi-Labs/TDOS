@@ -18,6 +18,44 @@ if (!baseUrl) {
 }
 const browser = await chromium.launch({ headless: true });
 
+async function menuVisualState(locator) {
+  return locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const labelStyle = getComputedStyle(element.querySelector(".ts-item-label"));
+    const subStyle = getComputedStyle(element.querySelector(".ts-item-sub"));
+    const cueStyle = getComputedStyle(element.querySelector(".ts-item-cue"));
+    const backgroundColor = /,\s*0\)$/.test(style.backgroundColor)
+      ? "transparent"
+      : style.backgroundColor;
+    return {
+      padding: style.padding,
+      gap: style.gap,
+      borderWidth: style.borderWidth,
+      borderColor: style.borderColor,
+      borderRadius: style.borderRadius,
+      backgroundColor,
+      backgroundImage: style.backgroundImage,
+      boxShadow: style.boxShadow,
+      color: style.color,
+      transform: style.transform,
+      labelColor: labelStyle.color,
+      labelFontSize: labelStyle.fontSize,
+      labelTextShadow: labelStyle.textShadow,
+      subDisplay: subStyle.display,
+      cueOpacity: cueStyle.opacity,
+      cueTransform: cueStyle.transform,
+    };
+  });
+}
+
+async function menuPressVisualState(locator) {
+  await locator.evaluate((element) => element.classList.add("is-pressing"));
+  await locator.page().waitForTimeout(220);
+  const state = await menuVisualState(locator);
+  await locator.evaluate((element) => element.classList.remove("is-pressing"));
+  return state;
+}
+
 async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouch = false }) {
   const context = await browser.newContext({ viewport, isMobile, hasTouch });
   const page = await context.newPage();
@@ -65,6 +103,16 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
   await page.waitForTimeout(80);
+  const homeItem = page.locator(".ts-item").first();
+  const homeBaseStyle = await menuVisualState(homeItem);
+  const homePressStyle = await menuPressVisualState(homeItem);
+  let homeHoverStyle = null;
+  if (!hasTouch) {
+    await homeItem.hover();
+    await page.waitForTimeout(300);
+    homeHoverStyle = await menuVisualState(homeItem);
+    await page.mouse.move(viewport.width - 1, viewport.height - 1);
+  }
   assert.equal(
     await page.locator(".ts-item:focus-visible").count(),
     0,
@@ -80,6 +128,26 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
   await page.goto(`${baseUrl}/play`, { waitUntil: "networkidle" });
   const campaignItem = page.locator('.solo-flow-item[data-action="standard"]');
   await campaignItem.waitFor({ state: "visible" });
+  assert.deepEqual(
+    await menuVisualState(campaignItem),
+    homeBaseStyle,
+    `${name}战役按钮基础样式应与首页菜单一致`,
+  );
+  assert.deepEqual(
+    await menuPressVisualState(campaignItem),
+    homePressStyle,
+    `${name}战役按钮按压样式应与首页菜单一致`,
+  );
+  if (!hasTouch) {
+    await campaignItem.hover();
+    await page.waitForTimeout(300);
+    assert.deepEqual(
+      await menuVisualState(campaignItem),
+      homeHoverStyle,
+      `${name}战役按钮悬停样式应与首页菜单一致`,
+    );
+    await page.mouse.move(viewport.width - 1, viewport.height - 1);
+  }
   assert.equal(
     await page.locator(".solo-flow-item:focus-visible").count(),
     0,
