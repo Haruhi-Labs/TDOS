@@ -28,11 +28,13 @@ def test_checkpoint_round_trip_is_hashed_and_portable() -> None:
             seed_state={"base_seed": 1, "stream_count": 1, "stream_offset": 0, "counters": [2]},
             config={"test": True},
             project_root=PROJECT_ROOT,
+            git_commit="a" * 40,
             status="test",
             metrics={"loss": 0.5},
         )
         payload = load_checkpoint(path, expected_sha256=manifest["sha256"])
         assert payload["update"] == 3
+        assert payload["git_commit"] == "a" * 40
         assert payload["config"] == {"test": True}
         assert all(value.device.type == "cpu" for value in payload["model"].values())
         latest = json.loads((path.parent / "latest.json").read_text(encoding="utf-8"))

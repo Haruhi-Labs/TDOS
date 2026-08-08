@@ -104,6 +104,7 @@ def save_checkpoint(
     seed_state: dict[str, Any],
     config: dict[str, Any],
     project_root: str | Path,
+    git_commit: str | None = None,
     status: str = "running",
     metrics: dict[str, Any] | None = None,
 ) -> tuple[Path, dict[str, Any]]:
@@ -119,7 +120,7 @@ def save_checkpoint(
         "run_name": safe_run_name,
         "update": int(update),
         "status": str(status),
-        "git_commit": _git_commit(Path(project_root).resolve()),
+        "git_commit": git_commit or _git_commit(Path(project_root).resolve()),
         "model": _cpu_copy(model.state_dict()),
         "optimizer": _cpu_copy(optimizer.state_dict()),
         "seed_state": seed_state,

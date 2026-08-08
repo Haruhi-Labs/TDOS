@@ -30,6 +30,7 @@ from .model import HaruhiUniversalPolicy, PolicyConfig
 from .ppo import PpoConfig, RecurrentPpoTrainer
 from .resources import GIB, evaluate_resource_safety, read_resource_snapshot
 from .rollout import SelfPlayCollector, concatenate_rollout_batches
+from .run_identity import prepare_run_identity
 from .run_status import RunStatusWriter
 from .seeds import EpisodeSeedScheduler
 from .tensors import TensorLimits
@@ -113,12 +114,26 @@ def main() -> int:
     run_config = config["run"]
     environment_config = config["environment"]
     data_root = Path(run_config.get("data_root", "/Volumes/data/haruhi-rl"))
+    run_name = str(run_config["name"])
 
     safety = evaluate_resource_safety(read_resource_snapshot(data_root))
     if not safety.allowed:
         for reason in safety.reasons:
             print(f"训练未启动：{reason}", file=sys.stderr)
         return 75
+
+    resume_payload = load_checkpoint(args.resume) if args.resume else None
+    if resume_payload is not None and resume_payload["config"] != config:
+        raise ValueError("续训配置与检查点配置不一致")
+    run_identity = prepare_run_identity(
+        data_root=data_root,
+        run_name=run_name,
+        config=config,
+        config_path=(project_root / args.config).resolve(),
+        project_root=project_root,
+        resume_path=args.resume,
+        resume_payload=resume_payload,
+    )
 
     seed = int(run_config["seed"])
     _seed_everything(seed)
@@ -135,18 +150,14 @@ def main() -> int:
         stream_offset=int(environment_config.get("stream_offset", 0)),
     )
     start_update = 0
-    run_name = str(run_config["name"])
     registry = LeagueRegistry(data_root, run_name, seed=seed)
-    if args.resume:
-        payload = load_checkpoint(args.resume)
-        if payload["config"] != config:
-            raise ValueError("续训配置与检查点配置不一致")
-        model.load_state_dict(payload["model"])
-        trainer.optimizer.load_state_dict(payload["optimizer"])
+    if resume_payload is not None:
+        model.load_state_dict(resume_payload["model"])
+        trainer.optimizer.load_state_dict(resume_payload["optimizer"])
         move_optimizer_state(trainer.optimizer, device)
-        scheduler = EpisodeSeedScheduler.from_state_dict(payload["seed_state"])
-        restore_rng_state(payload["rng_state"])
-        start_update = int(payload["update"])
+        scheduler = EpisodeSeedScheduler.from_state_dict(resume_payload["seed_state"])
+        restore_rng_state(resume_payload["rng_state"])
+        start_update = int(resume_payload["update"])
 
     run_directory = data_root / "runs" / run_name
     metrics_path = run_directory / "metrics.jsonl"
@@ -189,6 +200,7 @@ def main() -> int:
                     seed_state=scheduler.state_dict(),
                     config=config,
                     project_root=project_root,
+                    git_commit=run_identity.git_commit,
                     status="paused_resource_guard",
                     metrics={**last_metrics, "pause_reasons": list(decision.reasons)},
                 )
@@ -302,6 +314,7 @@ def main() -> int:
                     seed_state=scheduler.state_dict(),
                     config=config,
                     project_root=project_root,
+                    git_commit=run_identity.git_commit,
                     status="paused_resource_guard",
                     metrics={**last_metrics, "pause_reasons": list(pause.reasons)},
                 )
@@ -354,6 +367,7 @@ def main() -> int:
                     seed_state=scheduler.state_dict(),
                     config=config,
                     project_root=project_root,
+                    git_commit=run_identity.git_commit,
                     status="paused_resource_guard",
                     metrics={
                         **last_metrics,
@@ -410,6 +424,7 @@ def main() -> int:
                     seed_state=scheduler.state_dict(),
                     config=config,
                     project_root=project_root,
+                    git_commit=run_identity.git_commit,
                     status="running",
                     metrics=last_metrics,
                 )
@@ -441,6 +456,7 @@ def main() -> int:
             seed_state=scheduler.state_dict(),
             config=config,
             project_root=project_root,
+            git_commit=run_identity.git_commit,
             status="completed",
             metrics=last_metrics,
         )
@@ -468,6 +484,7 @@ def main() -> int:
     finally:
         bridge.close()
         writer.close()
+        run_identity.close()
     return 0
 
 
