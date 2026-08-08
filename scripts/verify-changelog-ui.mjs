@@ -54,7 +54,7 @@ try {
   });
   const page = await mobile.newPage();
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  assert.equal(await page.locator(".ts-item").count(), 6, "移动首页应显示六个主菜单入口");
+  assert.equal(await page.locator(".ts-item").count(), 5, "更新日志不应占用独立主菜单入口");
   const menuGeometry = await page.evaluate(() => ({
     lastBottom: document.querySelector(".ts-item:last-child")?.getBoundingClientRect().bottom || Infinity,
     footerBottom: document.querySelector(".mmenu-foot")?.getBoundingClientRect().bottom || Infinity,

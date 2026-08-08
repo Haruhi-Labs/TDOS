@@ -23,7 +23,7 @@ for (const locale of locales) {
   assert.deepEqual(releases.map((release) => release.id), referenceIds, `${locale} 版本列表与中文不一致`);
   for (const release of releases) {
     assert.match(release.date, /^\d{4}-\d{2}-\d{2}$/, `${locale}/${release.id} 日期格式错误`);
-    assert.ok(release.version && release.status && release.title, `${locale}/${release.id} 缺少版本元数据`);
+    assert.ok(release.version && release.title, `${locale}/${release.id} 缺少版本元数据`);
     assert.ok(release.groups.length > 0, `${locale}/${release.id} 没有更新分组`);
     const zhRelease = CHANGELOG_BY_LOCALE.zh.find((item) => item.id === release.id);
     assert.deepEqual(
@@ -32,7 +32,7 @@ for (const locale of locales) {
       `${locale}/${release.id} 分组与中文不一致`,
     );
     for (const group of release.groups) {
-      assert.ok(group.code && group.title && group.items.length > 0, `${locale}/${release.id}/${group.id} 内容不完整`);
+      assert.ok(group.title && group.items.length > 0, `${locale}/${release.id}/${group.id} 内容不完整`);
       const zhGroup = zhRelease.groups.find((item) => item.id === group.id);
       assert.deepEqual(
         group.items.map((item) => item.id),
@@ -52,7 +52,7 @@ assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE.zh[0].groups[0].items), "更新日
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const menuSource = readFileSync(resolve(root, "src/menu.js"), "utf8");
 const mainSource = readFileSync(resolve(root, "src/main.js"), "utf8");
-assert.match(menuSource, /href:\s*"\/changelog"/, "主菜单没有更新日志入口");
+assert.doesNotMatch(menuSource, /\{\s*href:\s*"\/changelog"/, "更新日志不应占用独立主菜单项");
 assert.match(menuSource, /href="\/changelog"/, "首页版本号没有链接到更新日志");
 assert.match(mainSource, /"\/changelog"/, "路由没有注册更新日志页面");
 

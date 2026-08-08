@@ -36,28 +36,19 @@ function groupHTML(releaseId, group) {
   `).join("");
   return `
     <section class="cl-group" aria-labelledby="${escapeHTML(headingId)}">
-      <header class="cl-group-head">
-        <span>${escapeHTML(group.code)}</span>
-        <h3 id="${escapeHTML(headingId)}">${escapeHTML(group.title)}</h3>
-      </header>
+      <h3 id="${escapeHTML(headingId)}">${escapeHTML(group.title)}</h3>
       <ul class="cl-items">${items}</ul>
     </section>
   `;
 }
 
 function releaseHTML(release) {
-  const versionNumber = release.version.replace(/^v/i, "");
   return `
     <article class="cl-release" data-release-id="${escapeHTML(release.id)}">
-      <aside class="cl-version" aria-label="${escapeHTML(release.version)}">
-        <span class="cl-version-status">${escapeHTML(release.status)}</span>
-        <span class="cl-version-number"><i>v</i>${escapeHTML(versionNumber)}</span>
-        <time datetime="${escapeHTML(release.date)}">${escapeHTML(formatReleaseDate(release.date))}</time>
-      </aside>
       <div class="cl-sheet">
         <header class="cl-sheet-head">
-          <span class="cl-sheet-code">TDOS · CHANGE RECORD</span>
           <h2>${escapeHTML(release.title)}</h2>
+          <time datetime="${escapeHTML(release.date)}">${escapeHTML(formatReleaseDate(release.date))}</time>
         </header>
         ${release.groups.map((group) => groupHTML(release.id, group)).join("")}
       </div>
@@ -66,7 +57,7 @@ function releaseHTML(release) {
 }
 
 function releaseListHTML() {
-  return `<div class="cl-timeline">${getChangelogEntries(getLocale()).map(releaseHTML).join("")}</div>`;
+  return `<div class="cl-releases">${getChangelogEntries(getLocale()).map(releaseHTML).join("")}</div>`;
 }
 
 function template() {
@@ -76,11 +67,7 @@ function template() {
       <div class="page-bg" aria-hidden="true"></div>
       <div class="page-frame page-frame-changelog">
         <a class="page-back" href="/">${t("‹ 返回主菜单")}</a>
-        <header class="cl-page-head">
-          <span>${t("舰队系统修订记录")}</span>
-          <h1 class="page-title">${t("更新日志")}</h1>
-          <p>${t("按版本查看角色、规则与操作体验的更新内容")}</p>
-        </header>
+        <h1 class="page-title cl-page-title">${t("更新日志")}</h1>
         <div class="page-scroll cl-scroll">${releaseListHTML()}</div>
       </div>
     </section>
@@ -96,7 +83,6 @@ function mobileTemplate() {
         <h1 class="mpage-title">${t("更新日志")}</h1>
       </div>
       <div class="mpage-body cl-mobile-body">
-        <p class="cl-mobile-intro">${t("按版本查看角色、规则与操作体验的更新内容")}</p>
         ${releaseListHTML()}
       </div>
     </section>

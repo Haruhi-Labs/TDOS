@@ -3323,22 +3323,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   .mmenu .ts-item-sub { display: none; }
 }
 
-/* 六项主菜单在短竖屏仍保持一屏；横屏继续使用上方两列规则。 */
-@media (max-width: 980px) and (min-height: 561px) and (max-height: 720px) {
-  .mmenu-shell {
-    gap: 6px;
-    padding-top: calc(env(safe-area-inset-top, 0px) + 8px);
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px);
-  }
-  .mmenu-head { gap: 0; }
-  .mmenu-head .ts-seal { width: 46px; height: 55px; margin-bottom: 0; }
-  .mmenu-head .ts-title { font-size: clamp(1.5rem, 7vw, 2rem); }
-  .mmenu .mmenu-hero { min-height: 74px; }
-  .mmenu .mmenu-list { gap: 5px; }
-  .mmenu .ts-item { min-height: 0; padding: 7px 14px; border-radius: 9px; }
-  .mmenu .ts-item-label { font-size: 1.08rem; line-height: 1.08; }
-  .mmenu-foot { gap: 4px; font-size: 0.62rem; }
-}
 @media (max-width: 980px) {
   :root:lang(en) .mmenu .ts-item-label,
   :root:lang(en) .solo-flow-mobile .ts-item-label {
@@ -3346,7 +3330,6 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
     letter-spacing: 0.07em;
   }
 }
-
 
 /* ═══════════════════════════════════════════════════
    主菜单 / 标题画面（路由 /）— 海军蓝星幕 + 烫金 + 关键立绘
@@ -3796,264 +3779,105 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   gap: 20px;
 }
 
-/* 更新日志：舰队修订通报。大型版本索引与黄铜装订线编码真实版本顺序，正文保持档案纸可读性。 */
+/* 更新日志：沿用站内深色档案面板，只保留版本、日期、分组与正文。 */
 .page-frame-changelog {
-  width: min(1120px, 94%);
-  padding-top: 34px;
+  width: min(920px, 92%);
+  padding-top: 40px;
+  gap: 16px;
 }
-.cl-page-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas:
-    "kicker note"
-    "title note";
-  align-items: end;
-  gap: 3px 28px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #c8a24e55;
-}
-.cl-page-head > span {
-  grid-area: kicker;
-  font-family: var(--font-engrave);
-  font-size: 0.72rem;
-  letter-spacing: 0.28em;
-  color: var(--gilt);
-}
-.cl-page-head .page-title { grid-area: title; }
-.cl-page-head > p {
-  grid-area: note;
-  max-width: 28em;
-  margin: 0 0 5px;
-  font-family: var(--font-cn);
-  font-size: 0.82rem;
-  line-height: 1.65;
-  text-align: right;
-  color: var(--text-muted);
-}
-.cl-scroll { padding: 8px 0 22px; }
-.cl-timeline { position: relative; display: flex; flex-direction: column; gap: 36px; }
-.cl-timeline::before {
-  content: "";
-  position: absolute;
-  top: 54px;
-  bottom: 24px;
-  left: 132px;
-  width: 1px;
-  background: linear-gradient(180deg, var(--gilt-bright), var(--brass-dark) 72%, transparent);
-  box-shadow: 0 0 12px #c8a24e44;
-}
-.cl-release {
-  position: relative;
-  display: grid;
-  grid-template-columns: 132px minmax(0, 1fr);
-  gap: 30px;
-  align-items: start;
-}
-.cl-version {
-  position: sticky;
-  top: 22px;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  padding: 22px 20px 0 0;
-  color: var(--gilt-pale);
-}
-.cl-version::after {
-  content: "";
-  position: absolute;
-  top: 50px;
-  right: -7px;
-  width: 11px;
-  height: 11px;
-  border: 2px solid #160c05;
-  border-radius: 50%;
-  background: var(--gilt-bright);
-  box-shadow: 0 0 0 1px var(--gilt), 0 0 14px #c8a24e88;
-}
-.cl-version-status {
-  font-family: var(--font-cn);
-  font-size: 0.67rem;
-  letter-spacing: 0.12em;
-  color: var(--gilt);
-}
-.cl-version-number {
-  display: flex;
-  align-items: flex-start;
-  font-family: var(--font-title);
-  font-size: 3.05rem;
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: -0.04em;
-  color: var(--gilt-bright);
-  text-shadow: 0 3px 14px #02060e;
-}
-.cl-version-number i {
-  margin: 7px 3px 0 0;
-  font-family: var(--font-italic);
-  font-size: 0.85rem;
-  font-weight: 400;
-  letter-spacing: 0;
-  color: var(--text-muted);
-}
-.cl-version time {
-  margin-top: 8px;
-  font-family: var(--font-body);
-  font-size: 0.64rem;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
+.cl-page-title { font-size: clamp(1.7rem, 4vw, 2.1rem); }
+.cl-scroll { padding: 2px 0 22px; }
+.cl-releases { display: flex; flex-direction: column; gap: 20px; }
+.cl-release { min-width: 0; }
 .cl-sheet {
-  position: relative;
-  padding: 30px 34px 34px;
-  overflow: hidden;
-  border: 1px solid var(--brass);
-  border-radius: 5px;
-  background: var(--tex-paper), linear-gradient(145deg, #f0dfb5 0%, var(--paper) 48%, #d8bd83 100%);
-  background-size: 190px 190px, cover;
-  background-blend-mode: multiply, normal;
-  box-shadow: inset 0 0 0 1px #fff2c766, inset 0 0 44px #6d481d33, 0 16px 36px #02060eb8;
-  color: var(--ink);
-}
-.cl-sheet::after {
-  content: "TDOS";
-  position: absolute;
-  right: -8px;
-  bottom: -22px;
-  font-family: var(--font-title);
-  font-size: 5.8rem;
-  font-weight: 900;
-  letter-spacing: -0.08em;
-  color: #7e531b0d;
-  pointer-events: none;
+  padding: 22px 26px 26px;
+  border: 1px solid #6f542899;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #10182fd9 0%, #090f22e8 100%);
+  box-shadow: 0 10px 28px #02060e66;
 }
 .cl-sheet-head {
   display: flex;
-  align-items: flex-end;
+  align-items: baseline;
   justify-content: space-between;
-  gap: 20px;
-  padding-bottom: 20px;
-}
-.cl-sheet-code {
-  order: 2;
-  font-family: var(--font-body);
-  font-size: 0.62rem;
-  letter-spacing: 0.18em;
-  color: #7c582b;
-  white-space: nowrap;
+  gap: 16px;
+  padding-bottom: 14px;
 }
 .cl-sheet-head h2 {
   margin: 0;
-  font-family: var(--font-title);
-  font-size: 1.75rem;
-  line-height: 1.1;
+  font-family: var(--font-engrave);
+  font-size: 1.12rem;
+  line-height: 1.3;
   letter-spacing: 0.06em;
-  color: #2d1a0b;
+  color: var(--gilt-pale);
+}
+.cl-sheet-head time {
+  flex: 0 0 auto;
+  font-family: var(--font-cn);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
 }
 .cl-group {
-  position: relative;
-  z-index: 1;
-  padding: 22px 0 4px;
-  border-top: 1px solid #85623566;
+  padding: 17px 0 2px;
+  border-top: 1px solid #6f542866;
 }
-.cl-group-head {
-  display: grid;
-  grid-template-columns: 15em minmax(0, 1fr);
-  align-items: baseline;
-  gap: 18px;
-  margin-bottom: 15px;
-}
-.cl-group-head > span {
-  font-family: var(--font-body);
-  font-size: 0.58rem;
-  letter-spacing: 0.2em;
-  color: #8a622d;
-}
-.cl-group-head h3 {
-  margin: 0;
+.cl-group > h3 {
+  margin: 0 0 13px;
   font-family: var(--font-engrave);
-  font-size: 1.05rem;
-  letter-spacing: 0.12em;
-  color: #5e1719;
+  font-size: 0.96rem;
+  letter-spacing: 0.1em;
+  color: var(--gilt);
 }
 .cl-items {
   list-style: none;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 26px;
+  gap: 16px 24px;
   margin: 0;
   padding: 0;
 }
 .cl-item {
   position: relative;
-  padding-left: 15px;
+  padding-left: 12px;
 }
 .cl-item::before {
   content: "";
   position: absolute;
   top: 0.35em;
   left: 0;
-  width: 3px;
-  height: 1.7em;
-  background: linear-gradient(180deg, #b58b3e, #6f4a1d);
+  width: 1px;
+  height: 1.35em;
+  background: var(--brass);
 }
 .cl-item h4 {
-  margin: 0 0 6px;
+  margin: 0 0 5px;
   font-family: var(--font-cn);
-  font-size: 0.94rem;
+  font-size: 0.88rem;
   line-height: 1.45;
-  color: #2d1a0b;
+  color: var(--text-primary);
 }
 .cl-item p {
   margin: 0;
   font-family: var(--font-cn);
   font-size: 0.78rem;
-  line-height: 1.75;
-  color: #634d37;
+  line-height: 1.68;
+  color: var(--text-soft);
 }
 
-/* 更新日志移动端：保留装订线，但把版本索引放回文档流，避免 sticky 占据阅读空间。 */
-.cl-mobile-body { gap: 18px; }
-.cl-mobile-intro {
-  margin: 0 4px;
-  font-family: var(--font-cn);
-  font-size: 0.78rem;
-  line-height: 1.6;
-  color: var(--text-muted);
-}
-.cl-mobile-body .cl-timeline { padding-bottom: 12px; }
-.cl-mobile-body .cl-timeline::before { top: 38px; bottom: 12px; left: 8px; }
-.cl-mobile-body .cl-release { display: block; padding-left: 28px; }
-.cl-mobile-body .cl-version {
-  position: relative;
-  top: auto;
-  flex-flow: row wrap;
-  align-items: baseline;
-  gap: 6px 10px;
-  padding: 0 0 10px;
-}
-.cl-mobile-body .cl-version::after { top: 16px; right: auto; left: -25px; }
-.cl-mobile-body .cl-version-number { order: -1; font-size: 2rem; }
-.cl-mobile-body .cl-version-number i { margin-top: 4px; font-size: 0.7rem; }
-.cl-mobile-body .cl-version time { margin: 0 0 0 auto; font-size: 0.6rem; }
-.cl-mobile-body .cl-sheet { padding: 19px 17px 22px; }
-.cl-mobile-body .cl-sheet::after { font-size: 4.2rem; }
-.cl-mobile-body .cl-sheet-head { display: block; padding-bottom: 15px; }
-.cl-mobile-body .cl-sheet-code { display: block; margin-bottom: 7px; white-space: normal; }
-.cl-mobile-body .cl-sheet-head h2 { font-size: 1.35rem; }
-.cl-mobile-body .cl-group { padding-top: 17px; }
-.cl-mobile-body .cl-group-head { display: block; margin-bottom: 12px; }
-.cl-mobile-body .cl-group-head > span { display: block; margin-bottom: 4px; }
-.cl-mobile-body .cl-group-head h3 { font-size: 0.98rem; }
-.cl-mobile-body .cl-items { grid-template-columns: 1fr; gap: 16px; }
-.cl-mobile-body .cl-item h4 { font-size: 0.9rem; }
-.cl-mobile-body .cl-item p { font-size: 0.76rem; line-height: 1.68; }
+.cl-mobile-body { gap: 14px; }
+.cl-mobile-body .cl-releases { padding-bottom: 12px; }
+.cl-mobile-body .cl-sheet { padding: 16px 15px 19px; }
+.cl-mobile-body .cl-sheet-head { padding-bottom: 12px; }
+.cl-mobile-body .cl-sheet-head h2 { font-size: 1rem; }
+.cl-mobile-body .cl-sheet-head time { font-size: 0.62rem; }
+.cl-mobile-body .cl-group { padding-top: 14px; }
+.cl-mobile-body .cl-group > h3 { margin-bottom: 11px; font-size: 0.9rem; }
+.cl-mobile-body .cl-items { grid-template-columns: 1fr; gap: 14px; }
+.cl-mobile-body .cl-item h4 { font-size: 0.86rem; }
+.cl-mobile-body .cl-item p { font-size: 0.75rem; line-height: 1.65; }
 
 @media (max-width: 760px) {
-  .cl-page-head { display: block; }
-  .cl-page-head > span { display: block; margin-bottom: 4px; }
-  .cl-page-head > p { margin-top: 8px; text-align: left; }
-  .cl-release { grid-template-columns: 108px minmax(0, 1fr); gap: 22px; }
-  .cl-timeline::before { left: 108px; }
   .cl-items { grid-template-columns: 1fr; }
 }
 

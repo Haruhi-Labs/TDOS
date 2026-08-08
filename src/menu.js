@@ -16,8 +16,7 @@ const ITEMS = [
   { href: "/online", no: "II", label: "在线对战", sub: "大厅匹配，与真人同步交战" },
   { href: "/profile", no: "III", label: "指挥官档案", sub: "呼号与阵营" },
   { href: "/guide", no: "IV", label: "玩法说明", sub: "操作与机制速览" },
-  { href: "/changelog", no: "V", label: "更新日志", sub: "版本内容与改动记录" },
-  { href: "/credits", no: "VI", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
+  { href: "/credits", no: "V", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
 ];
 
 const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";

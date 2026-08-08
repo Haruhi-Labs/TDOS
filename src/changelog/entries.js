@@ -13,12 +13,10 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
       id: "v0.2",
       version: "v0.2",
       date: "2026-08-08",
-      status: "当前版本",
       title: "公测版 v0.2",
       groups: [
         {
           id: "characters",
-          code: "CREW & FACULTIES",
           title: "角色与技能",
           items: [
             {
@@ -45,7 +43,6 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
         },
         {
           id: "battle",
-          code: "CAMPAIGN & BATTLE",
           title: "战役与对战",
           items: [
             {
@@ -67,7 +64,6 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
         },
         {
           id: "controls",
-          code: "CONTROL & INTELLIGENCE",
           title: "操作与智能",
           items: [
             {
@@ -95,12 +91,10 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
       id: "v0.2",
       version: "v0.2",
       date: "2026-08-08",
-      status: "現在のバージョン",
       title: "公開テスト版 v0.2",
       groups: [
         {
           id: "characters",
-          code: "CREW & FACULTIES",
           title: "キャラクターと技能",
           items: [
             {
@@ -127,7 +121,6 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
         },
         {
           id: "battle",
-          code: "CAMPAIGN & BATTLE",
           title: "キャンペーンと対戦",
           items: [
             {
@@ -149,7 +142,6 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
         },
         {
           id: "controls",
-          code: "CONTROL & INTELLIGENCE",
           title: "操作と AI",
           items: [
             {
@@ -177,12 +169,10 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
       id: "v0.2",
       version: "v0.2",
       date: "2026-08-08",
-      status: "Current release",
       title: "Public Beta v0.2",
       groups: [
         {
           id: "characters",
-          code: "CREW & FACULTIES",
           title: "Characters & Abilities",
           items: [
             {
@@ -209,7 +199,6 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
         },
         {
           id: "battle",
-          code: "CAMPAIGN & BATTLE",
           title: "Campaign & Battle",
           items: [
             {
@@ -231,7 +220,6 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
         },
         {
           id: "controls",
-          code: "CONTROL & INTELLIGENCE",
           title: "Controls & AI",
           items: [
             {
