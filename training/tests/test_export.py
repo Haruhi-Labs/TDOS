@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import json
+import subprocess
 import tempfile
 from pathlib import Path
 
 from haruhi_rl.bridge import NodeBatchBridge
-from haruhi_rl.export import export_onnx_core, verify_onnx_core
+from haruhi_rl.export import (
+    MODEL_INPUT_NAMES,
+    MODEL_OUTPUT_NAMES,
+    export_onnx_core,
+    verify_onnx_core,
+)
 from haruhi_rl.model import HaruhiUniversalPolicy, PolicyConfig
 from haruhi_rl.tensors import TensorLimits, encode_frames, flatten_seat_frames
 
@@ -34,3 +41,25 @@ def test_onnx_core_matches_pytorch_and_has_dynamic_batch() -> None:
         errors = verify_onnx_core(model, verification_tensors, path)
         assert path.stat().st_size > 0
         assert max(errors.values()) < 2e-4
+
+
+def test_browser_model_contract_matches_exporter() -> None:
+    script = """
+      import {
+        RL_MODEL_INPUT_NAMES,
+        RL_MODEL_OUTPUT_NAMES,
+      } from './shared/training/tensors.js';
+      console.log(JSON.stringify({ inputs: RL_MODEL_INPUT_NAMES, outputs: RL_MODEL_OUTPUT_NAMES }));
+    """
+    completed = subprocess.run(
+        ["node", "--input-type=module", "--eval", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        check=False,
+        text=True,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+    contract = json.loads(completed.stdout)
+    assert contract["inputs"] == list(MODEL_INPUT_NAMES)
+    assert contract["outputs"] == list(MODEL_OUTPUT_NAMES)

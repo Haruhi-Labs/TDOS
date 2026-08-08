@@ -48,6 +48,27 @@ export const RL_MODEL_INPUT_NAMES = Object.freeze([
   "episode_start",
 ]);
 
+export const RL_MODEL_OUTPUT_NAMES = Object.freeze([
+  "next_hidden",
+  "value",
+  "ship_navigation_logits",
+  "ship_set_gear_logits",
+  "ship_gear_logits",
+  "ship_brake_logits",
+  "ship_subskill_logits",
+  "ship_subzone_logits",
+  "ship_continuous_mean",
+  "ship_continuous_log_std",
+  "split_logits",
+  "scout_launch_logits",
+  "scout_source_logits",
+  "scout_zone_logits",
+  "flagship_logits",
+  "flagship_zone_logits",
+  "flagship_continuous_mean",
+  "flagship_continuous_log_std",
+]);
+
 const FEATURE_WIDTHS = Object.freeze({
   global: 19,
   own_ships: 45,
