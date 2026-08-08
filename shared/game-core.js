@@ -1999,7 +1999,7 @@ class Team {
       list.push("神秘赞助人");
     }
     if (this.hasActiveVisionWaveSkill()) {
-      list.push("我不会绕过你哦");
+      list.push(CHARACTER_DEFS.asakura.flagshipSkill.name);
     }
     if (this.mainCharacterId() === "future1096" && this.future1096Form) {
       list.push(`${this.future1096Form}形态`);

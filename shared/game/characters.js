@@ -154,7 +154,7 @@ export const CHARACTER_DEFS = {
       damage: 25, fireRate: 0.58, radius: 8 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "no_escape", name: "我不会绕过你哦", type: "active", cooldown: 24,
+      id: "no_escape", name: "资讯压制", type: "active", cooldown: 24,
       cost: 64, duration: 6, pulseInterval: 1, target: "none",
       description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益。敌方也能看见视野波。",
     },
