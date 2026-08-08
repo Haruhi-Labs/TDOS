@@ -9,7 +9,6 @@ import tempfile
 from pathlib import Path
 
 import torch
-import yaml
 
 from .checkpoint import load_checkpoint
 from .evaluation import (
@@ -42,15 +41,15 @@ def _atomic_json(path: Path, value: dict) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="评测通用策略检查点")
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--config", default="training/configs/universal-v0.yaml")
     parser.add_argument("--repeats", type=int, default=4)
     parser.add_argument("--batch-size", type=int, default=8)
     parser.add_argument("--device", default="auto")
     args = parser.parse_args()
     project_root = Path.cwd().resolve()
-    with (project_root / args.config).open("r", encoding="utf-8") as source:
-        config = yaml.safe_load(source)
     payload = load_checkpoint(args.checkpoint)
+    config = payload.get("config")
+    if not isinstance(config, dict):
+        raise ValueError("检查点缺少可复现评测所需的训练配置")
     model_config = PolicyConfig(**config.get("model", {}))
     model = HaruhiUniversalPolicy(model_config)
     model.load_state_dict(payload["model"])
@@ -80,7 +79,8 @@ def main() -> int:
         "assessment": assess_candidate(results),
     }
     data_root = ensure_data_disk_path(config["run"].get("data_root", "/Volumes/data/haruhi-rl"))
-    output = data_root / "runs" / str(config["run"]["name"]) / "evaluations" / f"update_{int(payload['update']):06d}.json"
+    run_name = str(payload.get("run_name") or config["run"]["name"])
+    output = data_root / "runs" / run_name / "evaluations" / f"update_{int(payload['update']):06d}.json"
     _atomic_json(output, report)
     print(json.dumps({"output": str(output), **report["assessment"]}, ensure_ascii=False))
     return 0 if report["assessment"]["status"] == "proven_not_worse" else 2
