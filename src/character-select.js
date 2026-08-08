@@ -426,7 +426,10 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   }
   function scheduleFit() {
     if (_fitRaf) cancelAnimationFrame(_fitRaf);
-    _fitRaf = requestAnimationFrame(() => fitRight(pageRight));
+    _fitRaf = requestAnimationFrame(() => {
+      fitRight(pageRight);
+      fitRight(book.querySelector(".cs-page-flipper .cs-page-right"));
+    });
   }
 
   function renderLeftInto(el, charId) {
@@ -548,6 +551,9 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     flipper.appendChild(front);
     flipper.appendChild(back);
     book.appendChild(flipper);
+    // 翻页右面此前在离屏状态渲染，clientHeight 为 0，无法得到与底页一致的自适应比例。
+    // 挂载后、浏览器绘制前重新测量，避免高内容页面在翻页首尾突然缩放。
+    fitRight(flipper.querySelector(".cs-page-right"));
 
     // 立刻更新被遮挡的另一半（翻页过程中露出新内容）
     if (direction === "next") {

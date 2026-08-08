@@ -210,6 +210,52 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
   await context.close();
 }
 
+async function elementScale(locator) {
+  return locator.evaluate((element) => {
+    const matrix = new DOMMatrixReadOnly(getComputedStyle(element).transform);
+    return matrix.a;
+  });
+}
+
+async function verifyDesktopPageFlipFit() {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 600 } });
+  await context.addInitScript(() => localStorage.setItem("haruhi-locale-v1", "en"));
+  const page = await context.newPage();
+  await page.goto(`${baseUrl}/play`, { waitUntil: "networkidle" });
+  await page.locator('.solo-flow-item[data-action="standard"]').click();
+  await page.locator('.solo-flow-item[data-action="difficulty:normal"]').click();
+
+  const baseRightFit = page.locator(".cs-book > .cs-page-right > .cs-page-fit");
+  await baseRightFit.waitFor({ state: "visible" });
+  await page.evaluate(async () => {
+    if (document.fonts?.ready) await document.fonts.ready;
+    await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
+  });
+  const firstPageScale = await elementScale(baseRightFit);
+  assert.ok(firstPageScale < 0.99, "高内容桌面场景应触发右页自适应缩放，确保覆盖翻页边界条件");
+
+  await page.locator(".cs-nav-next").click();
+  const nextFlipper = page.locator(".cs-page-flipper.next");
+  await nextFlipper.waitFor({ state: "visible" });
+  const outgoingScale = await elementScale(nextFlipper.locator(".cs-flip-front .cs-page-fit"));
+  assert.ok(
+    Math.abs(outgoingScale - firstPageScale) < 0.001,
+    `向后翻页开始时，翻起页与底页必须保持相同缩放比例（${outgoingScale} / ${firstPageScale}）`,
+  );
+  await nextFlipper.waitFor({ state: "detached", timeout: 2500 });
+
+  await page.locator(".cs-nav-prev").click();
+  const previousFlipper = page.locator(".cs-page-flipper.prev");
+  await previousFlipper.waitFor({ state: "visible" });
+  const incomingScale = await elementScale(previousFlipper.locator(".cs-flip-back .cs-page-fit"));
+  assert.ok(
+    Math.abs(incomingScale - firstPageScale) < 0.001,
+    `向前翻页结束时，落下页与目标底页必须保持相同缩放比例（${incomingScale} / ${firstPageScale}）`,
+  );
+
+  await context.close();
+}
+
 try {
   await verifyPointerFeedback({
     name: "桌面端",
@@ -221,7 +267,8 @@ try {
     isMobile: true,
     hasTouch: true,
   });
-  console.log("双端按钮按压与焦点状态检查通过");
+  await verifyDesktopPageFlipFit();
+  console.log("双端按钮状态与桌面翻页几何一致性检查通过");
 } finally {
   await browser.close();
   await server?.close();
