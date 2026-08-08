@@ -3,7 +3,7 @@
 > 浏览器端的即时舰队对战游戏 —— 取材自谷川流《凉宫春日》系列中 SOS 团自制的同名游戏《射手座之日》。
 > 强调「看得见才能打」的情报博弈与「集中 / 分散」的编队取舍,而非数值碾压。
 
-**▶ 正式站:<https://star.haruyuki.cn>**　·　**测试站:<https://haruyuki.cn/test-game/>**　·　公测版 v0.1
+**▶ 正式站:<https://star.haruyuki.cn>**　·　**测试站:<https://haruyuki.cn/test-game/>**　·　公测版 v0.2
 
 ---
 
@@ -23,6 +23,7 @@
   - **碰撞与阻挡** —— 舰船有碰撞体积,相撞会减速;舰船会挡住中途的子弹,替后方承受伤害。
   - **速度与能量** —— 推进统一为 P 档和前进 1–4 档；P/1/2 档用于回能，3 档巡航并小幅回能，4 档超速并持续耗能。AI 也使用同一档位与能量规则，并会在低能量时主动降档恢复。
 - **独立新手教程**:从单人游戏的战役菜单进入分步引导，不再与标准对战的首次进入状态耦合。
+- **公共更新日志**:首页菜单与版本号均可进入 `/changelog`，按版本查看角色、规则与操作体验的更新内容。
 - **复古皮装界面**:以「皮装星历名鉴」为主题的复古仿真 UI;角色选择是翻开一本古书。
 
 ## 操作(桌面端)
@@ -77,11 +78,13 @@ src/
   main.js             装载样式 + 注册路由 + 启动
   router.js           History 路由
   menu.js             主菜单(首页)
+  changelog.js        公共更新日志页面（版本内容与元数据在 changelog/）
   solo.js             单人对战
   online.js           在线对战页面编排（快照显示状态在 online/state-sync.js）
   character-select.js 翻书式角色选择（立绘在 character-select/portraits.js）
   battle/             单人/联机共用相机、输入、HUD、显示插值与渲染（专项效果位于 render/）
   i18n/               日英词典与角色文本
+  changelog/          当前版本元数据与多语言版本更新数据
   tutorial.js         新手引导教程
   guide.js / credits.js / profile.js …
 shared/

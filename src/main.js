@@ -7,6 +7,7 @@
 //   /debug    AI 推演观战
 //   /profile  指挥官档案（呼号 + 阵营；出战编队在对战时选）
 //   /guide    玩法说明
+//   /changelog 公共更新日志
 // 三个游戏模块体量大，按需懒加载（代码分割）。
 // ═══════════════════════════════════════════════════════════════
 
@@ -28,6 +29,7 @@ const routes = {
   "/": menu,
   "/profile": profileView,
   "/guide": guide,
+  "/changelog": () => import("./changelog.js"),
   "/credits": credits,
   "/play": () => import("./solo.js"),
   "/play/tutorial": () => import("./solo.js"),

@@ -95,6 +95,9 @@
 
 - `src/i18n.js`：语言状态、格式化和运行时翻译 API。
 - `src/i18n/catalog.js`、`character-text.js`、`messages-ja.js`、`messages-en.js`：只存放并汇总翻译数据。
+- `src/changelog.js`：公共更新日志页面编排，只负责按当前语言渲染版本数据。
+- `src/changelog/meta.js`：首页与日志页共用的轻量当前版本元数据，避免首页提前载入完整更新正文。
+- `src/changelog/entries.js`：更新日志的版本、分组和三语内容；新增版本时不修改页面结构。
 - `src/character-select.js`：角色选择交互与页面编排。
 - `src/character-select/portraits.js`：立绘加载、缓存、阵营着色和占位绘制。
 
@@ -120,6 +123,7 @@
 | 服务端逻辑帧与快照节拍 | `server/match-runtime.js` | 运行时与网络保护测试 |
 | 快照带宽和拥塞保护 | `server/snapshot-stream.js`、`server/config.js` | `shared/network-patch.js` |
 | 日英翻译文本 | `src/i18n/messages-ja.js`、`messages-en.js` | `src/i18n/catalog.js` |
+| 版本号与公共更新日志 | `src/changelog/meta.js`、`entries.js` | `src/changelog.js`、`src/menu.js`、`scripts/verify-changelog.mjs` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
 
 ## 改动前后的最低验证

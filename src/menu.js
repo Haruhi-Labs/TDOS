@@ -9,18 +9,19 @@ import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { startMenuHero } from "./menu-hero.js";
 import { bindLanguageSelector, languageSelectorHTML, t } from "./i18n.js";
+import { CURRENT_VERSION_LABEL } from "./changelog/meta.js";
 
 const ITEMS = [
   { href: "/play", no: "I", label: "单人游戏", sub: "选择战役，指挥舰队迎击 AI" },
   { href: "/online", no: "II", label: "在线对战", sub: "大厅匹配，与真人同步交战" },
   { href: "/profile", no: "III", label: "指挥官档案", sub: "呼号与阵营" },
   { href: "/guide", no: "IV", label: "玩法说明", sub: "操作与机制速览" },
-  { href: "/credits", no: "V", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
+  { href: "/changelog", no: "V", label: "更新日志", sub: "版本内容与改动记录" },
+  { href: "/credits", no: "VI", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
 ];
 
 const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";
 const GROUP_URL = "https://qm.qq.com/q/zg5Bl5Ugwg";
-const VERSION_LABEL = "公测版 v0.1";
 
 // 首页 GitHub 链接(内嵌 Octocat 标记,fill 跟随 currentColor 以适配主题色)
 function githubLinkHTML() {
@@ -34,6 +35,11 @@ function githubLinkHTML() {
 function groupLinkHTML() {
   const label = t("加入交流群");
   return `<a class="ts-group" href="${GROUP_URL}" target="_blank" rel="noopener noreferrer" aria-label="${t("加入游戏交流群")}" title="${t("加入游戏交流群")}">${label}</a>`;
+}
+
+// 页脚版本号也是更新日志入口；比新增独立图标更符合用户查阅版本内容的习惯。
+function versionLinkHTML() {
+  return `<a class="ts-ver ts-ver-link" href="/changelog">${t(CURRENT_VERSION_LABEL)}</a>`;
 }
 
 // 右上角语言切换:地球图标 + 原生语言下拉(隐藏「语言」字样,图标表意),与左上角印章标题对称
@@ -74,7 +80,7 @@ function mobileTemplate(faction) {
         <nav class="ts-menu mmenu-list" aria-label="${t("主菜单")}">${menuItemsHTML()}</nav>
         <footer class="mmenu-foot">
           <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}</span>
-          <span class="ts-ver">${t(VERSION_LABEL)}</span>
+          ${versionLinkHTML()}
         </footer>
       </div>
     </section>
@@ -108,7 +114,7 @@ function template(faction) {
 
         <footer class="ts-foot">
           <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}</span>
-          <span class="ts-foot-info"><span class="ts-ver">${t(VERSION_LABEL)}</span><span class="ts-foot-dot">·</span><span class="ts-hint">${t("↑ ↓ 选择　Enter 进入")}</span></span>
+          <span class="ts-foot-info">${versionLinkHTML()}<span class="ts-foot-dot">·</span><span class="ts-hint">${t("↑ ↓ 选择　Enter 进入")}</span></span>
         </footer>
       </div>
     </section>
