@@ -511,7 +511,7 @@ def _encode_one(
     action_by_key = {str(item.get("controlKey")): item for item in action_mask.get("ships", [])}
     nav_mask = np.zeros((limits.own_ships, 3), dtype=np.bool_)
     gear_mask = np.zeros((limits.own_ships, 5), dtype=np.bool_)
-    ship_action_flags = np.zeros((limits.own_ships, 3), dtype=np.bool_)
+    ship_action_flags = np.zeros((limits.own_ships, 5), dtype=np.bool_)
     for index, ship in enumerate(own_ships[: limits.own_ships]):
         mask = action_by_key.get(str(ship.get("controlKey")), {})
         nav_mask[index, : len(mask.get("navigation", []))] = mask.get("navigation", [])[:3]
@@ -520,6 +520,8 @@ def _encode_one(
             bool(mask.get("setGear")),
             bool(mask.get("emergencyBrake")),
             bool(mask.get("castSubSkill")),
+            bool(mask.get("subSkillPoint")),
+            bool(mask.get("subSkillZone")),
         ]
 
     scout_mask = action_mask.get("scout", {})
@@ -589,7 +591,14 @@ def _encode_one(
         "action_scout_launch": np.asarray(bool(scout_mask.get("launch")), dtype=np.bool_),
         "action_scout_source_mask": source_mask,
         "action_scout_zone_mask": np.asarray(scout_mask.get("zones", [True] * 9), dtype=np.bool_),
-        "action_flagship": np.asarray(bool(action_mask.get("flagshipSkill")), dtype=np.bool_),
+        "action_flagship": np.asarray(bool(action_mask.get("flagshipSkill", {}).get("cast")), dtype=np.bool_),
+        "action_flagship_parameters": np.asarray(
+            [
+                bool(action_mask.get("flagshipSkill", {}).get("point")),
+                bool(action_mask.get("flagshipSkill", {}).get("zone")),
+            ],
+            dtype=np.bool_,
+        ),
     }
 
 

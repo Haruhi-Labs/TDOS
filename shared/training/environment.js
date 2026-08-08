@@ -7,7 +7,7 @@ import { createSeededRandom } from "../game/random.js";
 import { applyRlAction, buildRlActionMask } from "./actions.js";
 import { buildRlObservation } from "./observation.js";
 
-export const RL_ENVIRONMENT_SCHEMA_VERSION = 1;
+export const RL_ENVIRONMENT_SCHEMA_VERSION = 2;
 export const DEFAULT_RL_DECISION_TICKS = 3;
 export const DEFAULT_RL_EPISODE_SECONDS = 180;
 export const RL_OUTCOME_REWARDS = Object.freeze({

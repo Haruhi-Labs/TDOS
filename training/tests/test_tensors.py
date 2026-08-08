@@ -40,6 +40,8 @@ def test_tensor_shapes_and_dtypes() -> None:
     assert tensors["radar"].shape == (batch, limits.radar_contacts, len(RADAR_FEATURE_NAMES))
     assert tensors["action_navigation_mask"].shape == (batch, limits.own_ships, 3)
     assert tensors["action_gear_mask"].shape == (batch, limits.own_ships, 5)
+    assert tensors["action_ship_flags"].shape == (batch, limits.own_ships, 5)
+    assert tensors["action_flagship_parameters"].shape == (batch, 2)
     assert tensors["own_ships"].dtype == torch.float32
     assert tensors["own_ship_tokens"].dtype == torch.int64
     assert tensors["own_ships_mask"].dtype == torch.bool

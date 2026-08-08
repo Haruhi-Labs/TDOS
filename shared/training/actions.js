@@ -6,7 +6,7 @@ import {
 import { throttleForGear } from "../game/throttle.js";
 import { matchActions } from "../protocol/match-actions.js";
 
-export const RL_ACTION_SCHEMA_VERSION = 1;
+export const RL_ACTION_SCHEMA_VERSION = 2;
 export const RL_NAVIGATION_MODES = Object.freeze(["hold", "route", "clear"]);
 export const RL_GEAR_COUNT = 5;
 
@@ -25,6 +25,14 @@ function bool(value) {
 
 function activeSkill(meta) {
   return Boolean(meta && meta.type === "active");
+}
+
+function skillParameterMask(meta) {
+  const target = String(meta?.target || "none");
+  return {
+    point: target === "point" || target === "optional_point",
+    zone: target === "zone",
+  };
 }
 
 function enoughEnergy(team, ship, cost) {
@@ -58,6 +66,8 @@ function canCastSubSkill(team, ship) {
 
 function shipActionMask(team, ship) {
   const controllable = ship.alive && ship.canControl();
+  const subSkill = skillMetaForCharacter(ship.characterId, "sub");
+  const subSkillParameters = skillParameterMask(subSkill);
   return {
     entityId: ship.id,
     controlKey: String(ship.key || ship.slotKey || ""),
@@ -71,6 +81,8 @@ function shipActionMask(team, ship) {
       && enoughEnergy(team, ship, EMERGENCY_BRAKE_COST),
     ),
     castSubSkill: canCastSubSkill(team, ship),
+    subSkillPoint: subSkillParameters.point,
+    subSkillZone: subSkillParameters.zone,
   };
 }
 
@@ -82,6 +94,9 @@ export function buildRlActionMask(simulation, seat) {
   const team = simulation.teamBySeat(seat);
   const ships = team.getPlayerShips();
   const scoutReady = !team.areScoutsDisabled() && team.cooldowns.scout <= 0;
+  const flagshipParameters = skillParameterMask(
+    skillMetaForCharacter(team.mainCharacterId(), "flagship"),
+  );
   return {
     schemaVersion: RL_ACTION_SCHEMA_VERSION,
     ships: ships.map((ship) => shipActionMask(team, ship)),
@@ -95,7 +110,11 @@ export function buildRlActionMask(simulation, seat) {
       sourceShips: ships.map((ship) => scoutReady && ship.alive && enoughEnergy(team, ship, SCOUT_LAUNCH_COST)),
       zones: Array.from({ length: 9 }, () => true),
     },
-    flagshipSkill: canCastFlagship(team),
+    flagshipSkill: {
+      cast: canCastFlagship(team),
+      point: flagshipParameters.point,
+      zone: flagshipParameters.zone,
+    },
   };
 }
 
@@ -188,7 +207,7 @@ export function decodeRlAction(simulation, seat, policyAction = {}) {
   }
 
   const flagship = policyAction.flagshipSkill || {};
-  if (bool(flagship.cast) && mask.flagshipSkill) {
+  if (bool(flagship.cast) && mask.flagshipSkill.cast) {
     actions.push(matchActions.castFlagshipSkill(zoneId(flagship.zone)));
   }
   return actions;

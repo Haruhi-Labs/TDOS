@@ -153,7 +153,12 @@ function actionContractCheck() {
   assert.equal(initialMask.schemaVersion, RL_ACTION_SCHEMA_VERSION);
   assert.deepEqual(initialMask.ships.map((item) => item.navigation[1]), [true, false, false], "编队状态下可控舰掩码错误");
   assert.deepEqual(initialMask.split, [true, true, false], "初始分离动作掩码错误");
-  assert.equal(initialMask.flagshipSkill, true, "合法旗舰技能被错误屏蔽");
+  assert.equal(initialMask.flagshipSkill.cast, true, "合法旗舰技能被错误屏蔽");
+  assert.deepEqual(
+    { point: initialMask.flagshipSkill.point, zone: initialMask.flagshipSkill.zone },
+    { point: false, zone: false },
+    "无目标旗舰技能错误要求了动作参数",
+  );
 
   const decoded = decodeRlAction(simulation, "A", {
     ships: [{
@@ -188,6 +193,8 @@ function actionContractCheck() {
   const detachedMask = buildRlActionMask(simulation, "A");
   assert.equal(detachedMask.ships[1].navigation[1], true, "分离后的副舰没有获得移动动作");
   assert.equal(detachedMask.ships[1].castSubSkill, true, "分离后的副舰合法技能被屏蔽");
+  assert.equal(detachedMask.ships[1].subSkillPoint, true, "点目标副舰技能没有标记目标参数");
+  assert.equal(detachedMask.ships[1].subSkillZone, false, "点目标副舰技能错误标记为战区目标");
   const subActions = decodeRlAction(simulation, "A", {
     ships: [{}, {
       castSubSkill: true,
@@ -205,7 +212,7 @@ function actionContractCheck() {
       A: { main: "yuki", sub1: "haruhi", sub2: "koizumi" },
     },
   });
-  assert.equal(buildRlActionMask(passiveSimulation, "A").flagshipSkill, false, "被动旗舰技能不应生成施放动作");
+  assert.equal(buildRlActionMask(passiveSimulation, "A").flagshipSkill.cast, false, "被动旗舰技能不应生成施放动作");
 }
 
 assert.equal(RL_OBSERVATION_SCHEMA_VERSION, 1);
