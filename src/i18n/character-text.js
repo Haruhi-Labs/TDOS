@@ -5,7 +5,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "春日",
       title: "团长型火力旗舰",
       flavor: "可靠的领导者与突击手",
-      flagshipSkill: { name: "SOS团长", description: "16秒内为每艘已分离的副舰随机赋予一种强化（增益均+50%）：宇宙人 视野/射程×1.5；超能力者 转向/伤害×1.5；未来人 航速/回能/加速×1.5；异世界人 射速×1.5、受伤×0.82。" },
+      flagshipSkill: { name: "我在这里！", description: "广播自身位置，16秒内全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害；每次使用随机找到一位特殊人士，获得一种常驻支援。" },
       subSkill: { name: "神说会赢的", description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。" },
     },
     koizumi: {
@@ -71,7 +71,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "ハルヒ",
       title: "団長型火力旗艦",
       flavor: "頼れる指揮官であり突撃手",
-      flagshipSkill: { name: "SOS団長", description: "16秒間、分離済みの各副艦にランダムな強化を1つ付与（いずれも+50%）：宇宙人 視界/射程×1.5；超能力者 旋回/ダメージ×1.5；未来人 速度/エネルギー回復/加速×1.5；異世界人 連射×1.5・被ダメージ×0.82。" },
+      flagshipSkill: { name: "私はここにいる！", description: "自身の位置を放送し、16秒間、全艦隊の速度・機動・射程・視界・ダメージ・連射を15%強化し、被ダメージを15%軽減。使用ごとに特別な人物を1人見つけ、恒久支援を得る。" },
       subSkill: { name: "神様が勝つと言っている", description: "8秒間、自身の攻撃が50%でクリティカルになり、3倍ダメージを与える。射界と射程内の最寄り敵へ盲射できる。" },
     },
     koizumi: {
@@ -137,7 +137,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "Haruhi",
       title: "Firepower Flagship Commander",
       flavor: "A reliable leader and shock attacker",
-      flagshipSkill: { name: "SOS Brigade Chief", description: "For 16 seconds, grants each detached sub-ship one random buff (all +50%): Alien vision/range ×1.5; Esper turn/damage ×1.5; Time-traveler speed/regen/accel ×1.5; Otherworlder fire rate ×1.5 & damage taken ×0.82." },
+      flagshipSkill: { name: "I'm Here!", description: "Broadcasts Haruhi's position and grants the fleet +15% speed, handling, range, vision, damage and fire rate with 15% damage reduction for 16 seconds. Each use finds a special person and unlocks permanent support." },
       subSkill: { name: "God Says We Win", description: "For 8 seconds, attacks have a 50% critical chance for triple damage and can blind-fire at the nearest enemy within firing arc and range." },
     },
     koizumi: {

@@ -2598,9 +2598,7 @@ export class BotController {
     if (!["haruhi", "koizumi", "tsuruya", "asakura"].includes(characterId)) {
       return false;
     }
-    const targets = characterId === "haruhi"
-      ? [this.team.ships.sub1, this.team.ships.sub2]
-      : this.team.getAllShips();
+    const targets = this.team.getAllShips();
     return this.incomingVisionWaveWillPurge(targets, meta?.duration || 6);
   }
 
@@ -2631,6 +2629,9 @@ export class BotController {
     }
     const dist = distance(main.x, main.y, estimate.x, estimate.y);
     if (characterId === "haruhi") {
+      if ((this.team.haruhiFlagship?.supporters?.size || 0) < 4) {
+        return true;
+      }
       return (estimate.visible || estimate.age <= 3)
         && dist <= main.effectiveRange() * 1.45
         && ((context?.skillAggression || 0) > 0.2 || (context?.trackableIntel) || this.energyProfile("main").high);
@@ -2672,6 +2673,7 @@ export class BotController {
           this.enemy.effects.taxiUntil - now,
           this.enemy.effects.taxiInvulnUntil - now,
           this.enemy.effects.sponsorUntil - now,
+          this.enemy.effects.haruhiBoostUntil - now,
           this.enemy.visionWaveSkill.activeUntil - now,
         );
         for (const ship of visibleShips) {
@@ -2680,7 +2682,6 @@ export class BotController {
             Number(ship.effects.critUntil || 0) - now,
             Number(ship.effects.reliableUntil || 0) - now,
             Number(ship.effects.bladeQueenUntil || 0) - now,
-            Number(ship.effects.sosBuff?.until || 0) - now,
             ship.effects.nextShotDamageMultiplier > 1 ? 6 : 0,
           );
         }

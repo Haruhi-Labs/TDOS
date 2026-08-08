@@ -58,6 +58,7 @@ import { applyMatchAction } from "./game/action-dispatcher.js";
 import {
   COLLISION_SLOW_DURATION,
   COLLISION_SLOW_FLOOR,
+  resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts,
   resolveBladeQueenContacts as resolveMatchBladeQueenContacts,
   resolveScoutClashes as resolveMatchScoutClashes,
   resolveShipCollisions as resolveMatchShipCollisions,
@@ -85,6 +86,19 @@ import {
   pickTargetFor as pickTeamTarget,
   stepCombat as stepTeamCombat,
 } from "./game/targeting-system.js";
+import {
+  HARUHI_SUPPORT_LABELS,
+  activateHaruhiFlagship,
+  createHaruhiFlagshipState,
+  haruhiBoostActive,
+  haruhiDamageTakenMultiplier,
+  haruhiEsperOrb,
+  haruhiOtherworlderReady,
+  haruhiStatMultiplier,
+  projectileAbsorptionPoint,
+  serializeHaruhiFlagship,
+  updateHaruhiFlagship,
+} from "./game/haruhi-flagship.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -175,73 +189,12 @@ const TEAM_PROJECTILE_COLORS = {
   B: "#ffc0bd",
 };
 
-// SOS团长(春日旗舰技)随机赋予的四种强化。正向增益统一 ×1.5(+50%);异世界人的减伤(受伤 ×0.82)保持不变。
-const SOS_BUFFS = [
-  {
-    id: "alien",
-    name: "宇宙人",
-    color: "#6de7ff",
-    apply(ship, stat, value) {
-      if (stat === "vision") {
-        return value * 1.5;
-      }
-      if (stat === "range") {
-        return value * 1.5;
-      }
-      return value;
-    },
-  },
-  {
-    id: "esper",
-    name: "超能力者",
-    color: "#a996ff",
-    apply(ship, stat, value) {
-      if (stat === "turnRate") {
-        return value * 1.5;
-      }
-      if (stat === "damage") {
-        return value * 1.5;
-      }
-      return value;
-    },
-  },
-  {
-    id: "future",
-    name: "未来人",
-    color: "#ffd58e",
-    apply(ship, stat, value) {
-      if (stat === "speed") {
-        return value * 1.5;
-      }
-      if (stat === "regen") {
-        return value * 1.5;
-      }
-      if (stat === "accel") {
-        return value * 1.5;
-      }
-      return value;
-    },
-  },
-  {
-    id: "otherworlder",
-    name: "异世界人",
-    color: "#8cf0b0",
-    apply(ship, stat, value) {
-      if (stat === "fireRate") {
-        return value * 1.5;
-      }
-      return value;
-    },
-    damageTakenMultiplier: 0.82,
-  },
-];
-
-const SOS_BUFF_TEXT_KEYS = {
-  alien: "宇宙人",
-  esper: "超能力者",
-  future: "未来人",
-  otherworlder: "异世界人",
-};
+const HARUHI_SUPPORT_ANNOUNCEMENT_KEYS = Object.freeze({
+  alien: "找到了宇宙人！",
+  time_traveler: "找到了未来人！",
+  otherworlder: "找到了异世界人！",
+  esper: "找到了超能力者！",
+});
 
 function normalizeAiSeats(mode = "pvp", aiSeats) {
   let source = aiSeats;
@@ -296,12 +249,17 @@ class FloatingText {
     this.textKey = textKey ? String(textKey) : null;
     this.textArgs = textArgs && typeof textArgs === "object" ? { ...textArgs } : null;
     this.color = payload?.color || color;
-    this.life = 0.8;
+    this.emphasis = meta.emphasis || payload?.emphasis || "normal";
+    this.maxLife = Math.max(0.1, Number(meta.life || payload?.life) || 0.8);
+    this.life = this.maxLife;
+    this.riseSpeed = Number.isFinite(Number(meta.riseSpeed ?? payload?.riseSpeed))
+      ? Number(meta.riseSpeed ?? payload?.riseSpeed)
+      : 18;
   }
 
   update(dt) {
     this.life -= dt;
-    this.y -= 18 * dt;
+    this.y -= this.riseSpeed * dt;
   }
 
   serialize() {
@@ -315,6 +273,8 @@ class FloatingText {
       textArgs: this.textArgs,
       color: this.color,
       life: this.life,
+      maxLife: this.maxLife,
+      emphasis: this.emphasis,
     };
   }
 }
@@ -504,6 +464,7 @@ class Ship {
     this.radius = this.base.radius;
     this.alive = true;
     this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
+    this.forcedKnockback = null;
 
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
@@ -515,7 +476,6 @@ class Ship {
       reliableUntil: 0,
       bladeQueenUntil: 0,
       catPawUntil: 0,
-      sosBuff: null,
       brakeUntil: 0,
       brakeCooldownUntil: 0,
       nextShotDamageMultiplier: 1,
@@ -564,14 +524,6 @@ class Ship {
     return false;
   }
 
-  activeSosBuff() {
-    const now = this.team.match.elapsed;
-    if (!this.effects.sosBuff || this.effects.sosBuff.until <= now) {
-      return null;
-    }
-    return SOS_BUFFS.find((item) => item.id === this.effects.sosBuff.id) || null;
-  }
-
   hasEffect(effectKey) {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
   }
@@ -582,10 +534,6 @@ class Ship {
 
   statWithBuffs(statKey, baseValue) {
     let value = baseValue;
-    const sos = this.activeSosBuff();
-    if (sos) {
-      value = sos.apply(this, statKey, value);
-    }
 
     if (this.hasEffect("reliableUntil")) {
       if (statKey === "turnRate") {
@@ -615,6 +563,7 @@ class Ship {
     }
 
     value *= this.team.future1096StatMultiplier(statKey);
+    value *= haruhiStatMultiplier(this.team, statKey);
 
     return value;
   }
@@ -699,14 +648,11 @@ class Ship {
 
   damageTakenMultiplier() {
     let value = 1;
-    const sos = this.activeSosBuff();
-    if (sos && sos.damageTakenMultiplier) {
-      value *= sos.damageTakenMultiplier;
-    }
     if (this.hasEffect("reliableUntil")) {
       value *= 0.84;
     }
     value *= this.team.future1096DamageTakenMultiplier();
+    value *= haruhiDamageTakenMultiplier(this.team);
     return value;
   }
 
@@ -735,13 +681,6 @@ class Ship {
     clearTimedEffect("reliableUntil");
     clearTimedEffect("bladeQueenUntil");
     clearTimedEffect("catPawUntil");
-    if (canClear("sosBuff")) {
-      if (this.activeSosBuff()) {
-        cleared = true;
-      }
-      this.effects.sosBuff = null;
-      delete this.activeSkillEffectStartedTicks.sosBuff;
-    }
     if (canClear("nextShotDamageMultiplier")) {
       if (this.effects.nextShotDamageMultiplier > 1) {
         cleared = true;
@@ -1001,6 +940,10 @@ class Ship {
     const match = this.team.match;
     this.cooldown = Math.max(0, this.cooldown - dt);
 
+    if (this.updateForcedKnockback()) {
+      return;
+    }
+
     if (this.isAttached()) {
       this.followLeader(dt);
       return;
@@ -1072,6 +1015,27 @@ class Ship {
         this.route = null;
       }
     }
+  }
+
+  updateForcedKnockback() {
+    const forced = this.forcedKnockback;
+    if (!forced) {
+      return false;
+    }
+    const now = this.team.match.elapsed;
+    const duration = Math.max(0.001, forced.endsAt - forced.startedAt);
+    const progress = clamp((now - forced.startedAt) / duration, 0, 1);
+    const eased = 1 - (1 - progress) * (1 - progress);
+    this.x = lerp(forced.fromX, forced.toX, eased);
+    this.y = lerp(forced.fromY, forced.toY, eased);
+    this.speed = 0;
+    if (progress < 1) {
+      return true;
+    }
+    this.forcedKnockback = null;
+    this.route = null;
+    this.collisionSlowUntil = 0;
+    return false;
   }
 
   followLeader(dt) {
@@ -1249,6 +1213,8 @@ class Ship {
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       catPawVolley: this.hasEffect("catPawUntil"),
+      knockedBack: Boolean(this.forcedKnockback),
+      haruhiImpactReady: this.key === "main" && haruhiOtherworlderReady(this.team),
       clawMarks: (() => {
         const marks = this.activeClawMarks();
         return {
@@ -1290,7 +1256,7 @@ class Scout {
     this.hp = 1;
     this.maxHp = 1;
     // 只在释放时根据旗舰判定；即使之后被鹤屋策反，也保留这架侦察机原本的机体能力。
-    this.combatCapable = team.hasYukiFlagship();
+    this.combatCapable = config.combatCapable ?? team.hasYukiFlagship();
     this.vision = this.combatCapable
       ? YUKI_COMBAT_SCOUT_STATS.vision
       : config.vision || (this.pattern === "burst" ? 86 : 95);
@@ -1640,8 +1606,10 @@ class Team {
       taxiUntil: 0,
       taxiInvulnUntil: 0,
       sponsorUntil: 0,
+      haruhiBoostUntil: 0,
     };
     this.future1096Form = null;
+    this.haruhiFlagship = createHaruhiFlagshipState(facing);
     this.activeSkillEffectStartedTicks = Object.create(null);
 
     const sub1FormationOffset = { x: -36, y: 22 };
@@ -1967,10 +1935,6 @@ class Team {
 
   listShipBuffs(ship) {
     const list = [];
-    const sos = ship.activeSosBuff();
-    if (sos) {
-      list.push(sos.name);
-    }
     if (ship.hasEffect("critUntil")) {
       list.push("神说会赢的");
     }
@@ -2003,6 +1967,14 @@ class Team {
     }
     if (this.mainCharacterId() === "future1096" && this.future1096Form) {
       list.push(`${this.future1096Form}形态`);
+    }
+    if (haruhiBoostActive(this)) {
+      list.push("我在这里！");
+    }
+    if (this.mainCharacterId() === "haruhi") {
+      for (const supportId of this.haruhiFlagship.supporters) {
+        list.push(HARUHI_SUPPORT_LABELS[supportId]);
+      }
     }
     return list;
   }
@@ -2043,6 +2015,7 @@ class Team {
     clearTeamEffect("taxiUntil");
     clearTeamEffect("taxiInvulnUntil");
     clearTeamEffect("sponsorUntil");
+    clearTeamEffect("haruhiBoostUntil");
     if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
       cleared = true;
     }
@@ -2159,16 +2132,6 @@ class Team {
     this.normalizeSplitLevel();
   }
 
-  applySosBuff(ship) {
-    const buff = SOS_BUFFS[Math.floor(Math.random() * SOS_BUFFS.length)];
-    ship.effects.sosBuff = {
-      id: buff.id,
-      until: this.match.elapsed + 16,
-    };
-    ship.markActiveSkillEffectStarted("sosBuff");
-    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, SOS_BUFF_TEXT_KEYS[buff.id] || buff.name, {}, buff.color, buff.name);
-  }
-
   split(level) {
     this.resolvePostCasualtyState();
     if (level === 1 && this.splitLevel === 0 && this.ships.sub1.alive) {
@@ -2208,6 +2171,11 @@ class Team {
     for (const ship of this.getAllShips()) {
       ship.update(dt);
     }
+    updateHaruhiFlagship(this, {
+      dt,
+      launchAlienWingmen: (ship) => this.launchHaruhiAlienWingmen(ship),
+      launchRandomBeam: (ship) => this.launchHaruhiRandomBeam(ship),
+    });
     updateTeamVisionWaveSkill(this);
     this.maybeAutoLaunchScout();
     for (const scout of this.scouts) {
@@ -2335,6 +2303,28 @@ class Team {
     }
   }
 
+  zoneForPoint(x, y) {
+    return this.match.zones.find((zone) => zoneContains(zone, x, y)) || this.match.zones[4];
+  }
+
+  launchHaruhiAlienWingmen(ship) {
+    const zone = this.zoneForPoint(ship.x, ship.y);
+    const releaseAngle = randomInRange(0, TAU);
+    for (const side of [-1, 1]) {
+      const angle = releaseAngle + (side < 0 ? Math.PI : 0);
+      const spawnRadius = ship.radius + 12;
+      const x = this.match.clampX(ship.x + Math.cos(angle) * spawnRadius, 8);
+      const y = this.match.clampY(ship.y + Math.sin(angle) * spawnRadius, 8);
+      this.scouts.push(new Scout(this, x, y, { zone, combatCapable: true }));
+      this.match.spawnBurst(x, y, "#8fe8ff", 5);
+    }
+  }
+
+  launchHaruhiRandomBeam(ship) {
+    const angle = randomInRange(0, TAU);
+    return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
+  }
+
   castFlagshipSkill(zoneId = 5) {
     const characterId = this.loadout.main;
     const meta = skillMetaForCharacter(characterId, "flagship");
@@ -2353,15 +2343,25 @@ class Team {
 
     let ok = false;
     if (characterId === "haruhi") {
-      const targets = [this.ships.sub1, this.ships.sub2].filter((ship) => ship.alive);
-      if (targets.length === 0) {
-        return false;
-      }
       if (!this.spendEnergyForShip("main", meta.cost || 0)) {
         return false;
       }
-      for (const ship of targets) {
-        this.applySosBuff(ship);
+      const main = this.ships.main;
+      const boostWasActive = haruhiBoostActive(this);
+      const supporter = activateHaruhiFlagship(this, meta.duration || 16);
+      if (!boostWasActive) {
+        for (const ship of this.getPlayerShips()) {
+          if (ship.alive) {
+            ship.speed *= 1.15;
+            ship.cooldown /= 1.15;
+          }
+        }
+      }
+      this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里！", {}, "#ffe59a");
+      this.match.spawnBurst(main.x, main.y, "#ffe59a", Math.max(16, main.radius * 1.7));
+      if (supporter) {
+        const key = HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter];
+        this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, key, {}, "#fff3c5");
       }
       ok = true;
     } else if (characterId === "koizumi") {
@@ -2496,17 +2496,30 @@ class Team {
     }
     const dirX = aimDx / aimLen;
     const dirY = aimDy / aimLen;
+    return this.queueBeamDirection(ship, dirX, dirY);
+  }
+
+  queueBeamDirection(ship, dirX, dirY) {
+    if (!ship || !ship.alive || ship.isAttached()) {
+      return false;
+    }
+    const dirLen = Math.hypot(dirX, dirY);
+    if (!Number.isFinite(dirLen) || dirLen < 1e-4) {
+      return false;
+    }
+    const unitX = dirX / dirLen;
+    const unitY = dirY / dirLen;
     const range = BEAM_BASE_RANGE;
     const beam = {
       id: nextEntityId(),
-      shipKey,
+      shipKey: ship.key,
       phase: "charge",
       x1: ship.x,
       y1: ship.y,
-      x2: this.match.clampX(ship.x + dirX * range, 0),
-      y2: this.match.clampY(ship.y + dirY * range, 0),
-      dirX,
-      dirY,
+      x2: this.match.clampX(ship.x + unitX * range, 0),
+      y2: this.match.clampY(ship.y + unitY * range, 0),
+      dirX: unitX,
+      dirY: unitY,
       range,
       color: "#8ef8ff",
       life: BEAM_CHARGE_DURATION,
@@ -2669,6 +2682,7 @@ class Team {
       maxEnergy: this.fleetEnergyForShip("main").max,
       hullRatio: this.hullRatio(),
       future1096Form: this.future1096Form,
+      haruhiFlagship: serializeHaruhiFlagship(this),
       skillsDisabled: this.areSkillsDisabled(),
       autoScout: {
         enabled: this.autoScout.enabled,
@@ -2860,6 +2874,10 @@ export class MatchSimulation {
     resolveMatchShipCollisions(this);
   }
 
+  resolveHaruhiOtherworlderContacts() {
+    resolveMatchHaruhiOtherworlderContacts(this);
+  }
+
   resolveScoutClashes() {
     resolveMatchScoutClashes(this);
   }
@@ -2892,12 +2910,30 @@ export class MatchSimulation {
     });
   }
 
+  spawnAnnouncementKey(x, y, textKey, args = {}, color = "#ffe59a", fallback = textKey) {
+    this.spawnFloatingText(x, y, fallback, color, {
+      textKey,
+      textArgs: args,
+      emphasis: "announcement",
+      life: 2.4,
+      riseSpeed: 5,
+    });
+  }
+
   spawnBurst(x, y, color = "#ffdb9b", radius = 7) {
     this.bursts.push(new Burst(x, y, color, radius));
   }
 
   updateProjectiles(dt) {
     for (const projectile of this.projectiles) {
+      const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
+      const orb = haruhiEsperOrb(defendingTeam);
+      const absorbedAt = projectileAbsorptionPoint(projectile, dt, orb);
+      if (absorbedAt) {
+        projectile.alive = false;
+        this.spawnBurst(absorbedAt.x, absorbedAt.y, "#ff526f", 6);
+        continue;
+      }
       projectile.update(dt, this);
     }
     this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
@@ -2953,6 +2989,7 @@ export class MatchSimulation {
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
 
+    this.resolveHaruhiOtherworlderContacts();
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();
     this.resolveScoutClashes();

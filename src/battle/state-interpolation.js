@@ -223,6 +223,20 @@ function interpolateTeam(previous, current, ratio) {
       sub1: lerp(previous.cooldowns?.sub1 || 0, current.cooldowns?.sub1 || 0, ratio),
       sub2: lerp(previous.cooldowns?.sub2 || 0, current.cooldowns?.sub2 || 0, ratio),
     },
+    haruhiFlagship: {
+      ...(current.haruhiFlagship || {}),
+      esperOrb: previous.haruhiFlagship?.esperOrb && current.haruhiFlagship?.esperOrb
+        ? {
+            ...current.haruhiFlagship.esperOrb,
+            x: lerp(previous.haruhiFlagship.esperOrb.x, current.haruhiFlagship.esperOrb.x, ratio),
+            y: lerp(previous.haruhiFlagship.esperOrb.y, current.haruhiFlagship.esperOrb.y, ratio),
+            angle: previous.haruhiFlagship.esperOrb.angle + shortestAngleDelta(
+              previous.haruhiFlagship.esperOrb.angle,
+              current.haruhiFlagship.esperOrb.angle,
+            ) * ratio,
+          }
+        : current.haruhiFlagship?.esperOrb || null,
+    },
     ships: {
       main: interpolateShip(previous.ships.main, current.ships.main, ratio),
       sub1: interpolateShip(previous.ships.sub1, current.ships.sub1, ratio),

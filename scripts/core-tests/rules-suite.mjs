@@ -13,6 +13,11 @@ import {
   throttleForGear,
   throttleGearForValue,
 } from "../../shared/game-core.js";
+import {
+  HARUHI_OTHERWORLDER_DAMAGE_RATIO,
+  HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
+  HARUHI_SUPPORTS,
+} from "../../shared/game/haruhi-flagship.js";
 import { assert, runSteps } from "./helpers.mjs";
 
 function closeRangeCombatCheck() {
@@ -1020,6 +1025,122 @@ function haruhiBlindfireCheck() {
   assert(sim.projectiles.length === 1, "春日分舰技能未允许对视野外最近敌人进行盲射");
 }
 
+function haruhiFlagshipReworkCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "yuki", sub2: "koizumi" },
+      B: { main: "kyon", sub1: "tsuruya", sub2: "future1096" },
+    },
+  });
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
+  const teamA = sim.teamA;
+  const teamB = sim.teamB;
+  teamA.splitLevel = 2;
+  teamB.splitLevel = 2;
+  const haruhi = teamA.ships.main;
+  const target = teamB.ships.main;
+  for (const ship of [...teamA.getAllShips(), ...teamB.getAllShips()]) {
+    ship.throttle = 0;
+    ship.speed = 0;
+    ship.command = { x: ship.x, y: ship.y };
+    ship.route = null;
+  }
+
+  const baseStats = {
+    speed: haruhi.effectiveSpeed(),
+    turnRate: haruhi.effectiveTurnRate(),
+    accel: haruhi.baseAcceleration(),
+    range: haruhi.effectiveRange(),
+    vision: haruhi.effectiveVision(),
+    damage: haruhi.effectiveDamage(),
+    fireRate: haruhi.effectiveFireRate(),
+  };
+  assert(teamA.castFlagshipSkill(), "春日旗舰技能首次释放失败");
+  assert(Math.abs(teamA.effects.haruhiBoostUntil - 16) < 1e-9, "春日全队强化没有保留原技能16秒持续时间");
+  assert(Math.abs(haruhi.effectiveSpeed() / baseStats.speed - 1.15) < 1e-9, "春日旗舰技能未提升15%航速");
+  assert(Math.abs(haruhi.effectiveTurnRate() / baseStats.turnRate - 1.15) < 1e-9, "春日旗舰技能未提升15%机动");
+  assert(Math.abs(haruhi.baseAcceleration() / baseStats.accel - 1.15) < 1e-9, "春日旗舰技能未提升15%加速度");
+  assert(Math.abs(haruhi.effectiveRange() / baseStats.range - 1.15) < 1e-9, "春日旗舰技能未提升15%射程");
+  assert(Math.abs(haruhi.effectiveVision() / baseStats.vision - 1.15) < 1e-9, "春日旗舰技能未提升15%视野");
+  assert(Math.abs(haruhi.effectiveDamage() / baseStats.damage - 1.15) < 1e-9, "春日旗舰技能未提升15%伤害");
+  assert(Math.abs(haruhi.effectiveFireRate() / baseStats.fireRate - 1.15) < 1e-9, "春日旗舰技能未提升15%射速");
+
+  const hpBeforeReduction = haruhi.hp;
+  haruhi.takeDamage(100, null, sim, false);
+  assert(Math.abs(hpBeforeReduction - haruhi.hp - 85) < 1e-9, "春日旗舰技能未减免15%伤害");
+  assert(
+    sim.floatingTexts.some((label) => label.textKey === "我在这里！" && label.emphasis === "announcement"),
+    "春日广播没有生成醒目的全局位置文字",
+  );
+
+  for (let cast = 1; cast < HARUHI_SUPPORTS.length; cast += 1) {
+    teamA.cooldowns.flagship = 0;
+    for (const ship of teamA.getAllShips()) ship.energy = ship.maxEnergy;
+    assert(teamA.castFlagshipSkill(), `春日旗舰技能第${cast + 1}次释放失败`);
+  }
+  assert(teamA.haruhiFlagship.supporters.size === 4, "春日四次使用没有找到四种不重复的常驻支援");
+  assert(
+    HARUHI_SUPPORTS.every((id) => teamA.haruhiFlagship.supporters.has(id)),
+    "春日常驻支援集合不完整",
+  );
+
+  runSteps(sim, 6.05);
+  assert(teamA.scouts.length === 2, "宇宙人没有每6秒释放两架战斗僚机");
+  assert(teamA.scouts.every((scout) => scout.combatCapable), "宇宙人释放的僚机没有长门旗舰战斗能力");
+  assert(
+    teamA.scouts.every((scout) => scout.damage === 16 && scout.vision === CHARACTER_DEFS.yuki.stats.vision),
+    "宇宙人僚机属性未与长门旗舰战斗僚机保持一致",
+  );
+
+  runSteps(sim, 4.7);
+  assert(teamA.beams.filter((beam) => beam.phase === "charge").length === 3, "未来人没有以0.3秒间隔错开发射三发1096光线");
+  assert(teamA.beams.every((beam) => Math.abs(beam.maxLife - 1.05) < 1e-9), "未来人光线没有复用1096蓄力规则");
+
+  const orb = teamA.serialize().haruhiFlagship.esperOrb;
+  assert(orb && Math.abs(Math.hypot(orb.x - haruhi.x, orb.y - haruhi.y) - haruhi.effectiveVision()) < 1e-6, "超能力者光球没有在春日视野半径上公转");
+  assert(Math.abs(orb.absorbRadius - orb.radius * 2) < 1e-9, "超能力者光球的子弹吸收半径不是自身半径的两倍");
+
+  const radialX = (orb.x - haruhi.x) / orb.orbitRadius;
+  const radialY = (orb.y - haruhi.y) / orb.orbitRadius;
+  target.x = orb.x + radialX * 90;
+  target.y = orb.y + radialY * 90;
+  target.angle = Math.atan2(haruhi.y - target.y, haruhi.x - target.x);
+  target.cooldown = 0;
+  teamB.visibleEnemyIds = new Set([haruhi.id]);
+  const haruhiHpBeforeOrb = haruhi.hp;
+  sim.projectiles = [];
+  target.tryAttack(sim, teamA);
+  assert(sim.projectiles.length === 1, "超能力者光球测试未生成敌方子弹");
+  for (let step = 0; step < 120 && sim.projectiles.length > 0; step += 1) {
+    sim.updateProjectiles(TICK_DT);
+  }
+  assert(sim.projectiles.length === 0 && haruhi.hp === haruhiHpBeforeOrb, "超能力者光球没有吸收附近的敌方子弹");
+
+  haruhi.x = 560;
+  haruhi.y = 720;
+  haruhi.command = { x: haruhi.x, y: haruhi.y };
+  target.x = haruhi.x + haruhi.radius + target.radius - 1;
+  target.y = haruhi.y;
+  target.command = { x: target.x, y: target.y };
+  const hpBeforeImpact = target.hp;
+  const impactStartX = target.x;
+  sim.update(TICK_DT);
+  assert(target.forcedKnockback, "异世界人碰撞没有进入强制击退状态");
+  assert(
+    Math.abs(hpBeforeImpact - target.hp - target.maxHp * HARUHI_OTHERWORLDER_DAMAGE_RATIO) < 1e-6,
+    "异世界人碰撞伤害不符合15%最大生命口径",
+  );
+  assert(!teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人碰撞后没有进入8秒冷却");
+  runSteps(sim, HARUHI_OTHERWORLDER_KNOCKBACK_DURATION * 0.5);
+  assert(target.x > impactStartX + haruhi.effectiveVision() * 0.45, "异世界人击退距离明显不足一个视野");
+  runSteps(sim, HARUHI_OTHERWORLDER_KNOCKBACK_DURATION * 0.6);
+  assert(!target.forcedKnockback, "异世界人击退完成后仍在锁定敌方控制");
+  assert(target.speed < 2, "异世界人击退完成后敌舰没有从接近零速重新加速");
+}
+
 function asakuraFlagshipCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -1331,6 +1452,7 @@ export function runRulesSuite() {
   fireArcDensityCheck();
   kyonUniformFireRateCheck();
   haruhiBlindfireCheck();
+  haruhiFlagshipReworkCheck();
   asakuraFlagshipCheck();
   asakuraSimultaneousSkillPurgeCheck();
   asakuraBladeQueenCheck();

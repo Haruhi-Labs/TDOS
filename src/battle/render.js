@@ -278,6 +278,57 @@ export function drawBladeQueenAura(ctx, ship) {
   ctx.restore();
 }
 
+// 异世界人支援可触发时，春日舰体只泛一层克制的微光；碰撞冷却期间完全熄灭。
+function drawHaruhiImpactReadyAura(ctx, ship) {
+  const now = performance.now();
+  const pulse = 0.5 + Math.sin(now * 0.0045 + (ship.id || 0)) * 0.5;
+  ctx.save();
+  ctx.globalAlpha = 0.13 + pulse * 0.12;
+  ctx.fillStyle = "#ffd89a";
+  ctx.shadowColor = "#ffbe63";
+  ctx.shadowBlur = 14 + pulse * 7;
+  ctx.beginPath();
+  ctx.arc(ship.x, ship.y, ship.radius + 5 + pulse * 2, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHaruhiEsperOrb(ctx, orb) {
+  if (!orb) {
+    return;
+  }
+  const now = performance.now();
+  const pulse = 0.5 + Math.sin(now * 0.006) * 0.5;
+  const radius = Math.max(7, Number(orb.radius) || 9);
+  const gradient = ctx.createRadialGradient(
+    orb.x - radius * 0.25,
+    orb.y - radius * 0.28,
+    radius * 0.12,
+    orb.x,
+    orb.y,
+    radius * 1.35,
+  );
+  gradient.addColorStop(0, "rgba(255,238,240,0.98)");
+  gradient.addColorStop(0.25, "rgba(255,91,113,0.96)");
+  gradient.addColorStop(0.72, "rgba(172,15,45,0.82)");
+  gradient.addColorStop(1, "rgba(106,4,29,0)");
+
+  ctx.save();
+  ctx.shadowColor = "#ff355d";
+  ctx.shadowBlur = 13 + pulse * 8;
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(orb.x, orb.y, radius * 1.35, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = 0.18 + pulse * 0.08;
+  ctx.strokeStyle = "#ff7088";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(orb.x, orb.y, Math.max(radius * 2, Number(orb.absorbRadius) || 0), 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // 舰船下方的科技感角色名牌:半透明深色托底 + 队伍色 HUD 顶边线 + 辉光亮字 + 字距,大写更硬朗
 // accent = 该舰队伍色(己方青/敌方红),用于边框与辉光,区分敌我
 export function drawShipNameLabel(ctx, ship, accent) {
@@ -376,6 +427,9 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
 
   if (ship.bladeQueen) {
     drawBladeQueenAura(ctx, ship);
+  }
+  if (ship.haruhiImpactReady) {
+    drawHaruhiImpactReadyAura(ctx, ship);
   }
 
   ctx.save();
@@ -609,14 +663,27 @@ export function drawFloatingText(ctx, label) {
   if (!label) {
     return;
   }
-  const alpha = clamp((label.life || 0) / 0.8, 0, 1);
+  const maxLife = Math.max(0.1, Number(label.maxLife) || 0.8);
+  const alpha = clamp((label.life || 0) / maxLife, 0, 1);
   if (alpha <= 0) {
     return;
   }
   ctx.save();
   ctx.globalAlpha = alpha;
   ctx.fillStyle = label.color || "#ffd178";
-  ctx.font = "bold 12px 'Noto Sans SC', 'PingFang SC', sans-serif";
+  if (label.emphasis === "announcement") {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = "900 42px 'Noto Sans SC', 'PingFang SC', sans-serif";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = "rgba(4, 9, 20, 0.82)";
+    ctx.shadowColor = label.color || "#ffe59a";
+    ctx.shadowBlur = 18;
+    ctx.strokeText(localizeFloatingText(label), label.x, label.y);
+  } else {
+    ctx.font = "bold 12px 'Noto Sans SC', 'PingFang SC', sans-serif";
+  }
   ctx.fillText(localizeFloatingText(label), label.x, label.y);
   ctx.restore();
 }
@@ -985,6 +1052,12 @@ export function drawBattleWorld(ctx, frame) {
   }
   for (const beam of enemyTeam?.beams || []) {
     drawBeam(ctx, beam);
+  }
+
+  drawHaruhiEsperOrb(ctx, ownTeam?.haruhiFlagship?.esperOrb);
+  const enemyMainId = enemyTeam?.ships?.main?.id;
+  if (spectating || (enemyMainId && enemyVisible(enemyMainId))) {
+    drawHaruhiEsperOrb(ctx, enemyTeam?.haruhiFlagship?.esperOrb);
   }
 
   if (Array.isArray(state.projectiles)) {

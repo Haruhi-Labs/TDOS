@@ -1,4 +1,10 @@
 import { distance, randomInRange } from "./math.js";
+import {
+  HARUHI_OTHERWORLDER_DAMAGE_RATIO,
+  HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
+  haruhiOtherworlderReady,
+  triggerHaruhiOtherworlder,
+} from "./haruhi-flagship.js";
 
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_HIT_INTERVAL = 1;
@@ -15,6 +21,7 @@ export function resolveShipCollisions(match) {
     for (let rightIndex = leftIndex + 1; rightIndex < ships.length; rightIndex += 1) {
       const left = ships[leftIndex];
       const right = ships[rightIndex];
+      if (left.forcedKnockback || right.forcedKnockback) continue;
       if (left.team === right.team && (left.isAttached() || right.isAttached())) continue;
       if (left.hasEffect("bladeQueenUntil") || right.hasEffect("bladeQueenUntil")) continue;
 
@@ -45,6 +52,53 @@ export function resolveShipCollisions(match) {
     }
   }
   match._contactPairs = contacts;
+}
+
+function applyForcedKnockback(match, source, contactTarget) {
+  const targetTeam = contactTarget.team;
+  const fleetKey = targetTeam.fleetKeyForShip(contactTarget);
+  const fleet = targetTeam.fleetMembersByKey(fleetKey);
+  const deltaX = contactTarget.x - source.x;
+  const deltaY = contactTarget.y - source.y;
+  const length = Math.hypot(deltaX, deltaY);
+  const directionX = length > 1e-6 ? deltaX / length : Math.cos(source.angle);
+  const directionY = length > 1e-6 ? deltaY / length : Math.sin(source.angle);
+  const knockbackDistance = Math.max(1, source.effectiveVision());
+  const startedAt = match.elapsed;
+  const endsAt = startedAt + HARUHI_OTHERWORLDER_KNOCKBACK_DURATION;
+
+  for (const ship of fleet) {
+    const padding = Math.max(8, ship.radius + 2);
+    ship.forcedKnockback = {
+      startedAt,
+      endsAt,
+      fromX: ship.x,
+      fromY: ship.y,
+      toX: match.clampX(ship.x + directionX * knockbackDistance, padding),
+      toY: match.clampY(ship.y + directionY * knockbackDistance, padding),
+    };
+    ship.speed = 0;
+    ship.route = null;
+  }
+
+  contactTarget.takeDamage(contactTarget.maxHp * HARUHI_OTHERWORLDER_DAMAGE_RATIO, source, match);
+  match.spawnFloatingTextKey(contactTarget.x + 10, contactTarget.y - 16, "异世界冲击", {}, "#ffcf8e");
+  match.spawnBurst(contactTarget.x, contactTarget.y, "#ffcf8e", 14);
+}
+
+export function resolveHaruhiOtherworlderContacts(match) {
+  const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
+  for (const [team, enemyTeam] of pairs) {
+    const source = team.ships.main;
+    if (!source?.alive || !haruhiOtherworlderReady(team)) continue;
+    const target = enemyTeam.getAllShips().find(
+      (enemy) => enemy.alive
+        && !enemy.forcedKnockback
+        && distance(source.x, source.y, enemy.x, enemy.y) <= source.radius + enemy.radius + 4,
+    );
+    if (!target || !triggerHaruhiOtherworlder(team)) continue;
+    applyForcedKnockback(match, source, target);
+  }
 }
 
 export function resolveScoutClashes(match) {

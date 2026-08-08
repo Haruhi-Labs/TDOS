@@ -24,6 +24,7 @@ function team(offset = 0) {
     hullRatio: 1,
     autoScout: { enabled: false, zoneId: 5 },
     cooldowns: { scout: 0, flagship: 0, sub1: 0, sub2: 0 },
+    haruhiFlagship: { boostActive: false, supporters: [], otherworlderReady: false, esperOrb: null },
     ships: {
       main: ship(offset + 1, 10, { key: "main" }),
       sub1: ship(offset + 2, 12, { key: "sub1" }),
@@ -91,6 +92,8 @@ const previousState = battleState(0);
 const nextState = battleState(1);
 nextState.teams.A.ships.main.x = 30;
 nextState.teams.A.extraShips[0].x = 36;
+previousState.teams.A.haruhiFlagship.esperOrb = { x: 30, y: 40, angle: 6.1, radius: 10, absorbRadius: 20 };
+nextState.teams.A.haruhiFlagship.esperOrb = { x: 50, y: 60, angle: 0.1, radius: 10, absorbRadius: 20 };
 previousState.projectiles = [ship(100, 20, { targetX: 80, targetY: 20 })];
 nextState.projectiles = [ship(100, 40, { targetX: 80, targetY: 20 })];
 const interpolated = sync.interpolateSnapshotState(
@@ -102,6 +105,12 @@ assert.equal(interpolated.elapsed, 0.5, "对局时间插值异常");
 assert.equal(interpolated.teams.A.ships.main.x, 20, "主舰位置插值异常");
 assert.equal(interpolated.teams.A.extraShips[0].x, 26, "额外舰船插值异常");
 assert.equal(interpolated.projectiles[0].x, 30, "弹体位置插值异常");
+assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.x, 40, "春日超能力者光球横坐标未平滑插值");
+assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.y, 50, "春日超能力者光球纵坐标未平滑插值");
+assert(
+  interpolated.teams.A.haruhiFlagship.esperOrb.angle > 6.1,
+  "春日超能力者光球跨零点公转角度走了错误的长路径",
+);
 
 previousState.teams.A.ships.main.route = {
   anchorToMain: true,
@@ -164,4 +173,4 @@ app.snapshots = [{ tick: 0, state: battleState(0), serverTimeMs: 1000, receivedA
 now = 1000;
 assert(sync.getRenderState()?.teams?.A?.ships?.main, "单快照无法生成显示状态");
 
-console.log("在线显示状态校验通过：航线覆盖、插值、额外舰船、弹体与边界外推均保持一致。");
+console.log("在线显示状态校验通过：航线覆盖、舰船/光球插值、额外舰船、弹体与边界外推均保持一致。");

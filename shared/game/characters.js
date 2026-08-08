@@ -24,9 +24,9 @@ export const CHARACTER_DEFS = {
       damage: 29, fireRate: 0.47, radius: 10 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "sos_leader", name: "SOS团长", type: "active", cooldown: 22, cost: 68,
+      id: "im_here", name: "我在这里！", type: "active", cooldown: 22, cost: 68,
       duration: 16, target: "none",
-      description: "16秒内为每艘已分离的副舰随机赋予一种强化（增益均+50%）：宇宙人 视野/射程×1.5；超能力者 转向/伤害×1.5；未来人 航速/回能/加速×1.5；异世界人 射速×1.5、受伤×0.82。",
+      description: "广播自身位置，16秒内全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害；每次使用随机找到一位特殊人士，获得一种常驻支援。",
     },
     subSkill: {
       id: "god_says_win", name: "神说会赢的", type: "active", cooldown: 20, cost: 60,
