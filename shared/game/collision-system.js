@@ -1,4 +1,5 @@
 import { distance, randomInRange } from "./math.js";
+import { throttleForGear } from "./throttle.js";
 import {
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
@@ -11,6 +12,8 @@ const BLADE_QUEEN_HIT_INTERVAL = 1;
 const BLADE_QUEEN_HIT_FRACTION = 0.15;
 const HARUHI_BOW_CONTACT_TOLERANCE = 5;
 const HARUHI_BOW_ARC_COS = Math.cos(Math.PI / 4);
+const HARUHI_RAM_MINIMUM_GEAR = 2;
+const HARUHI_RAM_SPEED_TOLERANCE = 0.5;
 export const COLLISION_SLOW_DURATION = 3;
 export const COLLISION_SLOW_FLOOR = 0.5;
 const COLLISION_RELEASE_MARGIN = 30;
@@ -89,6 +92,10 @@ function applyForcedKnockback(match, source, contactTarget) {
 }
 
 function haruhiBowTouchesTarget(source, target) {
+  const minimumRamSpeed = source.effectiveSpeed() * throttleForGear(HARUHI_RAM_MINIMUM_GEAR);
+  if (source.speed + HARUHI_RAM_SPEED_TOLERANCE < minimumRamSpeed) {
+    return false;
+  }
   const forwardX = Math.cos(source.angle);
   const forwardY = Math.sin(source.angle);
   const deltaX = target.x - source.x;

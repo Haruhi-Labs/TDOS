@@ -1122,8 +1122,10 @@ function haruhiFlagshipReworkCheck() {
   haruhi.x = 560;
   haruhi.y = 720;
   haruhi.angle = 0;
-  haruhi.command = { x: haruhi.x, y: haruhi.y };
-  target.x = haruhi.x - haruhi.radius - target.radius + 1;
+  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
+  haruhi.throttle = throttleForGear(2);
+  haruhi.command = { x: 1000, y: haruhi.y };
+  target.x = haruhi.x - haruhi.radius - target.radius + 6;
   target.y = haruhi.y;
   target.command = { x: target.x, y: target.y };
   const hpBeforeRearContact = target.hp;
@@ -1134,9 +1136,10 @@ function haruhiFlagshipReworkCheck() {
 
   haruhi.x = 560;
   haruhi.y = 720;
-  haruhi.command = { x: haruhi.x, y: haruhi.y };
+  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
+  haruhi.command = { x: 1000, y: haruhi.y };
   target.x = haruhi.x;
-  target.y = haruhi.y + haruhi.radius + target.radius - 1;
+  target.y = haruhi.y + haruhi.radius + target.radius - 6;
   target.command = { x: target.x, y: target.y };
   const hpBeforeSideContact = target.hp;
   sim.update(TICK_DT);
@@ -1146,7 +1149,36 @@ function haruhiFlagshipReworkCheck() {
 
   haruhi.x = 560;
   haruhi.y = 720;
+  haruhi.speed = 0;
+  haruhi.throttle = 0;
   haruhi.command = { x: haruhi.x, y: haruhi.y };
+  target.x = haruhi.x + haruhi.radius + target.radius - 1;
+  target.y = haruhi.y;
+  target.command = { x: target.x, y: target.y };
+  const hpBeforeStationaryBowContact = target.hp;
+  sim.update(TICK_DT);
+  assert(!target.forcedKnockback, "异世界人支援被原地调整后的舰首接触错误触发");
+  assert(target.hp === hpBeforeStationaryBowContact, "异世界人原地舰首接触错误造成了伤害");
+  assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人原地舰首接触错误消耗了8秒冷却");
+
+  haruhi.x = 560;
+  haruhi.y = 720;
+  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) - 2;
+  haruhi.command = { x: haruhi.x, y: haruhi.y };
+  target.x = haruhi.x + haruhi.radius + target.radius - 1;
+  target.y = haruhi.y;
+  target.command = { x: target.x, y: target.y };
+  const hpBeforeSlowBowContact = target.hp;
+  sim.update(TICK_DT);
+  assert(!target.forcedKnockback, "异世界人支援在未达到二档实际航速时错误触发");
+  assert(target.hp === hpBeforeSlowBowContact, "异世界人低速舰首接触错误造成了伤害");
+  assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人低速舰首接触错误消耗了8秒冷却");
+
+  haruhi.x = 560;
+  haruhi.y = 720;
+  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
+  haruhi.throttle = throttleForGear(2);
+  haruhi.command = { x: 1000, y: haruhi.y };
   target.x = haruhi.x + haruhi.radius + target.radius - 1;
   target.y = haruhi.y;
   target.command = { x: target.x, y: target.y };
