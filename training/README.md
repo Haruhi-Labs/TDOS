@@ -69,3 +69,5 @@ scripts/run-rl.zsh python -m pytest
 正式命令为 `scripts/evaluate-rl.zsh --checkpoint <数据盘检查点>`，同时运行镜像与交叉阵容。至少 128 局、计入超时惩罚后的得分率不低于 50%、95% 下界不低于 45%、超时不超过 5%、红蓝差不超过 10 个百分点且各旗舰得分率不低于 35% 时才进入候选；只有 95% 下界达到 50% 才标记为“已证明不弱于 master”。
 
 通过评测的检查点可用 `scripts/export-rl.zsh --checkpoint <数据盘检查点>` 导出 ONNX 策略核心。导出保留动态 batch、固定实体容量和外部 GRU 隐状态，随后由 ONNX Runtime 对全部输出逐项复算；模型、SHA-256、输入输出契约和最大数值误差写入数据盘 `models/`。当前阶段不自动把未达标模型接入正式客户端。
+
+浏览器候选运行时使用 `shared/training/tensors.js` 直接编码同一份公平观察；它输出 ONNX 可接收的 `Float32Array`、`BigInt64Array` 和布尔掩码。`npm run test:training:tensors` 与 Python 测试会对包含全部实体类型和状态的合成帧逐元素比较两端结果，防止训练与客户端输入静默漂移。

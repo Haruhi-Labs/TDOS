@@ -19,7 +19,7 @@ from .export import (
 )
 from .model import HaruhiUniversalPolicy, PolicyConfig
 from .resources import ensure_data_disk_path
-from .tensors import TensorLimits, encode_frames, flatten_seat_frames
+from .tensors import TENSOR_SCHEMA_VERSION, TensorLimits, encode_frames, flatten_seat_frames
 
 
 def main() -> int:
@@ -55,6 +55,7 @@ def main() -> int:
         "tensor_limits": asdict(limits),
         "observation_schema_version": 1,
         "action_schema_version": 2,
+        "tensor_schema_version": TENSOR_SCHEMA_VERSION,
         "inputs": list(MODEL_INPUT_NAMES),
         "outputs": list(MODEL_OUTPUT_NAMES),
         "maximum_verification_error": max(errors.values(), default=0),

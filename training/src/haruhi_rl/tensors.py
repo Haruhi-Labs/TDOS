@@ -25,6 +25,7 @@ class TensorLimits:
 
 
 TOKEN_BUCKETS = 1024
+TENSOR_SCHEMA_VERSION = 1
 
 GLOBAL_FEATURE_NAMES = (
     "world_width",
