@@ -48,11 +48,20 @@ async function menuVisualState(locator) {
   });
 }
 
+async function waitForMenuVisualSettle(locator) {
+  await locator.evaluate(async (element) => {
+    await new Promise((resolveFrame) => requestAnimationFrame(() => requestAnimationFrame(resolveFrame)));
+    const animations = element.getAnimations({ subtree: true });
+    await Promise.all(animations.map((animation) => animation.finished.catch(() => {})));
+  });
+}
+
 async function menuPressVisualState(locator) {
   await locator.evaluate((element) => element.classList.add("is-pressing"));
-  await locator.page().waitForTimeout(220);
+  await waitForMenuVisualSettle(locator);
   const state = await menuVisualState(locator);
   await locator.evaluate((element) => element.classList.remove("is-pressing"));
+  await waitForMenuVisualSettle(locator);
   return state;
 }
 
@@ -109,7 +118,7 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
   let homeHoverStyle = null;
   if (!hasTouch) {
     await homeItem.hover();
-    await page.waitForTimeout(300);
+    await waitForMenuVisualSettle(homeItem);
     homeHoverStyle = await menuVisualState(homeItem);
     await page.mouse.move(viewport.width - 1, viewport.height - 1);
   }
@@ -140,7 +149,7 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
   );
   if (!hasTouch) {
     await campaignItem.hover();
-    await page.waitForTimeout(300);
+    await waitForMenuVisualSettle(campaignItem);
     assert.deepEqual(
       await menuVisualState(campaignItem),
       homeHoverStyle,
