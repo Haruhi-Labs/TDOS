@@ -6,6 +6,8 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
   "gymnasium>=1.1,<2",
   "numpy>=2,<3",
+  "onnx>=1.17,<2",
+  "onnxruntime>=1.20,<2",
   "pyyaml>=6,<7",
   "tensorboard>=2.19,<3",
   "torch>=2.7,<3",
