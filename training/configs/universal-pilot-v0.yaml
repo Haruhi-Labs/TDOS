@@ -3,6 +3,7 @@ run:
   data_root: /Volumes/data/haruhi-rl
   seed: 20260809
   device: auto
+  resource_check_seconds: 2
   updates: 3
   checkpoint_every: 1
 

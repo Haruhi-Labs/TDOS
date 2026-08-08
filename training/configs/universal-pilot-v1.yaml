@@ -4,6 +4,7 @@ run:
   seed: 20260809
   device: auto
   collection_device: cpu
+  resource_check_seconds: 2
   updates: 3
   checkpoint_every: 1
 

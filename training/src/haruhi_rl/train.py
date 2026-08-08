@@ -98,6 +98,11 @@ def _resource_details(snapshot: Any) -> dict[str, float | None]:
     }
 
 
+def _resource_check_due(now: float, last_check_at: float, interval_seconds: float) -> bool:
+    """按墙钟限制昂贵的系统资源采样频率。"""
+    return now - last_check_at >= max(0.5, interval_seconds)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="训练《射手座之日》通用全控制策略")
     parser.add_argument("--config", default="training/configs/universal-v0.yaml")
@@ -220,14 +225,23 @@ def main() -> int:
                 },
             )
             last_heartbeat_at = time.monotonic()
+            last_resource_check_at = last_heartbeat_at
+            resource_check_seconds = float(run_config.get("resource_check_seconds", 2))
 
             def progress_guard(step: int) -> None:
-                nonlocal last_heartbeat_at
+                nonlocal last_heartbeat_at, last_resource_check_at
+                now = time.monotonic()
+                if not _resource_check_due(
+                    now,
+                    last_resource_check_at,
+                    resource_check_seconds,
+                ):
+                    return
                 progress_resources = read_resource_snapshot(data_root)
+                last_resource_check_at = now
                 progress_decision = evaluate_resource_safety(progress_resources)
                 if not progress_decision.allowed:
                     raise TrainingResourcePause(progress_decision.reasons)
-                now = time.monotonic()
                 if now - last_heartbeat_at >= 5:
                     status_writer.write(
                         state="running",

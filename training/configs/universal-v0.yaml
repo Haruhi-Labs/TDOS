@@ -4,6 +4,8 @@ run:
   seed: 20260808
   device: auto
   collection_device: cpu
+  # 系统资源命令按墙钟限频，避免监控开销随模拟吞吐线性增长。
+  resource_check_seconds: 2
   updates: 1000
   checkpoint_every: 1
 
