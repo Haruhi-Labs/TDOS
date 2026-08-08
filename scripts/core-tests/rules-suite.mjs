@@ -608,7 +608,7 @@ function yukiPassiveCheck() {
   assert(!teamA.areSkillsDisabled(), "长门新雷达被动仍错误封印全队技能");
   const initialRadar = sim.serializeRadarForSeat("A");
   assert(initialRadar?.active, "长门旗舰雷达未在开局自动启用");
-  assert(Math.abs(initialRadar.rotationSeconds - 20 / 1.5) < 1e-9, "长门雷达旋转速度未提升为原来的1.5倍");
+  assert(Math.abs(initialRadar.rotationSeconds - 2.2) < 1e-9, "长门雷达没有以2.2秒一圈旋转");
   assert(initialRadar.angularVelocity < 0, "长门雷达没有沿画布视觉逆时针方向旋转");
 
   const originalMainPose = { x: main.x, y: main.y, angle: main.angle };
