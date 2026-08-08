@@ -1247,6 +1247,7 @@ class Scout {
     this.team = team;
     this.zone = config.zone || null;
     this.pattern = config.pattern || (this.zone ? "zone" : "burst");
+    this.mission = config.mission || "patrol";
     this.mode = "transit";
     this.x = x;
     this.y = y;
@@ -1268,6 +1269,10 @@ class Scout {
     this.life = Number.isFinite(config.life) ? config.life : this.pattern === "burst" ? 11 : 28;
     this.anchor = config.anchor || null;
     this.anchorRadius = config.anchorRadius || 22;
+    this.patrolCenter = config.patrolCenter && Number.isFinite(config.patrolCenter.x) && Number.isFinite(config.patrolCenter.y)
+      ? { x: config.patrolCenter.x, y: config.patrolCenter.y }
+      : null;
+    this.patrolRadius = Number.isFinite(config.patrolRadius) ? Math.max(24, config.patrolRadius) : null;
     this.orbitAngle = randomInRange(0, TAU);
     const orbitSpeedRange = this.pattern === "burst" ? [2.4, 4.8] : [0.8, 1.6];
     this.orbitSpeed = randomInRange(...orbitSpeedRange) * (Math.random() < 0.5 ? -1 : 1);
@@ -1299,9 +1304,25 @@ class Scout {
       return;
     }
     const margin = 18;
+    const zoneMinX = this.zone.x + margin;
+    const zoneMaxX = this.zone.x + this.zone.width - margin;
+    const zoneMinY = this.zone.y + margin;
+    const zoneMaxY = this.zone.y + this.zone.height - margin;
+    const minX = this.patrolCenter && this.patrolRadius
+      ? Math.max(zoneMinX, this.patrolCenter.x - this.patrolRadius)
+      : zoneMinX;
+    const maxX = this.patrolCenter && this.patrolRadius
+      ? Math.min(zoneMaxX, this.patrolCenter.x + this.patrolRadius)
+      : zoneMaxX;
+    const minY = this.patrolCenter && this.patrolRadius
+      ? Math.max(zoneMinY, this.patrolCenter.y - this.patrolRadius)
+      : zoneMinY;
+    const maxY = this.patrolCenter && this.patrolRadius
+      ? Math.min(zoneMaxY, this.patrolCenter.y + this.patrolRadius)
+      : zoneMaxY;
     this.command = {
-      x: randomInRange(this.zone.x + margin, this.zone.x + this.zone.width - margin),
-      y: randomInRange(this.zone.y + margin, this.zone.y + this.zone.height - margin),
+      x: randomInRange(Math.min(minX, maxX), Math.max(minX, maxX)),
+      y: randomInRange(Math.min(minY, maxY), Math.max(minY, maxY)),
     };
   }
 
@@ -2216,6 +2237,27 @@ class Team {
     });
   }
 
+  assignScoutMission(scout, options = {}) {
+    if (!scout?.alive || scout.team !== this) {
+      return false;
+    }
+    const zone = this.match.zoneById(options.zoneId || scout.zone?.id || 5);
+    const seekPoint = options.seekPoint && Number.isFinite(options.seekPoint.x) && Number.isFinite(options.seekPoint.y)
+      ? options.seekPoint
+      : { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+    scout.zone = zone;
+    scout.pattern = "zone";
+    scout.mission = options.mission || scout.mission || "patrol";
+    scout.patrolCenter = options.patrolCenter && Number.isFinite(options.patrolCenter.x) && Number.isFinite(options.patrolCenter.y)
+      ? { x: options.patrolCenter.x, y: options.patrolCenter.y }
+      : { x: seekPoint.x, y: seekPoint.y };
+    scout.patrolRadius = Number.isFinite(options.patrolRadius) ? Math.max(24, options.patrolRadius) : scout.patrolRadius;
+    scout.command = { x: seekPoint.x, y: seekPoint.y };
+    scout.mode = "transit";
+    scout.patrolTimer = randomInRange(1, 2.1);
+    return true;
+  }
+
   launchScout(zoneId, options = {}) {
     const cost = SCOUT_LAUNCH_COST;
     const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
@@ -2237,7 +2279,13 @@ class Team {
       return false;
     }
     const zone = this.match.zoneById(zoneId);
-    this.scouts.push(new Scout(this, source.x, source.y, { zone, seekPoint: options.seekPoint }));
+    this.scouts.push(new Scout(this, source.x, source.y, {
+      zone,
+      seekPoint: options.seekPoint,
+      mission: options.mission,
+      patrolCenter: options.patrolCenter,
+      patrolRadius: options.patrolRadius,
+    }));
     this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
     return true;
   }

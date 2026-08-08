@@ -1,5 +1,12 @@
 import { TICK_DT } from "./constants.js";
 import { SCOUT_LAUNCH_COST, fireArcDensityMultiplier } from "./combat-rules.js";
+import {
+  buildScoutRetaskOrders,
+  createScoutDoctrineState,
+  planYukiScoutDeployment,
+  recordScoutDeployment,
+  scoutMissionPoint,
+} from "./bot-scout-strategy.js";
 import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
 import {
   energyRateForThrottle,
@@ -78,7 +85,10 @@ export class BotController {
     this.focusLowHp = false;
 
     this.moveTimer = 0;
-    this.scoutTimer = this.profile.initialScoutTimer;
+    this.scoutTimer = team.hasYukiFlagship() ? 0.55 : this.profile.initialScoutTimer;
+    this.scoutDoctrine = createScoutDoctrineState();
+    this.currentScoutPlan = null;
+    this.scoutPlanRefreshAt = 0;
     // 春日的首次施放既能立即提供团队强化，也会解锁常驻支援，因此不等待通用的开局观察窗。
     this.flagshipTimer = team.mainCharacterId() === "haruhi" ? 0 : this.profile.initialFlagshipTimer;
     this.subTimers = {
@@ -337,6 +347,13 @@ export class BotController {
       scoutDecision: {
         ...this.lastScoutDecision,
         nextIn: this.scoutTimer,
+      },
+      scoutDoctrine: {
+        mode: this.scoutDoctrine.mode,
+        primaryZoneId: this.scoutDoctrine.primaryZoneId,
+        committedUntil: this.scoutDoctrine.committedUntil,
+        deployments: this.scoutDoctrine.deployments,
+        lastPlan: this.scoutDoctrine.lastPlan,
       },
       flagshipDecision: {
         ...this.lastFlagshipDecision,
@@ -834,6 +851,21 @@ export class BotController {
     const cx = bi % b.cols;
     const cy = Math.floor(bi / b.cols);
     return { x: (cx + 0.5) * b.cell, y: (cy + 0.5) * b.cell, weight: best };
+  }
+
+  beliefZoneWeights() {
+    const weights = new Map(this.team.match.zones.map((zone) => [zone.id, 0]));
+    const belief = this.belief;
+    if (!belief) return weights;
+    for (let index = 0; index < belief.w.length; index += 1) {
+      const col = index % belief.cols;
+      const row = Math.floor(index / belief.cols);
+      const x = (col + 0.5) * belief.cell;
+      const y = (row + 0.5) * belief.cell;
+      const zone = this.zoneForPoint(x, y);
+      weights.set(zone.id, (weights.get(zone.id) || 0) + belief.w[index]);
+    }
+    return weights;
   }
 
   refreshIntel() {
@@ -1717,7 +1749,71 @@ export class BotController {
     return this.acquireSearchCenter(main, focus).zoneId;
   }
 
-  shouldLaunchScout(context = this.currentContext) {
+  planScoutDeployment(context = this.currentContext) {
+    if (!this.team.hasYukiFlagship() || !this.team.ships.main.alive) {
+      return null;
+    }
+    const focus = context?.focus || this.primaryEnemyEstimate();
+    const activeScouts = this.team.scouts
+      .filter((scout) => scout.alive && scout.combatCapable)
+      .map((scout) => ({
+        id: scout.id,
+        zoneId: scout.zone?.id || this.zoneForPoint(scout.x, scout.y).id,
+        life: scout.life,
+        mode: scout.mode,
+        mission: scout.mission,
+      }));
+    return planYukiScoutDeployment({
+      state: this.scoutDoctrine,
+      zones: this.team.match.zones,
+      worldSize: this.team.match.worldSize,
+      ownMain: this.team.ships.main,
+      forwardSign: this.team.seat === "A" ? 1 : -1,
+      focus,
+      contacts: this.knownEnemyContacts({ maxAge: 12 }),
+      beliefZoneWeights: this.beliefZoneWeights(),
+      activeScouts,
+      context: context || {},
+      now: this.team.match.elapsed,
+      probeZoneId: this.likelyProbeZoneId(focus),
+    });
+  }
+
+  retaskYukiCombatScouts(plan) {
+    const now = this.team.match.elapsed;
+    if (!plan || now < this.scoutDoctrine.nextRetaskAt) {
+      return 0;
+    }
+    const activeScouts = this.team.scouts
+      .filter((scout) => scout.alive && scout.combatCapable)
+      .map((scout) => ({
+        id: scout.id,
+        zoneId: scout.zone?.id || this.zoneForPoint(scout.x, scout.y).id,
+        life: scout.life,
+        mode: scout.mode,
+        mission: scout.mission,
+      }));
+    const orders = buildScoutRetaskOrders(plan, activeScouts, 2);
+    let retasked = 0;
+    for (const [index, order] of orders.entries()) {
+      const scout = this.team.scouts.find((item) => item.id === order.scoutId && item.alive);
+      if (!scout) continue;
+      const seekPoint = scoutMissionPoint(plan, this.team.match.zones, order.zoneId, index + 1);
+      if (this.team.assignScoutMission(scout, {
+        zoneId: order.zoneId,
+        seekPoint,
+        patrolCenter: seekPoint,
+        patrolRadius: plan.patrolRadius,
+        mission: order.mission,
+      })) {
+        retasked += 1;
+      }
+    }
+    this.scoutDoctrine.nextRetaskAt = now + (retasked > 0 ? 2.4 : 1.2);
+    return retasked;
+  }
+
+  shouldLaunchScout(context = this.currentContext, scoutPlan = null) {
     if (this.shouldReserveEnergyForHaruhiFlagship()) {
       return false;
     }
@@ -1725,14 +1821,32 @@ export class BotController {
       return true;
     }
     const fleetEnergy = context.fleetEnergy || this.energyProfile("main");
+    if (fleetEnergy.current < SCOUT_LAUNCH_COST) {
+      return false;
+    }
+    if (this.team.hasYukiFlagship()) {
+      const activeScouts = this.team.scouts.filter((item) => item.alive && item.combatCapable).length;
+      const desiredActive = scoutPlan?.desiredActive || 4;
+      const maxActive = scoutPlan?.maxActive || 6;
+      if (activeScouts >= maxActive) {
+        return false;
+      }
+      if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < 0.24 && activeScouts >= 2) {
+        return false;
+      }
+      if (context.conserveEnergy && activeScouts >= 2 && !context.searchRequired && !context.trackableIntel) {
+        return false;
+      }
+      return activeScouts < desiredActive
+        || context.scoutPriority > 0.82
+        || context.trackableIntel
+        || context.maxShipThreat > 0.92;
+    }
     if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < 0.34) {
       return false;
     }
     if (context.conserveEnergy && !context.searchRequired && !context.trackableIntel) {
       return false;
-    }
-    if (fleetEnergy.current < 28) {
-      return !context.emergencyCommit && context.intelUrgency > 1.02;
     }
     return context.scoutPriority > 0.12;
   }
@@ -1797,6 +1911,18 @@ export class BotController {
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
     this.evaluateSplit(elapsed, this.currentContext);
     this.enforceEnergyThrottleCaps();
+    const shouldRefreshScoutPlan = this.team.hasYukiFlagship() && (
+      !this.currentScoutPlan
+      || this.team.match.elapsed >= this.scoutPlanRefreshAt
+      || this.scoutTimer <= 0
+      || this.team.match.elapsed >= this.scoutDoctrine.nextRetaskAt
+    );
+    if (shouldRefreshScoutPlan) {
+      this.currentScoutPlan = this.planScoutDeployment(this.currentContext);
+      this.scoutPlanRefreshAt = this.team.match.elapsed + 0.4;
+    }
+    const scoutPlan = this.currentScoutPlan;
+    const retaskedScouts = this.retaskYukiCombatScouts(scoutPlan);
 
     if (
       this.currentContext
@@ -1821,34 +1947,53 @@ export class BotController {
     }
 
     if (this.scoutTimer <= 0 && !this.team.areScoutsDisabled()) {
-      if (this.shouldLaunchScout(this.currentContext)) {
+      if (this.shouldLaunchScout(this.currentContext, scoutPlan)) {
         const focusEst = this.currentContext?.focus || this.primaryEnemyEstimate();
-        const zoneId = this.pickScoutZoneId(this.team.ships.main, focusEst);
+        const zoneId = scoutPlan?.zoneId || this.pickScoutZoneId(this.team.ships.main, focusEst);
         // 侦察目标点：看得见就奔可见处；看不见就奔 belief 占据图的最高概率(未排除)区——
         // 让侦察去"最该排查"的地方，系统化缩小可能区(类人搜索)。前出分离舰就近发出，最快覆盖。
         const peak = (focusEst && focusEst.visible) ? null : this.beliefPeak();
-        const scoutAim = peak || focusEst;
+        const scoutAim = scoutPlan?.seekPoint || peak || focusEst;
         const scoutSourceKey = this.pickScoutSourceKey(zoneId, scoutAim);
         const seekPoint = scoutAim && Number.isFinite(scoutAim.x) ? { x: scoutAim.x, y: scoutAim.y } : null;
         // 侦察机也必须纳入能量预算。尤其是分离副舰，不能只因刚好攒够28点就立即花光，
         // 否则下一秒既无法机动，也无法使用自保技能。
+        const scoutEnergyFloors = this.team.hasYukiFlagship()
+          ? { emergencyFloor: 0.08, normalFloor: 0.12, conserveFloor: 0.2 }
+          : { emergencyFloor: 0.12, normalFloor: 0.18, conserveFloor: 0.28 };
         const hasScoutReserve = this.allowEnergyCommit(
           scoutSourceKey,
           SCOUT_LAUNCH_COST,
           this.currentContext,
-          { emergencyFloor: 0.12, normalFloor: 0.18, conserveFloor: 0.28 },
+          scoutEnergyFloors,
         );
         const launched = hasScoutReserve
-          && this.team.launchScout(zoneId, { fromShipKey: scoutSourceKey, seekPoint });
+          && this.team.launchScout(zoneId, {
+            fromShipKey: scoutSourceKey,
+            seekPoint,
+            patrolCenter: scoutPlan?.seekPoint || seekPoint,
+            patrolRadius: scoutPlan?.patrolRadius,
+            mission: scoutPlan?.mission,
+          });
+        if (launched && scoutPlan) {
+          recordScoutDeployment(this.scoutDoctrine, scoutPlan, this.team.match.elapsed);
+        }
         this.lastScoutDecision = {
           action: launched ? "launch" : hasScoutReserve ? "retry" : "hold-energy",
           zoneId,
           launched,
           urgent: Boolean(this.currentContext?.emergencyCommit || this.currentContext?.searchRequired || this.currentContext?.trackableIntel),
+          doctrineMode: scoutPlan?.mode || null,
+          mission: scoutPlan?.mission || null,
+          primaryZoneId: scoutPlan?.primaryZoneId || null,
+          predictedZoneId: scoutPlan?.predictedZoneId || null,
+          retasked: retaskedScouts,
           at: this.team.match.elapsed,
         };
         if (launched) {
-          if (this.currentContext?.scoutPriority > 1.05 || this.currentContext?.searchRequired || this.currentContext?.maxShipThreat > 0.92) {
+          if (scoutPlan) {
+            this.scoutTimer = randomInRange(scoutPlan.cadenceMin, scoutPlan.cadenceMax);
+          } else if (this.currentContext?.scoutPriority > 1.05 || this.currentContext?.searchRequired || this.currentContext?.maxShipThreat > 0.92) {
             this.scoutTimer = randomInRange(3.1, 4.8);
           } else if (this.currentContext?.trackableIntel) {
             this.scoutTimer = randomInRange(3.6, 5.4);
@@ -1859,7 +2004,7 @@ export class BotController {
           }
         } else {
           this.scoutTimer = !hasScoutReserve
-            ? randomInRange(2.2, 3.8)
+            ? this.team.hasYukiFlagship() ? randomInRange(1.2, 2.2) : randomInRange(2.2, 3.8)
             : this.currentContext?.emergencyCommit
               ? randomInRange(0.9, 1.8)
               : randomInRange(1.4, 2.8);
@@ -1870,9 +2015,16 @@ export class BotController {
           zoneId: this.enemyIntel.searchZoneId || null,
           launched: false,
           urgent: false,
+          doctrineMode: scoutPlan?.mode || null,
+          mission: scoutPlan?.mission || null,
+          primaryZoneId: scoutPlan?.primaryZoneId || null,
+          predictedZoneId: scoutPlan?.predictedZoneId || null,
+          retasked: retaskedScouts,
           at: this.team.match.elapsed,
         };
-        this.scoutTimer = this.currentContext?.conserveEnergy ? randomInRange(2.2, 3.4) : randomInRange(1.2, 2.2);
+        this.scoutTimer = this.team.hasYukiFlagship()
+          ? this.currentContext?.conserveEnergy ? randomInRange(1.4, 2.2) : randomInRange(0.8, 1.4)
+          : this.currentContext?.conserveEnergy ? randomInRange(2.2, 3.4) : randomInRange(1.2, 2.2);
       }
     }
 

@@ -55,6 +55,7 @@
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
+- `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
 - `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、环带覆盖判定、失效清理与公共状态序列化。
 - `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
@@ -109,7 +110,8 @@
 | 角色数值或技能描述元数据 | `shared/game/characters.js` | `src/i18n/character-text.js` |
 | 技能实际生效过程 | `shared/game-core.js` | 对应 `shared/game/*` 叶模块、核心测试 |
 | 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
-| AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js` |
+| AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js`、核心 AI 测试 |
+| 侦察战区规划与长门僚机编组 | `shared/game/bot-scout-strategy.js` | `shared/game/bot-controller.js`、`shared/game-core.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 朝仓视野波视觉 | `src/battle/render/vision-wave.js` | 视野波规则与单人/联机/观战回归 |

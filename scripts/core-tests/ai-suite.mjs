@@ -408,6 +408,101 @@ function aiYukiRadarIntelCheck() {
   assert(peak && Math.hypot(peak.x - radarPoint.x, peak.y - radarPoint.y) < 230, "雷达接触未引导 AI 的搜索占据图");
 }
 
+function aiYukiScoutDoctrineCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "asakura", sub2: "shamisen" },
+      B: { main: "yuki", sub1: "kyon", sub2: "future1096" },
+    },
+  });
+  const bot = sim.botBySeat("B");
+  const team = sim.teamB;
+  const enemyMain = sim.teamA.ships.main;
+  const spawnFocus = bot.primaryEnemyEstimate();
+  const searchContext = bot.buildTacticalContext(team.ships.main, spawnFocus);
+  const firstScreenPlan = bot.planScoutDeployment(searchContext);
+
+  assert(firstScreenPlan?.mode === "screen", "长门AI缺乏情报时没有建立前沿警戒线");
+  assert([2, 5, 8].includes(firstScreenPlan.zoneId), "长门AI前沿警戒没有部署在双方之间的中线战区");
+  assert(
+    team.launchScout(firstScreenPlan.zoneId, {
+      seekPoint: firstScreenPlan.seekPoint,
+      patrolCenter: firstScreenPlan.seekPoint,
+      patrolRadius: firstScreenPlan.patrolRadius,
+      mission: firstScreenPlan.mission,
+    }),
+    "长门AI前沿警戒测试未能释放首架战斗僚机",
+  );
+  team.cooldowns.scout = 0;
+  const secondScreenPlan = bot.planScoutDeployment(searchContext);
+  assert([2, 5, 8].includes(secondScreenPlan.zoneId), "长门AI第二个警戒点离开了前沿战区");
+  assert(secondScreenPlan.zoneId !== firstScreenPlan.zoneId, "长门AI没有优先补齐尚未覆盖的前沿战区");
+
+  team.scouts = [];
+  for (const zoneId of [2, 5, 8]) {
+    for (const ship of team.fleetMembersForShip("main")) ship.energy = ship.maxEnergy;
+    team.cooldowns.scout = 0;
+    assert(team.launchScout(zoneId), `长门AI战场调度测试未能在${zoneId}战区建立警戒点`);
+  }
+
+  enemyMain.x = 930;
+  enemyMain.y = 240;
+  enemyMain.angle = 0;
+  enemyMain.speed = 31;
+  enemyMain.command = { x: 1200, y: 240 };
+  enemyMain.route = null;
+  bot.rememberContact(enemyMain, "visible");
+  const visibleFocus = bot.primaryEnemyEstimate();
+  const battleContext = bot.buildTacticalContext(team.ships.main, visibleFocus);
+  const battlePlan = bot.planScoutDeployment(battleContext);
+
+  assert(["concentrate", "intercept"].includes(battlePlan.mode), "长门AI确认敌方动向后没有转入战场集中或拦截");
+  assert(battlePlan.predictedZoneId === 3, "长门AI没有根据敌舰向右航行的动向预测下一战区");
+  assert(
+    battlePlan.primaryZoneId === 3 || battlePlan.coverageZoneIds.includes(3),
+    "长门AI的战场部署没有覆盖敌方预计进入的战区",
+  );
+  bot.scoutDoctrine.nextRetaskAt = 0;
+  const retasked = bot.retaskYukiCombatScouts(battlePlan);
+  const primaryCount = team.scouts.filter((scout) => scout.zone?.id === battlePlan.primaryZoneId).length;
+  assert(retasked >= 1, "长门AI由警戒转入接敌时没有重新编组既有战斗僚机");
+  assert(primaryCount >= 2, "长门AI没有把足够僚机集中到主战场");
+
+  const stored = bot.enemyIntel.entities.get(enemyMain.id);
+  stored.source = "visible";
+  stored.seenAt = sim.elapsed - 6;
+  const memoryFocus = bot.projectContact(stored, 1.8);
+  const harassContext = bot.buildTacticalContext(team.ships.main, memoryFocus);
+  const harassPlan = bot.planScoutDeployment(harassContext);
+  assert(harassPlan.mode === "harass", "长门AI对较旧但可追踪的敌情没有转入多战区骚扰");
+  assert(harassPlan.coverageZoneIds.length >= 3, "长门AI骚扰方案没有准备多个候选战区");
+}
+
+function aiYukiScoutCadenceCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "asakura", sub2: "shamisen" },
+      B: { main: "yuki", sub1: "kyon", sub2: "future1096" },
+    },
+  });
+  let launches = 0;
+  const launchScout = sim.teamB.launchScout.bind(sim.teamB);
+  sim.teamB.launchScout = (...args) => {
+    const launched = launchScout(...args);
+    if (launched) launches += 1;
+    return launched;
+  };
+  runSteps(sim, 12);
+  assert(launches >= 3, "长门AI在前12秒没有积极建立至少三个侦察节点");
+  assert(sim.botBySeat("B").scoutDoctrine.deployments === launches, "长门AI侦察战术状态与实际部署次数不一致");
+}
+
 function aiCombatScoutThreatCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -1207,6 +1302,8 @@ export function runAiSuite() {
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();
   aiYukiRadarIntelCheck();
+  aiYukiScoutDoctrineCheck();
+  aiYukiScoutCadenceCheck();
   aiCombatScoutThreatCheck();
   aiAsakuraVisionWaveDecisionCheck();
   aiVisionWaveBuffCounterplayCheck();

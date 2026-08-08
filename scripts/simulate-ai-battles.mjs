@@ -56,6 +56,17 @@ function instrumentSkills(team, counters) {
     if (cast) increment(counters.subCasts, characterId);
     return cast;
   };
+
+  const launchScout = team.launchScout.bind(team);
+  team.launchScout = (zoneId, ...args) => {
+    const launched = launchScout(zoneId, ...args);
+    if (launched) {
+      const characterId = team.mainCharacterId();
+      increment(counters.scoutLaunches, characterId);
+      increment(counters.scoutZones, `${characterId}:${Number(zoneId) || 5}`);
+    }
+    return launched;
+  };
 }
 
 function mergeCounters(target, source) {
@@ -73,6 +84,9 @@ function runBattle({ index, loadoutA, loadoutB }) {
     flagshipCasts: {},
     subAttempts: {},
     subCasts: {},
+    scoutLaunches: {},
+    scoutZones: {},
+    scoutRetasks: {},
   };
   const simulation = new MatchSimulation({
     mode: "pvp",
@@ -90,6 +104,15 @@ function runBattle({ index, loadoutA, loadoutB }) {
       const shouldDefer = incomingVisionWaveWillPurge(...args);
       if (shouldDefer) visionWaveBuffDeferrals += 1;
       return shouldDefer;
+    };
+    const retaskYukiCombatScouts = bot.retaskYukiCombatScouts.bind(bot);
+    bot.retaskYukiCombatScouts = (...args) => {
+      const retasked = retaskYukiCombatScouts(...args);
+      if (retasked > 0) {
+        const characterId = bot.team.mainCharacterId();
+        counters.scoutRetasks[characterId] = (counters.scoutRetasks[characterId] || 0) + retasked;
+      }
+      return retasked;
     };
   }
 
@@ -155,6 +178,9 @@ const totals = {
   flagshipCasts: {},
   subAttempts: {},
   subCasts: {},
+  scoutLaunches: {},
+  scoutZones: {},
+  scoutRetasks: {},
 };
 const results = [];
 try {
@@ -197,7 +223,17 @@ const summary = {
   radarContactTicks: results.reduce((sum, result) => sum + result.radarContactTicks, 0),
   combatScoutShots: results.reduce((sum, result) => sum + result.combatScoutShots, 0),
   visionWaveBuffDeferrals: results.reduce((sum, result) => sum + result.visionWaveBuffDeferrals, 0),
-  skills: totals,
+  scoutTactics: {
+    yukiLaunches: totals.scoutLaunches.yuki || 0,
+    yukiRetasks: totals.scoutRetasks.yuki || 0,
+    yukiZones: Object.keys(totals.scoutZones).filter((key) => key.startsWith("yuki:")).length,
+  },
+  skills: {
+    flagshipAttempts: totals.flagshipAttempts,
+    flagshipCasts: totals.flagshipCasts,
+    subAttempts: totals.subAttempts,
+    subCasts: totals.subCasts,
+  },
 };
 
 console.log(JSON.stringify(summary, null, 2));
@@ -210,6 +246,9 @@ assert(summary.completionRate >= 0.7, `AI 对战完成率过低：${summary.comp
 assert(summary.maximumBlueoutRatio < 0.12, `双方同时耗尽能量的时间占比过高：${summary.maximumBlueoutRatio}`);
 assert(summary.radarContactTicks > 0, "包含长门旗舰的模拟对战从未产生雷达接触");
 assert(summary.combatScoutShots > 0, "包含长门旗舰的模拟对战中，战斗僚机从未成功开火");
+assert(summary.scoutTactics.yukiLaunches > 0, "长门旗舰AI在模拟对战中从未释放战斗僚机");
+assert(summary.scoutTactics.yukiZones >= 3, "长门旗舰AI在模拟对战中没有形成多战区部署");
+assert(summary.scoutTactics.yukiRetasks > 0, "长门旗舰AI在模拟对战中从未重新编组战斗僚机");
 assert(summary.visionWaveBuffDeferrals > 0, "困难 AI 模拟对战从未触发朝仓视野波增益延迟");
 for (const characterId of ["haruhi", "koizumi", "tsuruya", "asakura"]) {
   assert((totals.flagshipCasts[characterId] || 0) > 0, `${characterId} 旗舰主动技能在模拟对战中从未成功释放`);
