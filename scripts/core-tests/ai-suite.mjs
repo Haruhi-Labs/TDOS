@@ -976,6 +976,47 @@ function aiHighEnergySkillAggressionCheck() {
   assert(aiTeam.ships.sub1.hasEffect("critUntil"), "AI高能接敌时未积极释放分舰技能");
 }
 
+function aiHaruhiFlagshipAggressionCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "asakura", sub2: "shamisen" },
+      B: { main: "haruhi", sub1: "yuki", sub2: "future1096" },
+    },
+  });
+  const bot = sim.bot;
+  const team = sim.teamB;
+
+  assert(bot.flagshipTimer === 0, "春日AI开局仍在等待通用旗舰技能观察窗");
+  sim.update(TICK_DT);
+  assert(team.haruhiFlagship.supporters.size === 1, "春日AI没有在开局立即解锁首个常驻支援");
+  assert(team.effects.haruhiBoostUntil > sim.elapsed, "春日AI开局没有成功施放团队强化");
+  assert(bot.flagshipTimer > team.cooldowns.flagship, "春日AI的下一次检查没有与真实冷却安全对齐");
+
+  for (const supporter of ["alien", "time_traveler", "otherworlder", "esper"]) {
+    team.haruhiFlagship.supporters.add(supporter);
+  }
+  for (const ship of team.fleetMembersForShip("main")) {
+    ship.energy = ship.maxEnergy;
+  }
+  team.cooldowns.flagship = 0;
+  bot.flagshipTimer = 0;
+  bot.tryFlagshipSkill(bot.currentContext);
+  assert(bot.lastFlagshipDecision.cast, "春日AI集齐常驻支援后仍会等待接敌条件才施放团队强化");
+  assert(bot.flagshipTimer >= team.cooldowns.flagship, "春日AI施放后没有按冷却到点安排下一次检查");
+
+  const meta = CHARACTER_DEFS.haruhi.flagshipSkill;
+  for (const ship of team.fleetMembersForShip("main")) {
+    ship.energy = 0;
+  }
+  team.ships.main.energy = meta.cost + SCOUT_LAUNCH_COST - 1;
+  team.cooldowns.flagship = 2;
+  bot.flagshipTimer = 2;
+  assert(bot.shouldReserveEnergyForHaruhiFlagship(), "春日旗舰技能即将冷却完成时没有预留施放能量");
+  assert(!bot.shouldLaunchScout(bot.currentContext), "侦察机仍会抢占春日即将施放旗舰技能所需的能量");
+}
+
 function aiFuture1096FormDecisionCheck() {
   const sim = new MatchSimulation({
     mode: "ai",
@@ -1177,6 +1218,7 @@ export function runAiSuite() {
   aiEnergyThrottleHysteresisCheck();
   aiScoutEnergyReserveCheck();
   aiHighEnergySkillAggressionCheck();
+  aiHaruhiFlagshipAggressionCheck();
   aiFuture1096FormDecisionCheck();
   aiEmergencyEnergyReserveCheck();
   aiPressureCheck();

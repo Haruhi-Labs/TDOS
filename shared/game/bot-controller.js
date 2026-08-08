@@ -17,6 +17,7 @@ import {
 } from "./math.js";
 
 const POKE_VISION_MULT = 1.7;
+const HARUHI_FLAGSHIP_ENERGY_RESERVE_WINDOW = 3;
 
 const HARD_AI_PROFILE = Object.freeze({
   initialScoutTimer: 1.55,
@@ -78,7 +79,8 @@ export class BotController {
 
     this.moveTimer = 0;
     this.scoutTimer = this.profile.initialScoutTimer;
-    this.flagshipTimer = this.profile.initialFlagshipTimer;
+    // 春日的首次施放既能立即提供团队强化，也会解锁常驻支援，因此不等待通用的开局观察窗。
+    this.flagshipTimer = team.mainCharacterId() === "haruhi" ? 0 : this.profile.initialFlagshipTimer;
     this.subTimers = {
       sub1: this.profile.initialSubTimers.sub1,
       sub2: this.profile.initialSubTimers.sub2,
@@ -1716,6 +1718,9 @@ export class BotController {
   }
 
   shouldLaunchScout(context = this.currentContext) {
+    if (this.shouldReserveEnergyForHaruhiFlagship()) {
+      return false;
+    }
     if (!context) {
       return true;
     }
@@ -1730,6 +1735,25 @@ export class BotController {
       return !context.emergencyCommit && context.intelUrgency > 1.02;
     }
     return context.scoutPriority > 0.12;
+  }
+
+  shouldReserveEnergyForHaruhiFlagship() {
+    if (this.team.mainCharacterId() !== "haruhi" || !this.team.ships.main.alive) {
+      return false;
+    }
+    const meta = skillMetaForCharacter("haruhi", "flagship");
+    const cost = Number(meta?.cost) || 0;
+    const readyIn = Math.max(
+      0,
+      Number(this.team.cooldowns.flagship) || 0,
+      Number(this.flagshipTimer) || 0,
+    );
+    if (readyIn > HARUHI_FLAGSHIP_ENERGY_RESERVE_WINDOW) {
+      return false;
+    }
+    const energy = this.energyProfile("main");
+    // 即将可以施放时，侦察机不能抢走技能所需能量；仍保留5%余量，避免施放后立刻失去机动能力。
+    return energy.current - SCOUT_LAUNCH_COST < cost + energy.max * 0.05;
   }
 
   combatCenter(enemyEstimate) {
@@ -1864,6 +1888,8 @@ export class BotController {
       return;
     }
     const estimate = context?.focus || this.primaryEnemyEstimate();
+    const characterId = this.team.mainCharacterId();
+    const isHaruhi = characterId === "haruhi";
     if (!this.shouldCastFlagshipSkill(estimate, context)) {
       this.lastFlagshipDecision = {
         action: "hold",
@@ -1871,11 +1897,13 @@ export class BotController {
         at: this.team.match.elapsed,
         target: this.debugContact(estimate),
       };
-      this.flagshipTimer = context?.conserveEnergy
-        ? randomInRange(1.8, 3.2)
-        : context?.skillAggression > 0.95
-          ? randomInRange(0.45, 0.9)
-          : randomInRange(1.2, 2.4);
+      this.flagshipTimer = isHaruhi
+        ? randomInRange(0.25, 0.45)
+        : context?.conserveEnergy
+          ? randomInRange(1.8, 3.2)
+          : context?.skillAggression > 0.95
+            ? randomInRange(0.45, 0.9)
+            : randomInRange(1.2, 2.4);
       return;
     }
     const ok = this.team.castFlagshipSkill();
@@ -1886,12 +1914,17 @@ export class BotController {
       target: this.debugContact(estimate),
     };
     this.flagshipTimer = ok
-      ? (context?.skillAggression > 0.95 ? randomInRange(12, 17) : randomInRange(14, 20))
-      : context?.conserveEnergy
-        ? randomInRange(4.8, 7.4)
-        : context?.skillAggression > 0.95
-          ? randomInRange(1, 2.1)
-          : randomInRange(2.8, 5.6);
+      ? isHaruhi
+        // 与真实冷却对齐；两者每帧同步递减，冷却归零的同一帧立即进入下一次施放判断。
+        ? Math.max(0.15, Number(this.team.cooldowns.flagship) || 0)
+        : (context?.skillAggression > 0.95 ? randomInRange(12, 17) : randomInRange(14, 20))
+      : isHaruhi
+        ? randomInRange(0.18, 0.35)
+        : context?.conserveEnergy
+          ? randomInRange(4.8, 7.4)
+          : context?.skillAggression > 0.95
+            ? randomInRange(1, 2.1)
+            : randomInRange(2.8, 5.6);
   }
 
   trySubSkill(shipKey, context = this.currentContext) {
@@ -2624,17 +2657,16 @@ export class BotController {
     if (this.shouldDelayFlagshipBuff(characterId, meta)) {
       return false;
     }
-    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, { emergencyFloor: 0.1, normalFloor: 0.16, conserveFloor: 0.26 })) {
+    const energyFloors = characterId === "haruhi"
+      ? { emergencyFloor: 0.03, normalFloor: 0.05, conserveFloor: 0.08 }
+      : { emergencyFloor: 0.1, normalFloor: 0.16, conserveFloor: 0.26 };
+    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, energyFloors)) {
       return false;
     }
     const dist = distance(main.x, main.y, estimate.x, estimate.y);
     if (characterId === "haruhi") {
-      if ((this.team.haruhiFlagship?.supporters?.size || 0) < 4) {
-        return true;
-      }
-      return (estimate.visible || estimate.age <= 3)
-        && dist <= main.effectiveRange() * 1.45
-        && ((context?.skillAggression || 0) > 0.2 || (context?.trackableIntel) || this.energyProfile("main").high);
+      // 常驻支援集齐后，16秒团队强化本身仍值得尽快使用；不再等待接敌或距离条件。
+      return true;
     }
     if (characterId === "koizumi") {
       return (estimate.visible || estimate.age <= 6 || this.mode === "search" || this.mode === "recover")
