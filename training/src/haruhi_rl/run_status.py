@@ -10,6 +10,7 @@ import tempfile
 import time
 from typing import Any
 
+from .diagnostics import analyze_training_metrics
 from .resources import GIB, ensure_data_disk_path, evaluate_resource_safety, read_resource_snapshot
 
 RUN_STATUS_SCHEMA_VERSION = 1
@@ -103,6 +104,22 @@ def _last_jsonl(path: Path) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
+def _jsonl_history(path: Path, maximum_records: int = 200) -> list[dict[str, Any]]:
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    records: list[dict[str, Any]] = []
+    for line in lines[-maximum_records:]:
+        try:
+            value = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            records.append(value)
+    return records
+
+
 def _pid_alive(value: Any) -> bool:
     try:
         pid = int(value)
@@ -151,7 +168,9 @@ def collect_run_status(
     safe_run_name = _safe_run_name(run_name)
     run_directory = root / "runs" / safe_run_name
     status = _read_json(run_directory / "status.json")
-    metrics = _last_jsonl(run_directory / "metrics.jsonl")
+    metrics_path = run_directory / "metrics.jsonl"
+    metrics = _last_jsonl(metrics_path)
+    metrics_history = _jsonl_history(metrics_path)
     checkpoint = _read_json(root / "checkpoints" / safe_run_name / "latest.json")
     league = _read_json(root / "league" / safe_run_name / "registry.json")
     evaluation = _latest_evaluation(run_directory / "evaluations")
@@ -182,6 +201,7 @@ def collect_run_status(
         "process_alive": process_alive,
         "status": status,
         "latest_metrics": metrics,
+        "diagnostics": analyze_training_metrics(metrics_history),
         "latest_checkpoint": checkpoint,
         "league": None if not league else {
             "current_rating": league.get("current_rating"),
