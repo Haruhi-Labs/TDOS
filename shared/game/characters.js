@@ -26,7 +26,7 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "im_here", name: "我在这里！", type: "active", cooldown: 22, cost: 68,
       duration: 16, target: "none",
-      description: "广播自身位置，16秒内令敌方持续获得对春日的真实视野，同时全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害。每次使用随机解锁一种常驻支援。",
+      description: "广播己方位置，16秒内令敌方持续获得对全舰队的真实视野，同时全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害。每次使用随机解锁一种常驻支援。",
     },
     subSkill: {
       id: "god_says_win", name: "神说会赢的", type: "active", cooldown: 20, cost: 60,

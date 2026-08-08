@@ -1062,10 +1062,10 @@ function haruhiFlagshipReworkCheck() {
   assert(!teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能测试前置错误，本舰原本就处于敌方真实视野");
   assert(teamA.castFlagshipSkill(), "春日旗舰技能首次释放失败");
   teamB.computeVisibility(teamA);
-  assert(teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能期间没有向敌方显示本舰真实视野");
+  assert(teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能期间没有向敌方显示主舰真实视野");
   assert(
-    !teamB.visibleEnemyIds.has(teamA.ships.sub1.id) && !teamB.visibleEnemyIds.has(teamA.ships.sub2.id),
-    "春日旗舰技能错误地把两艘分舰一并全图暴露",
+    teamB.visibleEnemyIds.has(teamA.ships.sub1.id) && teamB.visibleEnemyIds.has(teamA.ships.sub2.id),
+    "春日旗舰技能期间没有向敌方显示全部分舰的真实视野",
   );
   assert(Math.abs(teamA.effects.haruhiBoostUntil - 16) < 1e-9, "春日全队强化没有保留原技能16秒持续时间");
   assert(Math.abs(haruhi.effectiveSpeed() / baseStats.speed - 1.15) < 1e-9, "春日旗舰技能未提升15%航速");
@@ -1206,14 +1206,19 @@ function haruhiFlagshipReworkCheck() {
   assert(target.speed < 2, "异世界人击退完成后敌舰没有从接近零速重新加速");
 
   teamA.effects.haruhiBoostUntil = sim.elapsed;
-  haruhi.x = 120;
-  haruhi.y = 120;
+  for (const ship of teamA.getAllShips()) {
+    ship.x = 120;
+    ship.y = 120;
+  }
   for (const ship of teamB.getAllShips()) {
     ship.x = 1240;
     ship.y = 1240;
   }
   teamB.computeVisibility(teamA);
-  assert(!teamB.visibleEnemyIds.has(haruhi.id), "春日旗舰技能结束后仍被敌方全图真实看见");
+  assert(
+    teamA.getAllShips().every((ship) => !teamB.visibleEnemyIds.has(ship.id)),
+    "春日旗舰技能结束后己方舰队仍被敌方全图真实看见",
+  );
 }
 
 function asakuraFlagshipCheck() {

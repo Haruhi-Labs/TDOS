@@ -127,10 +127,11 @@ export function computeVisibility(team, enemyTeam) {
       team.visibleEnemyIds.add(enemy.id);
     }
   }
-  // “我在这里！”持续期间，春日本舰向敌方提供真实视野；只暴露春日本人，
-  // 不把同队分舰一并全图揭示，也不依赖一次性的广播浮字。
-  const haruhi = enemyTeam.ships?.main;
-  if (haruhi?.alive && haruhiBoostActive(enemyTeam)) {
-    team.visibleEnemyIds.add(haruhi.id);
+  // “我在这里！”持续期间，春日一方的全部舰队舰船向敌方提供真实视野。
+  // 侦察机与战斗僚机不属于舰队舰船，不在这里全图暴露。
+  if (haruhiBoostActive(enemyTeam)) {
+    for (const ship of enemyTeam.getAllShips()) {
+      if (ship.alive) team.visibleEnemyIds.add(ship.id);
+    }
   }
 }
