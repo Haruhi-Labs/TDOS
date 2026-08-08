@@ -85,6 +85,61 @@ class RolloutBatch:
         self.returns = None
 
 
+def concatenate_rollout_batches(batches: list[RolloutBatch]) -> RolloutBatch:
+    """沿样本维合并同一冻结策略采集的完整局批次，并以无效时间步对齐长度。"""
+
+    if not batches:
+        raise ValueError("至少需要一个轨迹批次")
+    observation_keys = batches[0].observations.keys()
+    action_keys = batches[0].actions.keys()
+    if any(batch.observations.keys() != observation_keys for batch in batches):
+        raise ValueError("轨迹观察字段不一致")
+    if any(batch.actions.keys() != action_keys for batch in batches):
+        raise ValueError("轨迹动作字段不一致")
+    target_steps = max(batch.steps for batch in batches)
+
+    def padded(value: torch.Tensor, batch: RolloutBatch, fill: float | bool = 0) -> torch.Tensor:
+        padding = target_steps - batch.steps
+        if padding <= 0:
+            return value
+        extra = torch.full(
+            (padding, *value.shape[1:]),
+            fill,
+            dtype=value.dtype,
+            device=value.device,
+        )
+        return torch.cat((value, extra), dim=0)
+
+    combined = RolloutBatch(
+        observations={
+            key: torch.cat([padded(batch.observations[key], batch) for batch in batches], dim=1)
+            for key in observation_keys
+        },
+        actions={
+            key: torch.cat([padded(batch.actions[key], batch) for batch in batches], dim=1)
+            for key in action_keys
+        },
+        old_log_prob=torch.cat([padded(batch.old_log_prob, batch) for batch in batches], dim=1),
+        old_value=torch.cat([padded(batch.old_value, batch) for batch in batches], dim=1),
+        rewards=torch.cat([padded(batch.rewards, batch) for batch in batches], dim=1),
+        dones=torch.cat([padded(batch.dones, batch, True) for batch in batches], dim=1),
+        valid=torch.cat([padded(batch.valid, batch, False) for batch in batches], dim=1),
+        episode_starts=torch.cat(
+            [padded(batch.episode_starts, batch, True) for batch in batches],
+            dim=1,
+        ),
+        hidden=torch.cat([padded(batch.hidden, batch) for batch in batches], dim=1),
+        bootstrap_value=torch.cat([batch.bootstrap_value for batch in batches]),
+        completed_episodes=tuple(
+            episode
+            for batch in batches
+            for episode in batch.completed_episodes
+        ),
+    )
+    combined.compute_returns()
+    return combined
+
+
 class SelfPlayCollector:
     """当前策略同时控制双方；只读取各自独立的公平观察。"""
 

@@ -29,7 +29,7 @@ from .league_rollout import LeagueSelfPlayCollector
 from .model import HaruhiUniversalPolicy, PolicyConfig
 from .ppo import PpoConfig, RecurrentPpoTrainer
 from .resources import GIB, evaluate_resource_safety, read_resource_snapshot
-from .rollout import SelfPlayCollector
+from .rollout import SelfPlayCollector, concatenate_rollout_batches
 from .run_status import RunStatusWriter
 from .seeds import EpisodeSeedScheduler
 from .tensors import TensorLimits
@@ -200,12 +200,17 @@ def main() -> int:
                 if registry.entries and update > int(config.get("league", {}).get("warmup_updates", 1))
                 else "live_self_play"
             )
+            collection_rounds = max(1, int(environment_config.get("rounds_per_update", 1)))
             status_writer.write(
                 state="running",
                 phase="collecting",
                 update=update,
                 phase_step=0,
-                details={"training_mode": training_mode, **_resource_details(current_resources)},
+                details={
+                    "training_mode": training_mode,
+                    "collection_rounds": collection_rounds,
+                    **_resource_details(current_resources),
+                },
             )
             last_heartbeat_at = time.monotonic()
 
@@ -224,12 +229,15 @@ def main() -> int:
                         phase_step=step,
                         details={
                             "training_mode": training_mode,
+                            "collection_rounds": collection_rounds,
                             **_resource_details(progress_resources),
                         },
                     )
                     last_heartbeat_at = now
 
+            collected = []
             try:
+                maximum_steps = int(environment_config["maximum_collection_steps"])
                 if training_mode == "league":
                     league_collector = LeagueSelfPlayCollector(
                         bridge,
@@ -240,16 +248,25 @@ def main() -> int:
                         device=device,
                         tensor_limits=tensor_limits,
                     )
-                    rollout = league_collector.collect_complete_episodes(
-                        maximum_steps=int(environment_config["maximum_collection_steps"]),
-                        progress_hook=progress_guard,
-                    )
+                    round_collector = league_collector.collect_complete_episodes
                 else:
-                    rollout = collector.collect_complete_episodes(
-                        maximum_steps=int(environment_config["maximum_collection_steps"]),
-                        progress_hook=progress_guard,
+                    round_collector = collector.collect_complete_episodes
+                for round_index in range(collection_rounds):
+                    rollout_round = round_collector(
+                        maximum_steps=maximum_steps,
+                        progress_hook=lambda step, offset=round_index * maximum_steps: progress_guard(
+                            offset + step,
+                        ),
                     )
+                    collected.append(rollout_round)
+                rollout = concatenate_rollout_batches(collected)
+                collected.clear()
+                del rollout_round
+                gc.collect()
             except TrainingResourcePause as pause:
+                collected.clear()
+                if "rollout_round" in locals():
+                    del rollout_round
                 gc.collect()
                 if device.type == "mps":
                     torch.mps.empty_cache()

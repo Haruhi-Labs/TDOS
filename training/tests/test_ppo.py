@@ -7,7 +7,7 @@ import torch
 from haruhi_rl.bridge import NodeBatchBridge
 from haruhi_rl.model import HaruhiUniversalPolicy, PolicyConfig
 from haruhi_rl.ppo import PpoConfig, RecurrentPpoTrainer
-from haruhi_rl.rollout import SelfPlayCollector
+from haruhi_rl.rollout import RolloutBatch, SelfPlayCollector, concatenate_rollout_batches
 from haruhi_rl.seeds import EpisodeSeedScheduler, mix_episode_seed
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -124,3 +124,35 @@ def test_complete_collection_calls_progress_guard() -> None:
         )
     assert calls
     assert calls == sorted(calls)
+
+
+def test_complete_rollout_batches_merge_on_sample_axis() -> None:
+    def batch(steps: int, samples: int, marker: float) -> RolloutBatch:
+        shape = (steps, samples)
+        return RolloutBatch(
+            observations={"global": torch.full((*shape, 2), marker)},
+            actions={"split": torch.zeros(shape, dtype=torch.long)},
+            old_log_prob=torch.zeros(shape),
+            old_value=torch.zeros(shape),
+            rewards=torch.zeros(shape),
+            dones=torch.zeros(shape, dtype=torch.bool),
+            valid=torch.ones(shape, dtype=torch.bool),
+            episode_starts=torch.zeros(shape, dtype=torch.bool),
+            hidden=torch.zeros((*shape, 4)),
+            bootstrap_value=torch.zeros(samples),
+            completed_episodes=({"marker": marker},),
+        )
+
+    first = batch(3, 2, 1)
+    second = batch(5, 1, 2)
+    combined = concatenate_rollout_batches([first, second])
+    assert combined.steps == 5
+    assert combined.samples == 3
+    assert torch.all(combined.valid[:3, :2])
+    assert torch.all(~combined.valid[3:, :2])
+    assert torch.all(combined.dones[3:, :2])
+    assert torch.all(combined.episode_starts[3:, :2])
+    assert torch.all(combined.observations["global"][:3, :2] == 1)
+    assert torch.all(combined.observations["global"][:, 2:] == 2)
+    assert combined.advantages is not None
+    assert len(combined.completed_episodes) == 2
