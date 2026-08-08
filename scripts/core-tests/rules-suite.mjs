@@ -302,7 +302,7 @@ function yukiFlagshipCombatScoutCheck() {
   const combatScout = yukiTeam.scouts[0];
   assert(combatScout.combatCapable, "长门旗舰未将己方侦察机强化为战斗僚机");
   assert(combatScout.vision === yukiStats.vision, "长门战斗僚机视野未提升到普通舰船级别");
-  assert(combatScout.attackRange === yukiStats.range, "长门战斗僚机未复用长门常规舰炮射程");
+  assert(combatScout.attackRange === combatScout.vision, "长门战斗僚机射程未与自身视野保持一致");
   assert(combatScout.effectiveDamage() === 16, "长门战斗僚机基础伤害不是16");
   assert(
     Math.abs(combatScout.effectiveFireRate() - yukiStats.fireRate) < 1e-9,
@@ -328,6 +328,16 @@ function yukiFlagshipCombatScoutCheck() {
   );
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
+
+  combatScout.cooldown = 0;
+  enemyMain.x = combatScout.x + combatScout.vision + 10;
+  enemyMain.y = combatScout.y;
+  yukiSim.projectiles = [];
+  yukiTeam.stepCombat(yukiSim.teamB);
+  assert(
+    yukiSim.projectiles.length === 0,
+    "长门战斗僚机向自身视野外目标开火",
+  );
 
   const normalSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const normalTeam = normalSim.teamA;

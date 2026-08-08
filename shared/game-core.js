@@ -157,11 +157,10 @@ const SMALL_TARGET_MAX_MISS = 0.3;
 // 分离/单飞(同队仅 1 艘)时开火频率 ×该倍率(火力更猛)。二者由「同队成员数」互斥切换。
 const FORMATION_DAMAGE_SHARE = 0.3;
 const SOLO_FIRE_RATE_BONUS = 1.2;
-// 长门旗舰将本队释放的侦察机改造为战斗僚机。感知、射程和射速统一引用长门舰船
-// 基础值；战斗僚机自身的伤害集中定义在这里。
+// 长门旗舰将本队释放的侦察机改造为战斗僚机。视野引用长门舰船基础值，
+// 攻击射程与这份视野保持一致；射速引用长门舰炮基础值，伤害集中定义在这里。
 const YUKI_COMBAT_SCOUT_STATS = Object.freeze({
   vision: CHARACTER_DEFS.yuki.stats.vision,
-  range: CHARACTER_DEFS.yuki.stats.range,
   damage: 16,
   fireRate: CHARACTER_DEFS.yuki.stats.fireRate,
 });
@@ -1295,7 +1294,7 @@ class Scout {
     this.vision = this.combatCapable
       ? YUKI_COMBAT_SCOUT_STATS.vision
       : config.vision || (this.pattern === "burst" ? 86 : 95);
-    this.attackRange = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.range : 0;
+    this.attackRange = this.combatCapable ? this.vision : 0;
     this.damage = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.damage : 0;
     this.fireRate = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.fireRate : 0;
     this.cooldown = this.combatCapable ? randomInRange(0, 0.5) : 0;
