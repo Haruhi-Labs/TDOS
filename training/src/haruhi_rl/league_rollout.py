@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import torch
 
@@ -68,7 +68,13 @@ class LeagueSelfPlayCollector:
         return models
 
     @torch.no_grad()
-    def collect_complete_episodes(self, maximum_steps: int) -> RolloutBatch:
+    def collect_complete_episodes(
+        self,
+        maximum_steps: int,
+        *,
+        progress_hook: Callable[[int], None] | None = None,
+        progress_interval: int = 25,
+    ) -> RolloutBatch:
         if not self.registry.entries:
             raise RuntimeError("历史联赛采集需要至少一个历史检查点")
         environment_count = self.bridge.count
@@ -103,7 +109,7 @@ class LeagueSelfPlayCollector:
         completed: list[dict[str, Any]] = []
 
         self.learner.eval()
-        for _ in range(maximum_steps):
+        for step in range(maximum_steps):
             encoded_cpu = encode_frames(frames, limits=self.tensor_limits)
             encoded = _to_device(encoded_cpu, self.device)
             learner_encoded_cpu = {
@@ -186,6 +192,8 @@ class LeagueSelfPlayCollector:
             episode_start = torch.repeat_interleave(done.to(self.device), 2)
             if not torch.any(active):
                 break
+            if progress_hook is not None and (step + 1) % max(1, progress_interval) == 0:
+                progress_hook(step + 1)
         if torch.any(active):
             raise RuntimeError(f"联赛环境未在采集上限内结束：{torch.nonzero(active).flatten().tolist()}")
 

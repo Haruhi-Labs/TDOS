@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 import torch
 
@@ -212,7 +212,13 @@ class SelfPlayCollector:
             batch.compute_returns()
         return batch
 
-    def collect_complete_episodes(self, maximum_steps: int) -> RolloutBatch:
+    def collect_complete_episodes(
+        self,
+        maximum_steps: int,
+        *,
+        progress_hook: Callable[[int], None] | None = None,
+        progress_interval: int = 25,
+    ) -> RolloutBatch:
         """
         冻结当前策略，直到每个并行环境至少完成一局；只保留各环境第一局。
         这样纯终局奖励可以回传到整局，而不会让 PPO 跨策略版本拼接未完成片段。
@@ -224,7 +230,7 @@ class SelfPlayCollector:
         active = torch.ones(self.bridge.count, dtype=torch.bool)
         segments: list[RolloutBatch] = []
         completed: list[dict[str, Any]] = []
-        for _ in range(maximum_steps):
+        for step in range(maximum_steps):
             active_before = active.clone()
             segment = self.collect(1, bootstrap=False)
             seat_valid = active_before.repeat_interleave(2)
@@ -240,6 +246,8 @@ class SelfPlayCollector:
                     completed.append(episode)
             if not torch.any(active):
                 break
+            if progress_hook is not None and (step + 1) % max(1, progress_interval) == 0:
+                progress_hook(step + 1)
         if torch.any(active):
             pending = torch.nonzero(active).flatten().tolist()
             raise RuntimeError(f"以下环境未在采集上限内结束：{pending}")

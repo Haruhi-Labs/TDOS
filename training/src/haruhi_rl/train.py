@@ -33,6 +33,12 @@ from .seeds import EpisodeSeedScheduler
 from .tensors import TensorLimits
 
 
+class TrainingResourcePause(RuntimeError):
+    def __init__(self, reasons: tuple[str, ...]) -> None:
+        super().__init__("；".join(reasons))
+        self.reasons = reasons
+
+
 def _read_config(path: Path) -> dict[str, Any]:
     with path.open("r", encoding="utf-8") as source:
         config = yaml.safe_load(source)
@@ -164,26 +170,51 @@ def main() -> int:
                 print(f"资源保护已暂停训练，检查点：{path}", file=sys.stderr)
                 return 75
 
-            if registry.entries and update > int(config.get("league", {}).get("warmup_updates", 1)):
-                league_collector = LeagueSelfPlayCollector(
-                    bridge,
-                    model,
-                    model_config,
-                    scheduler,
-                    registry,
-                    device=device,
-                    tensor_limits=tensor_limits,
+            def progress_guard(_step: int) -> None:
+                progress_decision = evaluate_resource_safety(read_resource_snapshot(data_root))
+                if not progress_decision.allowed:
+                    raise TrainingResourcePause(progress_decision.reasons)
+
+            try:
+                if registry.entries and update > int(config.get("league", {}).get("warmup_updates", 1)):
+                    league_collector = LeagueSelfPlayCollector(
+                        bridge,
+                        model,
+                        model_config,
+                        scheduler,
+                        registry,
+                        device=device,
+                        tensor_limits=tensor_limits,
+                    )
+                    rollout = league_collector.collect_complete_episodes(
+                        maximum_steps=int(environment_config["maximum_collection_steps"]),
+                        progress_hook=progress_guard,
+                    )
+                    training_mode = "league"
+                else:
+                    rollout = collector.collect_complete_episodes(
+                        maximum_steps=int(environment_config["maximum_collection_steps"]),
+                        progress_hook=progress_guard,
+                    )
+                    training_mode = "live_self_play"
+            except TrainingResourcePause as pause:
+                gc.collect()
+                if device.type == "mps":
+                    torch.mps.empty_cache()
+                path, _ = save_checkpoint(
+                    data_root=data_root,
+                    run_name=run_name,
+                    update=update - 1,
+                    model=model,
+                    optimizer=trainer.optimizer,
+                    seed_state=scheduler.state_dict(),
+                    config=config,
+                    project_root=project_root,
+                    status="paused_resource_guard",
+                    metrics={**last_metrics, "pause_reasons": list(pause.reasons)},
                 )
-                rollout = league_collector.collect_complete_episodes(
-                    maximum_steps=int(environment_config["maximum_collection_steps"]),
-                )
-                training_mode = "league"
-            else:
-                rollout = collector.collect_complete_episodes(
-                    maximum_steps=int(environment_config["maximum_collection_steps"]),
-                )
-                training_mode = "live_self_play"
-            training_metrics = trainer.update(rollout)
+                print(f"采集期间资源保护已暂停训练，检查点：{path}", file=sys.stderr)
+                return 75
             episode_metrics = _episode_metrics(rollout.completed_episodes)
             for episode in rollout.completed_episodes:
                 if episode.get("opponentId"):
@@ -191,6 +222,33 @@ def main() -> int:
                         str(episode["opponentId"]),
                         float(episode["learnerScore"]),
                     )
+            training_metrics = trainer.update(rollout)
+            after_update_decision = evaluate_resource_safety(read_resource_snapshot(data_root))
+            if not after_update_decision.allowed:
+                del rollout
+                gc.collect()
+                if device.type == "mps":
+                    torch.mps.empty_cache()
+                registry.save()
+                path, _ = save_checkpoint(
+                    data_root=data_root,
+                    run_name=run_name,
+                    update=update,
+                    model=model,
+                    optimizer=trainer.optimizer,
+                    seed_state=scheduler.state_dict(),
+                    config=config,
+                    project_root=project_root,
+                    status="paused_resource_guard",
+                    metrics={
+                        **last_metrics,
+                        **episode_metrics,
+                        **training_metrics,
+                        "pause_reasons": list(after_update_decision.reasons),
+                    },
+                )
+                print(f"更新后资源保护已暂停训练，检查点：{path}", file=sys.stderr)
+                return 75
             last_metrics = {
                 "update": update,
                 "device": str(device),

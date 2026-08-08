@@ -102,3 +102,25 @@ def test_complete_episode_collection_masks_filler_games() -> None:
     rollout.pad_to_multiple(3)
     assert rollout.steps % 3 == 0
     assert torch.all(~rollout.valid[original_steps:])
+
+
+def test_complete_collection_calls_progress_guard() -> None:
+    torch.manual_seed(22)
+    model = HaruhiUniversalPolicy(PolicyConfig(model_dim=32, recurrent_dim=64, token_embedding_dim=8))
+    scheduler = EpisodeSeedScheduler(base_seed=55005, stream_count=1)
+    calls: list[int] = []
+    with NodeBatchBridge(
+        PROJECT_ROOT,
+        count=1,
+        base_seed=55005,
+        decision_ticks=3,
+        max_episode_seconds=0.3,
+    ) as bridge:
+        collector = SelfPlayCollector(bridge, model, scheduler)
+        collector.collect_complete_episodes(
+            maximum_steps=5,
+            progress_hook=calls.append,
+            progress_interval=1,
+        )
+    assert calls
+    assert calls == sorted(calls)
