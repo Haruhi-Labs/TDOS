@@ -23,6 +23,8 @@ from .checkpoint import (
     restore_rng_state,
     save_checkpoint,
 )
+from .league import LeagueRegistry
+from .league_rollout import LeagueSelfPlayCollector
 from .model import HaruhiUniversalPolicy, PolicyConfig
 from .ppo import PpoConfig, RecurrentPpoTrainer
 from .resources import GIB, evaluate_resource_safety, read_resource_snapshot
@@ -109,6 +111,8 @@ def main() -> int:
         stream_offset=int(environment_config.get("stream_offset", 0)),
     )
     start_update = 0
+    run_name = str(run_config["name"])
+    registry = LeagueRegistry(data_root, run_name, seed=seed)
     if args.resume:
         payload = load_checkpoint(args.resume)
         if payload["config"] != config:
@@ -120,7 +124,6 @@ def main() -> int:
         restore_rng_state(payload["rng_state"])
         start_update = int(payload["update"])
 
-    run_name = str(run_config["name"])
     run_directory = data_root / "runs" / run_name
     metrics_path = run_directory / "metrics.jsonl"
     writer = SummaryWriter(log_dir=str(run_directory / "tensorboard"))
@@ -161,15 +164,40 @@ def main() -> int:
                 print(f"资源保护已暂停训练，检查点：{path}", file=sys.stderr)
                 return 75
 
-            rollout = collector.collect_complete_episodes(
-                maximum_steps=int(environment_config["maximum_collection_steps"]),
-            )
+            if registry.entries and update > int(config.get("league", {}).get("warmup_updates", 1)):
+                league_collector = LeagueSelfPlayCollector(
+                    bridge,
+                    model,
+                    model_config,
+                    scheduler,
+                    registry,
+                    device=device,
+                    tensor_limits=tensor_limits,
+                )
+                rollout = league_collector.collect_complete_episodes(
+                    maximum_steps=int(environment_config["maximum_collection_steps"]),
+                )
+                training_mode = "league"
+            else:
+                rollout = collector.collect_complete_episodes(
+                    maximum_steps=int(environment_config["maximum_collection_steps"]),
+                )
+                training_mode = "live_self_play"
             training_metrics = trainer.update(rollout)
             episode_metrics = _episode_metrics(rollout.completed_episodes)
+            for episode in rollout.completed_episodes:
+                if episode.get("opponentId"):
+                    registry.record_result(
+                        str(episode["opponentId"]),
+                        float(episode["learnerScore"]),
+                    )
             last_metrics = {
                 "update": update,
                 "device": str(device),
+                "training_mode": training_mode,
                 "valid_seat_steps": int(rollout.valid.sum()),
+                "league_size": len(registry.entries),
+                "league_rating": registry.current_rating,
                 **episode_metrics,
                 **training_metrics,
                 "system_free_gib": current_resources.system_free_bytes / GIB,
@@ -183,7 +211,7 @@ def main() -> int:
             writer.flush()
 
             if update % int(run_config.get("checkpoint_every", 1)) == 0:
-                save_checkpoint(
+                _, manifest = save_checkpoint(
                     data_root=data_root,
                     run_name=run_name,
                     update=update,
@@ -195,6 +223,13 @@ def main() -> int:
                     status="running",
                     metrics=last_metrics,
                 )
+                league_config = config.get("league", {})
+                snapshot_every = int(league_config.get("snapshot_every", 5))
+                warmup_updates = int(league_config.get("warmup_updates", 1))
+                if update == warmup_updates or update % snapshot_every == 0:
+                    registry.register_checkpoint(manifest)
+                else:
+                    registry.save()
             del rollout
             gc.collect()
             if device.type == "mps":

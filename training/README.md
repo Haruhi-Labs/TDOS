@@ -61,3 +61,5 @@ scripts/run-rl.zsh python -m pytest
 `haruhi_rl.resources` 的默认启动门槛为：系统盘至少 4 GiB、数据盘至少 40 GiB、交换空间至少 2 GiB，单个训练进程 RSS 不超过 10 GiB。门槛只控制训练进程，不修改、暂停或重启游戏服务。
 
 正式训练入口为 `scripts/train-rl.zsh --config training/configs/universal-v0.yaml`。入口先在未加载 PyTorch 的轻量进程中执行预检；训练循环每轮再次检查，并在触线时原子保存 `paused_resource_guard` 检查点后退出。检查点、SHA-256 清单、JSONL 指标和 TensorBoard 日志全部写入 `/Volumes/data/haruhi-rl`。默认配置从 2 个并行环境起步，以完整局采集降低系统内存与 swap 风险，确认稳定后才逐步提高并发。
+
+历史检查点通过 `haruhi_rl.league.LeagueRegistry` 形成联赛池，使用确定性 PFSP 权重偏向当前策略较难战胜的对手，同时保留全池覆盖。首轮由当前策略共享控制双方，形成第一个历史快照；之后 `LeagueSelfPlayCollector` 每局随机安排当前策略的红蓝席位，另一侧加载不可变历史模型，默认每 5 轮加入一个新快照。两边都只读取各自公平观察，PPO 只更新当前策略席位。规则 AI 不进入联赛训练，只在独立评估阶段作为基准。
