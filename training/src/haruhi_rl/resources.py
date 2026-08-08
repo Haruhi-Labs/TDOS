@@ -21,13 +21,15 @@ class ResourceSnapshot:
     swap_total_bytes: int | None
     swap_used_bytes: int | None
     swap_free_bytes: int | None
+    memory_free_percent: float | None
 
 
 @dataclass(frozen=True)
 class ResourceThresholds:
     minimum_system_free_bytes: int = 4 * GIB
     minimum_data_free_bytes: int = 40 * GIB
-    minimum_swap_free_bytes: int = 2 * GIB
+    minimum_swap_free_bytes: int = 256 * MIB
+    minimum_memory_free_percent: float = 20
     maximum_process_rss_bytes: int = 10 * GIB
 
 
@@ -77,6 +79,21 @@ def _process_rss_bytes() -> int:
         return 0
 
 
+def _memory_free_percent() -> float | None:
+    try:
+        output = subprocess.run(
+            ["memory_pressure", "-Q"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=3,
+        ).stdout
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return None
+    matched = re.search(r"free percentage:\s*([0-9.]+)%", output)
+    return float(matched.group(1)) if matched else None
+
+
 def read_resource_snapshot(data_root: str | Path = "/Volumes/data/haruhi-rl") -> ResourceSnapshot:
     resolved_data_root = ensure_data_disk_path(data_root)
     system = shutil.disk_usage("/")
@@ -89,6 +106,7 @@ def read_resource_snapshot(data_root: str | Path = "/Volumes/data/haruhi-rl") ->
         swap_total_bytes=swap_total,
         swap_used_bytes=swap_used,
         swap_free_bytes=swap_free,
+        memory_free_percent=_memory_free_percent(),
     )
 
 
@@ -106,6 +124,14 @@ def evaluate_resource_safety(
         reasons.append(
             f"数据盘可用空间不足：{snapshot.data_free_bytes / GIB:.2f} GiB"
             f" < {thresholds.minimum_data_free_bytes / GIB:.2f} GiB",
+        )
+    if (
+        snapshot.memory_free_percent is not None
+        and snapshot.memory_free_percent < thresholds.minimum_memory_free_percent
+    ):
+        reasons.append(
+            f"实时可用内存比例不足：{snapshot.memory_free_percent:.1f}%"
+            f" < {thresholds.minimum_memory_free_percent:.1f}%",
         )
     if (
         snapshot.swap_free_bytes is not None

@@ -58,7 +58,7 @@ scripts/run-rl.zsh python -m pytest
 
 依赖和训练产物位于数据盘并不能阻止 macOS 在统一内存紧张时把交换文件写入系统盘。训练监督器必须同时监控系统盘可用空间、进程常驻内存和系统交换量；系统盘低于安全线或交换量持续上升时，应先保存检查点再暂停采样，不得依靠系统自动耗尽空间。
 
-`haruhi_rl.resources` 的默认启动门槛为：系统盘至少 4 GiB、数据盘至少 40 GiB、交换空间至少 2 GiB，单个训练进程 RSS 不超过 10 GiB。门槛只控制训练进程，不修改、暂停或重启游戏服务。
+`haruhi_rl.resources` 的默认启动门槛为：系统盘至少 4 GiB、数据盘至少 40 GiB、`memory_pressure` 实时可用比例至少 20%、交换空间保留 256 MiB 临界余量，单个训练进程 RSS 不超过 10 GiB。macOS 不会在压力解除后立即回收历史 swap，因此不再把“空闲 swap 少于 2 GiB”单独视为当前内存紧张。门槛只控制训练进程，不修改、暂停或重启游戏服务。
 
 正式训练入口为 `scripts/train-rl.zsh --config training/configs/universal-v0.yaml`。入口先在未加载 PyTorch 的轻量进程中执行预检；训练循环在每轮开始、完整局采集过程中和参数更新后检查资源，并在触线时释放轨迹内存、原子保存 `paused_resource_guard` 检查点后退出。检查点、SHA-256 清单、JSONL 指标和 TensorBoard 日志全部写入 `/Volumes/data/haruhi-rl`。默认配置从 2 个并行环境起步，以完整局采集降低系统内存与 swap 风险，确认稳定后才逐步提高并发。
 

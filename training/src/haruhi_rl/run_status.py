@@ -215,6 +215,7 @@ def collect_run_status(
             "system_free_gib": snapshot.system_free_bytes / GIB,
             "data_free_gib": snapshot.data_free_bytes / GIB,
             "swap_free_gib": None if snapshot.swap_free_bytes is None else snapshot.swap_free_bytes / GIB,
+            "memory_free_percent": snapshot.memory_free_percent,
             "monitor_process_rss_gib": snapshot.process_rss_bytes / GIB,
         },
     }

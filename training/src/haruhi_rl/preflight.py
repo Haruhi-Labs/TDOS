@@ -19,6 +19,7 @@ def main() -> int:
         "system_free_gib": round(snapshot.system_free_bytes / GIB, 3),
         "data_free_gib": round(snapshot.data_free_bytes / GIB, 3),
         "swap_free_gib": None if snapshot.swap_free_bytes is None else round(snapshot.swap_free_bytes / GIB, 3),
+        "memory_free_percent": snapshot.memory_free_percent,
         "process_rss_gib": round(snapshot.process_rss_bytes / GIB, 3),
         "reasons": list(decision.reasons),
     }, ensure_ascii=False))
