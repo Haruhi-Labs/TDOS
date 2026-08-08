@@ -1,0 +1,48 @@
+run:
+  name: universal-pilot-v0
+  data_root: /Volumes/data/haruhi-rl
+  seed: 20260809
+  device: auto
+  updates: 3
+  checkpoint_every: 1
+
+environment:
+  count: 2
+  stream_offset: 0
+  decision_ticks: 3
+  max_episode_seconds: 180
+  maximum_collection_steps: 1802
+  rounds_per_update: 4
+
+tensor_limits:
+  own_ships: 4
+  own_auxiliaries: 64
+  opponents: 64
+  projectiles: 192
+  beams: 16
+  vision_waves: 16
+  radar_contacts: 8
+  supporters: 8
+
+model:
+  model_dim: 128
+  recurrent_dim: 256
+  token_embedding_dim: 16
+  token_buckets: 1024
+
+ppo:
+  learning_rate: 0.0003
+  epochs: 4
+  sequence_length: 32
+  minibatch_sequences: 8
+  clip_ratio: 0.2
+  value_coefficient: 0.5
+  entropy_coefficient: 0.005
+  max_grad_norm: 0.5
+  target_kl: 0.03
+  gamma: 1.0
+  gae_lambda: 1.0
+
+league:
+  warmup_updates: 1
+  snapshot_every: 1
