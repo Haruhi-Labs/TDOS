@@ -23,6 +23,7 @@ export const HARUHI_OTHERWORLDER_COOLDOWN = 8;
 export const HARUHI_OTHERWORLDER_DAMAGE_RATIO = 0.15;
 export const HARUHI_OTHERWORLDER_KNOCKBACK_DURATION = 0.85;
 export const HARUHI_ESPER_ORBIT_SPEED = 0.72;
+export const HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER = 3;
 
 export function createHaruhiFlagshipState(initialAngle = 0) {
   return {
@@ -142,7 +143,7 @@ export function haruhiEsperOrb(team) {
     angle: team.haruhiFlagship.esperAngle,
     orbitRadius,
     radius,
-    absorbRadius: radius * 2,
+    absorbRadius: radius * HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER,
   };
 }
 

@@ -1101,7 +1101,7 @@ function haruhiFlagshipReworkCheck() {
 
   const orb = teamA.serialize().haruhiFlagship.esperOrb;
   assert(orb && Math.abs(Math.hypot(orb.x - haruhi.x, orb.y - haruhi.y) - haruhi.effectiveVision()) < 1e-6, "超能力者光球没有在春日视野半径上公转");
-  assert(Math.abs(orb.absorbRadius - orb.radius * 2) < 1e-9, "超能力者光球的子弹吸收半径不是自身半径的两倍");
+  assert(Math.abs(orb.absorbRadius - orb.radius * 3) < 1e-9, "超能力者光球的子弹吸收半径不是自身半径的三倍");
 
   const radialX = (orb.x - haruhi.x) / orb.orbitRadius;
   const radialY = (orb.y - haruhi.y) / orb.orbitRadius;
