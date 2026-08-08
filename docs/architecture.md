@@ -58,6 +58,7 @@
 - `shared/training/observation.js`：面向强化学习的公平席位观察，只读取玩家可见原始信息，不依赖现有规则 AI 的派生状态。
 - `shared/training/actions.js`：角色无关的组合动作、纯合法性掩码及到统一权威动作协议的解码层。
 - `shared/training/environment.js`：无规则 AI 的双席位训练局、纯终局奖励和同进程批量推进封装。
+- `shared/training/evaluation.js`：候选策略对当前最高难度规则 AI 的隔离评测环境，不参与训练采样。
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。

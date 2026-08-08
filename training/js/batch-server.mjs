@@ -1,5 +1,6 @@
 import { createInterface } from "node:readline";
 import { RlBatchEnvironment } from "../../shared/training/environment.js";
+import { RlBenchmarkBatchEnvironment } from "../../shared/training/evaluation.js";
 
 let batch = null;
 
@@ -16,7 +17,10 @@ function handle(message) {
   }
   if (command === "init") {
     if (batch) throw new Error("批环境已经初始化");
-    batch = new RlBatchEnvironment({
+    const Environment = payload.kind === "benchmark"
+      ? RlBenchmarkBatchEnvironment
+      : RlBatchEnvironment;
+    batch = new Environment({
       count: payload.count,
       baseSeed: payload.baseSeed,
       decisionTicks: payload.decisionTicks,

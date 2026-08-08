@@ -63,3 +63,5 @@ scripts/run-rl.zsh python -m pytest
 正式训练入口为 `scripts/train-rl.zsh --config training/configs/universal-v0.yaml`。入口先在未加载 PyTorch 的轻量进程中执行预检；训练循环每轮再次检查，并在触线时原子保存 `paused_resource_guard` 检查点后退出。检查点、SHA-256 清单、JSONL 指标和 TensorBoard 日志全部写入 `/Volumes/data/haruhi-rl`。默认配置从 2 个并行环境起步，以完整局采集降低系统内存与 swap 风险，确认稳定后才逐步提高并发。
 
 历史检查点通过 `haruhi_rl.league.LeagueRegistry` 形成联赛池，使用确定性 PFSP 权重偏向当前策略较难战胜的对手，同时保留全池覆盖。首轮由当前策略共享控制双方，形成第一个历史快照；之后 `LeagueSelfPlayCollector` 每局随机安排当前策略的红蓝席位，另一侧加载不可变历史模型，默认每 5 轮加入一个新快照。两边都只读取各自公平观察，PPO 只更新当前策略席位。规则 AI 不进入联赛训练，只在独立评估阶段作为基准。
+
+`haruhi_rl.evaluation` 在独立环境中让候选策略对战当前 `master` 规则 AI，默认使用镜像阵容、红蓝换边和覆盖全部旗舰角色的用例。候选仍只获得公平 Actor 观察；评测结果按席位和旗舰角色拆分，后续晋级门槛不会只看一个总胜率。

@@ -206,18 +206,15 @@ def sample_policy(
     )
 
 
-def actions_to_environment_payloads(
+def actions_to_seat_payloads(
     actions: Mapping[str, torch.Tensor],
     own_ships_mask: torch.Tensor,
-) -> list[dict[str, dict[str, object]]]:
-    """把按 A、B 展开的动作张量还原为 Node 批环境 JSON。"""
+) -> list[dict[str, object]]:
+    """把席位动作张量还原为通用 Node 策略动作 JSON。"""
 
     cpu = {key: value.detach().cpu() for key, value in actions.items()}
     mask = own_ships_mask.detach().cpu()
     sample_count = mask.shape[0]
-    if sample_count % 2:
-        raise ValueError("席位样本数必须是 2 的倍数，才能还原为 A/B 对局")
-
     seats: list[dict[str, object]] = []
     for sample in range(sample_count):
         ships: list[dict[str, object]] = []
@@ -252,7 +249,19 @@ def actions_to_environment_payloads(
             },
         })
 
+    return seats
+
+
+def actions_to_environment_payloads(
+    actions: Mapping[str, torch.Tensor],
+    own_ships_mask: torch.Tensor,
+) -> list[dict[str, dict[str, object]]]:
+    """把按 A、B 展开的席位动作还原为训练批环境 JSON。"""
+
+    seats = actions_to_seat_payloads(actions, own_ships_mask)
+    if len(seats) % 2:
+        raise ValueError("席位样本数必须是 2 的倍数，才能还原为 A/B 对局")
     return [
         {"A": seats[index], "B": seats[index + 1]}
-        for index in range(0, sample_count, 2)
+        for index in range(0, len(seats), 2)
     ]

@@ -18,6 +18,7 @@
     "test:training:determinism": "node scripts/verify-training-determinism.mjs",
     "test:training:contract": "node scripts/verify-rl-contract.mjs",
     "test:training:environment": "node scripts/verify-rl-environment.mjs",
+    "test:training:evaluation": "node scripts/verify-rl-evaluation.mjs",
     "test:ai:shamisen": "node scripts/simulate-shamisen-balance.mjs",
     "test:network": "node scripts/verify-network-patch.mjs",
     "test:online:state": "node scripts/verify-online-state-sync.mjs",
@@ -35,7 +36,7 @@
     "test:server:runtime": "node scripts/verify-server-runtime.mjs",
     "test:network:load": "node scripts/network-load-test.mjs",
     "check:modules": "node scripts/check-module-boundaries.mjs",
-    "test:all": "npm run check:modules && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:training:determinism && npm run test:training:contract && npm run test:training:environment && npm run test:core && npm run test:ai:simulation && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:changelog && npm run test:ui:interaction && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:network:guards"
+    "test:all": "npm run check:modules && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:training:determinism && npm run test:training:contract && npm run test:training:environment && npm run test:training:evaluation && npm run test:core && npm run test:ai:simulation && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:changelog && npm run test:ui:interaction && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:network:guards"
   },
   "dependencies": {
     "ws": "^8.18.0"

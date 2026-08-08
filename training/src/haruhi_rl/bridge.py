@@ -23,6 +23,7 @@ class NodeBatchBridge:
         stream_offset: int = 0,
         timeout_seconds: float = 30,
         node_executable: str = "node",
+        kind: str = "training",
     ) -> None:
         self.project_root = Path(project_root).resolve()
         server = self.project_root / "training" / "js" / "batch-server.mjs"
@@ -49,6 +50,7 @@ class NodeBatchBridge:
                     "decisionTicks": int(decision_ticks),
                     "maxEpisodeSeconds": float(max_episode_seconds),
                     "streamOffset": int(stream_offset),
+                    "kind": str(kind),
                 },
             )
             self.count = int(result["count"])
