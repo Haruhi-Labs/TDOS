@@ -1,3 +1,5 @@
+import { gameRandom } from "./random.js";
+
 const SHIP_HULL_SIZE_SCALE = 1.28;
 
 export const CHARACTER_ORDER = [
@@ -207,10 +209,10 @@ const AI_MAIN_EXCLUDE = new Set(["tsuruya", "shamisen"]);
 export function randomAiLoadout() {
   const pool = [...CHARACTER_ORDER];
   const mainPool = pool.filter((id) => !AI_MAIN_EXCLUDE.has(id));
-  const main = mainPool[Math.floor(Math.random() * mainPool.length)];
+  const main = mainPool[Math.floor(gameRandom() * mainPool.length)];
   const rest = pool.filter((id) => id !== main);
   for (let index = rest.length - 1; index > 0; index -= 1) {
-    const other = Math.floor(Math.random() * (index + 1));
+    const other = Math.floor(gameRandom() * (index + 1));
     [rest[index], rest[other]] = [rest[other], rest[index]];
   }
   return { main, sub1: rest[0], sub2: rest[1] };

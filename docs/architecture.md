@@ -54,6 +54,7 @@
 - `shared/game/combat-rules.js`：火力方向、侦察消耗、急刹消耗和雷达转速等独立规则。
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
+- `shared/game/random.js`：可注入、可复现的战斗随机源；训练环境通过每局独立种子并行推进，不修改进程级随机状态。
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。

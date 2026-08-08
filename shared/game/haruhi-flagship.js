@@ -1,4 +1,5 @@
 import { clamp, distance, linePointDistance, normalizeAngle } from "./math.js";
+import { gameRandom } from "./random.js";
 
 export const HARUHI_SUPPORTS = Object.freeze([
   "alien",
@@ -43,7 +44,7 @@ export function hasHaruhiSupport(team, supportId) {
   );
 }
 
-export function activateHaruhiFlagship(team, duration, random = Math.random) {
+export function activateHaruhiFlagship(team, duration, random = gameRandom) {
   if (!team || team.mainCharacterId() !== "haruhi") {
     return null;
   }

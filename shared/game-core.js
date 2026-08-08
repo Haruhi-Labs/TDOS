@@ -99,6 +99,11 @@ import {
   serializeHaruhiFlagship,
   updateHaruhiFlagship,
 } from "./game/haruhi-flagship.js";
+import {
+  gameRandom,
+  resolveGameRandom,
+  withGameRandom,
+} from "./game/random.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -226,9 +231,25 @@ function normalizeAiSeats(mode = "pvp", aiSeats) {
 }
 
 let globalEntityId = 1;
+let activeEntityIdState = null;
+
 function nextEntityId() {
+  if (activeEntityIdState) {
+    activeEntityIdState.value += 1;
+    return activeEntityIdState.value;
+  }
   globalEntityId += 1;
   return globalEntityId;
+}
+
+function withEntityIdState(entityIdState, callback) {
+  const previous = activeEntityIdState;
+  activeEntityIdState = entityIdState || null;
+  try {
+    return callback();
+  } finally {
+    activeEntityIdState = previous;
+  }
 }
 
 export function __resetEntityIds(state = 1) {
@@ -385,7 +406,7 @@ class Projectile {
     }
     // 小目标闪避:体型越小越容易被打空(侦察机/僚机),正常体型舰船不受影响
     const evade = clamp((SMALL_TARGET_REF_RADIUS - hitTarget.radius) / SMALL_TARGET_REF_RADIUS, 0, 1) * SMALL_TARGET_MAX_MISS;
-    if (evade > 0 && Math.random() < evade) {
+    if (evade > 0 && gameRandom() < evade) {
       match.spawnFloatingTextKey(hitTarget.x, hitTarget.y - 6, "未命中", {}, "#92c5ff");
       return;
     }
@@ -1114,7 +1135,7 @@ class Ship {
       delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
     }
 
-    if (this.hasEffect("critUntil") && Math.random() < 0.5) {
+    if (this.hasEffect("critUntil") && gameRandom() < 0.5) {
       damage *= 3;
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
@@ -1275,7 +1296,7 @@ class Scout {
     this.patrolRadius = Number.isFinite(config.patrolRadius) ? Math.max(24, config.patrolRadius) : null;
     this.orbitAngle = randomInRange(0, TAU);
     const orbitSpeedRange = this.pattern === "burst" ? [2.4, 4.8] : [0.8, 1.6];
-    this.orbitSpeed = randomInRange(...orbitSpeedRange) * (Math.random() < 0.5 ? -1 : 1);
+    this.orbitSpeed = randomInRange(...orbitSpeedRange) * (gameRandom() < 0.5 ? -1 : 1);
     this.command = {
       x: x,
       y: y,
@@ -2768,6 +2789,22 @@ class Team {
 
 export class MatchSimulation {
   constructor(options = {}) {
+    this.random = resolveGameRandom(options);
+    const hasRandomSeed = options.randomSeed !== undefined
+      && options.randomSeed !== null
+      && Number.isFinite(Number(options.randomSeed));
+    const isolatedEntityIds = options.isolatedEntityIds === true || hasRandomSeed;
+    this.entityIdState = isolatedEntityIds
+      ? { value: Number.isFinite(Number(options.entityIdStart)) ? Math.trunc(Number(options.entityIdStart)) : 1 }
+      : null;
+    this.runWithSimulationContext(() => this.initialize(options));
+  }
+
+  runWithSimulationContext(callback) {
+    return withGameRandom(this.random, () => withEntityIdState(this.entityIdState, callback));
+  }
+
+  initialize(options) {
     const mode = options.mode || "pvp";
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
     const mapPadding = Number.isFinite(options.mapPadding) ? options.mapPadding : DEFAULT_MAP_PADDING;
@@ -2910,7 +2947,7 @@ export class MatchSimulation {
   }
 
   applyAction(team, action) {
-    return applyMatchAction(team, action);
+    return this.runWithSimulationContext(() => applyMatchAction(team, action));
   }
 
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
@@ -3019,39 +3056,41 @@ export class MatchSimulation {
   }
 
   update(dt = TICK_DT) {
-    if (this.phase !== "running") {
-      return;
-    }
+    return this.runWithSimulationContext(() => {
+      if (this.phase !== "running") {
+        return;
+      }
 
-    const safeDt = clamp(dt, 0, 0.05);
-    this.tick += 1;
-    this.elapsed += safeDt;
+      const safeDt = clamp(dt, 0, 0.05);
+      this.tick += 1;
+      this.elapsed += safeDt;
 
-    for (const [seat, bot] of Object.entries(this.bots)) {
-      if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
-    }
+      for (const [seat, bot] of Object.entries(this.bots)) {
+        if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
+      }
 
-    this.teamA.update(safeDt);
-    this.teamB.update(safeDt);
+      this.teamA.update(safeDt);
+      this.teamB.update(safeDt);
 
-    this.resolveHaruhiOtherworlderContacts();
-    this.resolveShipCollisions();
-    this.resolveBladeQueenContacts();
-    this.resolveScoutClashes();
-    this.resolveVisionWavePurges();
-    this.teamA.computeVisibility(this.teamB);
-    this.teamB.computeVisibility(this.teamA);
-    this.teamA.updateRadarPassive(this.teamB, safeDt);
-    this.teamB.updateRadarPassive(this.teamA, safeDt);
-    this.teamA.resolveChargedBeams(this.teamB);
-    this.teamB.resolveChargedBeams(this.teamA);
+      this.resolveHaruhiOtherworlderContacts();
+      this.resolveShipCollisions();
+      this.resolveBladeQueenContacts();
+      this.resolveScoutClashes();
+      this.resolveVisionWavePurges();
+      this.teamA.computeVisibility(this.teamB);
+      this.teamB.computeVisibility(this.teamA);
+      this.teamA.updateRadarPassive(this.teamB, safeDt);
+      this.teamB.updateRadarPassive(this.teamA, safeDt);
+      this.teamA.resolveChargedBeams(this.teamB);
+      this.teamB.resolveChargedBeams(this.teamA);
 
-    if (this.combatEnabled.A) this.teamA.stepCombat(this.teamB);
-    if (this.combatEnabled.B) this.teamB.stepCombat(this.teamA);
-    this.updateProjectiles(safeDt);
-    this.updateVisualEffects(safeDt);
+      if (this.combatEnabled.A) this.teamA.stepCombat(this.teamB);
+      if (this.combatEnabled.B) this.teamB.stepCombat(this.teamA);
+      this.updateProjectiles(safeDt);
+      this.updateVisualEffects(safeDt);
 
-    this.checkVictory();
+      this.checkVictory();
+    });
   }
 
   serializeRadarForSeat(seat) {

@@ -1,4 +1,5 @@
 import { DEFAULT_WORLD_SIZE } from "./constants.js";
+import { gameRandom } from "./random.js";
 
 const TAU = Math.PI * 2;
 
@@ -109,7 +110,7 @@ export function quadraticStartCurvature(p0, p1, p2) {
 }
 
 export function randomInRange(min, max) {
-  return Math.random() * (max - min) + min;
+  return gameRandom() * (max - min) + min;
 }
 
 export function zoneContains(zone, x, y) {
