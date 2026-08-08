@@ -9,6 +9,8 @@ import {
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_HIT_INTERVAL = 1;
 const BLADE_QUEEN_HIT_FRACTION = 0.15;
+const HARUHI_BOW_CONTACT_TOLERANCE = 5;
+const HARUHI_BOW_ARC_COS = Math.cos(Math.PI / 4);
 export const COLLISION_SLOW_DURATION = 3;
 export const COLLISION_SLOW_FLOOR = 0.5;
 const COLLISION_RELEASE_MARGIN = 30;
@@ -86,6 +88,24 @@ function applyForcedKnockback(match, source, contactTarget) {
   match.spawnBurst(contactTarget.x, contactTarget.y, "#ffcf8e", 14);
 }
 
+function haruhiBowTouchesTarget(source, target) {
+  const forwardX = Math.cos(source.angle);
+  const forwardY = Math.sin(source.angle);
+  const deltaX = target.x - source.x;
+  const deltaY = target.y - source.y;
+  const centerDistance = Math.hypot(deltaX, deltaY);
+  if (centerDistance < 1e-6) {
+    return false;
+  }
+  const facingDot = (deltaX * forwardX + deltaY * forwardY) / centerDistance;
+  if (facingDot < HARUHI_BOW_ARC_COS) {
+    return false;
+  }
+  const bowX = source.x + forwardX * source.radius;
+  const bowY = source.y + forwardY * source.radius;
+  return distance(bowX, bowY, target.x, target.y) <= target.radius + HARUHI_BOW_CONTACT_TOLERANCE;
+}
+
 export function resolveHaruhiOtherworlderContacts(match) {
   const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
   for (const [team, enemyTeam] of pairs) {
@@ -94,7 +114,7 @@ export function resolveHaruhiOtherworlderContacts(match) {
     const target = enemyTeam.getAllShips().find(
       (enemy) => enemy.alive
         && !enemy.forcedKnockback
-        && distance(source.x, source.y, enemy.x, enemy.y) <= source.radius + enemy.radius + 4,
+        && haruhiBowTouchesTarget(source, enemy),
     );
     if (!target || !triggerHaruhiOtherworlder(team)) continue;
     applyForcedKnockback(match, source, target);

@@ -1121,6 +1121,31 @@ function haruhiFlagshipReworkCheck() {
 
   haruhi.x = 560;
   haruhi.y = 720;
+  haruhi.angle = 0;
+  haruhi.command = { x: haruhi.x, y: haruhi.y };
+  target.x = haruhi.x - haruhi.radius - target.radius + 1;
+  target.y = haruhi.y;
+  target.command = { x: target.x, y: target.y };
+  const hpBeforeRearContact = target.hp;
+  sim.update(TICK_DT);
+  assert(!target.forcedKnockback, "异世界人支援被舰尾碰撞错误触发");
+  assert(target.hp === hpBeforeRearContact, "异世界人舰尾碰撞错误造成了伤害");
+  assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人舰尾碰撞错误消耗了8秒冷却");
+
+  haruhi.x = 560;
+  haruhi.y = 720;
+  haruhi.command = { x: haruhi.x, y: haruhi.y };
+  target.x = haruhi.x;
+  target.y = haruhi.y + haruhi.radius + target.radius - 1;
+  target.command = { x: target.x, y: target.y };
+  const hpBeforeSideContact = target.hp;
+  sim.update(TICK_DT);
+  assert(!target.forcedKnockback, "异世界人支援被侧面碰撞错误触发");
+  assert(target.hp === hpBeforeSideContact, "异世界人侧面碰撞错误造成了伤害");
+  assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人侧面碰撞错误消耗了8秒冷却");
+
+  haruhi.x = 560;
+  haruhi.y = 720;
   haruhi.command = { x: haruhi.x, y: haruhi.y };
   target.x = haruhi.x + haruhi.radius + target.radius - 1;
   target.y = haruhi.y;
