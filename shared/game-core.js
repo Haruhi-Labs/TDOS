@@ -87,6 +87,15 @@ import {
   stepCombat as stepTeamCombat,
 } from "./game/targeting-system.js";
 import {
+  activateKoizumiOrb,
+  beginKoizumiOrbReturn,
+  isKoizumiOrbActive,
+  isKoizumiOrbReturning,
+  resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts,
+  serializeKoizumiOrb,
+  updateKoizumiOrb,
+} from "./game/koizumi-orb.js";
+import {
   HARUHI_SUPPORT_LABELS,
   activateHaruhiFlagship,
   createHaruhiFlagshipState,
@@ -371,7 +380,7 @@ class Projectile {
     let hitTarget = null;
     let nearest = Infinity;
     for (const entity of candidates) {
-      if (!entity.alive) {
+      if (!entity.alive || (typeof entity.isTargetableByFire === "function" && !entity.isTargetableByFire())) {
         continue;
       }
       const d = distance(this.x, this.y, entity.x, entity.y);
@@ -466,6 +475,7 @@ class Ship {
     this.alive = true;
     this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
     this.forcedKnockback = null;
+    this.koizumiOrb = null;
 
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
@@ -479,6 +489,7 @@ class Ship {
       catPawUntil: 0,
       brakeUntil: 0,
       brakeCooldownUntil: 0,
+      silencedUntil: 0,
       nextShotDamageMultiplier: 1,
     };
     this.clawMarks = {
@@ -513,6 +524,9 @@ class Ship {
     if (!this.alive || this.isAuxiliary) {
       return false;
     }
+    if (isKoizumiOrbReturning(this)) {
+      return false;
+    }
     if (this.key === "main") {
       return true;
     }
@@ -531,6 +545,18 @@ class Ship {
 
   isEmergencyBraking() {
     return this.hasEffect("brakeUntil");
+  }
+
+  isSilenced() {
+    return this.hasEffect("silencedUntil");
+  }
+
+  isKoizumiOrbActive() {
+    return isKoizumiOrbActive(this);
+  }
+
+  isTargetableByFire() {
+    return !this.isKoizumiOrbActive();
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -682,6 +708,11 @@ class Ship {
     clearTimedEffect("reliableUntil");
     clearTimedEffect("bladeQueenUntil");
     clearTimedEffect("catPawUntil");
+    if (this.koizumiOrb && canClear("koizumiOrb")) {
+      beginKoizumiOrbReturn(this);
+      cleared = true;
+      delete this.activeSkillEffectStartedTicks.koizumiOrb;
+    }
     if (canClear("nextShotDamageMultiplier")) {
       if (this.effects.nextShotDamageMultiplier > 1) {
         cleared = true;
@@ -945,6 +976,10 @@ class Ship {
       return;
     }
 
+    if (updateKoizumiOrb(this, dt)) {
+      return;
+    }
+
     if (this.isAttached()) {
       this.followLeader(dt);
       return;
@@ -1089,7 +1124,7 @@ class Ship {
   }
 
   tryAttack(match, enemyTeam) {
-    if (!this.alive || this.cooldown > 0) {
+    if (!this.alive || this.cooldown > 0 || this.isKoizumiOrbActive()) {
       return;
     }
     const target = this.team.pickTargetFor(this, enemyTeam);
@@ -1214,6 +1249,9 @@ class Ship {
       brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       catPawVolley: this.hasEffect("catPawUntil"),
+      silenced: this.isSilenced(),
+      silenceRemaining: Math.max(0, (this.effects.silencedUntil || 0) - this.team.match.elapsed),
+      koizumiOrb: serializeKoizumiOrb(this),
       knockedBack: Boolean(this.forcedKnockback),
       haruhiImpactReady: this.key === "main" && haruhiOtherworlderReady(this.team),
       clawMarks: (() => {
@@ -1972,6 +2010,12 @@ class Team {
     if (ship.hasEffect("catPawUntil")) {
       list.push("猫爪乱舞");
     }
+    if (ship.isKoizumiOrbActive()) {
+      list.push(ship.koizumiOrb.phase === "returning" ? "超能力·归航" : "超能力");
+    }
+    if (ship.isSilenced()) {
+      list.push("沉默");
+    }
     if (ship.isEmergencyBraking()) {
       list.push("急刹");
     }
@@ -2301,7 +2345,7 @@ class Team {
 
   emergencyBrake(shipOrKey) {
     const ship = typeof shipOrKey === "string" ? this.shipByKey(shipOrKey) : shipOrKey;
-    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached()) {
+    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached() || ship.isKoizumiOrbActive()) {
       return false;
     }
     if ((ship.effects.brakeCooldownUntil || 0) > this.match.elapsed) {
@@ -2386,6 +2430,9 @@ class Team {
       return false;
     }
     if (!this.ships.main.alive) {
+      return false;
+    }
+    if (this.ships.main.isSilenced()) {
       return false;
     }
     if (this.areSkillsDisabled()) {
@@ -2480,6 +2527,9 @@ class Team {
     if (!ship || !ship.alive || ship.isAttached()) {
       return false;
     }
+    if (ship.isSilenced() || ship.isKoizumiOrbActive()) {
+      return false;
+    }
     if (this.areSkillsDisabled()) {
       return false;
     }
@@ -2499,11 +2549,8 @@ class Team {
       this.setShipEffect(ship, "critUntil", meta.duration || 8);
       ok = true;
     } else if (ship.characterId === "koizumi") {
-      ok = this.blinkShip(ship, options.targetX, options.targetY, meta.blinkRange || 240);
-      if (ok) {
-        ship.effects.nextShotDamageMultiplier = 4;
-        ship.markActiveSkillEffectStarted("nextShotDamageMultiplier");
-      }
+      ok = activateKoizumiOrb(ship, meta.duration || 8);
+      if (ok) ship.markActiveSkillEffectStarted("koizumiOrb");
     } else if (ship.characterId === "yuki") {
       this.launchBurstScouts(ship);
       ok = true;
@@ -2655,7 +2702,7 @@ class Team {
 
       let hitAny = false;
       for (const target of enemyTeam.getAllShips()) {
-        if (!target.alive) {
+        if (!target.alive || !target.isTargetableByFire()) {
           continue;
         }
         const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
@@ -2932,6 +2979,10 @@ export class MatchSimulation {
     resolveMatchHaruhiOtherworlderContacts(this);
   }
 
+  resolveKoizumiOrbContacts() {
+    resolveMatchKoizumiOrbContacts(this);
+  }
+
   resolveScoutClashes() {
     resolveMatchScoutClashes(this);
   }
@@ -3043,6 +3094,7 @@ export class MatchSimulation {
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
 
+    this.resolveKoizumiOrbContacts();
     this.resolveHaruhiOtherworlderContacts();
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();

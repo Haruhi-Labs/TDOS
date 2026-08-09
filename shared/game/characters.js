@@ -51,9 +51,9 @@ export const CHARACTER_DEFS = {
       description: "全舰队加速度×1.75，持续12秒；前6秒全队无敌。",
     },
     subSkill: {
-      id: "esper", name: "超能力", type: "active", cooldown: 22, cost: 50,
-      blinkRange: 240, target: "optional_point",
-      description: "闪现到240范围内的目标位置，并使下一次攻击伤害×4。",
+      id: "esper", name: "超能力", type: "active", cooldown: 15, cost: 50,
+      duration: 8, silenceDuration: 5, target: "none",
+      description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害。结束后保持光球形态自动归航战场中央。",
     },
   },
   yuki: {

@@ -1,5 +1,6 @@
 import { distance, randomInRange } from "./math.js";
 import { throttleForGear } from "./throttle.js";
+import { isKoizumiOrbActive } from "./koizumi-orb.js";
 import {
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
@@ -27,6 +28,7 @@ export function resolveShipCollisions(match) {
       const left = ships[leftIndex];
       const right = ships[rightIndex];
       if (left.forcedKnockback || right.forcedKnockback) continue;
+      if (isKoizumiOrbActive(left) || isKoizumiOrbActive(right)) continue;
       if (left.team === right.team && (left.isAttached() || right.isAttached())) continue;
       if (left.hasEffect("bladeQueenUntil") || right.hasEffect("bladeQueenUntil")) continue;
 

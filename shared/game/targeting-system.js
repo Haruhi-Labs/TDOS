@@ -6,6 +6,7 @@ export function fireCandidates(team, attacker, enemyTeam) {
   const candidates = [];
   for (const target of enemyTeam.getEntities()) {
     if (!target.alive) continue;
+    if (typeof target.isTargetableByFire === "function" && !target.isTargetableByFire()) continue;
     const targetDistance = distance(attacker.x, attacker.y, target.x, target.y);
     if (targetDistance > range) continue;
     const arc = canArc ? attacker.broadsideMultiplier(target) : 1;

@@ -751,7 +751,7 @@ function koizumiFlagshipInvulnCheck() {
   assert(main.hp < beforeHp, "古泉旗舰技能无敌结束后仍未恢复正常受伤");
 }
 
-function koizumiBlinkStrikeCheck() {
+function koizumiOrbRamCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
     worldSize: 1440,
@@ -762,7 +762,7 @@ function koizumiBlinkStrikeCheck() {
         sub2: "yuki",
       },
       B: {
-        main: "kyon",
+        main: "haruhi",
         sub1: "tsuruya",
         sub2: "future1096",
       },
@@ -780,32 +780,82 @@ function koizumiBlinkStrikeCheck() {
   sub1.command.x = sub1.x;
   sub1.command.y = sub1.y;
   sub1.route = null;
-  enemyMain.x = 980;
-  enemyMain.y = 720;
+  enemyMain.x = 790;
+  enemyMain.y = 730;
   enemyMain.command.x = enemyMain.x;
   enemyMain.command.y = enemyMain.y;
   enemyMain.route = null;
 
-  const startX = sub1.x;
-  const castOk = teamA.castSubSkill("sub1", { targetX: 1120, targetY: 720 });
-  assert(castOk, "古泉分舰技能闪现释放失败");
-  assert(sub1.x > startX + 200, "古泉分舰技能未闪现到有效距离");
-  assert(sub1.effects.nextShotDamageMultiplier === 4, "古泉分舰技能未为下一次攻击附加4倍伤害");
+  const meta = CHARACTER_DEFS.koizumi.subSkill;
+  assert(meta.cooldown === 15 && meta.duration === 8, "古泉光球技能持续或冷却配置不正确");
+  const castOk = teamA.castSubSkill("sub1");
+  assert(castOk, "古泉分舰光球技能释放失败");
+  assert(sub1.koizumiOrb?.phase === "active", "古泉释放后未进入高速光球状态");
+  assert(Math.abs(teamA.cooldowns.sub1 - 15) < 1e-6, "古泉光球技能未进入15秒冷却");
 
-  sim.teamA.computeVisibility(sim.teamB);
+  teamA.visibleEnemyIds.add(enemyMain.id);
   sub1.cooldown = 0;
   sim.projectiles = [];
   sub1.tryAttack(sim, sim.teamB);
-  assert(sim.projectiles.length === 1, "古泉分舰技能后未能正常攻击");
-  assert(Math.round(sim.projectiles[0].damage) === Math.round(sub1.effectiveDamage() * 4), "古泉分舰技能未正确提升下一次攻击伤害");
-  assert(sub1.effects.nextShotDamageMultiplier === 1, "古泉分舰技能的单次强化未在攻击后清除");
+  assert(sim.projectiles.length === 0, "古泉处于光球形态时仍能正常射击");
 
-  teamA.cooldowns.sub1 = 0;
-  sub1.energy = sub1.maxEnergy;
-  const beforeY = sub1.y;
-  const castInPlaceOk = teamA.castSubSkill("sub1", {});
-  assert(castInPlaceOk, "古泉分舰技能未支持原地闪现释放");
-  assert(Math.abs(sub1.y - beforeY) < 1e-6, "古泉分舰技能原地闪现时不应强制位移");
+  sim.teamB.visibleEnemyIds = new Set([sub1.id]);
+  enemyMain.cooldown = 0;
+  enemyMain.tryAttack(sim, teamA);
+  assert(sim.projectiles.length === 0, "敌舰仍会把古泉光球选为射击目标");
+
+  const hpBeforeRam = enemyMain.hp;
+  sub1.koizumiOrb.previousX = 720;
+  sub1.koizumiOrb.previousY = 720;
+  sub1.x = 810;
+  sub1.y = 720;
+  sim.resolveKoizumiOrbContacts();
+  assert(enemyMain.hp === hpBeforeRam, "古泉光球冲撞错误造成了伤害");
+  assert(enemyMain.forcedKnockback, "古泉光球冲撞没有触发侧向击飞");
+  assert(
+    Math.abs(enemyMain.forcedKnockback.toY - enemyMain.forcedKnockback.fromY) > sub1.effectiveVision() * 0.8,
+    "古泉光球没有把目标向侧面击飞约一个视野距离",
+  );
+  assert(enemyMain.isSilenced(), "古泉光球冲撞没有令目标沉默");
+  assert(!sim.teamB.castFlagshipSkill(), "被古泉撞击沉默的旗舰仍能释放技能");
+
+  const firstSilenceUntil = enemyMain.effects.silencedUntil;
+  sim.elapsed += 1;
+  sub1.koizumiOrb.hitAt.delete(enemyMain.id);
+  sub1.koizumiOrb.previousX = enemyMain.x - 50;
+  sub1.koizumiOrb.previousY = enemyMain.y;
+  sub1.x = enemyMain.x + 50;
+  sub1.y = enemyMain.y;
+  sim.resolveKoizumiOrbContacts();
+  assert(enemyMain.effects.silencedUntil > firstSilenceUntil + 0.9, "重复撞击没有刷新5秒沉默时间");
+
+  const returnSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "koizumi", sub2: "yuki" },
+      B: { main: "kyon", sub1: "tsuruya", sub2: "future1096" },
+    },
+  });
+  returnSim.teamA.split(1);
+  const returning = returnSim.teamA.ships.sub1;
+  returning.x = 180;
+  returning.y = 260;
+  returning.command = { x: 1200, y: 1180 };
+  returning.angle = -0.15;
+  returning.energy = returning.maxEnergy;
+  assert(returnSim.teamA.castSubSkill("sub1"), "古泉自动归航测试无法释放技能");
+  runSteps(returnSim, 8.1);
+  assert(returning.koizumiOrb?.phase === "returning", "8秒结束后古泉未进入光球归航阶段");
+  assert(!returning.canControl(), "古泉自动归航期间仍可接受手动航线");
+  let returnGuard = 0;
+  while (returning.koizumiOrb && returnGuard < 360) {
+    returnSim.update(1 / 30);
+    returnGuard += 1;
+  }
+  assert(!returning.koizumiOrb, "古泉光球没有在合理时间内完成强制归航");
+  assert(Math.hypot(returning.x - 720, returning.y - 720) < 1e-6, "古泉没有在战场中央恢复正常形态");
+  assert(returning.canControl(), "古泉恢复正常形态后没有恢复控制权");
 }
 
 function beamSkillCheck() {
@@ -1541,7 +1591,7 @@ export function runRulesSuite() {
   skippedSplitLevelCheck();
   yukiPassiveCheck();
   koizumiFlagshipInvulnCheck();
-  koizumiBlinkStrikeCheck();
+  koizumiOrbRamCheck();
   beamSkillCheck();
   tsuruyaFlagshipActiveCheck();
   fireArcDensityCheck();
