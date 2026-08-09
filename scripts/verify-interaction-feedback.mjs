@@ -256,7 +256,7 @@ async function verifyDesktopPageFlipFit() {
   await context.close();
 }
 
-async function verifyMobileTutorialDock(viewport, name) {
+async function verifyMobileTutorialDock(viewport, name, layout = "standardPortrait") {
   const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   await page.goto(`${baseUrl}/play/tutorial`, { waitUntil: "networkidle" });
@@ -269,6 +269,7 @@ async function verifyMobileTutorialDock(viewport, name) {
       const cardElement = document.querySelector(".tut-card");
       const cardRect = cardElement.getBoundingClientRect();
       const canvasRect = document.querySelector("#gameCanvas").getBoundingClientRect();
+      const hudRect = document.querySelector("#mobileBattleHud").getBoundingClientRect();
       const buttonRects = [...document.querySelectorAll(".mobile-action-grid > button")]
         .map((element) => element.getBoundingClientRect());
       const rowTops = [...new Set(buttonRects.map((rect) => Math.round(rect.top)))].sort((a, b) => a - b);
@@ -285,6 +286,12 @@ async function verifyMobileTutorialDock(viewport, name) {
       return {
         cardTop: cardRect.top,
         cardBottom: cardRect.bottom,
+        canvasWidth: canvasRect.width,
+        canvasBottom: canvasRect.bottom,
+        hudTop: hudRect.top,
+        hudBottom: hudRect.bottom,
+        gameWrapDisplay: getComputedStyle(document.querySelector(".game-wrap")).display,
+        actionButtonMinHeight: parseFloat(getComputedStyle(document.querySelector(".mobile-action-grid > button")).minHeight),
         secondLastBottom,
         overlapsCanvas,
         scrollHeight: cardElement.scrollHeight,
@@ -297,6 +304,20 @@ async function verifyMobileTutorialDock(viewport, name) {
   assert.ok(initial.cardTop >= initial.secondLastBottom - 0.75, `${name}教程说明越过倒数第二排按钮上界`);
   assert.ok(initial.cardBottom <= viewport.height - 7, `${name}教程说明越出底部安全区`);
   assert.equal(initial.overlapsCanvas, false, `${name}教程说明仍遮挡战场`);
+
+  if (layout === "extremePortrait") {
+    assert.equal(initial.gameWrapDisplay, "flex", `${name}被错误套用了横屏双栏布局`);
+    assert.ok(initial.canvasWidth >= viewport.width * 0.45, `${name}战场被挤压得过小`);
+    assert.ok(initial.canvasBottom <= initial.hudTop, `${name}战场与操作台发生重叠`);
+    assert.ok(initial.hudBottom <= viewport.height + 0.75, `${name}操作台超出可用视口`);
+    assert.equal(initial.actionButtonMinHeight, 36, `${name}没有启用极小屏紧凑触控尺寸`);
+  } else if (layout === "landscape") {
+    assert.equal(initial.gameWrapDisplay, "grid", `${name}没有保持横屏双栏布局`);
+    assert.equal(initial.actionButtonMinHeight, 40, `${name}受到极小竖屏样式影响`);
+  } else {
+    assert.equal(initial.gameWrapDisplay, "flex", `${name}没有保持常规竖屏布局`);
+    assert.equal(initial.actionButtonMinHeight, 40, `${name}受到极小竖屏样式影响`);
+  }
 
   await card.locator(".tut-body").evaluate((element) => {
     element.textContent = "用于验证移动端长篇教程说明始终收纳在底部说明坞内。".repeat(12);
@@ -322,8 +343,9 @@ try {
     hasTouch: true,
   });
   await verifyDesktopPageFlipFit();
+  await verifyMobileTutorialDock({ width: 339, height: 514 }, "极小竖屏", "extremePortrait");
   await verifyMobileTutorialDock({ width: 375, height: 667 }, "竖屏短屏");
-  await verifyMobileTutorialDock({ width: 844, height: 390 }, "移动端横屏");
+  await verifyMobileTutorialDock({ width: 844, height: 390 }, "移动端横屏", "landscape");
   console.log("双端按钮状态、桌面翻页与移动教程说明坞检查通过");
 } finally {
   await browser.close();
