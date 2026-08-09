@@ -14,6 +14,12 @@ export const CAMERA_ZOOM_MAX = 2.6;
 export const CAMERA_ZOOM_STEP = 0.2;
 export const MOBILE_ZOOM = 1.78;
 
+export function battleCanvasBackingSize(cssWidth, devicePixelRatio = 1) {
+  const width = Math.max(1, Number(cssWidth) || LOGICAL);
+  const dpr = Math.min(Math.max(1, Number(devicePixelRatio) || 1), 1.5);
+  return Math.max(720, Math.min(Math.round(width * dpr), 1800));
+}
+
 export function prefersMobileBattleMode() {
   return window.matchMedia("(max-width: 980px)").matches || window.matchMedia("(pointer: coarse)").matches;
 }
@@ -194,10 +200,11 @@ export function createBattleCamera({
     }
     const rect = canvas.getBoundingClientRect();
     const cssW = rect.width || canvas.clientWidth || LOGICAL;
-    // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [LOGICAL, 2880]:
-    // 不低于原始逻辑尺寸(绝不劣化),不超 2880(控住超大屏/高 DPR 的内存与填充开销)。
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    const backing = Math.max(LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
+    // WebGL 每帧需要更新一张战场纹理，因此 backing store 只需覆盖实际显示设备像素。
+    // 小窗口强制 1440 会让 700px 地图多绘制/上传四倍像素；720 下限保证文字与细线。
+    // 战场动态内容以 1.5× DPR 为上限，在 Retina 屏仍保持锐利，并较 2× DPR 减少约 44%
+    // 的 2D 合成与纹理上传像素；1800 上限避免大屏出现无意义的带宽峰值。
+    const backing = battleCanvasBackingSize(cssW, window.devicePixelRatio || 1);
     if (canvas.width !== backing) {
       canvas.width = backing;
       canvas.height = backing;

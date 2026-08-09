@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { battleCanvasBackingSize } from "../src/battle/camera.js";
 import { createYukiRadarGpuEffect } from "../src/battle/render/radar.js";
 import { createBattleCanvasRenderer } from "../src/battle/webgl-canvas.js";
 
@@ -28,6 +29,10 @@ class FakeGl {
       RGBA: 20,
       UNSIGNED_BYTE: 21,
       TRIANGLES: 22,
+      DYNAMIC_DRAW: 23,
+      FUNC_ADD: 24,
+      ONE: 25,
+      ONE_MINUS_SRC_COLOR: 26,
     });
     this.calls = [];
   }
@@ -49,9 +54,12 @@ class FakeGl {
   deleteBuffer() { this.record("deleteBuffer"); }
   bindBuffer() {}
   bufferData() {}
+  bufferSubData(_target, _offset, data) { this.record("bufferSubData", data.length); }
   createTexture() { return {}; }
   deleteTexture() { this.record("deleteTexture"); }
-  getAttribLocation(_program, name) { return name === "a_position" ? 0 : 1; }
+  getAttribLocation(_program, name) {
+    return ["a_position", "a_texCoord", "a_radarPosition", "a_radarCoord"].indexOf(name);
+  }
   enableVertexAttribArray() {}
   vertexAttribPointer() {}
   activeTexture() {}
@@ -63,7 +71,10 @@ class FakeGl {
   uniform1i() {}
   uniform1f(location, value) { this.record("uniform1f", location.name, value); }
   uniform2f(location, x, y) { this.record("uniform2f", location.name, x, y); }
+  enable(capability) { this.record("enable", capability); }
   disable() {}
+  blendEquation(mode) { this.record("blendEquation", mode); }
+  blendFunc(source, destination) { this.record("blendFunc", source, destination); }
   viewport(_x, _y, width, height) { this.record("viewport", width, height); }
   texImage2D(...args) { this.record("texImage2D", ...args); }
   texSubImage2D(...args) { this.record("texSubImage2D", ...args); }
@@ -112,8 +123,12 @@ function fakeSurface() {
   assert.deepEqual(target.requests, ["webgl2"]);
   assert.equal(target.canvas.dataset.battleRenderer, "webgl2");
   assert.ok(gl.calls.some(([name, type, source]) => (
-    name === "shaderSource" && type === gl.FRAGMENT_SHADER && source.includes("u_radarEnabled")
+    name === "shaderSource" && type === gl.FRAGMENT_SHADER && source.includes("v_radarCoord")
   )));
+  const fragmentShaders = gl.calls
+    .filter(([name, type]) => name === "shaderSource" && type === gl.FRAGMENT_SHADER)
+    .map(([, , source]) => source);
+  assert.ok(fragmentShaders.every((source) => !source.includes("atan(") && !source.includes("exp(")));
 
   renderer.beginFrame();
   assert.equal(surface.width, 1440);
@@ -124,26 +139,26 @@ function fakeSurface() {
     angle: 0.4,
     length: 980,
     elapsed: 3.2,
-    angularVelocity: -0.9,
     scale: 1,
   });
   renderer.present();
   renderer.present();
   assert.equal(gl.calls.filter(([name]) => name === "texImage2D").length, 1);
   assert.equal(gl.calls.filter(([name]) => name === "texSubImage2D").length, 1);
-  assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 2);
-  assert.ok(gl.calls.some(([name, uniform, value]) => (
-    name === "uniform1f" && uniform === "u_radarEnabled" && value === 1
+  assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 4);
+  assert.equal(gl.calls.filter(([name]) => name === "bufferSubData").length, 2);
+  assert.ok(gl.calls.some(([name, source, destination]) => (
+    name === "blendFunc" && source === gl.ONE && destination === gl.ONE_MINUS_SRC_COLOR
   )));
 
   let prevented = false;
   target.listeners.get("webglcontextlost")({ preventDefault() { prevented = true; } });
   renderer.present();
   assert.equal(prevented, true);
-  assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 2);
+  assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 4);
   target.listeners.get("webglcontextrestored")();
   renderer.present();
-  assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 3);
+  assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 6);
 
   renderer.destroy();
   assert.equal(target.canvas.dataset.battleRenderer, undefined);
@@ -197,10 +212,13 @@ function fakeSurface() {
     angle: 0,
     length: 2680,
     elapsed: 2.5,
-    angularVelocity: -1,
     scale: 2,
   });
   assert.equal(createYukiRadarGpuEffect({ ...frame, spectating: true }, {}, 1), null);
 }
 
-console.log("对战地图 WebGL 渲染器验证通过：WebGL2 雷达、WebGL1 回退、上下文恢复与 2D 应急路径均正常。");
+assert.equal(battleCanvasBackingSize(692, 2), 1038);
+assert.equal(battleCanvasBackingSize(400, 1), 720);
+assert.equal(battleCanvasBackingSize(1600, 2), 1800);
+
+console.log("对战地图 WebGL 验证通过：局部雷达、分辨率预算、WebGL1 回退与上下文恢复均正常。");

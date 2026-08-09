@@ -189,7 +189,6 @@ export function createYukiRadarGpuEffect(frame, view, backingScale = 1) {
     angle,
     length: Math.max(1, Math.hypot(edgePixel.x - sourcePixel.x, edgePixel.y - sourcePixel.y)),
     elapsed,
-    angularVelocity: Number(radar.angularVelocity) || 0,
     scale: Math.max(0.5, view.zoom * backingScale),
   };
 }

@@ -15,7 +15,7 @@ const CONTEXT_ATTRIBUTES = Object.freeze({
   powerPreference: "high-performance",
 });
 
-const VERTEX_SHADER_WEBGL2 = `#version 300 es
+const FRAME_VERTEX_SHADER_WEBGL2 = `#version 300 es
 in vec2 a_position;
 in vec2 a_texCoord;
 out vec2 v_texCoord;
@@ -25,105 +25,17 @@ void main() {
   v_texCoord = a_texCoord;
 }`;
 
-const RADAR_FRAGMENT_BODY = `
+const FRAME_FRAGMENT_SHADER_WEBGL2 = `#version 300 es
+precision mediump float;
 uniform sampler2D u_frame;
-uniform vec2 u_resolution;
-uniform float u_radarEnabled;
-uniform vec2 u_radarSource;
-uniform vec2 u_radarDirection;
-uniform float u_radarLength;
-uniform float u_radarTime;
-uniform float u_radarAngularVelocity;
-uniform float u_radarScale;
-
-float radarHash(vec2 point) {
-  vec3 seed = fract(vec3(point.xyx) * 0.1031);
-  seed += dot(seed, seed.yzx + 33.33);
-  return fract((seed.x + seed.y) * seed.z);
-}
-
-float radarLine(float distanceToLine, float width) {
-  return exp(-distanceToLine / max(0.001, width));
-}
-
-void main() {
-  vec4 base = SAMPLE_FRAME(u_frame, v_texCoord);
-  vec3 radarLight = vec3(0.0);
-
-  if (u_radarEnabled > 0.5) {
-    // gl_FragCoord 原点在左下，转成与游戏世界一致的左上原点像素坐标。
-    vec2 point = vec2(gl_FragCoord.x, u_resolution.y - gl_FragCoord.y);
-    vec2 delta = point - u_radarSource;
-    float radius = length(delta);
-    float along = dot(delta, u_radarDirection);
-    float across = abs(delta.x * u_radarDirection.y - delta.y * u_radarDirection.x);
-    float scale = max(0.75, u_radarScale);
-    float forward = smoothstep(-2.0 * scale, 1.5 * scale, along)
-      * (1.0 - smoothstep(u_radarLength * 0.82, u_radarLength, along));
-
-    // 现实雷达的扫描线：窄冰白亮芯、磷光主线和低亮宽域辉光。
-    float wideGlow = radarLine(across, 9.5 * scale) * 0.16;
-    float phosphorLine = radarLine(across, 2.2 * scale) * 0.5;
-    float whiteCore = radarLine(across, 0.58 * scale) * 0.92;
-    float radialFalloff = 1.0 - smoothstep(u_radarLength * 0.28, u_radarLength, along);
-    radarLight += vec3(0.13, 0.86, 0.72) * (wideGlow + phosphorLine) * forward;
-    radarLight += vec3(0.78, 1.0, 0.96) * whiteCore * forward * (0.72 + radialFalloff * 0.28);
-
-    // 扫描头经过后的荧光余辉。旋转方向由权威雷达角速度决定，余辉永远拖在扫线之后。
-    float directionAngle = atan(u_radarDirection.y, u_radarDirection.x);
-    float pointAngle = atan(delta.y, delta.x);
-    float signedAngle = atan(sin(pointAngle - directionAngle), cos(pointAngle - directionAngle));
-    float spinDirection = u_radarAngularVelocity >= 0.0 ? 1.0 : -1.0;
-    float trailAngle = signedAngle * -spinDirection;
-    float trailWindow = step(0.0, trailAngle) * (1.0 - smoothstep(0.0, 0.31, trailAngle));
-    float persistence = exp(-trailAngle * 8.5) * trailWindow;
-    float trailRadius = smoothstep(8.0 * scale, 34.0 * scale, radius)
-      * (1.0 - smoothstep(u_radarLength * 0.88, u_radarLength * 1.08, radius));
-
-    // 同心测距环只在余辉区域短暂显影，避免与战区九宫格争抢层级。
-    float ringSpacing = 168.0 * scale;
-    float ringDistance = abs(fract(radius / ringSpacing + 0.5) - 0.5) * ringSpacing;
-    float rangeRing = radarLine(ringDistance, 1.05 * scale);
-    float sweepGrain = radarHash(floor(point / max(1.0, 3.0 * scale)) + floor(u_radarTime * 9.0));
-    float phosphorNoise = mix(0.72, 1.18, sweepGrain);
-    radarLight += vec3(0.08, 0.62, 0.49)
-      * persistence * trailRadius * phosphorNoise * (0.085 + rangeRing * 0.15);
-
-    // 两侧数据轨与三枚高速数据包，让扫线像舰载传感器而不是普通渐变线。
-    float rail = radarLine(abs(across - 5.2 * scale), 0.7 * scale);
-    float railPattern = step(0.42, fract(max(0.0, along) / (24.0 * scale) - u_radarTime * 1.8));
-    radarLight += vec3(0.38, 1.0, 0.84) * rail * railPattern * forward * 0.23;
-
-    for (int packetIndex = 0; packetIndex < 3; packetIndex += 1) {
-      float phase = fract(u_radarTime * 0.29 + float(packetIndex) * 0.327);
-      float packetCenter = u_radarLength * mix(0.06, 0.9, phase);
-      float packetAlong = radarLine(abs(along - packetCenter), 2.0 * scale);
-      float packetAcross = radarLine(across, 6.5 * scale);
-      radarLight += vec3(0.7, 1.0, 0.93) * packetAlong * packetAcross * forward * 0.66;
-    }
-
-    // 舰体附近的同步脉冲，模拟天线每圈扫描时的发射/接收门控。
-    float sourcePulse = 0.72 + sin(u_radarTime * 5.4) * 0.28;
-    float sourceRingDistance = abs(radius - (13.0 + sourcePulse * 4.0) * scale);
-    radarLight += vec3(0.46, 1.0, 0.88)
-      * radarLine(sourceRingDistance, 0.85 * scale)
-      * (1.0 - smoothstep(0.0, 32.0 * scale, radius)) * 0.42;
-  }
-
-  // screen 混合保留暗部细节，同时让亮芯在星空上呈现真实荧光响应。
-  vec3 composed = 1.0 - (1.0 - base.rgb) * (1.0 - clamp(radarLight, 0.0, 0.94));
-  OUTPUT_COLOR = vec4(composed, base.a);
-}`;
-
-const FRAGMENT_SHADER_WEBGL2 = `#version 300 es
-precision highp float;
 in vec2 v_texCoord;
 out vec4 outColor;
-#define SAMPLE_FRAME texture
-#define OUTPUT_COLOR outColor
-${RADAR_FRAGMENT_BODY}`;
 
-const VERTEX_SHADER_WEBGL1 = `
+void main() {
+  outColor = texture(u_frame, v_texCoord);
+}`;
+
+const FRAME_VERTEX_SHADER_WEBGL1 = `
 attribute vec2 a_position;
 attribute vec2 a_texCoord;
 varying vec2 v_texCoord;
@@ -133,11 +45,86 @@ void main() {
   v_texCoord = a_texCoord;
 }`;
 
-const FRAGMENT_SHADER_WEBGL1 = `
+const FRAME_FRAGMENT_SHADER_WEBGL1 = `
 precision mediump float;
+uniform sampler2D u_frame;
 varying vec2 v_texCoord;
-#define SAMPLE_FRAME texture2D
-#define OUTPUT_COLOR gl_FragColor
+
+void main() {
+  gl_FragColor = texture2D(u_frame, v_texCoord);
+}`;
+
+const RADAR_VERTEX_SHADER_WEBGL2 = `#version 300 es
+in vec2 a_radarPosition;
+in vec2 a_radarCoord;
+uniform vec2 u_resolution;
+out vec2 v_radarCoord;
+
+void main() {
+  vec2 clip = a_radarPosition / u_resolution * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+  v_radarCoord = a_radarCoord;
+}`;
+
+const RADAR_FRAGMENT_BODY = `
+uniform float u_radarTime;
+
+void main() {
+  float along = v_radarCoord.x;
+  float across = abs(v_radarCoord.y);
+  float endFade = smoothstep(0.0, 0.025, along)
+    * (1.0 - smoothstep(0.82, 1.0, along));
+
+  // 全部计算都限制在扫线窄四边形内：柔光、磷光束、冰白亮芯。
+  float halo = (1.0 - smoothstep(0.12, 1.0, across)) * 0.12;
+  float beam = (1.0 - smoothstep(0.04, 0.31, across)) * 0.42;
+  float core = (1.0 - smoothstep(0.0, 0.075, across)) * 0.84;
+
+  // 两条分段数据轨和八个测距刻度，沿扫描方向快速更新但不保留历史帧。
+  float railDistance = abs(across - 0.46);
+  float railDash = step(0.48, fract(along * 34.0 - u_radarTime * 1.7));
+  float rails = (1.0 - smoothstep(0.0, 0.055, railDistance)) * railDash * 0.32;
+  float tickDistance = abs(fract(along * 8.0 + 0.5) - 0.5);
+  float ticks = (1.0 - smoothstep(0.0, 0.018, tickDistance))
+    * (1.0 - smoothstep(0.58, 0.88, across)) * 0.3;
+
+  // 三枚脉冲只向前流动，不产生余辉或跨帧累积。
+  float packets = 0.0;
+  for (int packetIndex = 0; packetIndex < 3; packetIndex += 1) {
+    float center = fract(u_radarTime * 0.31 + float(packetIndex) * 0.327);
+    packets += (1.0 - smoothstep(0.0, 0.018, abs(along - center)))
+      * (1.0 - smoothstep(0.18, 0.72, across)) * 0.68;
+  }
+
+  vec3 phosphor = vec3(0.1, 0.76, 0.62) * (halo + beam + rails);
+  vec3 iceCore = vec3(0.76, 1.0, 0.94) * (core + ticks + packets);
+  vec3 light = clamp((phosphor + iceCore) * endFade, 0.0, 0.92);
+  RADAR_OUTPUT = vec4(light, 1.0);
+}`;
+
+const RADAR_FRAGMENT_SHADER_WEBGL2 = `#version 300 es
+precision mediump float;
+in vec2 v_radarCoord;
+out vec4 outColor;
+#define RADAR_OUTPUT outColor
+${RADAR_FRAGMENT_BODY}`;
+
+const RADAR_VERTEX_SHADER_WEBGL1 = `
+attribute vec2 a_radarPosition;
+attribute vec2 a_radarCoord;
+uniform vec2 u_resolution;
+varying vec2 v_radarCoord;
+
+void main() {
+  vec2 clip = a_radarPosition / u_resolution * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+  v_radarCoord = a_radarCoord;
+}`;
+
+const RADAR_FRAGMENT_SHADER_WEBGL1 = `
+precision mediump float;
+varying vec2 v_radarCoord;
+#define RADAR_OUTPUT gl_FragColor
 ${RADAR_FRAGMENT_BODY}`;
 
 // 两个三角形覆盖整个裁剪空间；纹理坐标配合 UNPACK_FLIP_Y_WEBGL 保持 Canvas 朝向。
@@ -165,17 +152,9 @@ function compileShader(gl, type, source) {
   return shader;
 }
 
-function createProgram(gl, webgl2) {
-  const vertexShader = compileShader(
-    gl,
-    gl.VERTEX_SHADER,
-    webgl2 ? VERTEX_SHADER_WEBGL2 : VERTEX_SHADER_WEBGL1,
-  );
-  const fragmentShader = compileShader(
-    gl,
-    gl.FRAGMENT_SHADER,
-    webgl2 ? FRAGMENT_SHADER_WEBGL2 : FRAGMENT_SHADER_WEBGL1,
-  );
+function createProgram(gl, vertexSource, fragmentSource) {
+  const vertexShader = compileShader(gl, gl.VERTEX_SHADER, vertexSource);
+  const fragmentShader = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
   const program = gl.createProgram();
   if (!program) {
     gl.deleteShader(vertexShader);
@@ -196,33 +175,32 @@ function createProgram(gl, webgl2) {
 }
 
 function createGpuResources(gl, webgl2) {
-  const program = createProgram(gl, webgl2);
-  const buffer = gl.createBuffer();
+  const frameProgram = createProgram(
+    gl,
+    webgl2 ? FRAME_VERTEX_SHADER_WEBGL2 : FRAME_VERTEX_SHADER_WEBGL1,
+    webgl2 ? FRAME_FRAGMENT_SHADER_WEBGL2 : FRAME_FRAGMENT_SHADER_WEBGL1,
+  );
+  const radarProgram = createProgram(
+    gl,
+    webgl2 ? RADAR_VERTEX_SHADER_WEBGL2 : RADAR_VERTEX_SHADER_WEBGL1,
+    webgl2 ? RADAR_FRAGMENT_SHADER_WEBGL2 : RADAR_FRAGMENT_SHADER_WEBGL1,
+  );
+  const frameBuffer = gl.createBuffer();
+  const radarBuffer = gl.createBuffer();
   const texture = gl.createTexture();
-  if (!buffer || !texture) {
-    if (buffer) gl.deleteBuffer(buffer);
+  if (!frameBuffer || !radarBuffer || !texture) {
+    if (frameBuffer) gl.deleteBuffer(frameBuffer);
+    if (radarBuffer) gl.deleteBuffer(radarBuffer);
     if (texture) gl.deleteTexture(texture);
-    gl.deleteProgram(program);
+    gl.deleteProgram(frameProgram);
+    gl.deleteProgram(radarProgram);
     throw new Error("无法分配对战地图 WebGL 资源");
   }
 
-  gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+  gl.bindBuffer(gl.ARRAY_BUFFER, frameBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, FULLSCREEN_QUAD, gl.STATIC_DRAW);
-
-  const stride = 4 * Float32Array.BYTES_PER_ELEMENT;
-  const position = gl.getAttribLocation(program, "a_position");
-  const texCoord = gl.getAttribLocation(program, "a_texCoord");
-  gl.enableVertexAttribArray(position);
-  gl.vertexAttribPointer(position, 2, gl.FLOAT, false, stride, 0);
-  gl.enableVertexAttribArray(texCoord);
-  gl.vertexAttribPointer(
-    texCoord,
-    2,
-    gl.FLOAT,
-    false,
-    stride,
-    2 * Float32Array.BYTES_PER_ELEMENT,
-  );
+  gl.bindBuffer(gl.ARRAY_BUFFER, radarBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, 6 * 4 * Float32Array.BYTES_PER_ELEMENT, gl.DYNAMIC_DRAW);
 
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
@@ -231,28 +209,31 @@ function createGpuResources(gl, webgl2) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-  gl.useProgram(program);
-  const uniforms = {
-    frame: gl.getUniformLocation(program, "u_frame"),
-    resolution: gl.getUniformLocation(program, "u_resolution"),
-    radarEnabled: gl.getUniformLocation(program, "u_radarEnabled"),
-    radarSource: gl.getUniformLocation(program, "u_radarSource"),
-    radarDirection: gl.getUniformLocation(program, "u_radarDirection"),
-    radarLength: gl.getUniformLocation(program, "u_radarLength"),
-    radarTime: gl.getUniformLocation(program, "u_radarTime"),
-    radarAngularVelocity: gl.getUniformLocation(program, "u_radarAngularVelocity"),
-    radarScale: gl.getUniformLocation(program, "u_radarScale"),
+  const frame = {
+    program: frameProgram,
+    buffer: frameBuffer,
+    position: gl.getAttribLocation(frameProgram, "a_position"),
+    texCoord: gl.getAttribLocation(frameProgram, "a_texCoord"),
+    textureUniform: gl.getUniformLocation(frameProgram, "u_frame"),
   };
-  gl.uniform1i(uniforms.frame, 0);
+  const radar = {
+    program: radarProgram,
+    buffer: radarBuffer,
+    position: gl.getAttribLocation(radarProgram, "a_radarPosition"),
+    coord: gl.getAttribLocation(radarProgram, "a_radarCoord"),
+    resolutionUniform: gl.getUniformLocation(radarProgram, "u_resolution"),
+    timeUniform: gl.getUniformLocation(radarProgram, "u_radarTime"),
+  };
+  gl.useProgram(frameProgram);
+  gl.uniform1i(frame.textureUniform, 0);
   gl.disable(gl.BLEND);
   gl.disable(gl.DEPTH_TEST);
   gl.disable(gl.CULL_FACE);
 
   return {
-    program,
-    buffer,
+    frame,
+    radar,
     texture,
-    uniforms,
     uploadedWidth: 0,
     uploadedHeight: 0,
   };
@@ -261,8 +242,45 @@ function createGpuResources(gl, webgl2) {
 function deleteGpuResources(gl, resources) {
   if (!resources) return;
   if (resources.texture) gl.deleteTexture(resources.texture);
-  if (resources.buffer) gl.deleteBuffer(resources.buffer);
-  if (resources.program) gl.deleteProgram(resources.program);
+  if (resources.frame?.buffer) gl.deleteBuffer(resources.frame.buffer);
+  if (resources.radar?.buffer) gl.deleteBuffer(resources.radar.buffer);
+  if (resources.frame?.program) gl.deleteProgram(resources.frame.program);
+  if (resources.radar?.program) gl.deleteProgram(resources.radar.program);
+}
+
+function writeRadarVertex(target, index, x, y, along, across) {
+  const offset = index * 4;
+  target[offset] = x;
+  target[offset + 1] = y;
+  target[offset + 2] = along;
+  target[offset + 3] = across;
+}
+
+function fillRadarQuad(target, effect) {
+  const dx = Math.cos(effect.angle);
+  const dy = Math.sin(effect.angle);
+  const nx = -dy;
+  const ny = dx;
+  const halfWidth = Math.max(6, Math.min(12 * effect.scale, 18));
+  const sx = effect.sourceX;
+  const sy = effect.sourceY;
+  const ex = sx + dx * effect.length;
+  const ey = sy + dy * effect.length;
+  const sxLeft = sx - nx * halfWidth;
+  const syLeft = sy - ny * halfWidth;
+  const sxRight = sx + nx * halfWidth;
+  const syRight = sy + ny * halfWidth;
+  const exLeft = ex - nx * halfWidth;
+  const eyLeft = ey - ny * halfWidth;
+  const exRight = ex + nx * halfWidth;
+  const eyRight = ey + ny * halfWidth;
+
+  writeRadarVertex(target, 0, sxLeft, syLeft, 0, -1);
+  writeRadarVertex(target, 1, exLeft, eyLeft, 1, -1);
+  writeRadarVertex(target, 2, sxRight, syRight, 0, 1);
+  writeRadarVertex(target, 3, sxRight, syRight, 0, 1);
+  writeRadarVertex(target, 4, exLeft, eyLeft, 1, -1);
+  writeRadarVertex(target, 5, exRight, eyRight, 1, 1);
 }
 
 function defaultSurfaceFactory() {
@@ -324,6 +342,7 @@ export function createBattleCanvasRenderer(canvas, {
   let contextLost = false;
   let destroyed = false;
   let radarEffect = null;
+  const radarQuad = new Float32Array(6 * 4);
   if (canvas.dataset) canvas.dataset.battleRenderer = webgl2 ? "webgl2" : "webgl1";
 
   function beginFrame() {
@@ -338,24 +357,8 @@ export function createBattleCanvasRenderer(canvas, {
     if (destroyed || contextLost || !resources) return;
 
     gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.useProgram(resources.program);
-    gl.bindBuffer(gl.ARRAY_BUFFER, resources.buffer);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, resources.texture);
-    gl.uniform2f(resources.uniforms.resolution, canvas.width, canvas.height);
-    gl.uniform1f(resources.uniforms.radarEnabled, radarEffect ? 1 : 0);
-    if (radarEffect) {
-      gl.uniform2f(resources.uniforms.radarSource, radarEffect.sourceX, radarEffect.sourceY);
-      gl.uniform2f(
-        resources.uniforms.radarDirection,
-        Math.cos(radarEffect.angle),
-        Math.sin(radarEffect.angle),
-      );
-      gl.uniform1f(resources.uniforms.radarLength, radarEffect.length);
-      gl.uniform1f(resources.uniforms.radarTime, radarEffect.elapsed);
-      gl.uniform1f(resources.uniforms.radarAngularVelocity, radarEffect.angularVelocity);
-      gl.uniform1f(resources.uniforms.radarScale, radarEffect.scale);
-    }
 
     if (
       resources.uploadedWidth !== surface.width ||
@@ -383,7 +386,48 @@ export function createBattleCanvasRenderer(canvas, {
       );
     }
 
+    const frameStride = 4 * Float32Array.BYTES_PER_ELEMENT;
+    gl.useProgram(resources.frame.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, resources.frame.buffer);
+    gl.enableVertexAttribArray(resources.frame.position);
+    gl.vertexAttribPointer(resources.frame.position, 2, gl.FLOAT, false, frameStride, 0);
+    gl.enableVertexAttribArray(resources.frame.texCoord);
+    gl.vertexAttribPointer(
+      resources.frame.texCoord,
+      2,
+      gl.FLOAT,
+      false,
+      frameStride,
+      2 * Float32Array.BYTES_PER_ELEMENT,
+    );
+    gl.disable(gl.BLEND);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    if (radarEffect) {
+      fillRadarQuad(radarQuad, radarEffect);
+      const radarStride = 4 * Float32Array.BYTES_PER_ELEMENT;
+      gl.useProgram(resources.radar.program);
+      gl.bindBuffer(gl.ARRAY_BUFFER, resources.radar.buffer);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, radarQuad);
+      gl.enableVertexAttribArray(resources.radar.position);
+      gl.vertexAttribPointer(resources.radar.position, 2, gl.FLOAT, false, radarStride, 0);
+      gl.enableVertexAttribArray(resources.radar.coord);
+      gl.vertexAttribPointer(
+        resources.radar.coord,
+        2,
+        gl.FLOAT,
+        false,
+        radarStride,
+        2 * Float32Array.BYTES_PER_ELEMENT,
+      );
+      gl.uniform2f(resources.radar.resolutionUniform, canvas.width, canvas.height);
+      gl.uniform1f(resources.radar.timeUniform, radarEffect.elapsed);
+      gl.enable(gl.BLEND);
+      gl.blendEquation(gl.FUNC_ADD);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+      gl.disable(gl.BLEND);
+    }
   }
 
   function handleContextLost(event) {
