@@ -98,6 +98,7 @@ const STEPS = [
     phase: 5,
     title: "三舰协同机动",
     body: "依次选择春日、有希和阿虚，为每支舰队分别设置航线，使三支舰队全部抵达<b>3号战区中下方</b>的集结区域。",
+    callout: "看不到目标点时，点击右上角小地图切换视窗",
     wait: "让三支舰队全部抵达标记区域",
     illustration: "attackTarget",
   },

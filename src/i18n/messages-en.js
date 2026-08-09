@@ -304,6 +304,7 @@ export const EN_MESSAGES = {
     "战区/镜头": "Zone/Camera",
     "按空格键继续": "Press Space to continue",
     "战斗开始。点战场直接移动，点右上小地图选战区。": "Battle started. Tap the battlefield to move; use the top-right minimap to select zones.",
+    "看不到目标点时，点击右上角小地图切换视窗": "If you cannot see the target point, tap the top-right minimap to switch views.",
     "战斗开始。点战场直接移动，按住侦察并拖向目标战区。": "Battle started. Tap the battlefield to move; hold Scout and drag toward the target zone.",
     "侦察机拥有独立视野。按住<b>侦察</b>按钮并向上拖动，指向<b>2号战区</b>后松手释放；直接轻点会释放到中央战区。": "Scouts have independent vision. Hold <b>Scout</b> and drag upward, then release when it points to <b>Zone 2</b>. A quick tap launches to the center zone.",
     "战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。": "Battle started. Right-click to set a target; drag control/end points to adjust the route; left-click empty space to select a zone.",
