@@ -83,8 +83,8 @@ function placeFleet(team, x, y, angle) {
   }
 }
 
-function event(id, speaker, text, characterId = null, tone = "info") {
-  return { id, speaker, text, characterId, tone };
+function event(id, speaker, text, characterId = null, tone = "info", textArgs = {}) {
+  return { id, speaker, text, characterId, tone, textArgs };
 }
 
 export function pveSimulationOptions(campaignId, difficulty = "normal") {
@@ -336,9 +336,10 @@ class PveCampaignRuntime {
     this.pushEvent(event(
       `teleport-warning-${this.teleportCursor}`,
       "战术警报",
-      `${teleportCount}艘敌舰正在改写坐标，注意红色相位落点。`,
+      "{count}艘敌舰正在改写坐标，注意红色相位落点。",
       null,
       "danger",
+      { count: teleportCount },
     ));
   }
 
@@ -437,7 +438,8 @@ class PveCampaignRuntime {
       return {
         title: this.campaign.shortTitle,
         objective: this.campaign.objective,
-        phase: pending === null ? "敌方作弊协议：全域观测 / 相位跃迁" : `相位跃迁预警 ${pending.toFixed(1)}秒`,
+        phase: pending === null ? "敌方作弊协议：全域观测 / 相位跃迁" : "相位跃迁预警 {seconds}秒",
+        phaseArgs: pending === null ? {} : { seconds: pending.toFixed(1) },
         tone: pending === null ? "hostile" : "danger",
       };
     }
