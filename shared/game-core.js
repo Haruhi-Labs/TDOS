@@ -446,6 +446,7 @@ class Ship {
     this.character = getCharacterDef(this.characterId);
     this.base = this.character.stats;
     this.isAuxiliary = Boolean(options.isAuxiliary);
+    this.countsForVictory = options.countsForVictory !== false;
     this.attachToMain = options.attachToMain !== false;
     this.roleLabel = options.roleLabel || slotLabel(this.slotKey);
     this.name = `${this.roleLabel}·${this.character.name}`;
@@ -487,6 +488,20 @@ class Ship {
       required: 5,
       expiresAt: 0,
       color: "#ffc0bd",
+    };
+    // 战役专属修正只在单人 PVE 运行时写入。默认全为 1，因此不会改变标准对战或多人规则。
+    // 这里保留独立于角色基础面板的乘区，避免临时剧情增益污染 CHARACTER_DEFS。
+    this.scenarioModifiers = {
+      hp: 1,
+      speed: 1,
+      turnRate: 1,
+      accel: 1,
+      regen: 1,
+      vision: 1,
+      range: 1,
+      damage: 1,
+      fireRate: 1,
+      damageTaken: 1,
     };
     // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
     // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
@@ -565,8 +580,22 @@ class Ship {
 
     value *= this.team.future1096StatMultiplier(statKey);
     value *= haruhiStatMultiplier(this.team, statKey);
+    value *= Number(this.team.scenarioModifiers?.[statKey]) || 1;
+    value *= Number(this.scenarioModifiers?.[statKey]) || 1;
 
     return value;
+  }
+
+  configureScenarioModifiers(modifiers = {}) {
+    const previousHpMultiplier = Number(this.scenarioModifiers.hp) || 1;
+    const nextHpMultiplier = Number(modifiers.hp) > 0 ? Number(modifiers.hp) : previousHpMultiplier;
+    Object.assign(this.scenarioModifiers, modifiers, { hp: nextHpMultiplier });
+    if (Math.abs(previousHpMultiplier - nextHpMultiplier) > 1e-9) {
+      const hullRatio = this.maxHp > 0 ? this.hp / this.maxHp : 1;
+      this.maxHp = Math.max(1, this.maxHp * (nextHpMultiplier / previousHpMultiplier));
+      this.hp = this.alive ? this.maxHp * clamp(hullRatio, 0, 1) : 0;
+    }
+    return this;
   }
 
   baseSpeed() {
@@ -654,6 +683,8 @@ class Ship {
     }
     value *= this.team.future1096DamageTakenMultiplier();
     value *= haruhiDamageTakenMultiplier(this.team);
+    value *= Number(this.team.scenarioModifiers?.damageTaken) || 1;
+    value *= Number(this.scenarioModifiers?.damageTaken) || 1;
     return value;
   }
 
@@ -1608,11 +1639,23 @@ class Team {
     this.forceSkillsDisabled = false;
     this.forceCharacterSkillsDisabled = false;
     this.forceScoutsDisabled = false;
+    this.forceFullVision = false;
     this.damageFloorRatio = 0;
     // 极限集火只对"残血"目标生效(血量 ≤ 该值×自身上限才值得转火去收人头);
     // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
     this.focusHpFrac = 0.5;
     this.visibleEnemyIds = new Set();
+    this.scenarioModifiers = {
+      speed: 1,
+      turnRate: 1,
+      accel: 1,
+      regen: 1,
+      vision: 1,
+      range: 1,
+      damage: 1,
+      fireRate: 1,
+      damageTaken: 1,
+    };
     this.cooldowns = {
       scout: 0,
       flagship: 0,
@@ -1752,6 +1795,40 @@ class Team {
     return [...this.getPlayerShips(), ...this.extraShips];
   }
 
+  configureScenarioModifiers(modifiers = {}) {
+    Object.assign(this.scenarioModifiers, modifiers);
+    return this;
+  }
+
+  addScenarioShip(options = {}) {
+    const key = String(options.key || `scenario-${this.extraShips.length + 1}`);
+    if (this.shipByKey(key)) {
+      throw new Error(`战役附加舰船键值重复：${key}`);
+    }
+    const source = this.ships.main;
+    const ship = new Ship(
+      this,
+      key,
+      Number.isFinite(options.x) ? options.x : source.x,
+      Number.isFinite(options.y) ? options.y : source.y,
+      Number.isFinite(options.facing) ? options.facing : source.angle,
+      {
+        slotKey: options.slotKey || key,
+        characterId: options.characterId || "yuki",
+        isAuxiliary: true,
+        attachToMain: false,
+        countsForVictory: options.countsForVictory,
+        roleLabel: options.roleLabel || "友军",
+      },
+    );
+    ship.throttle = Number.isFinite(options.throttle)
+      ? normalizeThrottleToGear(options.throttle, ship.throttle)
+      : ship.throttle;
+    ship.configureScenarioModifiers(options.modifiers || {});
+    this.extraShips.push(ship);
+    return ship;
+  }
+
   // 难度数值缩放:按 mult 缩放本队所有舰船的最大/当前血量(伤害缩放在 effectiveDamage 中按 statMult 动态生效)。
   // 幂等——以已生效的 statMult 为基准取比值,重复调用同一倍率不再叠加。
   applyAiStatMult(mult) {
@@ -1834,18 +1911,22 @@ class Team {
   }
 
   hasLivingShips() {
-    return this.getAllShips().some((ship) => ship.alive);
+    return this.getAllShips().some((ship) => ship.alive && ship.countsForVictory !== false);
   }
 
   hullRatio() {
-    const ships = this.getAllShips();
+    const ships = this.getAllShips().filter((ship) => ship.countsForVictory !== false);
     const hp = ships.reduce((sum, ship) => sum + Math.max(0, ship.hp), 0);
     const max = ships.reduce((sum, ship) => sum + ship.maxHp, 0);
     return max <= 0 ? 0 : hp / max;
   }
 
   fleetKeyForShip(shipOrKey) {
+    const ship = typeof shipOrKey === "string" ? this.shipByKey(shipOrKey) : shipOrKey;
     const key = typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key;
+    if (ship?.isAuxiliary) {
+      return ship.key;
+    }
     if (key === "sub1" && this.splitLevel >= 1) {
       return "sub1";
     }
@@ -1857,6 +1938,10 @@ class Team {
 
   fleetMembersByKey(fleetKey) {
     const members = [];
+    const auxiliary = this.extraShips.find((ship) => ship.key === fleetKey);
+    if (auxiliary) {
+      return auxiliary.alive ? [auxiliary] : [];
+    }
     if (fleetKey === "main") {
       if (this.ships.main.alive) {
         members.push(this.ships.main);
@@ -1866,11 +1951,6 @@ class Team {
       }
       if (this.splitLevel < 2 && this.ships.sub2.alive) {
         members.push(this.ships.sub2);
-      }
-      for (const ship of this.extraShips) {
-        if (ship.alive) {
-          members.push(ship);
-        }
       }
       return members;
     }

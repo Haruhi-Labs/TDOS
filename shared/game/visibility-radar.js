@@ -114,6 +114,12 @@ export function serializeRadarPassive(team) {
 
 export function computeVisibility(team, enemyTeam) {
   team.visibleEnemyIds.clear();
+  if (team.forceFullVision) {
+    for (const enemy of enemyTeam.getEntities()) {
+      if (enemy.alive) team.visibleEnemyIds.add(enemy.id);
+    }
+    return;
+  }
   const sensors = team.getVisionSources();
   const enemyEntities = enemyTeam.getEntities();
   for (const enemy of enemyEntities) {
