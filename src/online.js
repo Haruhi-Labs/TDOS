@@ -400,7 +400,7 @@ function bindPressButton(button, handler) {
   }
   // 指针按下即响应;紧随其后的合成 click 用「标志位」可靠吞掉——触摸设备上该 click 可能延迟到达
   // (尤其按住略久),不能只靠时间窗,否则 handler 会被触发两次。对「瞄准/原地释放」这类切换技尤其致命:
-  // 一次点按会先进瞄准态又立刻原地释放(如古泉闪现在移动端无法正常瞄准即源于此)。
+  // 一次点按不能既进入技能瞄准态又立刻确认，否则点选目标类技能会被误触发。
   let swallowClick = false;
   let swallowTimer = 0;
   button.addEventListener("pointerdown", (event) => {

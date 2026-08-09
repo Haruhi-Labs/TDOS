@@ -15,6 +15,7 @@ import {
   drawAsakuraVisionWaves,
   drawAsakuraVisionWavesMinimap,
 } from "./render/vision-wave.js";
+import { drawKoizumiOrb } from "./render/koizumi-orb.js";
 
 export { drawYukiRadar, drawYukiRadarMinimap };
 
@@ -419,6 +420,32 @@ function drawClawMarkCounter(ctx, ship) {
   ctx.restore();
 }
 
+function drawSilenceIndicator(ctx, ship) {
+  if (!ship?.silenced) return;
+  const now = performance.now();
+  const pulse = 0.5 + Math.sin(now * 0.007 + Number(ship.id || 0)) * 0.5;
+  ctx.save();
+  ctx.translate(ship.x, ship.y);
+  ctx.strokeStyle = `rgba(255,126,178,${0.55 + pulse * 0.22})`;
+  ctx.shadowColor = "#ff5f9e";
+  ctx.shadowBlur = 5 + pulse * 3;
+  ctx.lineWidth = 1.25;
+  ctx.setLineDash([3, 4]);
+  ctx.lineDashOffset = -now * 0.012;
+  ctx.beginPath();
+  ctx.arc(0, 0, ship.radius + 7, 0, TAU);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(-3.2, -3.2);
+  ctx.lineTo(3.2, 3.2);
+  ctx.moveTo(3.2, -3.2);
+  ctx.lineTo(-3.2, 3.2);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // forceName:观战模式下双方名牌常驻(观众没有"己方",需要清楚看到每艘舰是谁)
 export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, forceName = false) {
   if (!ship || !ship.alive) {
@@ -432,34 +459,37 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
     drawHaruhiImpactReadyAura(ctx, ship);
   }
 
-  ctx.save();
-  ctx.translate(ship.x, ship.y);
-  ctx.rotate(ship.angle);
+  const orbDrawn = drawKoizumiOrb(ctx, ship, { selected });
+  if (!orbDrawn) {
+    ctx.save();
+    ctx.translate(ship.x, ship.y);
+    ctx.rotate(ship.angle);
 
-  const hullScale = shipHullDrawScale(ship);
-  ctx.globalAlpha = attached ? 0.84 : 1;
-  ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.moveTo(16 * hullScale, 0);
-  ctx.lineTo(-13 * hullScale, -10 * hullScale);
-  ctx.lineTo(-6 * hullScale, 0);
-  ctx.lineTo(-13 * hullScale, 10 * hullScale);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.strokeStyle = "#ffffffaa";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  if (selected) {
-    ctx.strokeStyle = "#ffe084";
-    ctx.lineWidth = 1.9;
+    const hullScale = shipHullDrawScale(ship);
+    ctx.globalAlpha = attached ? 0.84 : 1;
+    ctx.fillStyle = color;
     ctx.beginPath();
-    ctx.arc(0, 0, ship.radius + 4, 0, TAU);
-    ctx.stroke();
-  }
+    ctx.moveTo(16 * hullScale, 0);
+    ctx.lineTo(-13 * hullScale, -10 * hullScale);
+    ctx.lineTo(-6 * hullScale, 0);
+    ctx.lineTo(-13 * hullScale, 10 * hullScale);
+    ctx.closePath();
+    ctx.fill();
 
-  ctx.restore();
+    ctx.strokeStyle = "#ffffffaa";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    if (selected) {
+      ctx.strokeStyle = "#ffe084";
+      ctx.lineWidth = 1.9;
+      ctx.beginPath();
+      ctx.arc(0, 0, ship.radius + 4, 0, TAU);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
 
   const hpRatio = clamp((ship.hp || 0) / Math.max(1, ship.maxHp || 1), 0, 1);
   const energyRatio = clamp((ship.energy || 0) / Math.max(1, ship.maxEnergy || 1), 0, 1);
@@ -474,6 +504,7 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
   ctx.fillStyle = "#6ad8ff";
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
   drawClawMarkCounter(ctx, ship);
+  drawSilenceIndicator(ctx, ship);
 
   // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
   // 敌方默认隐藏名字,仅当其角色名已永久确认(视野内施放技能或被长门雷达扫中)时才显示。

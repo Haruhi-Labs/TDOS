@@ -14,7 +14,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "均衡型机动指挥舰",
       flavor: "能够出现在他应该出现的任何地方",
       flagshipSkill: { name: "机关的力量", description: "全舰队加速度×1.75，持续12秒；前6秒全队无敌。" },
-      subSkill: { name: "超能力", description: "闪现到240范围内的目标位置，并使下一次攻击伤害×4。" },
+      subSkill: { name: "超能力", description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害。结束后保持光球形态自动归航战场中央。" },
     },
     yuki: {
       name: "长门有希",
@@ -80,7 +80,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "均衡型機動指揮艦",
       flavor: "必要な場所に、必要な時に現れる",
       flagshipSkill: { name: "機関の力", description: "全艦隊の加速度を×1.75、12秒間。最初の6秒は全艦無敵。" },
-      subSkill: { name: "超能力", description: "240以内の目標地点へブリンクし、次の攻撃ダメージを×4にする。" },
+      subSkill: { name: "超能力", description: "8秒間、高速の赤い光球となり、射撃不能かつ射撃対象にならない。接触した敵艦を横方向へ弾き飛ばし、ダメージなしで5秒間沈黙させる。終了後も光球のまま戦場中央へ自動帰還する。" },
     },
     yuki: {
       name: "長門有希",
@@ -146,7 +146,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "Balanced Mobile Command Ship",
       flavor: "Appears exactly where he is supposed to be",
       flagshipSkill: { name: "Power of the Agency", description: "Fleet acceleration ×1.75 for 12 seconds; the whole fleet is invulnerable for the first 6 seconds." },
-      subSkill: { name: "Esper Power", description: "Blinks to a target point within 240 range and makes the next attack deal ×4 damage." },
+      subSkill: { name: "Esper Power", description: "Becomes a high-speed red orb for 8 seconds, unable to fire or be targeted by gunfire. Contact knocks enemy ships sideways and silences them for 5 seconds without damage. The orb then automatically returns to the battlefield center before reverting." },
     },
     yuki: {
       name: "Yuki Nagato",

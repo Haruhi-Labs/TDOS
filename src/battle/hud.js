@@ -113,16 +113,20 @@ export function updateSkillButtons(ui, own, opts = {}) {
     setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") }));
   } else {
     const flagshipCooldown = cooldowns.flagship || 0;
+    const flagshipSilenced = Boolean(mainShip?.silenced);
     const isFuture1096FormSkill = flagMeta.id === "past_future_me";
     const currentFuture1096Form = own.future1096Form ? t(`${own.future1096Form}形态`) : t("无形态");
     const nextFuture1096Form = t(own.future1096Form === "A" ? "B形态" : "A形态");
     const disabled =
       own.skillsDisabled ||
+      flagshipSilenced ||
       flagshipCooldown > 0 ||
       mainEnergy < (flagMeta.cost || 0) ||
       !(mainShip && mainShip.alive);
     ui.flagshipBtn.disabled = disabled;
-    const suffix = isFuture1096FormSkill
+    const suffix = flagshipSilenced
+      ? t("（沉默中）")
+      : isFuture1096FormSkill
       ? flagshipCooldown > 0
         ? t("（{current}·冷却{seconds}秒）", { current: currentFuture1096Form, seconds: flagshipCooldown.toFixed(1) })
         : t("（{current}→{next}）", { current: currentFuture1096Form, next: nextFuture1096Form })
@@ -140,9 +144,13 @@ export function updateSkillButtons(ui, own, opts = {}) {
 
   const brakeCooldown = Number(selected?.brakeCooldown) || 0;
   const brakeEnergy = Number(selected?.fleetEnergy) || 0;
-  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
+  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || selected.koizumiOrb?.active || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
   let brakeSuffix = "";
-  if (!selected || !selected.alive || !selected.canControl) {
+  if (!selected || !selected.alive) {
+    brakeSuffix = t("（切换到可控舰）");
+  } else if (selected.koizumiOrb?.active) {
+    brakeSuffix = selected.koizumiOrb.phase === "returning" ? t("（自动归航）") : t("（光球形态）");
+  } else if (!selected.canControl) {
     brakeSuffix = t("（切换到可控舰）");
   } else if (selected.attached) {
     brakeSuffix = t("（分离后可用）");
@@ -168,11 +176,15 @@ export function updateSkillButtons(ui, own, opts = {}) {
   const skillEnergy = Number(selected.fleetEnergy) || 0;
   const cooldown = Number(cooldowns[selected.key] || 0);
   const detached = !selected.attached && selected.canControl;
-  const disabled = own.skillsDisabled || !detached || cooldown > 0 || skillEnergy < (subMeta.cost || 0);
+  const disabled = own.skillsDisabled || selected.silenced || selected.koizumiOrb?.active || !detached || cooldown > 0 || skillEnergy < (subMeta.cost || 0);
 
   let suffix = "";
   if (own.skillsDisabled) {
     suffix = t("（已被封印）");
+  } else if (selected.silenced) {
+    suffix = t("（沉默中）");
+  } else if (selected.koizumiOrb?.active) {
+    suffix = selected.koizumiOrb.phase === "returning" ? t("（自动归航）") : t("（光球形态）");
   } else if (!detached) {
     suffix = t("（分离后可用）");
   } else if (cooldown > 0) {
