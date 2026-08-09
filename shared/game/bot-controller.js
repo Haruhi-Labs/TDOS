@@ -85,6 +85,7 @@ export class BotController {
     this.focusLowHp = false;
 
     this.moveTimer = 0;
+    this.koizumiOrbSteerTimer = 0;
     this.scoutTimer = team.hasYukiFlagship() ? 0.55 : this.profile.initialScoutTimer;
     this.scoutDoctrine = createScoutDoctrineState();
     this.currentScoutPlan = null;
@@ -1897,6 +1898,7 @@ export class BotController {
 
   update(dt, elapsed) {
     this.moveTimer -= dt;
+    this.koizumiOrbSteerTimer -= dt;
     this.scoutTimer -= dt;
     this.flagshipTimer -= dt;
     this.subTimers.sub1 -= dt;
@@ -1945,6 +1947,7 @@ export class BotController {
       this.moveTimer = randomInRange(this.profile.moveReplanMin, this.profile.moveReplanMax) * (this.replanMult || 1);
       this.stuckTimer = 0;
     }
+    this.steerActiveKoizumiOrbs(this.currentContext);
 
     if (this.scoutTimer <= 0 && !this.team.areScoutsDisabled()) {
       if (this.shouldLaunchScout(this.currentContext, scoutPlan)) {
@@ -2113,8 +2116,6 @@ export class BotController {
     let ok = false;
     if (ship.characterId === "future1096" && estimate && estimate.source !== "spawn" && (estimate.visible || estimate.age <= 1.6)) {
       ok = this.team.castSubSkill(shipKey, { targetX: estimate.x, targetY: estimate.y });
-    } else if (ship.characterId === "koizumi") {
-      ok = this.team.castSubSkill(shipKey, estimate ? { targetX: estimate.x, targetY: estimate.y } : {});
     } else if (ship.characterId === "tsuruya") {
       const zoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
       ok = this.team.castSubSkill(shipKey, { zoneId });
@@ -2791,8 +2792,7 @@ export class BotController {
     if (!ship || !["haruhi", "koizumi", "kyon", "asakura", "shamisen"].includes(ship.characterId)) {
       return false;
     }
-    // 古泉的位移即时生效，但四倍下一击仍会被净化；给其一个完成下一次射击的短窗口。
-    const usefulDuration = meta?.duration || (ship.characterId === "koizumi" ? 2.2 : 6);
+    const usefulDuration = meta?.duration || 6;
     return this.incomingVisionWaveWillPurge([ship], usefulDuration);
   }
 
@@ -2910,7 +2910,10 @@ export class BotController {
     if (ship.characterId === "koizumi") {
       return Boolean(
         estimate
+        && !ship.isKoizumiOrbActive()
+        && estimate.source !== "spawn"
         && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel)
+        && dist <= ship.effectiveRange() * 1.55
         && (((context?.skillAggression) || 0) > 0.14 || this.energyProfile(ship).high),
       );
     }
@@ -3198,7 +3201,7 @@ export class BotController {
   }
 
   issueShipRoute(ship, targetX, targetY, throttle, padding = this.team.match.mapPadding) {
-    if (!ship || !ship.alive) {
+    if (!ship || !ship.alive || !ship.canControl()) {
       return null;
     }
     const tx = this.team.match.clampX(targetX, padding);
@@ -3236,6 +3239,30 @@ export class BotController {
       padding,
       update,
     };
+  }
+
+  steerActiveKoizumiOrbs(context = this.currentContext) {
+    if (this.koizumiOrbSteerTimer > 0) return;
+    const activeOrbs = [this.team.ships.sub1, this.team.ships.sub2].filter(
+      (ship) => ship?.alive && ship.koizumiOrb?.phase === "active" && ship.canControl(),
+    );
+    if (activeOrbs.length === 0) {
+      this.koizumiOrbSteerTimer = 0;
+      return;
+    }
+
+    for (const ship of activeOrbs) {
+      const estimate = this.selectEnemyFocus(ship) || context?.focus || this.primaryEnemyEstimate();
+      if (!estimate || estimate.source === "spawn") continue;
+      const dist = distance(ship.x, ship.y, estimate.x, estimate.y);
+      const cruiseSpeed = Math.max(120, Number(ship.koizumiOrb.cruiseSpeed) || 164);
+      const leadSeconds = clamp(dist / cruiseSpeed, 0.16, 0.72);
+      const targetX = estimate.x + Math.cos(Number(estimate.angle) || 0) * (Number(estimate.speed) || 0) * leadSeconds;
+      const targetY = estimate.y + Math.sin(Number(estimate.angle) || 0) * (Number(estimate.speed) || 0) * leadSeconds;
+      this.issueShipRoute(ship, targetX, targetY, 1.2, this.safeRoutePadding(4));
+    }
+    // 高速冲撞需要比常规舰队战术更密的前视修正；难度仍通过反应倍率保留差异。
+    this.koizumiOrbSteerTimer = clamp(0.18 * Math.sqrt(this.reactionMult || 1), 0.18, 0.48);
   }
 
   issueMovement(context = this.currentContext) {

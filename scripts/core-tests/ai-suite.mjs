@@ -1112,6 +1112,55 @@ function aiHaruhiFlagshipAggressionCheck() {
   assert(!bot.shouldLaunchScout(bot.currentContext), "侦察机仍会抢占春日即将施放旗舰技能所需的能量");
 }
 
+function aiKoizumiOrbSteeringCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "haruhi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "koizumi", sub2: "future1096" },
+    },
+  });
+  const bot = sim.bot;
+  const team = sim.teamB;
+  const koizumi = team.ships.sub1;
+  const target = sim.teamA.ships.main;
+  team.split(1);
+  koizumi.x = 980;
+  koizumi.y = 720;
+  koizumi.angle = Math.PI;
+  koizumi.command = { x: koizumi.x, y: koizumi.y };
+  koizumi.route = null;
+  koizumi.energy = koizumi.maxEnergy;
+  target.x = 650;
+  target.y = 760;
+  target.angle = 0;
+  target.speed = 0;
+  target.command = { x: target.x, y: target.y };
+  target.route = null;
+
+  bot.rememberContact(target, "visible");
+  const context = bot.buildTacticalContext(team.ships.main, bot.selectEnemyFocus(team.ships.main));
+  bot.subTimers.sub1 = 0;
+  bot.trySubSkill("sub1", context);
+  assert(koizumi.koizumiOrb?.phase === "active", "古泉AI接敌时没有释放光球冲撞技能");
+
+  bot.koizumiOrbSteerTimer = 0;
+  bot.steerActiveKoizumiOrbs(context);
+  assert(koizumi.route, "古泉AI进入光球形态后没有生成冲撞路线");
+  assert(
+    Math.hypot(koizumi.route.p2.x - target.x, koizumi.route.p2.y - target.y) < 45,
+    "古泉AI光球路线没有瞄准敌舰的运动预判位置",
+  );
+  const initialDistance = Math.hypot(koizumi.x - target.x, koizumi.y - target.y);
+  runSteps(sim, 0.8);
+  assert(koizumi.speed > 110, "古泉AI光球没有进入明显的高速运动状态");
+  assert(
+    Math.hypot(koizumi.x - target.x, koizumi.y - target.y) < initialDistance - 70,
+    "古泉AI没有沿光球冲撞路线快速逼近目标",
+  );
+}
+
 function aiFuture1096FormDecisionCheck() {
   const sim = new MatchSimulation({
     mode: "ai",
@@ -1316,6 +1365,7 @@ export function runAiSuite() {
   aiScoutEnergyReserveCheck();
   aiHighEnergySkillAggressionCheck();
   aiHaruhiFlagshipAggressionCheck();
+  aiKoizumiOrbSteeringCheck();
   aiFuture1096FormDecisionCheck();
   aiEmergencyEnergyReserveCheck();
   aiPressureCheck();
