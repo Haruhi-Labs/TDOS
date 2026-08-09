@@ -158,6 +158,29 @@ function splitFormationCheck() {
   assert(sub1Distance > sub2Distance + 35, "一级分离后应只有被释放的副舰一明显脱离编队");
 }
 
+function initialSpawnPositionCheck() {
+  const worldSize = 1440;
+  const zoneWidth = worldSize / 3;
+  const retreatDistance = zoneWidth * 0.25;
+  const sim = new MatchSimulation({ mode: "pvp", worldSize });
+  const aMain = sim.teamA.ships.main;
+  const bMain = sim.teamB.ships.main;
+  const zoneIdAt = (ship) => sim.zones.find((zone) => (
+    ship.x >= zone.x
+    && ship.x <= zone.x + zone.width
+    && ship.y >= zone.y
+    && ship.y <= zone.y + zone.height
+  ))?.id;
+
+  assert(Math.abs(aMain.x - (worldSize * 0.35 - retreatDistance)) < 1e-9, "A方出生点未向己方后方移动四分之一战区");
+  assert(Math.abs(bMain.x - (worldSize * 0.65 + retreatDistance)) < 1e-9, "B方出生点未向己方后方移动四分之一战区");
+  assert(Math.abs(aMain.y - worldSize * 0.5) < 1e-9, "A方出生点纵坐标发生意外变化");
+  assert(Math.abs(bMain.y - worldSize * 0.5) < 1e-9, "B方出生点纵坐标发生意外变化");
+  assert(Math.abs((worldSize - bMain.x) - aMain.x) < 1e-9, "双方出生点不再关于地图中心对称");
+  assert(zoneIdAt(aMain) === 4, "A方出生点未落入己方中路战区");
+  assert(zoneIdAt(bMain) === 6, "B方出生点未落入己方中路战区");
+}
+
 function initialFormationStabilityCheck() {
   const loadout = {
     main: "future1096",
@@ -768,11 +791,13 @@ function aiFogOfWarCheck() {
 function aiReactionDelayCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const bot = sim.bot;
+  const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
   const spawnIntel = { x: bot.enemyIntel.main.x, y: bot.enemyIntel.main.y };
 
-  enemyMain.x = 860;
-  enemyMain.y = 720;
+  // 反应延迟测试显式把目标放进视野；出生点距离属于独立平衡参数。
+  enemyMain.x = aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65);
+  enemyMain.y = aiMain.y;
   enemyMain.angle = Math.PI;
   enemyMain.command.x = enemyMain.x;
   enemyMain.command.y = enemyMain.y;
@@ -1550,6 +1575,7 @@ function main() {
   emergencyBrakeCheck();
   autoScoutCheck();
   splitFormationCheck();
+  initialSpawnPositionCheck();
   initialFormationStabilityCheck();
   future1096LeaderHandoverCheck();
   flagshipLossAutoSplitCheck();

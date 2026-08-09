@@ -24,7 +24,7 @@ import { createServerPerformanceDiagnostics } from "./performance-diagnostics.js
 
 const PORT = Number(process.env.PORT || 21246);
 const HOST = process.env.HOST || "0.0.0.0";
-const NETWORK_BUILD = "spectator-throttle-20260719-01";
+const NETWORK_BUILD = "spectator-throttle-20260719-01+spawn-retreat-20260809-01";
 const SNAPSHOT_INTERVAL = 1 / SNAPSHOT_RATE;
 const ROOM_CAPACITY = 2;
 const PVP2V2_MODE = "pvp2v2";
