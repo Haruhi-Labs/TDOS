@@ -177,11 +177,15 @@ function renderCard() {
   setTimeout(() => {
     if (!cardEl || step() !== current) return;
     cardEl.innerHTML = `
-      <div class="tut-step">${t("教学阶段 {phase} / 7", { phase: current.phase })}</div>
-      <h3 class="tut-title">${t(current.title)}</h3>
-      <p class="tut-body">${t(rawBody)}</p>
-      ${current.callout ? `<p class="tut-callout">${t(current.callout)}</p>` : ""}
-      ${current.wait ? `<p class="tut-wait">↳ ${t(current.wait)}</p>` : ""}
+      <div class="tut-heading">
+        <div class="tut-step">${t("教学阶段 {phase} / 7", { phase: current.phase })}</div>
+        <h3 class="tut-title">${t(current.title)}</h3>
+      </div>
+      <div class="tut-copy">
+        <p class="tut-body">${t(rawBody)}</p>
+        ${current.callout ? `<p class="tut-callout">${t(current.callout)}</p>` : ""}
+        ${current.wait ? `<p class="tut-wait">↳ ${t(current.wait)}</p>` : ""}
+      </div>
       ${current.button ? `<div class="tut-actions"><button type="button" class="tut-next">${t(current.button)}</button></div>` : ""}`;
     cardEl.querySelector(".tut-next")?.addEventListener("click", () => {
       if (current.id === "free") closeBriefing();

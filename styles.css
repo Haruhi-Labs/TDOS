@@ -4430,7 +4430,8 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 }
 .tut-card.ready { opacity: 1; transform: none; }
 .tut-overlay.closed { opacity: 0; visibility: hidden; transition: opacity 260ms ease, visibility 0s linear 260ms; }
-/* 移动端紧凑卡:更小的字号/内距,占屏更少 */
+/* 移动端说明条：阶段、标题和按钮同排，正文与补充提示连续排版。
+   在既有底部说明坞高度内消除桌面式纵向堆叠，不使用内部滚动。 */
 .tut-overlay.tut-mobile .tut-card {
   position: absolute;
   right: var(--tut-mobile-dock-right, 16px);
@@ -4438,30 +4439,79 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   left: var(--tut-mobile-dock-left, 16px);
   width: auto;
   max-height: var(--tut-mobile-dock-max-height, 112px);
-  padding: 7px 10px 8px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: #b8923c88 transparent;
-  -webkit-overflow-scrolling: touch;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  column-gap: 7px;
+  row-gap: 2px;
+  align-items: center;
+  padding: 6px 9px 7px;
+  overflow: hidden;
   border-radius: 6px;
   animation: tut-rise 0.3s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
-.tut-overlay.tut-mobile .tut-step { font-size: 0.61rem; margin-bottom: 0; }
-.tut-overlay.tut-mobile .tut-title { font-size: 0.9rem; margin-bottom: 2px; }
-.tut-overlay.tut-mobile .tut-body { font-size: 0.75rem; line-height: 1.38; }
-.tut-overlay.tut-mobile .tut-callout { margin-top: 5px; padding: 4px 7px; font-size: 0.68rem; }
-.tut-overlay.tut-mobile .tut-wait { font-size: 0.68rem; margin-top: 3px; }
-.tut-overlay.tut-mobile .tut-actions {
-  position: sticky;
-  bottom: -8px;
-  margin-top: 5px;
-  padding: 3px 0 1px;
-  gap: 8px;
-  background: linear-gradient(180deg, transparent, #26170bea 32%);
+.tut-overlay.tut-mobile .tut-heading {
+  grid-column: 1;
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
 }
-.tut-overlay.tut-mobile .tut-next { padding: 5px 16px; font-size: 0.82rem; }
+.tut-overlay.tut-mobile .tut-step {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: 0.57rem;
+  line-height: 1.1;
+  letter-spacing: 0.06em;
+}
+.tut-overlay.tut-mobile .tut-title {
+  min-width: 0;
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.12;
+  letter-spacing: 0.035em;
+}
+.tut-overlay.tut-mobile .tut-copy {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  min-width: 0;
+  color: var(--ivory);
+  font-size: 0.68rem;
+  line-height: 1.27;
+}
+.tut-overlay.tut-mobile .tut-body,
+.tut-overlay.tut-mobile .tut-callout,
+.tut-overlay.tut-mobile .tut-wait {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: inherit;
+  line-height: inherit;
+}
+.tut-overlay.tut-mobile .tut-callout::before {
+  content: " · ";
+  color: var(--text-muted);
+}
+.tut-overlay.tut-mobile .tut-wait {
+  margin-left: 0.38em;
+}
+.tut-overlay.tut-mobile .tut-actions {
+  grid-column: 2;
+  grid-row: 1;
+  margin: 0;
+  padding: 0;
+  gap: 0;
+  background: none;
+}
+.tut-overlay.tut-mobile .tut-next {
+  min-height: 25px;
+  padding: 3px 10px;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+}
 .tut-overlay.tut-mobile .tut-skip { font-size: 0.7rem; }
 @keyframes tut-rise { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: none; } }
 @keyframes tut-drop { from { opacity: 0; transform: translateY(-16px); } to { opacity: 1; transform: none; } }
@@ -4474,6 +4524,8 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   letter-spacing: 0.1em;
   color: var(--text-muted);
 }
+.tut-heading,
+.tut-copy { min-width: 0; }
 .tut-title {
   margin: 0 0 6px;
   font-family: var(--font-engrave);

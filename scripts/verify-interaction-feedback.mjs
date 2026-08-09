@@ -294,6 +294,7 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
         actionButtonMinHeight: parseFloat(getComputedStyle(document.querySelector(".mobile-action-grid > button")).minHeight),
         secondLastBottom,
         overlapsCanvas,
+        overflowY: getComputedStyle(cardElement).overflowY,
         scrollHeight: cardElement.scrollHeight,
         clientHeight: cardElement.clientHeight,
       };
@@ -304,6 +305,8 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
   assert.ok(initial.cardTop >= initial.secondLastBottom - 0.75, `${name}教程说明越过倒数第二排按钮上界`);
   assert.ok(initial.cardBottom <= viewport.height - 7, `${name}教程说明越出底部安全区`);
   assert.equal(initial.overlapsCanvas, false, `${name}教程说明仍遮挡战场`);
+  assert.equal(initial.overflowY, "hidden", `${name}教程说明仍启用了内部滚动`);
+  assert.ok(initial.scrollHeight <= initial.clientHeight + 1, `${name}首个教程阶段没有完整显示`);
 
   if (layout === "extremePortrait") {
     assert.equal(initial.gameWrapDisplay, "flex", `${name}被错误套用了横屏双栏布局`);
@@ -320,12 +323,16 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
   }
 
   await card.locator(".tut-body").evaluate((element) => {
-    element.textContent = "用于验证移动端长篇教程说明始终收纳在底部说明坞内。".repeat(12);
+    element.textContent = "派出侦察机、释放主动技能和使用4档推进都会消耗能量。P、1、2档持续回能，3档缓慢回能，4档持续耗能；教程中推进档位暂时锁定。左下角舰况栏可分别查看每艘舰船的舰体与能量。";
+  });
+  await card.locator(".tut-wait").evaluate((element) => {
+    element.textContent = "↳ 需要恢复能量时，主动降低档位";
   });
   const longCopy = await geometry();
   assert.ok(longCopy.cardTop >= longCopy.secondLastBottom - 0.75, `${name}长篇教程说明越过倒数第二排按钮上界`);
   assert.ok(longCopy.cardBottom <= viewport.height - 7, `${name}长篇教程说明越出底部安全区`);
-  assert.ok(longCopy.scrollHeight > longCopy.clientHeight, `${name}长篇教程说明没有在限定区域内滚动`);
+  assert.equal(longCopy.overflowY, "hidden", `${name}长篇教程说明仍启用了内部滚动`);
+  assert.ok(longCopy.scrollHeight <= longCopy.clientHeight + 1, `${name}长篇教程说明没有完整显示`);
   assert.equal(longCopy.overlapsCanvas, false, `${name}长篇教程说明仍遮挡战场`);
 
   await context.close();
