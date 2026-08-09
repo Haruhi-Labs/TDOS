@@ -11,7 +11,7 @@ const i18nSource = await readFile(new URL("../src/i18n.js", import.meta.url), "u
 const guideSource = await readFile(new URL("../src/guide.js", import.meta.url), "utf8");
 const rulesPageUrl = new URL("../src/stellar3v3-rules.js", import.meta.url);
 
-for (const id of ["create3v3PublicBtn", "create3v3PrivateBtn", "stellarRoomSeats", "startMatchBtn"]) {
+for (const id of ["create3v3PublicBtn", "create3v3PrivateBtn", "stellarRoomSeats", "stellarOwnedRooms", "startMatchBtn"]) {
   assert(source.includes(`id=\"${id}\"`), `online lobby must render #${id}`);
 }
 assert(source.includes('id="onlineActionStatus"'), "online lobby must render a visible action-status region");
@@ -40,7 +40,12 @@ assert(source.includes("modeScope"), "3v3 client joins must declare their lobby 
 assert(source.includes('return t("星域争夺 3v3")'), "3v3 rooms must use their dedicated mode label");
 assert(source.includes('mode: room.mode'), "3v3 reconnect tickets must retain the room mode");
 assert(source.includes('ticket.modeScope !== lobbyModeScope()'), "reconnect attempts must stay inside the current lobby scope");
-assert(source.includes('const reconnectableStatus = room?.status === "countdown" || room?.status === "running";'), "only resumable 3v3 states may persist reconnect tickets");
+assert(source.includes('room?.status === "waiting"'), "3v3 waiting rooms must persist a reconnect ticket before refresh");
+assert(source.includes('type: "close_room"'), "3v3 client must request creator-authorized room closure");
+assert(source.includes('ownedStellarRooms'), "3v3 client must render creator-owned room management entries");
+assert(source.includes('function renderOwnedStellarRooms'), "3v3 client must isolate creator room management rendering");
+assert(!source.includes('function updateOnlinePlayerStrip'), "3v3 battle must not render the player profile strip");
+assert(!source.includes('onlinePlayerStrip'), "3v3 battle must not retain profile-strip DOM or positioning logic");
 assert(source.includes("function describeLoadout"), "3v3 loadout text must use a shared localized formatter");
 assert(source.includes("const MAP_PAN_START_DISTANCE_PX = 6"), "3v3 battles must preserve Prototype's mouse-pan threshold");
 assert(source.includes("function syncStellar3v3Camera"), "3v3 snapshots must synchronize the battle camera to the territory map");
@@ -55,6 +60,11 @@ assert(source.includes("plannedRoute.waypoints[0]"), "3v3 local route prediction
 assert(source.includes("function activeMapBounds"), "3v3 client must resolve the active map bounds for local predictions");
 assert(source.includes("activeMapBounds().width"), "3v3 local route prediction must clamp X coordinates against the active map width");
 assert(source.includes("activeMapBounds().height"), "3v3 local route prediction must clamp Y coordinates against the active map height");
+assert(source.includes("function tacticalSkillRejectionMessage"), "3v3 client must translate tactical-skill rejection reasons");
+assert(source.includes('event?.type !== "tactical_skill_rejected"'), "3v3 client must consume authoritative tactical-skill rejection events");
+assert(source.includes("snapshot.state?.territoryEvents"), "3v3 client must read tactical-skill rejection events from authoritative snapshots");
+assert(source.includes('t("短程跃迁失败：落点不可通行")'), "3v3 client must provide a localized blocked-landing message");
+assert(i18nSource.includes('"短程跃迁失败：落点不可通行":'), "blocked short-warp feedback must have locale mappings");
 assert(source.includes('href="/stellar3v3/rules"'), "3v3 lobby must link to the dedicated rules page");
 assert(guideSource.includes('data-guide-tab="base"'), "main gameplay guide must provide a base-rules tab");
 assert(guideSource.includes('data-guide-tab="stellar3v3"'), "main gameplay guide must provide a 3v3-rules tab");

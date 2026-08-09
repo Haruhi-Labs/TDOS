@@ -22,7 +22,7 @@ const ITEMS = [
 
 const GITHUB_URL = "https://github.com/Haruhi-Labs/TDOS";
 const GROUP_URL = "https://qm.qq.com/q/zg5Bl5Ugwg";
-const VERSION_LABEL = "公测版 v0.1";
+const VERSION_LABEL = `公测版 v${__APP_VERSION__}`;
 
 function escapeHtml(value) {
   return String(value || "")
@@ -63,8 +63,14 @@ function accountCornerHTML(account) {
   return `<a class="ts-account-corner" href="/profile" aria-label="${label}" title="${label}"><span class="ts-account-avatar">${avatar}</span></a>`;
 }
 
+function announcementCornerHTML() {
+  const label = "更新公告";
+  return `<a class="ts-announcement-corner" data-menu-announcements href="/announcements" aria-label="${label}" title="${label}">` +
+    `<svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 22h4"/></svg></a>`;
+}
+
 function cornerControlsHTML(account) {
-  return `<div class="ts-corner-controls">${accountCornerHTML(account)}${languageCornerHTML()}</div>`;
+  return `<div class="ts-corner-controls">${accountCornerHTML(account)}${announcementCornerHTML()}${languageCornerHTML()}</div>`;
 }
 
 function menuItemsHTML() {
@@ -159,6 +165,12 @@ export async function mount(root, ctx) {
 
   const stage = root.querySelector(".ts-stage");
   const bg = root.querySelector(".ts-bg");
+  const announcementControl = root.querySelector("[data-menu-announcements]");
+  const setAnnouncementUnread = (hasUnread) => announcementControl?.classList.toggle("has-unread", Boolean(hasUnread));
+  window.addEventListener("haruhi:announcement-state", (event) => setAnnouncementUnread(event.detail?.hasUnread), { signal });
+  void accountClient.getAnnouncements()
+    .then((entries) => setAnnouncementUnread(entries[0] && !entries[0].readAt))
+    .catch(() => {});
   const starfieldAc = new AbortController();
   startStarfield(bg, starfieldAc.signal);
 

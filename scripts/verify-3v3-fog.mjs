@@ -1,4 +1,4 @@
-import { DEFAULT_TEAM_LOADOUT } from "../shared/game-core.js";
+import { DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT } from "../shared/game-core.js";
 import {
   createStellar3v3Match,
   filterStellar3v3EventsForViewer,
@@ -10,8 +10,13 @@ function assert(condition, message) {
 
 const fleetLayout = {
   alliances: {
-    A: ["A1", "A2", "A3"].map((seat) => ({ seat, control: seat === "A1" ? "human" : "ai", loadout: DEFAULT_TEAM_LOADOUT })),
-    B: ["B1", "B2", "B3"].map((seat) => ({ seat, control: "ai", loadout: DEFAULT_TEAM_LOADOUT })),
+    A: ["A1", "A2", "A3"].map((seat) => ({
+      seat,
+      control: seat === "A1" ? "human" : "ai",
+      loadout: seat === "A1" ? DEFAULT_TEAM_LOADOUT : DEFAULT_AI_LOADOUT,
+    })),
+    // Keep this fog contract independent from Haruhi's intentional opening true-vision broadcast.
+    B: ["B1", "B2", "B3"].map((seat) => ({ seat, control: "ai", loadout: DEFAULT_AI_LOADOUT })),
   },
 };
 

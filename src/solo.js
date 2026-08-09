@@ -20,6 +20,7 @@ import {
   drawInGamePortrait,
   CHARACTER_THEMES,
   getPortrait,
+  getPortraitAssetUrl,
   loadPortraitImage,
 } from "./character-select.js";
 
@@ -381,6 +382,7 @@ function updateShipSwitchLabels(loadout) {
 }
 
 function createSimulation() {
+  const difficulty = getDifficulty();
   return new MatchSimulation({
     mode: "ai",
     worldSize: LOGICAL,
@@ -392,7 +394,12 @@ function createSimulation() {
       A: app.playerLoadout,
       B: app.enemyLoadout,
     },
-    aiDifficulty: getDifficulty(), // 单人难度:敌方数值(血量+伤害)缩放 + AI反应快慢,极限额外开启智能集火残血
+    aiDifficulty: difficulty, // 单人难度:敌方数值(血量+伤害)缩放 + AI反应快慢,极限额外开启智能集火残血
+    aiOverclockBySeat: difficulty === "master"
+      ? {
+          B: { cooldownMultiplier: 1.3, energyRegenMultiplier: 1.25 },
+        }
+      : {},
   });
 }
 
@@ -665,11 +672,10 @@ function difficultyMeta() {
 
 // 一侧阵容(主舰高亮 + 两副舰):头像取该阵营立绘,头部偏上裁切
 function resultSideHTML(loadout, faction, sideLabel, sideClass) {
-  const base = import.meta.env.BASE_URL;
   const cards = ["main", "sub1", "sub2"]
     .map((slot, i) => {
       const id = loadout[slot];
-      const src = `${base}assets/portraits/${faction}/${id}.webp`;
+      const src = getPortraitAssetUrl(id, faction);
       const role = localizedSlotLabel(slot, "short");
       const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
       return (
@@ -802,6 +808,7 @@ function render() {
     ownTeam: own,
     enemyTeam: enemyTeamState(),
     spectating: false,
+    radar: app.sim ? app.sim.serializeRadarForSeat("A") : null,
     localControlSeat: own?.seat || "A",
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
@@ -1340,6 +1347,7 @@ function launchWithLoadout(loadout, color) {
   }
   storeLoadout(loadout);
   syncLoadoutControls(loadout);
+  syncExtremeOverclockBadges();
   resetMatch(true);
   camera.resizeCanvas(); // 战斗画布此刻可见且已布局,按设备像素定 backing,首帧即清晰
   startBattleBgm();
@@ -1422,6 +1430,7 @@ function bindBattleExitGuard() {
 export function mount(root) {
   root.innerHTML = soloTemplate();
   cacheDom();
+  syncExtremeOverclockBadges();
   initApp();
   camera = createBattleCamera({
     canvas,
@@ -1457,10 +1466,33 @@ function unmount() {
   app = null;
 }
 
+function extremeOverclockBadgeMarkup(className = "") {
+  return `
+    <section class="solo-extreme-overclock ${className}" aria-label="${t("极限协议")}">
+      <strong class="solo-extreme-overclock-title">${t("极限协议")}</strong>
+      <span class="solo-extreme-overclock-value">${t("技能冷却 ×1.30")}</span>
+      <span class="solo-extreme-overclock-value">${t("能量回复 ×1.25")}</span>
+    </section>`;
+}
+
+function syncExtremeOverclockBadges() {
+  const hasExtremeOverclock = getDifficulty() === "master";
+  const desktopSlot = document.getElementById("soloExtremeOverclockDesktop");
+  const mobileSlot = document.getElementById("soloExtremeOverclockMobile");
+  if (desktopSlot) {
+    desktopSlot.innerHTML = hasExtremeOverclock ? extremeOverclockBadgeMarkup("desktop-extreme-overclock") : "";
+  }
+  if (mobileSlot) {
+    mobileSlot.innerHTML = hasExtremeOverclock ? extremeOverclockBadgeMarkup("mobile-extreme-overclock") : "";
+  }
+}
+
 function soloTemplate() {
   // 战斗视图 DOM 完全来自共享模板(src/battle/template.js);单人只注入「换阵容」与结算按钮
   return battleViewTemplate({
     panelActionsHTML: `<button id="applyLoadoutBtn" type="button">${t("换阵容")}</button>`,
+    panelFooterHTML: `<div id="soloExtremeOverclockDesktop"></div>`,
+    mobileExtraHTML: `<div id="soloExtremeOverclockMobile"></div>`,
     overlayActionsHTML: `
               <button id="restartBtn">${t("再来一局")}</button>
               <a class="btn-link overlay-home-link" href="/">${t("返回主菜单")}</a>`,

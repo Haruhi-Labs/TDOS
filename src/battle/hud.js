@@ -190,6 +190,7 @@ export function syncMobileHud(ui, own, opts = {}) {
 
   for (const button of ui.mobileThrottleButtons) {
     const preset = Number(button.dataset.throttle);
+    button.disabled = Boolean(ui.powerSlider?.disabled);
     button.classList.toggle("active", Math.abs(preset - throttleValue) <= 10);
   }
 }

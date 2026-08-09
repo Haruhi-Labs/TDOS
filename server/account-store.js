@@ -3,6 +3,7 @@ import { mkdirSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
+import { RELEASE_NOTES } from "./release-notes.js";
 
 export const COMPETITIVE_MODES = Object.freeze(["pvp", "pvp2v2", "stellar3v3"]);
 export const INITIAL_ELO = 1000;
@@ -91,10 +92,50 @@ function expectedScore(rating, opponentRating) {
   return 1 / (1 + 10 ** ((opponentRating - rating) / 400));
 }
 
+function normalizeReleaseNotes(releaseNotes) {
+  if (!Array.isArray(releaseNotes)) {
+    throw new Error("Release notes must be an array.");
+  }
+  const ids = new Set();
+  return releaseNotes.map((note) => {
+    const id = String(note?.id || "").trim();
+    const version = String(note?.version || "").trim();
+    const publishedAt = Date.parse(String(note?.publishedAt || ""));
+    const title = String(note?.title || "").trim();
+    const changes = Array.isArray(note?.changes)
+      ? note.changes.map((change) => String(change || "").trim()).filter(Boolean)
+      : [];
+    if (!/^[a-z0-9][a-z0-9-]*$/u.test(id) || ids.has(id) || !version || !Number.isFinite(publishedAt) || !title || changes.length === 0) {
+      throw new Error("Release notes contain an invalid entry.");
+    }
+    ids.add(id);
+    return { id, version, publishedAt, title, changes };
+  });
+}
+
+function syncReleaseNotes(db, releaseNotes, at) {
+  const upsertAnnouncement = db.prepare(
+    `INSERT INTO announcements (id, version, published_at, title, changes_json, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       version = excluded.version,
+       published_at = excluded.published_at,
+       title = excluded.title,
+       changes_json = excluded.changes_json`,
+  );
+  const notes = normalizeReleaseNotes(releaseNotes);
+  db.transaction(() => {
+    for (const note of notes) {
+      upsertAnnouncement.run(note.id, note.version, note.publishedAt, note.title, JSON.stringify(note.changes), at);
+    }
+  })();
+}
+
 export function createAccountStore({
   databasePath = path.resolve("data", "users.sqlite"),
   sessionSecret,
   clock = nowMs,
+  releaseNotes = RELEASE_NOTES,
 } = {}) {
   if (!sessionSecret || String(sessionSecret).length < 16) {
     throw new Error("SESSION_SECRET must contain at least 16 characters.");
@@ -108,10 +149,19 @@ export function createAccountStore({
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
   migrate(db);
+  syncReleaseNotes(db, releaseNotes, clock());
 
   const selectUserById = db.prepare("SELECT * FROM users WHERE id = ?");
   const selectUserByKey = db.prepare("SELECT * FROM users WHERE username_key = ?");
   const selectRating = db.prepare("SELECT * FROM ratings WHERE user_id = ?");
+  const selectMatchHistory = db.prepare(
+    `SELECT mp.match_id, m.mode, mp.outcome, mp.elo_before, mp.elo_after, mp.elo_delta, m.finished_at
+     FROM match_players mp
+     JOIN matches m ON m.id = mp.match_id
+     WHERE mp.user_id = ?
+     ORDER BY m.finished_at DESC, mp.match_id DESC
+     LIMIT ?`,
+  );
 
   function ensureRating(userId, at = clock()) {
     db.prepare(
@@ -259,6 +309,54 @@ export function createAccountStore({
     return Number(row.rank);
   }
 
+  function getMatchHistory(userId, limit = 20) {
+    const requestedLimit = Number(limit);
+    const cappedLimit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(Math.floor(requestedLimit), 50))
+      : 20;
+    return selectMatchHistory.all(userId, cappedLimit).map((row) => ({
+      matchId: row.match_id,
+      mode: row.mode,
+      outcome: row.outcome,
+      eloBefore: row.elo_before,
+      eloAfter: row.elo_after,
+      eloDelta: row.elo_delta,
+      finishedAt: row.finished_at,
+    }));
+  }
+
+  function getAnnouncements(userId) {
+    if (!getUserById(userId)) return [];
+    return db.prepare(
+      `SELECT a.id, a.version, a.published_at, a.title, a.changes_json, ar.read_at
+       FROM announcements a
+       LEFT JOIN announcement_reads ar ON ar.announcement_id = a.id AND ar.user_id = ?
+       ORDER BY a.published_at DESC, a.id DESC`,
+    ).all(userId).map((row) => ({
+      id: row.id,
+      version: row.version,
+      publishedAt: row.published_at,
+      title: row.title,
+      changes: JSON.parse(row.changes_json),
+      readAt: row.read_at || null,
+    }));
+  }
+
+  function markAnnouncementRead(userId, announcementId) {
+    if (!getUserById(userId)) {
+      throw new AccountStoreError("user_not_found", "User does not exist.");
+    }
+    const id = String(announcementId || "");
+    if (!db.prepare("SELECT id FROM announcements WHERE id = ?").get(id)) {
+      throw new AccountStoreError("announcement_not_found", "Announcement does not exist.");
+    }
+    db.prepare(
+      `INSERT OR IGNORE INTO announcement_reads (announcement_id, user_id, read_at)
+       VALUES (?, ?, ?)`,
+    ).run(id, userId, clock());
+    return getAnnouncements(userId).find((entry) => entry.id === id) || null;
+  }
+
   const settleCompetitiveMatch = db.transaction(({ matchId, mode, winnerAllianceId, finishedAt = clock(), players }) => {
     ensureCompetitiveMode(mode);
     const normalizedMatchId = String(matchId || "").trim();
@@ -369,6 +467,9 @@ export function createAccountStore({
     getRating,
     getLeaderboard,
     getRank,
+    getMatchHistory,
+    getAnnouncements,
+    markAnnouncementRead,
     settleCompetitiveMatch,
     updateProfile,
     setAvatarKey,
@@ -431,6 +532,25 @@ function migrate(db) {
         CREATE INDEX ratings_leaderboard ON ratings(elo DESC, games DESC);
       `);
       db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (2, ?)").run(Date.now());
+    })();
+  }
+
+  if (!isApplied.get(3)) {
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE announcements (
+          id TEXT PRIMARY KEY, version TEXT NOT NULL, published_at INTEGER NOT NULL,
+          title TEXT NOT NULL, changes_json TEXT NOT NULL, created_at INTEGER NOT NULL
+        );
+        CREATE TABLE announcement_reads (
+          announcement_id TEXT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+          user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          read_at INTEGER NOT NULL,
+          PRIMARY KEY (announcement_id, user_id)
+        );
+        CREATE INDEX announcement_reads_user ON announcement_reads(user_id, read_at);
+      `);
+      db.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (3, ?)").run(Date.now());
     })();
   }
 }

@@ -207,6 +207,9 @@ export function createStellar3v3Match({
     serializeState() {
       return stateForViewer(runtime, modeEvents);
     },
+    serializeRadarForSeat(seat) {
+      return runtime.getSimulation()?.serializeRadarForSeat?.(seat) || null;
+    },
     getPerformanceDiagnostics() {
       return {
         allianceSnapshotBuilds: snapshotCache.allianceSnapshotBuilds,

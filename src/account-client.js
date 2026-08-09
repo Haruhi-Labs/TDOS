@@ -81,6 +81,15 @@ export function createAccountClient({ baseUrl = "", fetchImpl = globalThis.fetch
         : typeof modeOrLimit === "string" ? 100 : modeOrLimit ?? 100;
       return request(`/api/leaderboard?limit=${encodeURIComponent(limit)}`);
     },
+    async getMatchHistory(limit = 20) {
+      return (await request(`/api/profile/history?limit=${encodeURIComponent(limit)}`))?.entries || [];
+    },
+    async getAnnouncements() {
+      return (await request("/api/announcements"))?.entries || [];
+    },
+    async markAnnouncementRead(announcementId) {
+      return (await request(`/api/announcements/${encodeURIComponent(announcementId)}/read`, { method: "POST" }))?.entry || null;
+    },
   };
 }
 

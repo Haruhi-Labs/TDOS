@@ -9,7 +9,7 @@ import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js
 
 const CREDITS_ZH = [
   { role: "画师", name: "橙海" },
-  { role: "开发", name: "春日しゅぎ" },
+  { role: "开发", name: ["春日しゅぎ", "法兰西的飞鸟"] },
   { role: "设计", name: ["春日しゅぎ", "syd", "可能是寂寞"] },
   { role: "出品", name: ["凉宫春日应援团超能力者组", "凉宫春日应援团开发组"] },
 ];

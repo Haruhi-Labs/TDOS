@@ -4,6 +4,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import WebSocket from "ws";
+import { filterStellar3v3EventsForViewer } from "../server/stellar3v3-match.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -11,6 +12,19 @@ function assert(condition, message) {
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function verifyTacticalSkillRejectionVisibility() {
+  const events = filterStellar3v3EventsForViewer([
+    { id: "own-rejection", type: "tactical_skill_rejected", seat: "A1", payload: { skillId: "short_warp", reason: "blocked" } },
+    { id: "hidden-rejection", type: "tactical_skill_rejected", seat: "B1", payload: { skillId: "short_warp", reason: "blocked" } },
+  ], {
+    viewer: { allianceId: "A" },
+    fleets: { A1: { ships: { main: {} } } },
+    contacts: { visibleEnemyIds: [] },
+  }, "A1");
+  assert(events.some((event) => event.id === "own-rejection"), "3v3 snapshots must retain tactical rejection feedback for the issuing viewer");
+  assert(!events.some((event) => event.id === "hidden-rejection"), "3v3 snapshots must not leak unseen enemy tactical rejection feedback");
 }
 
 async function eventually(find, label, timeoutMs = 5000) {
@@ -101,6 +115,7 @@ async function stopServer(server) {
 }
 
 async function main() {
+  verifyTacticalSkillRejectionVisibility();
   const server = await startServer();
   let host;
   try {
@@ -108,6 +123,7 @@ async function main() {
     host = await connect(server.url, hostCookie);
     await eventually(() => host.messages.find((message) => message.type === "connected"), "host connected");
     send(host, { type: "set_name", name: "Host" });
+    send(host, { type: "set_loadout", loadout: { main: "yuki", sub1: "haruhi", sub2: "koizumi" } });
     send(host, { type: "create_room", visibility: "private", mode: "stellar3v3" });
 
     const created = await eventually(
@@ -160,6 +176,8 @@ async function main() {
       "3v3 player snapshot must contain all allied fleets",
     );
     assert(!snapshot.state.fleets?.B1, "3v3 snapshot must not leak hidden enemy fleets at spawn");
+    assert(snapshot.radar?.active, "3v3 长门玩家快照必须包含私有雷达状态");
+    assert(snapshot.radar?.sourceShipId === snapshot.state.fleets?.A1?.ships?.main?.id, "3v3 雷达只能绑定本席长门旗舰");
     assert(snapshot.state.modeId === "stellar-territory", "3v3 must run the stellar territory authority mode");
     assert(snapshot.state.territory?.map?.worldSize?.width === 3200, "3v3 snapshot must carry the territory map state");
     assert(
@@ -237,12 +255,15 @@ async function verifyWaitingRoomSeatCases() {
   const server = await startServer();
   let host;
   let guest;
+  let resumedHost;
+  let ownerControl;
   try {
-    host = await connect(server.url, await register(server, "WaitingHost"));
+    const hostCookie = await register(server, "WaitingHost");
+    host = await connect(server.url, hostCookie);
     guest = await connect(server.url, await register(server, "WaitingGuest"));
     await eventually(() => host.messages.find((message) => message.type === "connected"), "waiting host connected");
     await eventually(() => guest.messages.find((message) => message.type === "connected"), "waiting guest connected");
-    send(host, { type: "create_room", visibility: "public", mode: "stellar3v3" });
+    send(host, { type: "create_room", visibility: "private", mode: "stellar3v3" });
     const created = await eventually(
       () => host.messages.find((message) => message.type === "room_state" && message.room?.mode === "stellar3v3"),
       "waiting room created",
@@ -258,16 +279,128 @@ async function verifyWaitingRoomSeatCases() {
       "guest chooses open B2 seat",
     );
     assert(moved.room.players.find((row) => row.seat === "A2")?.occupantType === "open", "vacated human seat must reopen");
-    const previousHostId = created.self.playerId;
-    host.close();
-    const transferred = await eventually(
-      () => guest.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.room?.hostPlayerId !== previousHostId),
-      "host transfer",
+    send(host, { type: "set_ready", ready: true });
+    const readyRoom = await eventually(
+      () => host.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.self?.ready),
+      "waiting host ready state",
     );
-    assert(transferred.room.hostPlayerId === transferred.self.playerId, "remaining player must inherit host controls");
+    const previousHostId = created.self.playerId;
+    const reconnectToken = readyRoom.self.reconnectToken;
+    host.close();
+    const reserved = await eventually(
+      () => guest.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.room?.players?.find((row) => row.seat === "A1")?.disconnected),
+      "waiting host reconnect reservation",
+    );
+    assert(reserved.room.hostPlayerId === previousHostId, "waiting host must retain runtime host ownership during the reconnect window");
+
+    resumedHost = await connect(server.url, hostCookie);
+    await eventually(() => resumedHost.messages.find((message) => message.type === "connected"), "waiting host reconnect client connected");
+    send(resumedHost, { type: "resume_player", roomId: created.room.roomId, seat: "A1", reconnectToken });
+    const resumed = await eventually(
+      () => resumedHost.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.self?.seat === "A1"),
+      "waiting host reconnect",
+    );
+    assert(resumed.self.ready === true, "waiting host reconnect must preserve ready state");
+    assert(resumed.room.hostPlayerId === resumed.self.playerId, "waiting host reconnect must restore host permissions");
+
+    send(guest, { type: "close_room", roomId: created.room.roomId });
+    await eventually(
+      () => guest.messages.find((message) => message.type === "error" && message.code === "room_close_forbidden"),
+      "non-creator close-room rejection",
+    );
+
+    resumedHost.close();
+    ownerControl = await connect(server.url, hostCookie);
+    const managedRoom = await eventually(
+      () => ownerControl.messages
+        .filter((message) => message.type === "lobby")
+        .flatMap((message) => message.ownedStellarRooms || [])
+        .find((room) => room.roomId === created.room.roomId),
+      "creator-owned private room lobby entry",
+    );
+    assert(managedRoom.visibility === "private", "creator room management entries must include private rooms");
+    send(ownerControl, { type: "close_room", roomId: created.room.roomId });
+    await eventually(
+      () => guest.messages.find((message) => message.type === "room_closed" && message.reasonCode === "room_closed_by_creator"),
+      "creator closes waiting room from outside",
+    );
+    await eventually(
+      () => ownerControl.messages
+        .filter((message) => message.type === "lobby")
+        .some((message) => !(message.ownedStellarRooms || []).some((room) => room.roomId === created.room.roomId)),
+      "closed room removed from creator management list",
+    );
   } finally {
     host?.close();
     guest?.close();
+    resumedHost?.close();
+    ownerControl?.close();
+    await stopServer(server);
+  }
+}
+
+async function verifyCreatorCanCloseRunningRoom() {
+  const server = await startServer();
+  let host;
+  let guest;
+  let ownerControl;
+  try {
+    const hostCookie = await register(server, "RunningHost");
+    host = await connect(server.url, hostCookie);
+    guest = await connect(server.url, await register(server, "RunningGuest"));
+    await Promise.all([
+      eventually(() => host.messages.find((message) => message.type === "connected"), "running host connected"),
+      eventually(() => guest.messages.find((message) => message.type === "connected"), "running guest connected"),
+    ]);
+    send(host, { type: "create_room", visibility: "private", mode: "stellar3v3" });
+    const created = await eventually(
+      () => host.messages.find((message) => message.type === "room_state" && message.room?.mode === "stellar3v3"),
+      "running room created",
+    );
+    send(guest, { type: "join_room", roomId: created.room.roomId });
+    await eventually(
+      () => guest.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.self?.seat === "A2"),
+      "running guest joined",
+    );
+    for (const seat of ["A3", "B1", "B2", "B3"]) {
+      send(host, { type: "configure_slot", seat, occupantType: "bot", difficulty: "normal" });
+    }
+    await eventually(
+      () => host.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.room.players?.filter((row) => row.isBot).length === 4),
+      "running room bot roster",
+    );
+    send(host, { type: "set_ready", ready: true });
+    await eventually(
+      () => host.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.self?.ready),
+      "running host ready",
+    );
+    send(guest, { type: "set_ready", ready: true });
+    await eventually(
+      () => host.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.room?.players?.find((row) => row.seat === "A2")?.ready),
+      "running guest ready",
+    );
+    send(host, { type: "start_match" });
+    await eventually(
+      () => guest.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.room?.status === "countdown"),
+      "running room countdown",
+    );
+    await eventually(
+      () => guest.messages.find((message) => message.type === "room_state" && message.room?.roomId === created.room.roomId && message.room?.status === "running"),
+      "running room active battle",
+      8_000,
+    );
+    host.close();
+    ownerControl = await connect(server.url, hostCookie);
+    await eventually(() => ownerControl.messages.find((message) => message.type === "connected"), "outside creator connected during active battle");
+    send(ownerControl, { type: "close_room", roomId: created.room.roomId });
+    await eventually(
+      () => guest.messages.find((message) => message.type === "room_closed" && message.reasonCode === "room_closed_by_creator"),
+      "creator closes countdown room from outside",
+    );
+  } finally {
+    host?.close();
+    guest?.close();
+    ownerControl?.close();
     await stopServer(server);
   }
 }
@@ -336,6 +469,7 @@ async function verifyLobbyModeScope() {
 main()
   .then(verifyBotFilledLobby)
   .then(verifyLobbyModeScope)
+  .then(verifyCreatorCanCloseRunningRoom)
   .catch((error) => {
   console.error(error.stack || error.message || error);
   process.exitCode = 1;

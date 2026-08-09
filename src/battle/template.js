@@ -109,33 +109,37 @@ ${fleetRowHTML("sub2", t("副二"))}
             <div id="mobileBattleSummary" class="mobile-battle-summary">${t("主舰")} · ${t("区")}5 · ${t("推进")}100%</div>
             <button id="mobileCenterBtn" type="button" class="mobile-chip-btn">${t("跟随")}</button>
           </div>
-          <div id="mobileShipSwitch" class="mobile-ship-switch">
-            <button type="button" class="mobile-ship-btn" data-ship="main">${t("主舰")}</button>
-            <button type="button" class="mobile-ship-btn" data-ship="sub1">${t("副一")}</button>
-            <button type="button" class="mobile-ship-btn" data-ship="sub2">${t("副二")}</button>
+          <div id="mobileBattleCore" class="mobile-battle-core">
+            <div id="mobileShipSwitch" class="mobile-ship-switch">
+              <button type="button" class="mobile-ship-btn" data-ship="main">${t("主舰")}</button>
+              <button type="button" class="mobile-ship-btn" data-ship="sub1">${t("副一")}</button>
+              <button type="button" class="mobile-ship-btn" data-ship="sub2">${t("副二")}</button>
+            </div>
+            <div class="mobile-throttle-wrap">
+              <span class="mobile-throttle-label">${t("推进")}</span>
+              <button type="button" class="mobile-throttle-btn" data-throttle="40">40</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="70">70</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="100">100</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
+              <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
+            </div>
+            <div class="mobile-action-grid">
+              <button id="mobileSplitOneBtn" type="button">${t("分离1")}</button>
+              <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
+              <button id="mobileBrakeBtn" type="button">${t("急刹")}</button>
+              <button id="mobileFlagshipBtn" type="button">${t("旗舰技")}</button>
+              <button id="mobileSubSkillBtn" type="button">${t("分舰技")}</button>
+              <button id="mobileTacticalSkillBtn" type="button" hidden>${t("战术技")}</button>
+              <button id="mobileScoutBtn" type="button">${t("侦察")}</button>
+              <button id="mobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
+              <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
+              <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
+            </div>
           </div>
-          <div class="mobile-action-grid">
-            <button id="mobileSplitOneBtn" type="button">${t("分离1")}</button>
-            <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
-            <button id="mobileBrakeBtn" type="button">${t("急刹")}</button>
-            <button id="mobileFlagshipBtn" type="button">${t("旗舰技")}</button>
-            <button id="mobileSubSkillBtn" type="button">${t("分舰技")}</button>
-            <button id="mobileTacticalSkillBtn" type="button" hidden>${t("战术技")}</button>
-            <button id="mobileScoutBtn" type="button">${t("侦察")}</button>
-            <button id="mobileAutoScoutBtn" type="button">${t("自动侦察")}</button>
-            <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
-            <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
+          <div id="mobileBattleSecondary" class="mobile-battle-secondary">
+            ${mobileExtraHTML}
+            <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
           </div>
-          <div class="mobile-throttle-wrap">
-            <span class="mobile-throttle-label">${t("推进")}</span>
-            <button type="button" class="mobile-throttle-btn" data-throttle="40">40</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="70">70</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="100">100</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="120">120</button>
-            <button type="button" class="mobile-throttle-btn" data-throttle="140">140</button>
-          </div>
-          ${mobileExtraHTML}
-          <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 点右上小地图选战区")}</div>
         </section>
         <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
           <div id="resultCard" class="result-card">

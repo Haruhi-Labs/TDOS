@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { readFileSync } from "node:fs";
 
 // ─────────────────────────────────────────────────────────────
 // 射手座之日 — 单页应用（SPA）构建配置
@@ -12,10 +13,14 @@ import { defineConfig } from "vite";
 const DEPLOY_BASE = process.env.VITE_BASE || "/";
 const BACKEND_HTTP_ORIGIN = process.env.VITE_BACKEND_ORIGIN || "http://localhost:21246";
 const BACKEND_WS_ORIGIN = BACKEND_HTTP_ORIGIN.replace(/^http/i, "ws");
+const APP_VERSION = JSON.parse(readFileSync(new URL("./package.json", import.meta.url), "utf8")).version;
 
 export default defineConfig(({ command }) => ({
   base: command === "build" ? DEPLOY_BASE : "/",
   appType: "spa",
+  define: {
+    __APP_VERSION__: JSON.stringify(APP_VERSION),
+  },
   publicDir: "public",
   server: {
     port: 5173,

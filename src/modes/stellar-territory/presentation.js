@@ -211,11 +211,12 @@ export function createStellarTerritoryPresentation({ root, runtime, restartHost 
     root?.querySelector?.("#mobileTacticalSkillBtn"),
   ].filter(Boolean);
   const mobileTacticalButton = root?.querySelector?.("#mobileTacticalSkillBtn");
+  const mobileBattleSecondary = root?.querySelector?.("#mobileBattleSecondary");
   const mobileFleetTargets = mobileTacticalButton ? document.createElement("div") : null;
   if (mobileFleetTargets) {
     mobileFleetTargets.className = "mobile-territory-tactical-targets";
     mobileFleetTargets.hidden = true;
-    mobileTacticalButton.insertAdjacentElement("afterend", mobileFleetTargets);
+    mobileBattleSecondary?.prepend(mobileFleetTargets);
   }
   const tacticalButtonDefaults = tacticalButtons.map((button) => ({
     button,

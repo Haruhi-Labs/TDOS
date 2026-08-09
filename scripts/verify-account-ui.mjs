@@ -41,6 +41,12 @@ assert.doesNotMatch(online, /createAiRoomBtn/, "standard online lobby should not
 assert.match(leaderboard, /signatureText\(entry\)/, "leaderboard rows should render public signatures");
 assert.doesNotMatch(leaderboard, /data-mode=/, "the leaderboard should not expose separate rating tabs");
 assert.match(profile, /statLine\("综合战绩"/, "the profile should render one combined rating card");
+assert.match(profile, /accountClient\.getMatchHistory\(20\)/, "the profile should load the signed-in player's recent match history");
+assert.match(profile, /profile-match-history/, "the profile should render a dedicated match-history section");
+assert.match(profile, /profile-match-history-empty/, "the profile should render an empty state when no settled matches exist");
+assert.match(profile, /entry\.eloBefore/, "match history rows should show the recorded before/after Elo values");
+assert.match(profile, /entry\.eloDelta/, "match history rows should show the Elo delta for the settled match");
+assert.match(styles, /profile-match-history/, "match history should have responsive profile styling");
 assert.doesNotMatch(accountClient, /mode=/, "account API requests should not choose a rating mode");
 assert.match(online, /公开排位/, "public rooms should be labelled as rated");
 assert.match(online, /私人练习/, "private rooms should be labelled as unranked practice");

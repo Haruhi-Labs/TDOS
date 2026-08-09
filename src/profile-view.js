@@ -3,6 +3,7 @@ import { accountClient, AccountApiError } from "./account-client.js";
 import { startStarfield } from "./starfield.js";
 import { isMobile } from "./mobile.js";
 import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
+import { getLocaleInfo, t } from "./i18n.js";
 
 function escapeHtml(value) {
   return String(value || "")
@@ -24,6 +25,50 @@ function avatarHtml(user) {
   return `<span class="account-avatar account-avatar-fallback" aria-hidden="true">${escapeHtml(String(user?.username || "?").slice(0, 1).toUpperCase())}</span>`;
 }
 
+function matchModeLabel(mode) {
+  if (mode === "pvp") return "1v1";
+  if (mode === "pvp2v2") return "2v2";
+  if (mode === "stellar3v3") return t("星域争夺 3v3");
+  return t("在线对战");
+}
+
+function formatMatchTime(finishedAt) {
+  const date = new Date(Number(finishedAt));
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(getLocaleInfo().timeLocale, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function formatElo(value) {
+  const elo = Number(value);
+  return Number.isFinite(elo) ? String(Math.round(elo)) : "—";
+}
+
+function matchHistoryTemplate(history, statusMessage) {
+  const entries = Array.isArray(history) ? history : [];
+  const rows = entries.map((entry) => {
+    const delta = Number(entry.eloDelta) || 0;
+    const won = entry.outcome === "win";
+    const deltaText = delta > 0 ? `+${delta}` : String(delta);
+    return `
+      <li class="profile-match-history-row">
+        <div class="profile-match-history-main">
+          <div><strong>${escapeHtml(matchModeLabel(entry.mode))}</strong><span class="profile-match-outcome ${won ? "is-win" : "is-loss"}">${escapeHtml(won ? t("胜利") : t("失败"))}</span></div>
+          <time>${escapeHtml(formatMatchTime(entry.finishedAt))}</time>
+        </div>
+        <div class="profile-match-history-score">
+          <strong class="${delta > 0 ? "is-positive" : delta < 0 ? "is-negative" : "is-even"}">${escapeHtml(deltaText)}</strong>
+          <span>${escapeHtml(formatElo(entry.eloBefore))} → ${escapeHtml(formatElo(entry.eloAfter))}</span>
+        </div>
+      </li>`;
+  }).join("");
+  return `
+    <section class="page-card profile-match-history" aria-labelledby="profileMatchHistoryHeading">
+      <div class="account-section-head"><p>COMPETITIVE LOG</p><h2 id="profileMatchHistoryHeading">${t("历史战绩")}</h2></div>
+      ${statusMessage ? `<p class="profile-match-history-status" role="status">${escapeHtml(statusMessage)}</p>` : ""}
+      ${rows ? `<ol class="profile-match-history-list">${rows}</ol>` : `<p class="profile-match-history-empty">${t("暂无已结算的排位对局")}</p>`}
+    </section>`;
+}
+
 function accountTemplate(account) {
   return `
     <section class="account-surface account-member" aria-labelledby="accountHeading">
@@ -41,7 +86,7 @@ function accountTemplate(account) {
     </section>`;
 }
 
-function template(profile, account, message) {
+function template(profile, account, history, historyStatus, message) {
   return `
     <section class="page-stage account-profile-page">
       <canvas class="page-stars" aria-hidden="true"></canvas>
@@ -51,6 +96,7 @@ function template(profile, account, message) {
         <h1 class="page-title">指挥官档案</h1>
         <div class="page-scroll">
           ${accountTemplate(account)}
+          ${matchHistoryTemplate(history, historyStatus)}
           <section class="page-card profile-local-settings">
             <div class="account-section-head"><p>LOCAL LOADOUT</p><h2>本机出战偏好</h2></div>
             <label class="pv-field"><span class="pv-label">本地呼号</span><input id="pvNickname" maxlength="16" value="${escapeHtml(profile.nickname)}" autocomplete="off" /></label>
@@ -76,20 +122,30 @@ function accountErrorMessage(error) {
 
 export async function mount(root, { onSignedOut } = {}) {
   let account = null;
+  let history = [];
+  let historyStatus = "";
   let message = "";
   let eventAbort = null;
   let starfieldAbort = null;
   let fluidBackdrop = null;
 
-  try {
-    account = await accountClient.getMe();
-  } catch (error) {
-    message = accountErrorMessage(error);
-  }
+  const [accountResult, historyResult] = await Promise.allSettled([
+    accountClient.getMe(),
+    accountClient.getMatchHistory(20),
+  ]);
+  if (accountResult.status === "fulfilled") account = accountResult.value;
+  else message = accountErrorMessage(accountResult.reason);
 
   if (!account) {
     onSignedOut?.();
     return () => {};
+  }
+  if (historyResult.status === "fulfilled") history = historyResult.value;
+  else if (historyResult.reason instanceof AccountApiError && historyResult.reason.status === 401) {
+    onSignedOut?.();
+    return () => {};
+  } else {
+    historyStatus = t("战绩暂时无法加载");
   }
 
   function syncAccountToLocal(user) {
@@ -101,7 +157,7 @@ export async function mount(root, { onSignedOut } = {}) {
     eventAbort?.abort();
     starfieldAbort?.abort();
     fluidBackdrop?.destroy();
-    root.innerHTML = template(getProfile(), account, message);
+    root.innerHTML = template(getProfile(), account, history, historyStatus, message);
     eventAbort = new AbortController();
     const { signal } = eventAbort;
     starfieldAbort = new AbortController();

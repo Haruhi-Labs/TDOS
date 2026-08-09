@@ -307,6 +307,89 @@ assert(
   `second watchdog failure should emit navigation_stuck: ${stableJson(stuckStep)}`,
 );
 
+const embeddedShip = { x: 0, y: 0, radius: 10, alive: true, route: { p2: { x: 180, y: 0 } } };
+const embeddedActions = [];
+const embeddedSimulation = {
+  fleetBySeat: () => ({ shipByKey: () => embeddedShip }),
+  applyActionForSeat: (_seat, action) => {
+    embeddedActions.push(action);
+    embeddedShip.route = action.type === "clear_route" ? null : { p2: { x: action.endX, y: action.endY } };
+    return true;
+  },
+};
+const embeddedPlan = createNavigationPlan({
+  seat: "A1",
+  shipKey: "main",
+  route: {
+    accepted: true,
+    kind: "direct",
+    clearance: 10,
+    start: { x: 0, y: 0 },
+    target: { x: 180, y: 0 },
+    waypoints: [{ x: 180, y: 0, nodeId: null }],
+  },
+  reason: "embedded_recovery",
+});
+embeddedPlan.watchdog = { elapsed: 4, lastDistance: 180, replans: 0 };
+const embeddedMap = {
+  safeBounds: { x: -300, y: -300, width: 900, height: 600 },
+  obstacleRegions: [{ id: "embedded", shape: "circle", center: { x: 0, y: 0 }, radius: 48 }],
+  navigationGraph: { nodes: [], edges: [] },
+};
+const embeddedRecovery = advanceNavigationPlans({
+  modeState: { map: embeddedMap, navigationPlans: { "A1:main": embeddedPlan } },
+  simulation: embeddedSimulation,
+  dt: 1,
+});
+assert(
+  positionClearOfObstacles(embeddedShip, embeddedShip.radius, embeddedMap.obstacleRegions),
+  `embedded ship must recover to a passable position before replanning: ${stableJson(embeddedShip)}`,
+);
+assert(
+  embeddedRecovery.events.some((event) => event.type === "navigation_recovered"),
+  `embedded recovery must report the authoritative recovery: ${stableJson(embeddedRecovery.events)}`,
+);
+assert(
+  embeddedRecovery.events.some((event) => event.type === "navigation_replanned")
+    && embeddedActions.some((action) => action.type === "set_route"),
+  `embedded recovery must replan from its recovered position: ${stableJson({ embeddedRecovery, embeddedActions })}`,
+);
+
+const unrecoverableShip = { x: 0, y: 0, radius: 10, alive: true, route: { p2: { x: 180, y: 0 } } };
+const unrecoverableSimulation = {
+  fleetBySeat: () => ({ shipByKey: () => unrecoverableShip }),
+  canOccupyEnvironment: () => false,
+  applyActionForSeat: (_seat, action) => {
+    if (action.type === "clear_route") unrecoverableShip.route = null;
+    return true;
+  },
+};
+const unrecoverablePlan = createNavigationPlan({
+  seat: "A1",
+  shipKey: "main",
+  route: {
+    accepted: true,
+    kind: "direct",
+    clearance: 10,
+    start: { x: 0, y: 0 },
+    target: { x: 180, y: 0 },
+    waypoints: [{ x: 180, y: 0, nodeId: null }],
+  },
+  reason: "unrecoverable_navigation",
+});
+unrecoverablePlan.watchdog = { elapsed: 4, lastDistance: 180, replans: 0 };
+const unrecoverableRecovery = advanceNavigationPlans({
+  modeState: { map: embeddedMap, navigationPlans: { "A1:main": unrecoverablePlan } },
+  simulation: unrecoverableSimulation,
+  dt: 1,
+});
+assert(!unrecoverableRecovery.modeState.navigationPlans["A1:main"], "unrecoverable navigation must clear the stale plan for a new AI decision");
+assert(unrecoverableShip.route === null, "unrecoverable navigation must clear the active core route");
+assert(
+  unrecoverableRecovery.events.some((event) => event.type === "navigation_stuck" && event.payload?.reason === "recovery_unavailable"),
+  `unrecoverable navigation must report why it cleared the route: ${stableJson(unrecoverableRecovery.events)}`,
+);
+
 const repeatingAiShip = {
   x: 0,
   y: 0,

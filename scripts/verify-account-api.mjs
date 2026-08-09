@@ -6,6 +6,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createAccountApi } from "../server/account-api.js";
+import { AccountStoreError } from "../server/account-store.js";
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,11 +51,15 @@ async function stopServer(child) {
   await eventually(() => child.exitCode !== null, 5000);
 }
 
-async function verifyPrehashLoginThrottle() {
-  const pendingAuthentications = [];
+async function verifyFailedLoginThrottle() {
   const api = createAccountApi({
     store: {
-      authenticate: ({ username }) => new Promise((resolve) => pendingAuthentications.push({ username, resolve })),
+      authenticate: async ({ username, password }) => {
+        if (username === "Haruhi" && password === "correct-password") {
+          return { id: "haruhi-id", username: "Haruhi", signature: "", avatarKey: null, loadout: null };
+        }
+        return null;
+      },
       createSession: () => ({ token: "test-session", expiresAt: Date.now() + 60_000 }),
       getRating: () => ({ elo: 1000, wins: 0, losses: 0, games: 0 }),
       getRank: () => 1,
@@ -69,41 +74,157 @@ async function verifyPrehashLoginThrottle() {
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   const throttleOrigin = `http://127.0.0.1:${address.port}`;
-  const failedRequests = Array.from({ length: 7 }, () => fetch(`${throttleOrigin}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "Haruhi", password: "not-the-password" }),
-  }));
-  const successfulRequest = fetch(`${throttleOrigin}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username: "Yuki", password: "correct-password" }),
-  });
-  let followupRequest = null;
   try {
-    await eventually(() => pendingAuthentications.length === 8);
-    for (const pending of pendingAuthentications.filter((entry) => entry.username === "Haruhi")) pending.resolve(null);
-    for (const response of await Promise.all(failedRequests)) assert.equal(response.status, 401, "failed attempts should resolve normally");
-    pendingAuthentications.find((entry) => entry.username === "Yuki").resolve({
-      id: "yuki-id", username: "Yuki", signature: "", avatarKey: null, loadout: null,
-    });
-    assert.equal((await successfulRequest).status, 200, "the valid login should resolve normally");
-    followupRequest = fetch(`${throttleOrigin}/api/auth/login`, {
+    const login = (password) => fetch(`${throttleOrigin}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username: "Haruhi", password: "not-the-password" }),
+      body: JSON.stringify({ username: "Haruhi", password }),
     });
-    assert.equal(
-      await Promise.race([followupRequest.then((response) => response.status), wait(250).then(() => "still_pending")]),
-      429,
-      "a successful login must not reopen pre-hash capacity after concurrent failures",
-    );
+
+    for (let attempt = 0; attempt < 7; attempt += 1) {
+      assert.equal((await login("wrong-password")).status, 401, "failed credentials should be rejected before the throttle limit");
+    }
+    assert.equal((await login("correct-password")).status, 200, "valid credentials should succeed before the failure limit is reached");
+
+    for (let attempt = 0; attempt < 8; attempt += 1) {
+      assert.equal(
+        (await login("wrong-password")).status,
+        401,
+        "a successful login should clear prior failures for the same account and client address",
+      );
+    }
+    assert.equal((await login("wrong-password")).status, 429, "the ninth consecutive failed login should be throttled");
   } finally {
-    for (const pending of pendingAuthentications) pending.resolve(null);
-    await Promise.allSettled([...failedRequests, successfulRequest, followupRequest]);
     await new Promise((resolve) => server.close(resolve));
   }
 }
+
+async function verifyPrivateMatchHistoryApi() {
+  const entries = [{
+    matchId: "history-match-1",
+    mode: "pvp2v2",
+    outcome: "win",
+    eloBefore: 1000,
+    eloAfter: 1016,
+    eloDelta: 16,
+    finishedAt: 1_700_000_000_000,
+  }];
+  let historyRequest = null;
+  const api = createAccountApi({
+    store: {
+      getSessionUser: (token) => token === "history-session"
+        ? { id: "history-user", username: "Haruhi", signature: "", avatarKey: null, loadout: null }
+        : null,
+      getMatchHistory: (userId, limit) => {
+        historyRequest = { userId, limit };
+        return entries;
+      },
+    },
+    avatarStorage: { urlForKey: () => null },
+  });
+  const server = createHttpServer((request, response) => {
+    api(request, response).then((handled) => {
+      if (!handled) response.writeHead(404).end();
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const historyOrigin = `http://127.0.0.1:${address.port}`;
+  try {
+    const anonymous = await fetch(`${historyOrigin}/api/profile/history`);
+    assert.equal(anonymous.status, 401, "private match history must reject requests without a session");
+    const defaultResponse = await fetch(`${historyOrigin}/api/profile/history`, {
+      headers: { Cookie: "tdos_session=history-session" },
+    });
+    assert.equal(defaultResponse.status, 200, "an authenticated history request should have a default result limit");
+    assert.deepEqual(
+      historyRequest,
+      { userId: "history-user", limit: 20 },
+      "an omitted history limit should return the default recent-result window",
+    );
+    const response = await fetch(`${historyOrigin}/api/profile/history?limit=999`, {
+      headers: { Cookie: "tdos_session=history-session" },
+    });
+    assert.equal(response.status, 200, "an authenticated user should load their own match history");
+    assert.deepEqual((await response.json()).entries, entries, "the API should return the stored history payload unchanged");
+    assert.deepEqual(
+      historyRequest,
+      { userId: "history-user", limit: 50 },
+      "the API must scope history to the session user and bound its result limit",
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+async function verifyAnnouncementApi() {
+  const entries = [{
+    id: "v-test-2",
+    version: "1.1.0-test",
+    publishedAt: 1_800_000_000_000,
+    title: "Second release",
+    changes: ["Second change"],
+    readAt: null,
+  }];
+  let readRequest = null;
+  const api = createAccountApi({
+    store: {
+      getSessionUser: (token) => token === "announcement-session"
+        ? { id: "announcement-user", username: "Haruhi", signature: "", avatarKey: null, loadout: null }
+        : null,
+      getAnnouncements: (userId) => {
+        assert.equal(userId, "announcement-user", "announcement history must be scoped to the session user");
+        return entries;
+      },
+      markAnnouncementRead: (userId, announcementId) => {
+        if (announcementId === "missing") throw new AccountStoreError("announcement_not_found", "Announcement does not exist.");
+        readRequest = { userId, announcementId };
+        return { ...entries[0], readAt: 1_800_000_000_001 };
+      },
+    },
+    avatarStorage: { urlForKey: () => null },
+  });
+  const server = createHttpServer((request, response) => {
+    api(request, response).then((handled) => {
+      if (!handled) response.writeHead(404).end();
+    });
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const announcementOrigin = `http://127.0.0.1:${address.port}`;
+  try {
+    assert.equal(
+      (await fetch(`${announcementOrigin}/api/announcements`)).status,
+      401,
+      "announcement history must reject requests without a session",
+    );
+    const history = await fetch(`${announcementOrigin}/api/announcements`, {
+      headers: { Cookie: "tdos_session=announcement-session" },
+    });
+    assert.equal(history.status, 200, "an authenticated user should load announcement history");
+    assert.deepEqual((await history.json()).entries, entries, "announcement history should include each entry and the account read state");
+    const acknowledge = await fetch(`${announcementOrigin}/api/announcements/v-test-2/read`, {
+      method: "POST",
+      headers: { Cookie: "tdos_session=announcement-session" },
+    });
+    assert.equal(acknowledge.status, 200, "an authenticated user should acknowledge an announcement");
+    assert.deepEqual(readRequest, { userId: "announcement-user", announcementId: "v-test-2" }, "acknowledgement must only target the session user");
+    assert.equal((await acknowledge.json()).entry.readAt, 1_800_000_000_001, "the API should return the acknowledged entry state");
+    assert.equal(
+      (await fetch(`${announcementOrigin}/api/announcements/missing/read`, {
+        method: "POST",
+        headers: { Cookie: "tdos_session=announcement-session" },
+      })).status,
+      404,
+      "acknowledging an unknown announcement should return 404",
+    );
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+}
+
+await verifyPrivateMatchHistoryApi();
+await verifyAnnouncementApi();
 
 const tempDir = await mkdtemp(path.join(tmpdir(), "tdos-account-api-"));
 const port = await reservePort();
@@ -241,7 +362,7 @@ try {
   const afterLogout = await fetch(`${origin}/api/me`, { headers: { Cookie: cookie } });
   assert.equal(afterLogout.status, 401, "a revoked cookie should not authenticate /api/me");
 
-  await verifyPrehashLoginThrottle();
+  await verifyFailedLoginThrottle();
 
   console.log("account API verification passed");
 } finally {

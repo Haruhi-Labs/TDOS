@@ -217,19 +217,12 @@ function future1096LeaderHandoverCheck() {
     },
   });
   const teamA = sim.teamA;
-  const originalMain = teamA.ships.main;
-  const twin = teamA.extraShips.find((ship) => ship.slotKey === "twin");
-  const expectedMaxHp = Math.round(originalMain.base.hp * 0.75);
-
-  assert(originalMain.maxHp === expectedMaxHp, "1096 主舰舰体上限不是常规旗舰的75%");
-  assert(twin && twin.maxHp === expectedMaxHp, "1096 僚舰舰体上限不是常规旗舰的75%");
-  assert(originalMain.hp === expectedMaxHp && twin.hp === expectedMaxHp, "1096 双舰开局生命值未与舰体上限一致");
-
-  originalMain.takeDamage(originalMain.maxHp * 2, null, sim);
-
-  assert(teamA.ships.main.id === twin.id, "1096 主舰被击毁后未由剩余舰体接管主舰位");
-  assert(teamA.ships.main.alive, "1096 主舰接管后剩余舰体不应死亡");
-  assert(teamA.ships.main.canControl(), "1096 主舰接管后剩余舰体应可继续操作");
+  assert(teamA.extraShips.length === 0, "1096 新形态不应创建旧版僚舰");
+  assert(teamA.future1096Form === null, "1096 初始形态应为空");
+  const initialSpeed = teamA.ships.main.effectiveSpeed();
+  assert(teamA.castFlagshipSkill(), "1096 首次形态切换应成功");
+  assert(teamA.future1096Form === "A", "1096 首次形态应为 A");
+  assert(Math.abs(teamA.ships.main.effectiveSpeed() / initialSpeed - 1.5) < 0.01, "1096 A 形态速度倍率异常");
 }
 
 function flagshipLossAutoSplitCheck() {
@@ -277,14 +270,10 @@ function yukiPassiveCheck() {
     },
   });
   const teamA = sim.teamA;
-  const main = teamA.ships.main;
 
-  assert(teamA.areSkillsDisabled(), "有希旗舰被动未封印全队技能");
-  const beforeCharges = main.reviveCharges;
-  main.takeDamage(main.maxHp * 2, null, sim);
-  assert(beforeCharges === 1, "有希旗舰未为舰船提供额外命数");
-  assert(main.alive, "有希旗舰被动未触发复活");
-  assert(main.reviveCharges === 0, "复活后命数未正确扣除");
+  assert(!teamA.areSkillsDisabled(), "有希旗舰新雷达被动不应封印全队技能");
+  assert(teamA.launchScout(5), "有希旗舰应允许释放战斗侦察机");
+  assert(teamA.scouts[0].combatCapable, "有希旗舰侦察机应具备战斗能力");
 }
 
 function koizumiFlagshipInvulnCheck() {
@@ -357,6 +346,7 @@ function koizumiBlinkStrikeCheck() {
   enemyMain.command.x = enemyMain.x;
   enemyMain.command.y = enemyMain.y;
   enemyMain.route = null;
+  runSteps(sim, 1 / 30);
 
   const startX = sub1.x;
   const castOk = teamA.castSubSkill("sub1", { targetX: 1120, targetY: 720 });
@@ -618,26 +608,17 @@ function asakuraFlagshipCheck() {
   enemyMain.command.x = enemyMain.x;
   enemyMain.command.y = enemyMain.y;
   enemyMain.route = null;
+  runSteps(sim, 1 / 30);
   sim.teamA.computeVisibility(sim.teamB);
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰测试布置错误，敌方应处于视野外");
 
   const castOk = teamA.castFlagshipSkill();
   assert(castOk, "朝仓旗舰技能释放失败");
-  sim.teamA.computeVisibility(sim.teamB);
-
-  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方团队主动增益");
-  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓旗舰技能未清除敌方无敌效果");
-  assert(!enemySub1.hasEffect("critUntil"), "朝仓旗舰技能未清除敌方舰船主动增益");
-  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未揭示敌方位置");
-  assert(Math.abs(teamA.effects.revealEnemiesUntil - sim.elapsed - 4) < 1e-6, "朝仓旗舰技能揭示时间不是4秒");
-
-  runSteps(sim, 3.9);
-  sim.teamA.computeVisibility(sim.teamB);
-  assert(sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能未完整揭示敌方位置4秒");
-
-  runSteps(sim, 0.2);
-  sim.teamA.computeVisibility(sim.teamB);
-  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能揭示结束后仍持续显示敌方位置");
+  assert(teamA.hasActiveVisionWaveSkill(), "朝仓新旗舰技应激活视野波");
+  runSteps(sim, 1.5);
+  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓视野波应净化敌方加速");
+  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓视野波应净化敌方无敌");
+  assert(!enemySub1.hasEffect("critUntil"), "朝仓视野波应净化敌方舰船增益");
 }
 
 function asakuraBladeQueenCheck() {
@@ -697,6 +678,69 @@ function aiEngageCheck() {
   const aDamaged = sim.teamA.hullRatio() < 0.995;
   const bDamaged = sim.teamB.hullRatio() < 0.995;
   assert(aDamaged || bDamaged, "AI对战70秒内未出现任何伤害");
+}
+
+function aiOverclockCheck() {
+  const overclocked = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    aiOverclockBySeat: {
+      B: { cooldownMultiplier: 1.3, energyRegenMultiplier: 1.25 },
+    },
+  });
+  const neutral = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const overclockedMain = overclocked.teamB.ships.main;
+  const neutralMain = neutral.teamB.ships.main;
+  const throttle = 1.2;
+  const dt = 1;
+
+  for (const ship of [overclockedMain, neutralMain]) {
+    ship.throttle = throttle;
+    ship.energy = ship.maxEnergy * 0.5;
+  }
+
+  const expectedEnergyDelta = (ship, energyRegenMultiplier) => {
+    const throttleRegenMultiplier = 1 - (throttle - 1) * 0.72;
+    const regen = Math.max(1.2, ship.baseEnergyRegen() * throttleRegenMultiplier) * energyRegenMultiplier;
+    const moveCost = ship.moveEnergyDrain() * throttle;
+    return (regen - moveCost) * dt;
+  };
+
+  assert(Math.abs(overclocked.teamB.cooldownStep(dt) - dt * 1.3) < 1e-6, "显式极限超频未将 B 席技能冷却推进提高至 ×1.30");
+  assert(Math.abs(overclocked.teamA.cooldownStep(dt) - dt) < 1e-6, "显式极限超频错误影响了 A 席技能冷却");
+
+  const overclockedEnergyBefore = overclockedMain.energy;
+  const neutralEnergyBefore = neutralMain.energy;
+  overclocked.teamB.updateEnergy(dt);
+  neutral.teamB.updateEnergy(dt);
+  assert(
+    Math.abs(overclockedMain.energy - overclockedEnergyBefore - expectedEnergyDelta(overclockedMain, 1.25)) < 1e-6,
+    "显式极限超频未将 B 席能量回复提高至 ×1.25，或错误放大了移动耗能",
+  );
+  assert(
+    Math.abs(neutralMain.energy - neutralEnergyBefore - expectedEnergyDelta(neutralMain, 1)) < 1e-6,
+    "未配置超频的 AI 能量规则不应改变",
+  );
+
+  const masterWithoutOverclock = new MatchSimulation({ mode: "ai", worldSize: 1440, aiDifficulty: "master" });
+  assert(Math.abs(masterWithoutOverclock.teamB.cooldownStep(dt) - dt) < 1e-6, "全局 master 难度不应隐式获得超频");
+
+  const threeVsThreeMaster = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    fleetLayout: {
+      alliances: {
+        A: ["A1", "A2", "A3"].map((seat) => ({ seat, control: "human" })),
+        B: ["B1", "B2", "B3"].map((seat) => ({ seat, control: seat === "B3" ? "ai" : "human" })),
+      },
+    },
+    aiSeats: ["B3"],
+    aiDifficultiesBySeat: { B3: "master" },
+  });
+  assert(Math.abs(threeVsThreeMaster.fleetBySeat("B3").cooldownStep(dt) - dt) < 1e-6, "3v3 master AI 不应隐式获得单人超频");
+
+  assert(overclocked.setSeatAiControl("B", { enabled: false }) === true, "B 席应能移除临时 AI 控制");
+  assert(Math.abs(overclocked.teamB.cooldownStep(dt) - dt) < 1e-6, "移除临时 AI 控制后应复位超频");
 }
 
 function aiFogOfWarCheck() {
@@ -1520,6 +1564,7 @@ function main() {
   haruhiBlindfireCheck();
   asakuraFlagshipCheck();
   asakuraBladeQueenCheck();
+  aiOverclockCheck();
   aiFogOfWarCheck();
   aiReactionDelayCheck();
   aiSearchSweepCheck();

@@ -338,6 +338,47 @@ function issuePlanSegment(simulation, plan, waypoint) {
   }) === true;
 }
 
+function pointWithinMapBounds(point, radius, map) {
+  const bounds = map?.safeBounds;
+  if (!bounds) return true;
+  return point.x - radius >= bounds.x
+    && point.y - radius >= bounds.y
+    && point.x + radius <= bounds.x + bounds.width
+    && point.y + radius <= bounds.y + bounds.height;
+}
+
+function navigationPositionIsPassable({ map, simulation, position, radius, entity }) {
+  const obstacles = Array.isArray(map?.obstacleRegions) ? map.obstacleRegions : [];
+  if (!pointWithinMapBounds(position, radius, map)) return false;
+  if (!positionClearOfObstacles(position, radius, obstacles)) return false;
+  return simulation?.canOccupyEnvironment?.(position, radius, {
+    entity,
+    kind: "navigation_recovery",
+  }) !== false;
+}
+
+function nearestPassableNavigationPosition({ map, simulation, ship, target }) {
+  const origin = { x: ship.x, y: ship.y };
+  const radius = normalizeClearance(ship.radius);
+  if (navigationPositionIsPassable({ map, simulation, position: origin, radius, entity: ship })) return origin;
+
+  const heading = Math.atan2(Number(target?.y) - origin.y, Number(target?.x) - origin.x);
+  const angleOffsets = [0, Math.PI / 8, -Math.PI / 8, Math.PI / 4, -Math.PI / 4, Math.PI / 2, -Math.PI / 2, (Math.PI * 3) / 4, -(Math.PI * 3) / 4, Math.PI];
+  const step = Math.max(12, radius + 4);
+  for (let distance = step; distance <= 720; distance += step) {
+    for (const offset of angleOffsets) {
+      const candidate = {
+        x: origin.x + Math.cos(heading + offset) * distance,
+        y: origin.y + Math.sin(heading + offset) * distance,
+      };
+      if (navigationPositionIsPassable({ map, simulation, position: candidate, radius, entity: ship })) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
 export function advanceNavigationPlans({ modeState, simulation, dt = 0 } = {}) {
   const sourceState = modeState && typeof modeState === "object" ? modeState : {};
   const sourcePlans = sourceState.navigationPlans && typeof sourceState.navigationPlans === "object"
@@ -397,6 +438,49 @@ export function advanceNavigationPlans({ modeState, simulation, dt = 0 } = {}) {
         continue;
       }
 
+      const currentPosition = { x: ship.x, y: ship.y };
+      const requiresRecovery = !navigationPositionIsPassable({
+        map: sourceState.map,
+        simulation,
+        position: currentPosition,
+        radius: normalizeClearance(ship.radius),
+        entity: ship,
+      });
+      const recoveredPosition = requiresRecovery
+        ? nearestPassableNavigationPosition({ map: sourceState.map, simulation, ship, target: plan.target })
+        : null;
+      if (requiresRecovery && !recoveredPosition) {
+        simulation?.applyActionForSeat?.(plan.seat, { type: "clear_route", shipKey: plan.shipKey });
+        delete navigationPlans[key];
+        events.push({
+          type: "navigation_stuck",
+          seat: plan.seat,
+          position: currentPosition,
+          payload: { shipKey: plan.shipKey, target: clonePoint(plan.target), reason: "recovery_unavailable" },
+        });
+        continue;
+      }
+      if (recoveredPosition) {
+        ship.x = recoveredPosition.x;
+        ship.y = recoveredPosition.y;
+        if (ship.command) {
+          ship.command.x = ship.x;
+          ship.command.y = ship.y;
+        }
+        ship.route = null;
+        events.push({
+          type: "navigation_recovered",
+          seat: plan.seat,
+          position: { ...recoveredPosition },
+          payload: {
+            shipKey: plan.shipKey,
+            from: currentPosition,
+            target: clonePoint(plan.target),
+            reason: plan.reason,
+          },
+        });
+      }
+
       const route = planTerritoryRoute({
         map: sourceState.map,
         start: { x: ship.x, y: ship.y },
@@ -426,6 +510,17 @@ export function advanceNavigationPlans({ modeState, simulation, dt = 0 } = {}) {
           payload: { shipKey: plan.shipKey, target: clonePoint(plan.target), reason: plan.reason },
         });
       } else {
+        if (recoveredPosition) {
+          simulation?.applyActionForSeat?.(plan.seat, { type: "clear_route", shipKey: plan.shipKey });
+          delete navigationPlans[key];
+          events.push({
+            type: "navigation_stuck",
+            seat: plan.seat,
+            position: { x: ship.x, y: ship.y },
+            payload: { shipKey: plan.shipKey, target: clonePoint(plan.target), reason: "recovery_replan_failed" },
+          });
+          continue;
+        }
         watchdog.elapsed = 0;
         watchdog.lastDistance = waypointDistance;
         watchdog.replans = 1;

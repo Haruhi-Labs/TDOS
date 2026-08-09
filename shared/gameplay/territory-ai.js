@@ -1,3 +1,5 @@
+import { planShortWarpLanding } from "./territory-skills.js";
+
 function allianceIdForSeat(seat) {
   return String(seat || "A").toUpperCase().startsWith("B") ? "B" : "A";
 }
@@ -209,12 +211,23 @@ function tacticalSkillAction({ seat, simulation, modeState }) {
     const dy = safe.y - own.y;
     const len = Math.max(1, Math.hypot(dx, dy));
     const hop = Math.min(220, len);
+    const fleet = simulation?.fleetBySeat?.(seat);
+    const baseAngle = Math.atan2(dy, dx);
+    const radiusCandidates = [...new Set([hop, Math.max(60, hop - 54), Math.min(260, hop + 36)])];
+    const angleOffsets = [0, Math.PI / 6, -Math.PI / 6, Math.PI / 3, -Math.PI / 3, Math.PI / 2, -Math.PI / 2];
+    const landing = radiusCandidates
+      .flatMap((radius) => angleOffsets.map((offset) => ({
+        x: own.x + Math.cos(baseAngle + offset) * radius,
+        y: own.y + Math.sin(baseAngle + offset) * radius,
+      })))
+      .find((candidate) => planShortWarpLanding(modeState, simulation, fleet, candidate));
+    if (!landing) return null;
     return {
       type: "use_tactical_skill",
       targetType: "point",
       targetSeat: seat,
-      targetX: own.x + (dx / len) * hop,
-      targetY: own.y + (dy / len) * hop,
+      targetX: landing.x,
+      targetY: landing.y,
       reason: "use_short_warp",
     };
   }

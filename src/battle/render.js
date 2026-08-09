@@ -353,6 +353,56 @@ export function drawBladeQueenAura(ctx, ship) {
   ctx.restore();
 }
 
+function drawHaruhiImpactReadyAura(ctx, ship) {
+  const now = performance.now();
+  const pulse = 0.5 + Math.sin(now * 0.0045 + (ship.id || 0)) * 0.5;
+  ctx.save();
+  ctx.globalAlpha = 0.13 + pulse * 0.12;
+  ctx.fillStyle = "#ffd89a";
+  ctx.shadowColor = "#ffbe63";
+  ctx.shadowBlur = 14 + pulse * 7;
+  ctx.beginPath();
+  ctx.arc(ship.x, ship.y, ship.radius + 5 + pulse * 2, 0, TAU);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawHaruhiEsperOrb(ctx, orb) {
+  if (!orb) {
+    return;
+  }
+  const now = performance.now();
+  const pulse = 0.5 + Math.sin(now * 0.006) * 0.5;
+  const radius = Math.max(7, Number(orb.radius) || 9);
+  const gradient = ctx.createRadialGradient(
+    orb.x - radius * 0.25,
+    orb.y - radius * 0.28,
+    radius * 0.12,
+    orb.x,
+    orb.y,
+    radius * 1.35,
+  );
+  gradient.addColorStop(0, "rgba(255,238,240,0.98)");
+  gradient.addColorStop(0.25, "rgba(255,91,113,0.96)");
+  gradient.addColorStop(0.72, "rgba(172,15,45,0.82)");
+  gradient.addColorStop(1, "rgba(106,4,29,0)");
+
+  ctx.save();
+  ctx.shadowColor = "#ff355d";
+  ctx.shadowBlur = 13 + pulse * 8;
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(orb.x, orb.y, radius * 1.35, 0, TAU);
+  ctx.fill();
+  ctx.globalAlpha = 0.18 + pulse * 0.08;
+  ctx.strokeStyle = "#ff7088";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(orb.x, orb.y, Math.max(radius * 2, Number(orb.absorbRadius) || 0), 0, TAU);
+  ctx.stroke();
+  ctx.restore();
+}
+
 // 舰船下方的科技感角色名牌:半透明深色托底 + 队伍色 HUD 顶边线 + 辉光亮字 + 字距,大写更硬朗
 // accent = 该舰队伍色(己方青/敌方红),用于边框与辉光,区分敌我
 export function drawShipNameLabel(ctx, ship, accent) {
@@ -415,6 +465,9 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
 
   if (ship.bladeQueen) {
     drawBladeQueenAura(ctx, ship);
+  }
+  if (ship.haruhiImpactReady) {
+    drawHaruhiImpactReadyAura(ctx, ship);
   }
 
   ctx.save();
@@ -578,6 +631,23 @@ export function drawProjectile(ctx, projectile, isOwnTeam) {
   const color = projectile.color || (isOwnTeam ? "#9be8ff" : "#ffc0bd");
   ctx.save();
 
+  if (projectile.visualKind === "cat_paw") {
+    const radius = Math.max(3.5, Number(projectile.radius) || 4);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 9;
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y + radius * 0.35, radius * 0.72, 0, TAU);
+    ctx.fill();
+    for (const offset of [-0.9, -0.3, 0.3, 0.9]) {
+      ctx.beginPath();
+      ctx.arc(projectile.x + offset * radius, projectile.y - radius * 0.45, radius * 0.34, 0, TAU);
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
+
   // 弹道尾迹:沿飞行反方向拖一段渐隐短线,高速弹更长;让 20Hz 快照下的子弹运动读起来连贯
   const speed = Number(projectile.speed) || 0;
   const dx = (projectile.targetX ?? projectile.x) - projectile.x;
@@ -605,6 +675,56 @@ export function drawProjectile(ctx, projectile, isOwnTeam) {
   ctx.beginPath();
   ctx.arc(projectile.x, projectile.y, projectile.radius || 2, 0, TAU);
   ctx.fill();
+  ctx.restore();
+}
+
+function drawVisionWaves(ctx, team, elapsed, color) {
+  for (const wave of team?.visionWaves || []) {
+    const age = Math.max(0, elapsed - Number(wave.emittedAt || 0));
+    const radius = age * (Number(wave.speed) || 480);
+    const expiresAt = Number(wave.expiresAt);
+    const alpha = Number.isFinite(expiresAt) ? clamp((expiresAt - elapsed) / 1.4, 0.08, 0.7) : 0.32;
+    if (!Number.isFinite(radius) || radius <= 0 || (Number.isFinite(expiresAt) && elapsed >= expiresAt)) continue;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(2, Number(wave.width) || 90);
+    ctx.beginPath();
+    ctx.arc(Number(wave.x) || 0, Number(wave.y) || 0, radius, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+function drawYukiRadar(ctx, radar, ownTeam, elapsed) {
+  if (!radar?.active || !ownTeam?.ships?.main?.alive) return;
+  const source = ownTeam.ships.main;
+  const angle = (Number(radar.angle) || 0)
+    + (Number(radar.angularVelocity) || 0) * Math.max(0, elapsed - (Number(radar.sampledAt) || 0));
+  const worldSize = Number(ownTeam.worldSize || 1440);
+  const radius = Math.max(worldSize * 0.7, 620);
+  ctx.save();
+  ctx.globalAlpha = 0.16;
+  ctx.strokeStyle = "#bde9ff";
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(source.x, source.y, radius, 0, TAU);
+  ctx.stroke();
+  ctx.globalAlpha = 0.34;
+  ctx.strokeStyle = "#8de7ff";
+  ctx.beginPath();
+  ctx.moveTo(source.x, source.y);
+  ctx.lineTo(source.x + Math.cos(angle) * radius, source.y + Math.sin(angle) * radius);
+  ctx.stroke();
+  for (const contact of radar.contacts || []) {
+    const life = Math.max(0, (Number(contact.expiresAt) || elapsed) - elapsed);
+    if (life <= 0) continue;
+    ctx.globalAlpha = clamp(life / 2.6, 0.12, 0.8);
+    ctx.fillStyle = contact.kind === "afterimage" ? "#ffef9c" : "#b7c9ff";
+    ctx.beginPath();
+    ctx.arc(Number(contact.x) || 0, Number(contact.y) || 0, contact.kind === "afterimage" ? 7 : 5, 0, TAU);
+    ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1029,6 +1149,16 @@ export function drawBattleWorld(ctx, frame) {
     drawZones(ctx, state, frame.selectedZoneId);
   }
 
+  for (const team of friendlyTeams) {
+    drawVisionWaves(ctx, team, elapsed, "#86e7ff");
+  }
+  for (const team of enemyTeams) {
+    drawVisionWaves(ctx, team, elapsed, "#ff9eac");
+  }
+  if (!spectating) {
+    drawYukiRadar(ctx, frame.radar, ownTeam, elapsed);
+  }
+
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制
   syncShipDestructionEffects(frame.destructionEffects, [
     ...friendlyTeams.map((team) => ({
@@ -1084,6 +1214,15 @@ export function drawBattleWorld(ctx, frame) {
   for (const team of enemyTeams) {
     for (const beam of team?.beams || []) {
       drawBeam(ctx, beam);
+    }
+  }
+  for (const team of friendlyTeams) {
+    drawHaruhiEsperOrb(ctx, team?.haruhiFlagship?.esperOrb);
+  }
+  for (const team of enemyTeams) {
+    const mainId = team?.ships?.main?.id;
+    if (spectating || (mainId && enemyVisible(mainId))) {
+      drawHaruhiEsperOrb(ctx, team?.haruhiFlagship?.esperOrb);
     }
   }
 

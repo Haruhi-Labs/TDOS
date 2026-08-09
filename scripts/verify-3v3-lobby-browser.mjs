@@ -89,11 +89,135 @@ async function openLobby(context, url, pageErrors, initScript = null) {
     () => page.locator("#connectionValue").evaluate((node) => !node.textContent.includes("未连接")),
     "lobby websocket connection",
   );
+  const announcementConfirm = page.locator("[data-announcement-confirm]");
+  if (await announcementConfirm.waitFor({ state: "visible", timeout: 1_500 }).then(() => true).catch(() => false)) {
+    await announcementConfirm.click();
+    await announcementConfirm.waitFor({ state: "detached" });
+  }
   return page;
 }
 
 function expectedBackingWidth(canvas, { minBacking, maxBacking, maxDpr }) {
   return Math.max(minBacking, Math.min(Math.round(canvas.cssWidth * maxDpr), maxBacking));
+}
+
+async function assertBattleHasNoPlayerStrip(page, label) {
+  assert(
+    await page.locator("#onlinePlayerStrip").count() === 0,
+    `${label} 3v3 battle must not render the obstructive player profile strip`,
+  );
+}
+
+async function assertMobileBattleControls(page, label, { verifyShipSwitch = false } = {}) {
+  const core = page.locator("#mobileBattleCore");
+  const secondary = page.locator("#mobileBattleSecondary");
+  await core.waitFor({ state: "visible" });
+  await secondary.waitFor({ state: "visible" });
+
+  const layout = await page.evaluate(() => {
+    const coreNode = document.querySelector("#mobileBattleCore");
+    const secondaryNode = document.querySelector("#mobileBattleSecondary");
+    const controls = [
+      ...document.querySelectorAll("#mobileShipSwitch .mobile-ship-btn"),
+      ...document.querySelectorAll("#mobileBattleCore .mobile-throttle-btn"),
+      ...document.querySelectorAll("#mobileBattleCore .mobile-action-grid > button"),
+    ];
+    const visibleControls = controls
+      .filter((control) => !control.hidden && getComputedStyle(control).display !== "none")
+      .map((control) => {
+        const rect = control.getBoundingClientRect();
+        const hit = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        return {
+          label: control.id || control.dataset.throttle || control.textContent?.trim(),
+          top: rect.top,
+          bottom: rect.bottom,
+          width: rect.width,
+          hit: hit === control || control.contains(hit),
+        };
+      });
+    const coreStyle = getComputedStyle(coreNode);
+    const secondaryStyle = getComputedStyle(secondaryNode);
+    return {
+      viewportWidth: innerWidth,
+      viewportHeight: innerHeight,
+      scrollWidth: document.documentElement.scrollWidth,
+      coreOverflowY: coreStyle.overflowY,
+      secondaryOverflowY: secondaryStyle.overflowY,
+      secondaryClientHeight: secondaryNode.clientHeight,
+      secondaryScrollHeight: secondaryNode.scrollHeight,
+      tacticalTargetsParent: document.querySelector(".mobile-territory-tactical-targets")?.parentElement?.id || null,
+      visibleControls,
+    };
+  });
+  assert(layout.scrollWidth <= layout.viewportWidth + 1, `${label} HUD must not cause horizontal overflow: ${JSON.stringify(layout)}`);
+  assert(layout.coreOverflowY === "visible", `${label} core controls must not depend on an internal scroll position: ${JSON.stringify(layout)}`);
+  assert(["auto", "scroll"].includes(layout.secondaryOverflowY), `${label} secondary content must own vertical scrolling: ${JSON.stringify(layout)}`);
+  assert(layout.secondaryClientHeight > 0, `${label} secondary content must retain a usable viewport: ${JSON.stringify(layout)}`);
+  assert(
+    layout.tacticalTargetsParent === null || layout.tacticalTargetsParent === "mobileBattleSecondary",
+    `${label} tactical target choices must stay in secondary content when present: ${JSON.stringify(layout)}`,
+  );
+  assert(layout.visibleControls.length >= 17, `${label} must expose every non-hidden core control: ${JSON.stringify(layout)}`);
+  assert(
+    layout.visibleControls.every((control) => (
+      control.top >= 0
+      && control.bottom <= layout.viewportHeight
+      && control.width > 0
+      && control.hit
+    )),
+    `${label} ship, throttle, and action controls must be visible and clickable: ${JSON.stringify(layout)}`,
+  );
+
+  if (verifyShipSwitch) {
+    await page.locator("#mobileSplitOneBtn").click();
+    await eventually(
+      () => page.locator('#mobileShipSwitch [data-ship="sub1"]').isEnabled(),
+      `${label} split fleet controls`,
+    );
+  }
+  if (verifyShipSwitch) {
+    await page.evaluate(() => {
+      const original = window.setTimeout;
+      window.__TDOS_THROTTLE_TIMER__ = original;
+      window.setTimeout = (callback, delay, ...args) => original(callback, delay === 80 ? 320 : delay, ...args);
+    });
+    await page.locator('#mobileBattleCore [data-throttle="120"]').click();
+    await page.evaluate(() => {
+      if (window.__TDOS_THROTTLE_TIMER__) window.setTimeout = window.__TDOS_THROTTLE_TIMER__;
+    });
+    await page.locator('#mobileShipSwitch [data-ship="sub1"]').click();
+    await wait(120);
+    const switchState = await page.evaluate(() => {
+      const button = document.querySelector('#mobileShipSwitch [data-ship="sub1"]');
+      return {
+        active: button?.classList.contains("active") || false,
+        disabled: button?.disabled || false,
+        messages: window.__TDOS_SENT_WS_MESSAGES__ || [],
+      };
+    });
+    assert(
+      switchState.messages.some((message) => message.type === "select_ship" && message.shipKey === "sub1"),
+      `${label} mobile ship switch must emit its selected ship: ${JSON.stringify(switchState)}`,
+    );
+    await wait(420);
+    const delayedThrottleShip = await page.evaluate(() => (
+      [...(window.__TDOS_SENT_WS_MESSAGES__ || [])]
+        .reverse()
+        .find((message) => message.type === "input" && message.action?.type === "set_throttle")
+        ?.action?.shipKey || null
+    ));
+    assert(delayedThrottleShip === "main", `${label} delayed throttle must retain the ship selected at input time: ${delayedThrottleShip}`);
+    await page.locator('#mobileShipSwitch [data-ship="main"]').click();
+  } else {
+    await page.locator('#mobileBattleCore [data-throttle="120"]').click();
+  }
+  await eventually(
+    () => page.locator('#mobileBattleCore [data-throttle="120"]').evaluate((button) => (
+      button.classList.contains("active")
+      && document.querySelector("#powerSlider")?.value === "120"
+    )),
+    `${label} authoritative mobile throttle update`,
+  );
 }
 
 async function main() {
@@ -199,6 +323,17 @@ async function main() {
     );
     await desktop.screenshot({ path: "artifacts/3v3-lobby-mobile.png", fullPage: true });
     await desktop.setViewportSize({ width: 1280, height: 720 });
+    await desktop.reload({ waitUntil: "domcontentloaded" });
+    await desktop.waitForSelector("#connectionValue");
+    await eventually(
+      () => desktop.locator("#stellarRoomSeats").evaluate((node) => !node.hidden),
+      "waiting 3v3 room must resume after a page refresh",
+    );
+    await eventually(
+      async () => (await desktop.locator("#roomSummary").innerText()).includes("A1"),
+      "refreshed 3v3 host must recover the original A1 seat",
+    );
+    assert(await desktop.locator(".stellar-seat-row").count() === 6, "refreshed waiting room must retain all 3v3 seats");
     for (const seat of ["A2", "A3", "B1", "B2", "B3"]) {
       await desktop.click(`[data-add-bot="${seat}"]`);
       await desktop.waitForSelector(`[data-remove-bot="${seat}"]`);
@@ -237,6 +372,10 @@ async function main() {
       desktopBacking.width === expectedBackingWidth(desktopBacking, { minBacking: 1280, maxBacking: 1920, maxDpr: 1.5 }),
       `3v3 desktop backing canvas must use its 1920px budget: ${JSON.stringify(desktopBacking)}`,
     );
+    await assertBattleHasNoPlayerStrip(desktop, "desktop");
+    await desktop.setViewportSize({ width: 1280, height: 1080 });
+    await assertBattleHasNoPlayerStrip(desktop, "resized desktop");
+    await desktop.setViewportSize({ width: 1280, height: 720 });
     await desktop.screenshot({ path: "artifacts/3v3-battle-spawn-camera.png", fullPage: true });
     const canvasBox = await desktop.locator("#gameCanvas").boundingBox();
     assert(canvasBox, "3v3 battle canvas must have a visible layout box");
@@ -262,7 +401,18 @@ async function main() {
     assert(standardErrors.length === 0, `standard lobby page errors: ${standardErrors.join(" | ")}`);
 
     const mobileErrors = [];
-    const mobile = await openLobby(mobileContext, stellarUrl, mobileErrors);
+    const mobile = await openLobby(mobileContext, stellarUrl, mobileErrors, () => {
+      const originalSend = WebSocket.prototype.send;
+      window.__TDOS_SENT_WS_MESSAGES__ = [];
+      WebSocket.prototype.send = function captureWebSocketSend(raw) {
+        try {
+          window.__TDOS_SENT_WS_MESSAGES__.push(JSON.parse(String(raw)));
+        } catch {
+          // Non-application WebSocket frames are irrelevant to this assertion.
+        }
+        return originalSend.call(this, raw);
+      };
+    });
     pages.push(mobile);
     assert(await mobile.locator("#create3v3PublicBtn").isVisible(), "mobile 3v3 lobby must expose room creation");
     await mobile.click("#create3v3PublicBtn");
@@ -285,6 +435,10 @@ async function main() {
       mobileBacking.width === expectedBackingWidth(mobileBacking, { minBacking: 960, maxBacking: 1440, maxDpr: 1.25 }),
       `3v3 mobile backing canvas must use its 1440px budget: ${JSON.stringify(mobileBacking)}`,
     );
+    await assertBattleHasNoPlayerStrip(mobile, "mobile");
+    await assertMobileBattleControls(mobile, "390x844 portrait", { verifyShipSwitch: true });
+    await mobile.setViewportSize({ width: 844, height: 390 });
+    await assertMobileBattleControls(mobile, "844x390 landscape");
     assert(mobileErrors.length === 0, `3v3 mobile lobby page errors: ${mobileErrors.join(" | ")}`);
   } finally {
     for (const page of pages) await page.close().catch(() => {});

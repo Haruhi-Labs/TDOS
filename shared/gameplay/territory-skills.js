@@ -391,7 +391,7 @@ function warpLandingWithinBounds(position, radius, modeState, simulation) {
     && position.y + radius <= size;
 }
 
-function shortWarpLandingPlan(modeState, simulation, fleet, point) {
+export function planShortWarpLanding(modeState, simulation, fleet, point) {
   const ships = livingBasicShips(fleet);
   const anchor = livingFleetAnchor(fleet);
   if (!anchor || ships.length === 0) return null;
@@ -446,7 +446,7 @@ function validateTarget(skill, modeState, simulation, seat, action) {
       const main = livingFleetAnchor(fleet);
       if (!main) return { ok: false, reason: "target_fleet_dead" };
       if (distance(main, point) > (skill.maxDistance || 260)) return { ok: false, reason: "range" };
-      const landingPlan = shortWarpLandingPlan(modeState, simulation, fleet, point);
+      const landingPlan = planShortWarpLanding(modeState, simulation, fleet, point);
       if (!landingPlan) return { ok: false, reason: "blocked" };
       return { ok: true, landingPlan };
     }
@@ -520,7 +520,24 @@ export function useTerritoryTacticalSkill({ modeState, simulation, seat, action 
   const skill = SKILL_BY_ID.get(slot?.skillId);
   const validation = validateTarget(skill, modeState, simulation, seat, action || {});
   if (!slot || !skill || !validation.ok) {
-    return { accepted: false, modeState, events: [], reason: validation.reason || "no_skill" };
+    const reason = validation.reason || "no_skill";
+    const rejectedWarp = skill?.id === "short_warp";
+    return {
+      accepted: false,
+      modeState,
+      events: rejectedWarp
+        ? [{
+          type: "tactical_skill_rejected",
+          allianceId,
+          seat,
+          position: Number.isFinite(Number(action?.targetX)) && Number.isFinite(Number(action?.targetY))
+            ? { x: Number(action.targetX), y: Number(action.targetY) }
+            : null,
+          payload: { skillId: skill.id, reason },
+        }]
+        : [],
+      reason,
+    };
   }
   const next = cloneJson(modeState);
   next.alliances[allianceId].skillSlot = null;

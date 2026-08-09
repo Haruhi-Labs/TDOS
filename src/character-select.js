@@ -15,7 +15,7 @@ const DIFFICULTY_LEVELS = [
   { key: "easy", label: "简单", tip: "敌方数值 ×0.8,反应迟钝" },
   { key: "normal", label: "普通", tip: "敌方数值 ×1.0,反应一般" },
   { key: "hard", label: "困难", tip: "敌方数值 ×1.2,反应敏捷(更肉更痛)" },
-  { key: "master", label: "极限", tip: "敌方数值 ×1.2,反应最快,且会智能集火收掉你的残血舰" },
+  { key: "master", label: "极限", tip: "敌方数值 ×1.2,反应最快,技能冷却 ×1.30,能量回复 ×1.25,且会智能集火收掉你的残血舰" },
 ];
 
 // 构建难度选择器(prefix: "cs" 桌面 / "csm" 移动),自动读写本地存储并高亮当前档
@@ -126,6 +126,16 @@ export const CHARACTER_THEMES = {
     glow: "#e85050",
     accent: "#f0c0b0",
   },
+  shamisen: {
+    primary: "#d88745",
+    secondary: "#f0d488",
+    dark: "#352214",
+    bgCenter: "#182647",
+    bgMid: "#0b142a",
+    bgOuter: "#050912",
+    glow: "#e3a064",
+    accent: "#f0d488",
+  },
 };
 
 // ═══════════════════════════════════════════════════
@@ -141,6 +151,12 @@ const imageSyncMap = new Map();
 export const TEAM_COLORS = ["blue", "red"];
 function pkey(charId, color) {
   return `${color}/${charId}`;
+}
+
+// 三味线立绘改名后保留旧角色 ID，避免线上缓存继续命中旧资源。
+export function getPortraitAssetUrl(charId, color = "blue") {
+  const fileName = charId === "shamisen" ? "shamisen-paw" : charId;
+  return `${import.meta.env.BASE_URL}assets/portraits/${color}/${fileName}.webp`;
 }
 
 export function loadPortraitImage(charId, color = "blue") {
@@ -159,7 +175,7 @@ export function loadPortraitImage(charId, color = "blue") {
       imageSyncMap.set(key, null);
       resolve(null);
     };
-    img.src = `${import.meta.env.BASE_URL}assets/portraits/${color}/${charId}.webp`;
+    img.src = getPortraitAssetUrl(charId, color);
   });
   imageCache.set(key, promise);
   return promise;
@@ -422,7 +438,7 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 // 立绘是否真实存在（CHARACTER_THEMES 里 tsuruya/asakura 暂无图）
 const HAS_PORTRAIT = new Set([
-  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura",
+  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura", "shamisen",
 ]);
 
 // 把单页内容渲染为 HTML 字符串（base 与 flipper 共享同一份模板）
@@ -1044,7 +1060,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
       els.icon.style.backgroundSize = "cover";
       els.icon.style.backgroundPosition = "center 20%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        els.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
+        els.icon.style.backgroundImage = `url(${getPortraitAssetUrl(charId, state.color)})`;
       } else {
         const mini = getPortrait(charId, 120, 120, state.color);
         els.icon.style.backgroundImage = `url(${mini.toDataURL()})`;
@@ -1598,7 +1614,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
 
   function portraitUrl(charId) {
     if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-      return `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
+      return `url(${getPortraitAssetUrl(charId, state.color)})`;
     }
     return `url(${getPortrait(charId, 520, 760, state.color).toDataURL()})`;
   }
@@ -1620,7 +1636,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
       s.icon.style.backgroundSize = "cover";
       s.icon.style.backgroundPosition = "center 16%";
       if (HAS_PORTRAIT.has(charId) && getLoadedPortraitImage(charId, state.color)) {
-        s.icon.style.backgroundImage = `url(${import.meta.env.BASE_URL}assets/portraits/${state.color}/${charId}.webp)`;
+      s.icon.style.backgroundImage = `url(${getPortraitAssetUrl(charId, state.color)})`;
       } else {
         s.icon.style.backgroundImage = `url(${getPortrait(charId, 120, 120, state.color).toDataURL()})`;
       }

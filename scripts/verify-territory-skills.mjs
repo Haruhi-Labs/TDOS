@@ -144,7 +144,14 @@ const blockedWarp = useTerritoryTacticalSkill({
   },
 });
 assert(!blockedWarp.accepted, "short warp landing inside an obstacle must be rejected");
-assert(blockedWarp.events.length === 0, "rejected blocked warp must emit no effect event");
+assert(
+  blockedWarp.events.some((event) => (
+    event.type === "tactical_skill_rejected"
+      && event.payload?.skillId === "short_warp"
+      && event.payload?.reason === "blocked"
+  )),
+  "rejected obstacle warp must emit a localizable short-warp rejection event",
+);
 assert(blockedWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "rejected blocked warp must preserve the skill slot");
 assert(
   blockedWarpShips.every((ship, index) => ship.x === blockedWarpPositions[index].x && ship.y === blockedWarpPositions[index].y),
@@ -176,6 +183,14 @@ const edgeWarp = useTerritoryTacticalSkill({
   },
 });
 assert(!edgeWarp.accepted, "short warp should reject a fleet landing that crosses radius-aware world bounds");
+assert(
+  edgeWarp.events.some((event) => (
+    event.type === "tactical_skill_rejected"
+      && event.payload?.skillId === "short_warp"
+      && event.payload?.reason === "blocked"
+  )),
+  "rejected out-of-bounds warp must emit a localizable short-warp rejection event",
+);
 assert(edgeWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "invalid edge warp should preserve the skill");
 assert(
   edgeWarpShips.every((ship, index) => ship.x === edgeWarpPositions[index].x && ship.y === edgeWarpPositions[index].y),
@@ -200,6 +215,14 @@ const occupiedWarp = useTerritoryTacticalSkill({
   action: { type: "use_tactical_skill", targetSeat: "A", targetX: occupiedWarpTarget.x, targetY: occupiedWarpTarget.y },
 });
 assert(!occupiedWarp.accepted, "short warp should reject a landing occupied by another living fleet");
+assert(
+  occupiedWarp.events.some((event) => (
+    event.type === "tactical_skill_rejected"
+      && event.payload?.skillId === "short_warp"
+      && event.payload?.reason === "blocked"
+  )),
+  "rejected occupied warp must emit a localizable short-warp rejection event",
+);
 assert(occupiedWarp.modeState.alliances.A.skillSlot?.skillId === "short_warp", "occupied warp should preserve the skill");
 assert(
   Object.values(occupiedWarpFleet.ships).every((ship, index) => (

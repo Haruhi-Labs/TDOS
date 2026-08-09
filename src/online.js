@@ -26,7 +26,7 @@ import {
 import { accountClient } from "./account-client.js";
 
 // 联机选角与单机共用同一套「翻书选角」覆盖层;立绘绘制与单机同源
-import { createCharacterSelect, drawInGamePortrait } from "./character-select.js";
+import { createCharacterSelect, drawInGamePortrait, getPortraitAssetUrl } from "./character-select.js";
 import { startStarfield } from "./starfield.js";
 import { showConfirm } from "./confirm-dialog.js";
 import { mountRouteFluidBackdrop } from "./effects/fluid-reveal/routeBackdrop.js";
@@ -94,6 +94,7 @@ let routeFluidMode = "";
 let lobbyStarfieldAc = null;
 let onSignedOut = null;
 let territoryStaticMapCache = null;
+let ratingChangeNotice = null;
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -122,6 +123,7 @@ function cacheDom() {
   joinCodeBtn: document.getElementById("joinCodeBtn"),
   refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
   roomList: document.getElementById("roomList"),
+  stellarOwnedRooms: document.getElementById("stellarOwnedRooms"),
   onlineActionStatus: document.getElementById("onlineActionStatus"),
   roomSummary: document.getElementById("roomSummary"),
   stellarRoomSeats: document.getElementById("stellarRoomSeats"),
@@ -244,6 +246,7 @@ function initApp(lobbyMode = "standard") {
   connected: false,
   playerId: null,
   room: null,
+  ownedStellarRooms: [],
   seat: null,
   allianceId: null,
   ready: false,
@@ -281,6 +284,7 @@ function initApp(lobbyMode = "standard") {
   lastRenderMs: 0,
   routeOverrides: new Map(),
   teamComms: [],
+  tacticalSkillRejectionIds: new Set(),
   reconnectTicket: null,
   drag: null,
   pan: null,
@@ -293,6 +297,7 @@ function initApp(lobbyMode = "standard") {
   lastWinnerSeat: null,
   gameOverLogged: false,
   lastResultRenderKey: null,
+  pendingRatingChange: null,
   connectAttemptId: 0,
   playerLoadout: readStoredLoadout(),
   pointer: { x: LOGICAL * 0.5, y: LOGICAL * 0.5 },
@@ -468,7 +473,9 @@ function persistReconnectTicket(message) {
   const room = message && message.room ? message.room : null;
   const self = message && message.self ? message.self : null;
   const reconnectableMode = room?.mode === "pvp2v2" || room?.mode === "stellar3v3";
-  const reconnectableStatus = room?.status === "countdown" || room?.status === "running";
+  const reconnectableStatus = room?.status === "countdown"
+    || room?.status === "running"
+    || (room?.mode === "stellar3v3" && room?.status === "waiting");
   if (!room || !reconnectableMode || !reconnectableStatus || !self || self.spectating || !self.seat || !self.reconnectToken) {
     if (room && (!reconnectableMode || !reconnectableStatus)) {
       clearReconnectTicket();
@@ -968,6 +975,27 @@ function teamCommNeedsPointClient(commType) {
   return TEAM_COMM_POINT_TYPES.includes(commType);
 }
 
+function tacticalSkillRejectionMessage(reason) {
+  if (reason === "range") return t("短程跃迁失败：超出跃迁范围");
+  if (reason === "target_fleet_dead") return t("短程跃迁失败：目标编队已全灭");
+  if (reason === "blocked") return t("短程跃迁失败：落点不可通行");
+  return t("短程跃迁失败：目标无效");
+}
+
+function reportTacticalSkillRejections(events) {
+  for (const event of events || []) {
+    if (event?.type !== "tactical_skill_rejected" || String(event?.seat || "") !== String(app.seat || "")) continue;
+    const payload = event.payload || {};
+    const eventId = String(event.id || `${event.seat}:${payload.skillId || "skill"}:${payload.reason || "unknown"}:${event.position?.x ?? ""}:${event.position?.y ?? ""}`);
+    if (app.tacticalSkillRejectionIds.has(eventId)) continue;
+    app.tacticalSkillRejectionIds.add(eventId);
+    if (app.tacticalSkillRejectionIds.size > 96) {
+      app.tacticalSkillRejectionIds.delete(app.tacticalSkillRejectionIds.values().next().value);
+    }
+    log(tacticalSkillRejectionMessage(payload.reason));
+  }
+}
+
 function pruneTeamComms(now = nowMs()) {
   app.teamComms = (app.teamComms || []).filter((event) => Number(event.expiresAt || 0) > now);
   if (app.teamComms.length > 24) {
@@ -1199,6 +1227,7 @@ function clearMatchRuntime() {
   app.lastRenderMs = 0;
   app.routeOverrides.clear();
   app.teamComms = [];
+  app.tacticalSkillRejectionIds.clear();
   app.fleetDefeated = false;
   app.canControlFleet = true;
   app.drag = null;
@@ -1222,6 +1251,7 @@ function clearMatchRuntime() {
   app.lastWinnerSeat = null;
   app.gameOverLogged = false;
   app.lastResultRenderKey = null;
+  app.pendingRatingChange = null;
   if (app.throttleSendTimer) {
     clearTimeout(app.throttleSendTimer);
     app.throttleSendTimer = null;
@@ -1233,6 +1263,61 @@ function closeOverlay() {
   ui.overlayTitle.textContent = "";
   app.gameOverLogged = false;
   app.lastResultRenderKey = null;
+}
+
+function normalizeRatingChange(change) {
+  const before = Number(change?.before);
+  const after = Number(change?.after);
+  const delta = Number(change?.delta);
+  if (!Number.isInteger(before) || !Number.isInteger(after) || !Number.isInteger(delta) || after - before !== delta) {
+    return null;
+  }
+  return { before, after, delta };
+}
+
+function dismissRatingChangeNotice() {
+  ratingChangeNotice?.remove();
+  ratingChangeNotice = null;
+}
+
+function showRatingChangeNotice(change) {
+  const ratingChange = normalizeRatingChange(change);
+  if (!ratingChange) {
+    return;
+  }
+  dismissRatingChangeNotice();
+
+  const overlay = document.createElement("div");
+  overlay.className = "rating-change-overlay";
+  overlay.setAttribute("role", "dialog");
+  overlay.setAttribute("aria-modal", "true");
+  overlay.setAttribute("aria-labelledby", "ratingChangeTitle");
+
+  const card = document.createElement("section");
+  card.className = "rating-change-notice";
+  const eyebrow = document.createElement("p");
+  eyebrow.className = "rating-change-eyebrow";
+  eyebrow.textContent = "RATING UPDATE";
+  const title = document.createElement("h2");
+  title.id = "ratingChangeTitle";
+  title.textContent = t("等级分变动");
+  const delta = document.createElement("strong");
+  delta.className = `rating-change-delta ${ratingChange.delta > 0 ? "is-gain" : ratingChange.delta < 0 ? "is-loss" : "is-neutral"}`;
+  delta.textContent = `${ratingChange.delta > 0 ? "+" : ""}${ratingChange.delta}`;
+  const total = document.createElement("p");
+  total.className = "rating-change-total";
+  total.textContent = `${t("当前等级分")} ${ratingChange.before} -> ${ratingChange.after}`;
+  const acknowledge = document.createElement("button");
+  acknowledge.type = "button";
+  acknowledge.className = "rating-change-acknowledge";
+  acknowledge.textContent = t("知道了");
+  acknowledge.addEventListener("click", dismissRatingChangeNotice, { once: true });
+
+  card.append(eyebrow, title, delta, total, acknowledge);
+  overlay.append(card);
+  document.body.append(overlay);
+  ratingChangeNotice = overlay;
+  requestAnimationFrame(() => acknowledge.focus({ preventScroll: true }));
 }
 
 function escapeHtml(value) {
@@ -1265,12 +1350,11 @@ function resultWinnerText(winnerSeat, winnerAllianceId = null) {
 
 // 一侧阵容(主舰高亮 + 两副舰):头像取阵营立绘;在线 own=蓝队、enemy=红队,与战场着色一致
 function onlineResultSideHTML(loadout, faction, sideLabel, sideClass, sideId = "") {
-  const base = import.meta.env.BASE_URL;
   const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
   const cards = ["main", "sub1", "sub2"]
     .map((slot, i) => {
       const id = safe[slot];
-      const src = `${base}assets/portraits/${faction}/${id}.webp`;
+      const src = getPortraitAssetUrl(id, faction);
       const role = localizedSlotLabel(slot, "short");
       const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
       return (
@@ -1762,30 +1846,7 @@ function renderStellarRoomSeats() {
   bindStellarRoomSeatEvents();
 }
 
-function updateOnlinePlayerStrip() {
-  if (!ui?.root) return;
-  let strip = ui.root.querySelector("#onlinePlayerStrip");
-  if (!strip) {
-    strip = document.createElement("section");
-    strip.id = "onlinePlayerStrip";
-    strip.className = "online-player-strip";
-    ui.root.append(strip);
-  }
-  const room = app?.room;
-  const visible = Boolean(room && ["countdown", "running", "finished"].includes(room.status));
-  strip.hidden = !visible;
-  if (!visible) {
-    strip.replaceChildren();
-    return;
-  }
-  strip.innerHTML = (room.players || [])
-    .filter((row) => row?.user)
-    .map((row) => `<span class="online-player-strip-seat">${escapeHtml(row.seat)}</span>${onlineUserSummaryHTML(row)}`)
-    .join("");
-}
-
 function updateRoomSummary() {
-  updateOnlinePlayerStrip();
   if (!app.room) {
     ui.roomSummary.textContent = t("未进入房间");
     ui.leaveRoomBtn.disabled = true;
@@ -2002,6 +2063,56 @@ function renderLobbyRooms(rooms) {
   }
 }
 
+function renderOwnedStellarRooms(rooms) {
+  if (!ui.stellarOwnedRooms) return;
+  const ownedRooms = (rooms || []).filter((room) => room?.mode === "stellar3v3");
+  app.ownedStellarRooms = ownedRooms;
+  ui.stellarOwnedRooms.hidden = ownedRooms.length === 0;
+  ui.stellarOwnedRooms.replaceChildren();
+  if (ownedRooms.length === 0) return;
+
+  const title = document.createElement("h3");
+  title.textContent = t("我的 3v3 房间");
+  ui.stellarOwnedRooms.append(title);
+
+  for (const room of ownedRooms) {
+    const item = document.createElement("div");
+    item.className = "stellar-owned-room";
+
+    const copy = document.createElement("div");
+    copy.className = "stellar-owned-room-copy";
+    const name = document.createElement("strong");
+    name.textContent = `${roomTitleLabel(room.mode)} ${room.roomId}`;
+    const meta = document.createElement("span");
+    meta.textContent = `${room.visibility === "private" ? t("私人") : t("公开")} | ${roomStatusText(room.status)}`;
+    copy.append(name, meta);
+
+    const closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "stellar-owned-room-close";
+    closeBtn.textContent = t("强制关闭房间");
+    closeBtn.disabled = !app.connected;
+    closeBtn.addEventListener("click", async () => {
+      const confirmed = await showConfirm({
+        title: t("确认强制关闭房间？"),
+        body: t("此操作会立即结束房间，所有在线成员将返回大厅。"),
+        confirmText: t("强制关闭房间"),
+        cancelText: t("取消"),
+        danger: true,
+      });
+      if (!confirmed) return;
+      if (socketSend({ type: "close_room", roomId: room.roomId })) {
+        showOnlineActionStatus(t("正在关闭房间..."));
+      } else {
+        showOnlineActionStatus(t("请先连接服务器"), "error");
+      }
+    });
+
+    item.append(copy, closeBtn);
+    ui.stellarOwnedRooms.append(item);
+  }
+}
+
 function applyRoomState(message) {
   const previousRoomId = app.room ? app.room.roomId : null;
   const previousSpectating = app.spectating;
@@ -2011,6 +2122,9 @@ function applyRoomState(message) {
   app.seat = app.spectating ? null : message.self ? message.self.seat : null;
   app.allianceId = app.seat ? message.self?.allianceId || allianceIdForSeatClient(app.seat) : null;
   app.ready = Boolean(message.self && message.self.ready);
+  if (message.self?.ratingChange) {
+    app.pendingRatingChange = normalizeRatingChange(message.self.ratingChange);
+  }
   if (message.self && Number.isInteger(message.self.nextInputSeq)) {
     app.seq = Math.max(app.seq, Number(message.self.nextInputSeq) - 1);
   }
@@ -2452,12 +2566,14 @@ function handleSnapshot(message) {
     snapshotSeq: Number(message.snapshotSeq) || 0,
     receivedAtMs: nowMs(),
     state: message.state,
+    radar: message.radar || null,
   };
 
   updateSnapshotTransportStats(snapshot);
   insertSnapshot(snapshot);
   syncStellar3v3Camera(snapshot.state);
   applyViewerControlState(snapshot.state);
+  reportTacticalSkillRejections(snapshot.state?.territoryEvents);
 
   if (Number.isInteger(message.ackSeq)) {
     app.ackSeq = Math.max(app.ackSeq, message.ackSeq);
@@ -2528,6 +2644,7 @@ function handleServerMessage(raw) {
 
   if (type === "lobby") {
     renderLobbyRooms(message.rooms || []);
+    renderOwnedStellarRooms(message.ownedStellarRooms || []);
     return;
   }
 
@@ -2833,8 +2950,10 @@ function pruneAckedOverrides(snapshotState) {
 
 function setThrottleFromSlider(shouldSend) {
   const value = clamp(Number(ui.powerSlider.value), 25, 140);
+  const throttle = value / 100;
+  const shipKey = app.selectedShipKey;
   ui.powerValue.textContent = `${Math.round(value)}%`;
-  app.throttle = value / 100;
+  app.throttle = throttle;
 
   if (!shouldSend) {
     return;
@@ -2846,8 +2965,8 @@ function setThrottleFromSlider(shouldSend) {
   app.throttleSendTimer = setTimeout(() => {
     const seq = sendAction({
       type: "set_throttle",
-      shipKey: app.selectedShipKey,
-      throttle: app.throttle,
+      shipKey,
+      throttle,
     });
     if (seq !== null) {
       // 不需要绘制覆盖，仅提交控制档位。
@@ -3573,6 +3692,7 @@ function renderFrame() {
     friendlyTeams,
     enemyTeams,
     spectating,
+    radar: spectating ? null : app.latestSnapshot?.radar || null,
     // 仅本机仍可操控的 seat 脉动；全灭观战队友/纯观战时不脉动，避免把队友当成「我的船」
     localControlSeat: spectating || !app.canControlFleet ? null : (app.seat || null),
     visibleEnemyIds: visibleEnemyIdSetForTeams(friendlyTeams),
@@ -3870,6 +3990,8 @@ function bindUiEvents() {
 
   if (ui.overlayActionBtn) {
     ui.overlayActionBtn.addEventListener("click", () => {
+      const pendingRatingChange = app.pendingRatingChange;
+      app.pendingRatingChange = null;
       clearReconnectTicket();
       if (app.room) {
         socketSend({ type: "leave_room" });
@@ -3883,6 +4005,7 @@ function bindUiEvents() {
       setBattleControlsEnabled(false);
       closeOverlay();
       setRoomHudVisible(true); // 立即切回大厅页
+      showRatingChangeNotice(pendingRatingChange);
     });
   }
 
@@ -4515,6 +4638,7 @@ function unmount() {
   disconnectServer();
   stopBattleBgm();
   destroyOnlineFluidBackdrop();
+  dismissRatingChangeNotice();
   onSignedOut = null;
   lobbyStarfieldAc?.abort();
   lobbyStarfieldAc = null;
@@ -4542,6 +4666,7 @@ function onlineTemplate(lobbyMode = "standard") {
       </div>
       <button id="create2v2Btn" type="button">${t("创建 2v2 公开排位房")}</button>`;
   const stellarSeats = `<section id="stellarRoomSeats" class="stellar-room-seats" hidden></section>`;
+  const stellarOwnedRooms = `<section id="stellarOwnedRooms" class="stellar-owned-rooms" hidden></section>`;
   return `
     <div class="online-root${isStellarLobby ? " online-root-stellar" : ""}">
       <!-- ── 独立大厅页 ── -->
@@ -4589,7 +4714,7 @@ function onlineTemplate(lobbyMode = "standard") {
               <h2 class="lobby-card-title">${t("开房 / 加入")}</h2>
               ${roomControls}
               <p id="onlineActionStatus" class="online-action-status" role="status" hidden></p>
-              ${isStellarLobby ? stellarSeats : ""}
+              ${isStellarLobby ? `${stellarSeats}${stellarOwnedRooms}` : ""}
               <div class="join-code-wrap">
                 <input id="joinCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="${t("输入 6 位房间号")}" />
                 <button id="joinCodeBtn">${t("加入私人房")}</button>

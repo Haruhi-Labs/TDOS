@@ -19,7 +19,7 @@ import { createStellar3v3Match } from "./stellar3v3-match.js";
 import { createAccountStore } from "./account-store.js";
 import { createAvatarStorage } from "./avatar-storage.js";
 import { createAccountApi, sessionTokenFromRequest } from "./account-api.js";
-import { settleCompletedRoom } from "./competitive-settlement.js";
+import { ratingChangeForUser, settleCompletedRoom } from "./competitive-settlement.js";
 import { createServerPerformanceDiagnostics } from "./performance-diagnostics.js";
 
 const PORT = Number(process.env.PORT || 21246);
@@ -83,6 +83,8 @@ const MESSAGE_CODES = {
   "房间已关闭": "room_closed",
   "对手离开房间": "opponent_left",
   "对手断开连接，房间已解散": "opponent_disconnected",
+  "房主已强制关闭房间": "room_closed_by_creator",
+  "只有原始房主可以关闭此房间": "room_close_forbidden",
   "对局结束，已返回大厅": "match_ended_draw",
   "你已经在房间中": "already_in_room",
   "房间不存在": "room_not_found",
@@ -194,6 +196,15 @@ function isStellar3v3Room(roomOrMode) {
 function isMultiplayerRoom(roomOrMode) {
   const mode = typeof roomOrMode === "string" ? roomOrMode : roomOrMode?.mode;
   return Boolean(MULTIPLAYER_MODE_CONFIG[mode]);
+}
+
+function roomAcceptsReconnect(room) {
+  if (!room || !isMultiplayerRoom(room)) {
+    return false;
+  }
+  return room.status === "countdown"
+    || room.status === "running"
+    || (isStellar3v3Room(room) && room.status === "waiting");
 }
 
 function modeConfig(mode) {
@@ -344,8 +355,9 @@ function activeRoomForUserId(userId) {
 
 function pruneReconnectSlots(room, now = Date.now()) {
   if (!room || !room.reconnectSlots) {
-    return;
+    return false;
   }
+  let changed = false;
   for (const seat of seatListForRoom(room)) {
     const slot = room.reconnectSlots[seat];
     if (!slot) {
@@ -353,20 +365,31 @@ function pruneReconnectSlots(room, now = Date.now()) {
     }
     if (Number(slot.expiresAt || 0) <= now) {
       delete room.reconnectSlots[seat];
+      changed = true;
       if (!room.seats[seat] && room.ready) {
         room.ready[seat] = false;
       }
       if (isStellar3v3Room(room) && !room.seats[seat]) {
         const slotConfig = slotConfigForRoom(room, seat);
         if (slotConfig) {
-          slotConfig.occupantType = "bot";
-          slotConfig.difficulty = "normal";
-          slotConfig.loadout = cloneLoadout(slot.loadout || DEFAULT_TEAM_LOADOUT);
+          if (room.status === "waiting") {
+            slotConfig.occupantType = "open";
+          } else {
+            slotConfig.occupantType = "bot";
+            slotConfig.difficulty = "normal";
+            slotConfig.loadout = cloneLoadout(slot.loadout || DEFAULT_TEAM_LOADOUT);
+          }
         }
-        room.match?.setSeatAiControl?.(seat, { enabled: true, difficulty: "normal" });
+        if (room.status !== "waiting") {
+          room.match?.setSeatAiControl?.(seat, { enabled: true, difficulty: "normal" });
+        }
+      }
+      if (slot.wasHost) {
+        transferHostIfNeeded(room, room.hostPlayerId);
       }
     }
   }
+  return changed;
 }
 
 function activeReconnectCount(room) {
@@ -585,24 +608,20 @@ function buildRoomStatePayload(room, viewerId = null) {
           reconnectToken: isMember ? viewer.reconnectToken || null : null,
           ackSeq: Number(viewer.lastProcessedSeq) || 0,
           nextInputSeq,
+          ratingChange: isMember ? ratingChangeForUser(room.ratingSettlement, viewer.userId) : null,
         }
       : null,
   };
 }
 
-function buildLobbyPayload() {
-  const list = [];
-  for (const room of rooms.values()) {
-    if (room.visibility !== "public") {
-      continue;
-    }
+function buildLobbyRoomSummary(room) {
     const hostSeat = seatListForRoom(room)[0];
     const host = getPlayerById(room.seats[hostSeat]);
     const hostReconnectSlot = room.reconnectSlots?.[hostSeat] || null;
     const resultHost = room.result && Array.isArray(room.result.players)
       ? room.result.players.find((row) => row.seat === hostSeat)
       : null;
-    list.push({
+    return {
       roomId: room.id,
       mode: room.mode,
       visibility: room.visibility,
@@ -613,14 +632,29 @@ function buildLobbyPayload() {
       spectatorCount: spectatorCount(room),
       hostName: host ? host.name : resultHost ? resultHost.name : hostReconnectSlot ? hostReconnectSlot.name : "未知",
       createdAt: room.createdAt,
-    });
+    };
+}
+
+function buildLobbyPayload(viewer = null) {
+  const list = [];
+  const ownedStellarRooms = [];
+  for (const room of rooms.values()) {
+    const summary = buildLobbyRoomSummary(room);
+    if (room.visibility === "public") {
+      list.push(summary);
+    }
+    if (viewer?.userId && isStellar3v3Room(room) && room.hostUserId === viewer.userId) {
+      ownedStellarRooms.push(summary);
+    }
   }
 
   list.sort((a, b) => b.createdAt - a.createdAt);
+  ownedStellarRooms.sort((a, b) => b.createdAt - a.createdAt);
 
   return {
     type: "lobby",
     rooms: list,
+    ownedStellarRooms,
     now: Date.now(),
   };
 }
@@ -637,9 +671,8 @@ function playerProfileLockedReason(player) {
 }
 
 function broadcastLobby() {
-  const payload = buildLobbyPayload();
   for (const player of players.values()) {
-    sendToPlayer(player, payload);
+    sendToPlayer(player, buildLobbyPayload(player));
   }
 }
 
@@ -865,8 +898,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间", options = {})
     options.preserveReconnect &&
       playerSeat &&
       room &&
-      isMultiplayerRoom(room) &&
-      (room.status === "countdown" || room.status === "running"),
+      roomAcceptsReconnect(room),
   );
   if (!room) {
     player.roomId = null;
@@ -934,6 +966,12 @@ function leaveRoom(player, reasonForOthers = "对手离开房间", options = {})
     return;
   }
 
+  if (room.status === "waiting" && shouldReserveReconnect) {
+    sendRoomStateToMembers(room);
+    broadcastLobby();
+    return;
+  }
+
   if (room.status === "finished") {
     if (connectedCount(room) === 0 && spectatorCount(room) === 0) {
       rooms.delete(oldRoomId);
@@ -954,7 +992,7 @@ function leaveRoom(player, reasonForOthers = "对手离开房间", options = {})
     }
   }
 
-  if (connectedCount(room) === 0) {
+  if (connectedCount(room) === 0 && activeReconnectCount(room) === 0) {
     rooms.delete(oldRoomId);
     broadcastLobby();
     return;
@@ -994,6 +1032,7 @@ function createRoom(player, visibility, mode) {
     status: "waiting",
     countdownEndsAt: null,
     hostPlayerId: player.id,
+    hostUserId: player.userId,
     seats: roomSeats,
     ready,
     createdAt: Date.now(),
@@ -1118,7 +1157,7 @@ function resumePlayer(player, data) {
   if (!room || !isMultiplayerRoom(room)) {
     return { ok: false, message: "房间不存在" };
   }
-  if (room.status !== "countdown" && room.status !== "running") {
+  if (!roomAcceptsReconnect(room)) {
     return { ok: false, message: "房间不在对战状态" };
   }
 
@@ -1161,6 +1200,18 @@ function resumePlayer(player, data) {
   sendRoomStateToMembers(room);
   sendSnapshot(room);
   broadcastLobby();
+  return { ok: true };
+}
+
+function closeStellar3v3Room(player, data) {
+  const room = rooms.get(String(data.roomId || ""));
+  if (!room || !isStellar3v3Room(room)) {
+    return { ok: false, message: "房间不存在" };
+  }
+  if (!player?.userId || room.hostUserId !== player.userId) {
+    return { ok: false, message: "只有原始房主可以关闭此房间" };
+  }
+  closeRoom(room.id, "房主已强制关闭房间");
   return { ok: true };
 }
 
@@ -1423,6 +1474,9 @@ function buildSnapshotPayloadBase(room, advanceSeq = true, viewer = null) {
     simTime: room.match.elapsed,
     serverTime,
     state,
+    radar: viewer && viewer.seat && !viewer.spectating && typeof room.match.serializeRadarForSeat === "function"
+      ? room.match.serializeRadarForSeat(viewer.seat)
+      : null,
   };
   if (startedAt) performanceDiagnostics.record("snapshotBuild", performance.now() - startedAt);
   return payload;
@@ -1572,7 +1626,7 @@ wss.on("connection", (ws, request) => {
     snapshotIntervalMs: Math.round(1000 / SNAPSHOT_RATE),
   });
 
-  sendToPlayer(player, buildLobbyPayload());
+  sendToPlayer(player, buildLobbyPayload(player));
 
   ws.on("message", (raw) => {
     if (!hasLivePlayerSession(player)) {
@@ -1635,7 +1689,7 @@ wss.on("connection", (ws, request) => {
     }
 
     if (type === "list_rooms") {
-      sendToPlayer(player, buildLobbyPayload());
+      sendToPlayer(player, buildLobbyPayload(player));
       return;
     }
 
@@ -1711,7 +1765,15 @@ wss.on("connection", (ws, request) => {
 
     if (type === "leave_room") {
       leaveRoom(player);
-      sendToPlayer(player, buildLobbyPayload());
+      sendToPlayer(player, buildLobbyPayload(player));
+      return;
+    }
+
+    if (type === "close_room") {
+      const result = closeStellar3v3Room(player, data);
+      if (!result.ok) {
+        sendError(player, result.message);
+      }
       return;
     }
 
@@ -1806,7 +1868,21 @@ httpServer.on("upgrade", (request, socket, head) => {
 function tickRooms() {
   revalidateActivePlayerSessions();
   for (const room of rooms.values()) {
-    pruneReconnectSlots(room);
+    const reconnectSlotsChanged = pruneReconnectSlots(room);
+    if (reconnectSlotsChanged) {
+      sendRoomStateToMembers(room);
+      broadcastLobby();
+    }
+    if (
+      isStellar3v3Room(room) &&
+      room.status === "waiting" &&
+      connectedCount(room) === 0 &&
+      activeReconnectCount(room) === 0
+    ) {
+      rooms.delete(room.id);
+      broadcastLobby();
+      continue;
+    }
     if (
       isMultiplayerRoom(room) &&
       (room.status === "countdown" || room.status === "running") &&
@@ -1836,20 +1912,21 @@ function tickRooms() {
       room.match.update(TICK_DT);
       if (simulationStartedAt) performanceDiagnostics.record("simulation", performance.now() - simulationStartedAt);
 
-      room.snapshotAccumulator += TICK_DT;
-      while (room.snapshotAccumulator >= SNAPSHOT_INTERVAL) {
-        room.snapshotAccumulator -= SNAPSHOT_INTERVAL;
-        sendSnapshot(room);
-      }
-
       if (room.match.phase === "finished" && room.status !== "finished") {
         room.status = "finished";
         room.finishedAt = Date.now();
         room.result = buildMatchResult(room);
         room.ratingSettlement = settleCompletedRoom(accountStore, room);
-        sendSnapshot(room);
         sendRoomStateToMembers(room);
+        sendSnapshot(room);
         broadcastLobby();
+        continue;
+      }
+
+      room.snapshotAccumulator += TICK_DT;
+      while (room.snapshotAccumulator >= SNAPSHOT_INTERVAL) {
+        room.snapshotAccumulator -= SNAPSHOT_INTERVAL;
+        sendSnapshot(room);
       }
     }
   }

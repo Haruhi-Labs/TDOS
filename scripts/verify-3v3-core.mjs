@@ -1,4 +1,5 @@
 import { DEFAULT_TEAM_LOADOUT, MatchSimulation } from "../shared/game-core.js";
+import { createStellar3v3Match } from "../server/stellar3v3-match.js";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -29,5 +30,20 @@ assert(simulation.setSeatAiControl?.("B2", { enabled: true, difficulty: "hard" }
 assert(simulation.botBySeat("B2")?.difficulty === "hard", "temporary AI takeover must use the requested difficulty");
 assert(simulation.setSeatAiControl?.("B2", { enabled: false }) === true, "reconnected player seat must stop AI takeover");
 assert(simulation.botBySeat("B2") === null, "AI controller must be removed when player control resumes");
+
+const radarFleetLayout = {
+  alliances: {
+    A: fleetLayout.alliances.A.map((entry) => ({
+      ...entry,
+      loadout: entry.seat === "A1" ? { main: "yuki", sub1: "haruhi", sub2: "koizumi" } : entry.loadout,
+    })),
+    B: fleetLayout.alliances.B,
+  },
+};
+const stellarMatch = createStellar3v3Match({ fleetLayout: radarFleetLayout });
+stellarMatch.update(1 / 30);
+const radar = stellarMatch.serializeRadarForSeat("A1");
+assert(radar?.active, "3v3 长门旗舰必须获得私有雷达快照");
+assert(stellarMatch.serializeRadarForSeat("B1") === null, "3v3 非长门席位不能收到长门雷达快照");
 
 console.log("3v3 core verification passed");

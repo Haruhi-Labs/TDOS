@@ -49,4 +49,41 @@ function makeHarness(getMe) {
   assert.equal(harness.calls.authMount, 1, "sign out must return to the authentication view");
 }
 
+{
+  const lifecycle = [];
+  const gate = createAuthGate({
+    root: { innerHTML: "" },
+    router: {
+      start() { lifecycle.push("route"); },
+      stop() {},
+    },
+    authView: { mount: () => () => {} },
+    getMe: async () => ({ id: "user-1" }),
+    onAuthenticatedSession: () => lifecycle.push("announcements"),
+  });
+  await gate.start();
+  assert.deepEqual(
+    lifecycle,
+    ["route", "announcements"],
+    "the announcement check should begin only after authenticated routes start",
+  );
+}
+
+{
+  const lifecycle = [];
+  const gate = createAuthGate({
+    root: { innerHTML: "" },
+    router: {
+      start() { lifecycle.push("route"); },
+      stop() {},
+    },
+    authView: { mount: () => () => {} },
+    getMe: async () => ({ id: "user-1" }),
+    onAuthenticatedSession: async () => { throw new Error("announcement network failure"); },
+  });
+  await gate.start();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(lifecycle, ["route"], "an announcement failure must not block authenticated routing");
+}
+
 console.log("auth gate verification passed");

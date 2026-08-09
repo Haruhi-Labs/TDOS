@@ -127,6 +127,37 @@ assert(action?.type === "use_tactical_skill", "AI uses point tactical skills thr
 assert(action.targetType === "point", "AI gravity field targets a point");
 assert(Math.hypot(action.targetX - enemyMain.x, action.targetY - enemyMain.y) < 40, "AI gravity field targets visible enemy position");
 
+state = makeState(4455);
+state.elapsed = 25.1;
+sim = makeSimulation();
+stellarTerritoryMode.prepareSimulation({ simulation: sim, modeState: state });
+const blockedAiWarpObstacle = state.map.obstacleRegions[0];
+const aiWarpFleet = sim.fleetBySeat("B");
+const aiWarpAnchor = aiWarpFleet.shipByKey("main");
+for (const [index, ship] of aiWarpFleet.getAllShips().entries()) {
+  ship.x = blockedAiWarpObstacle.center.x - 220 - index * 18;
+  ship.y = blockedAiWarpObstacle.center.y + index * 14;
+  ship.command = { x: ship.x, y: ship.y };
+  ship.route = null;
+  ship.hp = ship.maxHp * 0.45;
+}
+state.map.spawnAreas = state.map.spawnAreas.map((area) => (
+  area.allianceId === "B" ? { ...area, center: { ...blockedAiWarpObstacle.center } } : area
+));
+state.alliances.B.skillSlot = { skillId: "short_warp", acquiredAt: 0 };
+action = chooseTerritoryAiAction({ seat: "B", simulation: sim, modeState: state });
+assert(
+  action?.type !== "use_tactical_skill" || aiWarpFleet.getAllShips().every((ship) => positionClearOfObstacles(
+    {
+      x: ship.x + (Number(action.targetX) - aiWarpAnchor.x),
+      y: ship.y + (Number(action.targetY) - aiWarpAnchor.y),
+    },
+    ship.radius,
+    state.map.obstacleRegions,
+  )),
+  `AI short warp must choose a formation-safe landing or abstain: ${JSON.stringify(action)}`,
+);
+
 state = makeState(4545);
 sim = makeThreeVsThreeSimulation();
 const mixedControlLayout = {

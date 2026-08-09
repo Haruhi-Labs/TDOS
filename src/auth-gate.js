@@ -1,6 +1,6 @@
 const BOOT_SPLASH = '<div class="boot-splash">验证会话中...</div>';
 
-export function createAuthGate({ root, router, authView, getMe }) {
+export function createAuthGate({ root, router, authView, getMe, onAuthenticatedSession = null }) {
   let authTeardown = null;
   let transition = 0;
 
@@ -18,10 +18,13 @@ export function createAuthGate({ root, router, authView, getMe }) {
     });
   }
 
-  function enterAuthenticated(_user) {
+  function enterAuthenticated(user) {
     transition += 1;
     disposeAuthView();
     router.start();
+    void Promise.resolve()
+      .then(() => onAuthenticatedSession?.(user))
+      .catch(() => {});
   }
 
   async function start() {

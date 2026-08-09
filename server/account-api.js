@@ -7,6 +7,13 @@ const LOGIN_ATTEMPT_LIMIT = 8;
 const REGISTRATION_WINDOW_MS = 60_000;
 const REGISTRATION_ATTEMPT_LIMIT = 4;
 
+function boundedHistoryLimit(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return 20;
+  const limit = Number(value);
+  if (!Number.isFinite(limit)) return 20;
+  return Math.max(1, Math.min(Math.floor(limit), 50));
+}
+
 function sendJson(response, status, payload, headers = {}) {
   const body = Buffer.from(JSON.stringify(payload));
   response.writeHead(status, {
@@ -147,13 +154,24 @@ export function createAccountApi({ store, avatarStorage, secureCookies = false, 
     return user;
   }
 
-  function reserveLoginAttempt(request) {
-    const key = requestAddress(request);
+  function loginAttemptKey(request, username) {
+    const normalizedUsername = String(username || "").trim().normalize("NFC").toLocaleLowerCase("en-US");
+    return requestAddress(request) + ":" + normalizedUsername;
+  }
+
+  function isLoginThrottled(key) {
+    const current = loginAttempts.get(key);
+    return Boolean(current?.resetAt > now() && current.count >= LOGIN_ATTEMPT_LIMIT);
+  }
+
+  function recordFailedLoginAttempt(key) {
     const current = loginAttempts.get(key);
     const state = current?.resetAt > now() ? current : { count: 0, resetAt: now() + LOGIN_WINDOW_MS };
-    if (state.count >= LOGIN_ATTEMPT_LIMIT) return false;
     loginAttempts.set(key, { ...state, count: state.count + 1 });
-    return true;
+  }
+
+  function clearLoginAttempts(key) {
+    loginAttempts.delete(key);
   }
 
   function reserveRegistration(request) {
@@ -192,11 +210,15 @@ export function createAccountApi({ store, avatarStorage, secureCookies = false, 
       }
       if (request.method === "POST" && url.pathname === "/api/auth/login") {
         assertSameOrigin(request);
-        if (!reserveLoginAttempt(request)) throw Object.assign(new Error("Too many login attempts."), { status: 429, code: "login_throttled" });
-        const user = await store.authenticate(await readJson(request));
+        const payload = await readJson(request);
+        const attemptKey = loginAttemptKey(request, payload.username);
+        if (isLoginThrottled(attemptKey)) throw Object.assign(new Error("Too many login attempts."), { status: 429, code: "login_throttled" });
+        const user = await store.authenticate(payload);
         if (!user) {
+          recordFailedLoginAttempt(attemptKey);
           throw Object.assign(new Error("Invalid username or password."), { status: 401, code: "invalid_credentials" });
         }
+        clearLoginAttempts(attemptKey);
         const session = store.createSession(user.id);
         sendJson(response, 200, { user: serializePrivateUser(store, avatarStorage, user) }, {
           "Set-Cookie": sessionCookie(session.token, { secure: secureCookies, maxAge: (session.expiresAt - now()) / 1000 }),
@@ -217,6 +239,25 @@ export function createAccountApi({ store, avatarStorage, secureCookies = false, 
       if (request.method === "GET" && url.pathname === "/api/profile") {
         const user = requireUser(request);
         sendJson(response, 200, { user: serializePrivateUser(store, avatarStorage, user) });
+        return true;
+      }
+      if (request.method === "GET" && url.pathname === "/api/profile/history") {
+        const user = requireUser(request);
+        const entries = store.getMatchHistory(user.id, boundedHistoryLimit(url.searchParams.get("limit")));
+        sendJson(response, 200, { entries });
+        return true;
+      }
+      if (request.method === "GET" && url.pathname === "/api/announcements") {
+        const user = requireUser(request);
+        sendJson(response, 200, { entries: store.getAnnouncements(user.id) });
+        return true;
+      }
+      const announcementReadMatch = url.pathname.match(/^\/api\/announcements\/([^/]+)\/read$/);
+      if (request.method === "POST" && announcementReadMatch) {
+        assertSameOrigin(request);
+        const user = requireUser(request);
+        const entry = store.markAnnouncementRead(user.id, decodeURIComponent(announcementReadMatch[1]));
+        sendJson(response, 200, { entry });
         return true;
       }
       if (request.method === "PATCH" && url.pathname === "/api/profile") {
@@ -254,7 +295,9 @@ export function createAccountApi({ store, avatarStorage, secureCookies = false, 
       sendJson(response, 404, { error: { code: "api_not_found", message: "API endpoint not found." } });
       return true;
     } catch (error) {
-      const status = error.status || (error instanceof AccountStoreError && error.code === "username_cooldown" ? 409 : 400);
+      const status = error.status || (error instanceof AccountStoreError && error.code === "username_cooldown" ? 409
+        : error instanceof AccountStoreError && error.code === "announcement_not_found" ? 404
+          : 400);
       sendJson(response, status, { error: { code: error.code || "invalid_request", message: error.message || "Request failed." } });
       return true;
     }

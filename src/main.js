@@ -15,7 +15,9 @@ import { initI18n } from "./i18n.js";
 import { createRouter } from "./router.js";
 import { createAuthGate } from "./auth-gate.js";
 import { accountClient } from "./account-client.js";
+import { createAnnouncementCenter } from "./announcement-center.js";
 import * as menu from "./menu.js";
+import * as announcementsView from "./announcements-view.js";
 import * as authView from "./auth-view.js";
 import * as profileView from "./profile-view.js";
 import * as leaderboardView from "./leaderboard-view.js";
@@ -28,6 +30,7 @@ const outlet = document.getElementById("app");
 
 const routes = {
   "/": menu,
+  "/announcements": announcementsView,
   "/profile": profileView,
   "/leaderboard": leaderboardView,
   "/guide": guide,
@@ -49,6 +52,13 @@ const routes = {
 
 let authGate = null;
 
+const announcementCenter = createAnnouncementCenter({
+  client: accountClient,
+  onStateChange: (hasUnread) => {
+    window.dispatchEvent(new CustomEvent("haruhi:announcement-state", { detail: { hasUnread } }));
+  },
+});
+
 const router = createRouter({
   routes,
   outlet,
@@ -63,6 +73,7 @@ authGate = createAuthGate({
   router,
   authView,
   getMe: () => accountClient.getMe(),
+  onAuthenticatedSession: () => announcementCenter.checkForUnread(),
 });
 
 // 让各路由模块在需要时也能编程式导航
