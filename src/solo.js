@@ -47,7 +47,6 @@ import {
   resetShipDestructionEffects,
 } from "./ship-destruction-effects.js";
 import {
-  createYukiRadarGpuEffect,
   drawBattleWorld,
   drawMinimap,
   drawPauseOverlay,
@@ -884,9 +883,7 @@ function render(state = app.state) {
     selectedZoneId: app.selectedZoneId,
     pendingSubSkillAim: app.pendingSubSkillAim,
     pointer: app.pointer,
-    gpuRadar: canvasRenderer.supportsRadarEffect,
   };
-  canvasRenderer.setRadarEffect(createYukiRadarGpuEffect(frame, view, scale));
   drawBattleWorld(ctx, frame);
   if (tutorialIllustration) {
     drawTutorialIllustration(tutorialIllustration);
