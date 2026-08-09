@@ -3,6 +3,7 @@ import {
   TUTORIAL_ATTACK_TARGET,
   TUTORIAL_MOVE_TARGET,
   tutorialEventStepSatisfied,
+  tutorialMobileDockLayout,
   tutorialTargetContainsPoint,
 } from "../../src/tutorial.js";
 import { assert, runSteps } from "./helpers.mjs";
@@ -112,8 +113,28 @@ function tutorialEventTriggerCheck() {
   );
 }
 
+function tutorialMobileDockCheck() {
+  const buttons = [
+    { top: 500, bottom: 540 }, { top: 500, bottom: 540 }, { top: 500, bottom: 540 },
+    { top: 546, bottom: 586 }, { top: 546, bottom: 586 }, { top: 546, bottom: 586 },
+    { top: 592, bottom: 632 }, { top: 592, bottom: 632 }, { top: 592, bottom: 632 },
+  ];
+  const dock = tutorialMobileDockLayout({
+    buttonRects: buttons,
+    hudRect: { top: 390, bottom: 660, left: 8, right: 382 },
+    viewportWidth: 390,
+    viewportHeight: 668,
+  });
+  assert(dock.topBoundary === 592, "移动教程说明区没有落在倒数第二排按钮之下");
+  assert(dock.bottomInset === 16, "移动教程说明区没有保留HUD底部内距");
+  assert(dock.maxHeight === 60, "移动教程说明区高度越过了倒数第二排按钮边界");
+  assert(dock.leftInset === 16, "移动教程说明区左侧没有对齐HUD内边距");
+  assert(dock.rightInset === 16, "移动教程说明区右侧没有对齐HUD内边距");
+}
+
 export function runTutorialSuite() {
   tutorialTargetGeometryCheck();
   tutorialEventTriggerCheck();
+  tutorialMobileDockCheck();
   tutorialBattleRulesCheck();
 }

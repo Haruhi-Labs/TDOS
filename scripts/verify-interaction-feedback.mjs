@@ -256,6 +256,60 @@ async function verifyDesktopPageFlipFit() {
   await context.close();
 }
 
+async function verifyMobileTutorialDock(viewport, name) {
+  const context = await browser.newContext({ viewport, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await page.goto(`${baseUrl}/play/tutorial`, { waitUntil: "networkidle" });
+  const card = page.locator(".tut-card.ready");
+  await card.waitFor({ state: "visible" });
+  await page.waitForTimeout(400);
+
+  async function geometry() {
+    return page.evaluate(() => {
+      const cardElement = document.querySelector(".tut-card");
+      const cardRect = cardElement.getBoundingClientRect();
+      const canvasRect = document.querySelector("#gameCanvas").getBoundingClientRect();
+      const buttonRects = [...document.querySelectorAll(".mobile-action-grid > button")]
+        .map((element) => element.getBoundingClientRect());
+      const rowTops = [...new Set(buttonRects.map((rect) => Math.round(rect.top)))].sort((a, b) => a - b);
+      const secondLastTop = rowTops.at(-2);
+      const secondLastBottom = Math.max(
+        ...buttonRects.filter((rect) => Math.abs(rect.top - secondLastTop) <= 2).map((rect) => rect.bottom),
+      );
+      const overlapsCanvas = !(
+        cardRect.right <= canvasRect.left
+        || cardRect.left >= canvasRect.right
+        || cardRect.bottom <= canvasRect.top
+        || cardRect.top >= canvasRect.bottom
+      );
+      return {
+        cardTop: cardRect.top,
+        cardBottom: cardRect.bottom,
+        secondLastBottom,
+        overlapsCanvas,
+        scrollHeight: cardElement.scrollHeight,
+        clientHeight: cardElement.clientHeight,
+      };
+    });
+  }
+
+  const initial = await geometry();
+  assert.ok(initial.cardTop >= initial.secondLastBottom - 0.75, `${name}教程说明越过倒数第二排按钮上界`);
+  assert.ok(initial.cardBottom <= viewport.height - 7, `${name}教程说明越出底部安全区`);
+  assert.equal(initial.overlapsCanvas, false, `${name}教程说明仍遮挡战场`);
+
+  await card.locator(".tut-body").evaluate((element) => {
+    element.textContent = "用于验证移动端长篇教程说明始终收纳在底部说明坞内。".repeat(12);
+  });
+  const longCopy = await geometry();
+  assert.ok(longCopy.cardTop >= longCopy.secondLastBottom - 0.75, `${name}长篇教程说明越过倒数第二排按钮上界`);
+  assert.ok(longCopy.cardBottom <= viewport.height - 7, `${name}长篇教程说明越出底部安全区`);
+  assert.ok(longCopy.scrollHeight > longCopy.clientHeight, `${name}长篇教程说明没有在限定区域内滚动`);
+  assert.equal(longCopy.overlapsCanvas, false, `${name}长篇教程说明仍遮挡战场`);
+
+  await context.close();
+}
+
 try {
   await verifyPointerFeedback({
     name: "桌面端",
@@ -268,7 +322,9 @@ try {
     hasTouch: true,
   });
   await verifyDesktopPageFlipFit();
-  console.log("双端按钮状态与桌面翻页几何一致性检查通过");
+  await verifyMobileTutorialDock({ width: 375, height: 667 }, "竖屏短屏");
+  await verifyMobileTutorialDock({ width: 844, height: 390 }, "移动端横屏");
+  console.log("双端按钮状态、桌面翻页与移动教程说明坞检查通过");
 } finally {
   await browser.close();
   await server?.close();

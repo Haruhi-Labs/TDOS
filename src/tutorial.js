@@ -138,6 +138,8 @@ let selectedShips = new Set();
 let scoutLaunched = false;
 let splitLevelReached = 0;
 let yukiSkillCast = false;
+let mobileLayoutObserver = null;
+let removeMobileLayoutListeners = null;
 
 function step() {
   return STEPS[activeIndex] || null;
@@ -205,13 +207,97 @@ function closeBriefing() {
   ctx?.onStageChange?.("free", 7);
 }
 
+export function tutorialMobileDockLayout({
+  buttonRects = [],
+  hudRect = null,
+  viewportWidth = 0,
+  viewportHeight = 0,
+} = {}) {
+  const width = Math.max(0, Number(viewportWidth) || 0);
+  const height = Math.max(0, Number(viewportHeight) || 0);
+  const visibleButtons = buttonRects
+    .map((rect) => ({
+      top: Number(rect?.top),
+      bottom: Number(rect?.bottom),
+    }))
+    .filter((rect) => Number.isFinite(rect.top) && Number.isFinite(rect.bottom) && rect.bottom > rect.top)
+    .sort((a, b) => a.top - b.top);
+
+  const rows = [];
+  for (const rect of visibleButtons) {
+    const row = rows.find((candidate) => Math.abs(candidate.top - rect.top) <= 2);
+    if (row) {
+      row.bottom = Math.max(row.bottom, rect.bottom);
+    } else {
+      rows.push({ top: rect.top, bottom: rect.bottom });
+    }
+  }
+
+  const secondLastRow = rows[Math.max(0, rows.length - 2)] || null;
+  const hudTop = Number.isFinite(Number(hudRect?.top)) ? Number(hudRect.top) : height;
+  const hudBottom = Number.isFinite(Number(hudRect?.bottom)) ? Number(hudRect.bottom) : height;
+  const topBoundary = Math.min(height, Math.max(0, (secondLastRow?.bottom ?? hudTop) + 6));
+  const bottomInset = Math.max(8, height - Math.min(height, hudBottom) + 8);
+  const leftInset = Math.max(8, (Number(hudRect?.left) || 0) + 8);
+  const rightInset = Math.max(8, width - (Number(hudRect?.right) || width) + 8);
+
+  return {
+    topBoundary,
+    bottomInset,
+    leftInset,
+    rightInset,
+    maxHeight: Math.max(1, height - bottomInset - topBoundary),
+  };
+}
+
 function layoutMobile() {
   if (!overlayEl) return;
   overlayEl.classList.toggle("tut-mobile", isMobile());
-  if (isMobile()) {
+  if (!isMobile()) {
+    for (const property of [
+      "--tut-mobile-dock-bottom",
+      "--tut-mobile-dock-left",
+      "--tut-mobile-dock-right",
+      "--tut-mobile-dock-max-height",
+    ]) {
+      overlayEl.style.removeProperty(property);
+    }
+    return;
+  }
+
+  const hud = document.getElementById("mobileBattleHud");
+  const actionButtons = [...document.querySelectorAll(".mobile-action-grid > button")];
+  if (!hud || actionButtons.length === 0) return;
+  const viewportWidth = window.visualViewport?.width || innerWidth;
+  const viewportHeight = window.visualViewport?.height || innerHeight;
+  const dock = tutorialMobileDockLayout({
+    buttonRects: actionButtons.map((button) => button.getBoundingClientRect()),
+    hudRect: hud.getBoundingClientRect(),
+    viewportWidth,
+    viewportHeight,
+  });
+  overlayEl.style.setProperty("--tut-mobile-dock-bottom", `${dock.bottomInset}px`);
+  overlayEl.style.setProperty("--tut-mobile-dock-left", `${dock.leftInset}px`);
+  overlayEl.style.setProperty("--tut-mobile-dock-right", `${dock.rightInset}px`);
+  overlayEl.style.setProperty("--tut-mobile-dock-max-height", `${dock.maxHeight}px`);
+}
+
+function observeMobileLayout() {
+  const visualViewport = window.visualViewport;
+  window.addEventListener("resize", layoutMobile);
+  visualViewport?.addEventListener("resize", layoutMobile);
+  visualViewport?.addEventListener("scroll", layoutMobile);
+  removeMobileLayoutListeners = () => {
+    window.removeEventListener("resize", layoutMobile);
+    visualViewport?.removeEventListener("resize", layoutMobile);
+    visualViewport?.removeEventListener("scroll", layoutMobile);
+  };
+  if (typeof ResizeObserver === "function") {
+    mobileLayoutObserver = new ResizeObserver(layoutMobile);
     const hud = document.getElementById("mobileBattleHud");
-    const top = hud?.getBoundingClientRect().top || innerHeight;
-    overlayEl.style.setProperty("--tut-hud-clear", `${Math.max(12, innerHeight - top)}px`);
+    const actionGrid = document.querySelector(".mobile-action-grid");
+    if (hud) mobileLayoutObserver.observe(hud);
+    if (actionGrid) mobileLayoutObserver.observe(actionGrid);
   }
 }
 
@@ -375,10 +461,15 @@ function start(context = {}) {
   cardEl.className = "tut-card ready";
   overlayEl.appendChild(cardEl);
   document.body.appendChild(overlayEl);
+  observeMobileLayout();
   goto(0);
 }
 
 function stop() {
+  removeMobileLayoutListeners?.();
+  removeMobileLayoutListeners = null;
+  mobileLayoutObserver?.disconnect();
+  mobileLayoutObserver = null;
   clearHighlights();
   overlayEl?.remove();
   overlayEl = null;
