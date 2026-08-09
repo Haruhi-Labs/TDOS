@@ -212,6 +212,21 @@ function closeBriefing() {
   ctx?.onStageChange?.("free", 7);
 }
 
+const MOBILE_CARD_FIT_CLASSES = ["tut-fit-compact", "tut-fit-tight"];
+
+function fitMobileCard() {
+  if (!cardEl) return;
+  cardEl.classList.remove(...MOBILE_CARD_FIT_CLASSES);
+  if (!isMobile()) return;
+
+  // 先使用舒展字号；只有真实内容超出说明坞时才逐档收紧。
+  // 固定高度配合 scrollHeight 检测，让短文案充分利用两行空间，长文案仍完整且无滚动条。
+  for (const className of MOBILE_CARD_FIT_CLASSES) {
+    if (cardEl.scrollHeight <= cardEl.clientHeight + 1) break;
+    cardEl.classList.add(className);
+  }
+}
+
 export function tutorialMobileDockLayout({
   buttonRects = [],
   hudRect = null,
@@ -259,6 +274,7 @@ function layoutMobile() {
   if (!overlayEl) return;
   overlayEl.classList.toggle("tut-mobile", isMobile());
   if (!isMobile()) {
+    fitMobileCard();
     for (const property of [
       "--tut-mobile-dock-bottom",
       "--tut-mobile-dock-left",
@@ -285,6 +301,7 @@ function layoutMobile() {
   overlayEl.style.setProperty("--tut-mobile-dock-left", `${dock.leftInset}px`);
   overlayEl.style.setProperty("--tut-mobile-dock-right", `${dock.rightInset}px`);
   overlayEl.style.setProperty("--tut-mobile-dock-max-height", `${dock.maxHeight}px`);
+  fitMobileCard();
 }
 
 function observeMobileLayout() {
@@ -304,6 +321,7 @@ function observeMobileLayout() {
     if (hud) mobileLayoutObserver.observe(hud);
     if (actionGrid) mobileLayoutObserver.observe(actionGrid);
   }
+  document.fonts?.ready?.then(layoutMobile).catch(() => {});
 }
 
 export function tutorialTargetContainsPoint(point, target) {

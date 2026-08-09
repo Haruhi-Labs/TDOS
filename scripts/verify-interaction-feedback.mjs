@@ -268,6 +268,7 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
     return page.evaluate(() => {
       const cardElement = document.querySelector(".tut-card");
       const cardRect = cardElement.getBoundingClientRect();
+      const overlayStyle = getComputedStyle(document.querySelector(".tut-overlay"));
       const canvasRect = document.querySelector("#gameCanvas").getBoundingClientRect();
       const hudRect = document.querySelector("#mobileBattleHud").getBoundingClientRect();
       const buttonRects = [...document.querySelectorAll(".mobile-action-grid > button")]
@@ -286,6 +287,9 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
       return {
         cardTop: cardRect.top,
         cardBottom: cardRect.bottom,
+        dockHeight: parseFloat(overlayStyle.getPropertyValue("--tut-mobile-dock-max-height")),
+        copyFontSize: parseFloat(getComputedStyle(cardElement.querySelector(".tut-copy")).fontSize),
+        fitMode: [...cardElement.classList].find((className) => className.startsWith("tut-fit-")) || "",
         canvasWidth: canvasRect.width,
         canvasBottom: canvasRect.bottom,
         hudTop: hudRect.top,
@@ -307,6 +311,8 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
   assert.equal(initial.overlapsCanvas, false, `${name}教程说明仍遮挡战场`);
   assert.equal(initial.overflowY, "hidden", `${name}教程说明仍启用了内部滚动`);
   assert.ok(initial.scrollHeight <= initial.clientHeight + 1, `${name}首个教程阶段没有完整显示`);
+  assert.ok(Math.abs(initial.clientHeight + 2 - initial.dockHeight) <= 1, `${name}教程说明没有充分展开到可用高度`);
+  assert.ok(initial.copyFontSize >= 12, `${name}短教程文案没有使用舒展字号`);
 
   if (layout === "extremePortrait") {
     assert.equal(initial.gameWrapDisplay, "flex", `${name}被错误套用了横屏双栏布局`);
@@ -328,11 +334,14 @@ async function verifyMobileTutorialDock(viewport, name, layout = "standardPortra
   await card.locator(".tut-wait").evaluate((element) => {
     element.textContent = "↳ 需要恢复能量时，主动降低档位";
   });
+  await page.evaluate(() => window.dispatchEvent(new Event("resize")));
+  await page.waitForTimeout(50);
   const longCopy = await geometry();
   assert.ok(longCopy.cardTop >= longCopy.secondLastBottom - 0.75, `${name}长篇教程说明越过倒数第二排按钮上界`);
   assert.ok(longCopy.cardBottom <= viewport.height - 7, `${name}长篇教程说明越出底部安全区`);
   assert.equal(longCopy.overflowY, "hidden", `${name}长篇教程说明仍启用了内部滚动`);
   assert.ok(longCopy.scrollHeight <= longCopy.clientHeight + 1, `${name}长篇教程说明没有完整显示`);
+  assert.ok(longCopy.copyFontSize >= 10.2, `${name}长篇教程说明字号被压缩得过小`);
   assert.equal(longCopy.overlapsCanvas, false, `${name}长篇教程说明仍遮挡战场`);
 
   await context.close();
