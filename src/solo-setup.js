@@ -3,6 +3,7 @@ import { startStarfield } from "./starfield.js";
 import { startMenuHero } from "./menu-hero.js";
 import { isMobile } from "./mobile.js";
 import { t } from "./i18n.js";
+import { PVE_CAMPAIGN_MENU_ITEMS } from "./pve/campaigns.js";
 
 const DIFFICULTIES = [
   { key: "easy", no: "I", label: "简单", sub: "敌方数值 ×0.8 · 反应迟钝" },
@@ -23,7 +24,7 @@ function menuItem({ no, label, sub, action }) {
     </button>`;
 }
 
-export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
+export function createSoloSetupFlow({ onStandard, onPveCampaign, onTutorial, onHome }) {
   const controller = new AbortController();
   const faction = getFaction();
   const mobile = isMobile();
@@ -48,6 +49,7 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
 
   const panel = screen.querySelector(".solo-flow-panel");
   let step = "campaign";
+  let selectedCampaign = "standard";
   let changing = false;
 
   function campaignHtml() {
@@ -61,6 +63,10 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
       <nav class="ts-menu" aria-label="${t("选择战役")}">
         ${menuItem({ no: "01", label: "标准对战", sub: "自由编队，对抗统合思念体舰队", action: "standard" })}
         ${menuItem({ no: "02", label: "教程", sub: "固定舰队，循序学习航行、侦察、分舰与交火", action: "tutorial" })}
+        ${PVE_CAMPAIGN_MENU_ITEMS.map((item) => menuItem({
+          ...item,
+          action: `campaign:${item.id}`,
+        })).join("")}
       </nav>
       <button type="button" class="solo-flow-back" data-action="home">‹ ${t("返回主菜单")}</button>`;
   }
@@ -118,16 +124,27 @@ export function createSoloSetupFlow({ onStandard, onTutorial, onHome }) {
     const action = event.target.closest("[data-action]")?.dataset.action;
     if (!action) return;
     const keyboardActivation = event.detail === 0;
-    if (action === "standard") render("difficulty", "forward", false, keyboardActivation);
+    if (action === "standard") {
+      selectedCampaign = "standard";
+      render("difficulty", "forward", false, keyboardActivation);
+    }
     else if (action === "tutorial") conceal(() => onTutorial());
+    else if (action.startsWith("campaign:")) {
+      selectedCampaign = action.slice("campaign:".length);
+      render("difficulty", "forward", false, keyboardActivation);
+    }
     else if (action === "campaign") render("campaign", "back", false, keyboardActivation);
     else if (action === "home") onHome();
     else if (action.startsWith("difficulty:")) {
       const difficulty = action.split(":")[1];
       setDifficulty(difficulty);
-      // 先同步挂载不透明的阵容选择层，再隐藏本层，避免两层切换间露出战场一帧。
-      onStandard(difficulty);
-      screen.classList.add("concealed");
+      if (selectedCampaign === "standard") {
+        // 先同步挂载不透明的阵容选择层，再隐藏本层，避免两层切换间露出战场一帧。
+        onStandard(difficulty);
+        screen.classList.add("concealed");
+      } else {
+        conceal(() => onPveCampaign(selectedCampaign, difficulty));
+      }
     }
   }, { signal: controller.signal });
 

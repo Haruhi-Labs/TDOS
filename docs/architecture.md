@@ -73,6 +73,15 @@
 - `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；双方都能看到波纹，但只有施放方获得波带覆盖区域的真实视野。
 - `src/solo.js`、`src/online.js`：只编排各模式生命周期、输入和数据来源，不复制公共战场表现。
 
+### 单人 PVE 战役
+
+- `src/pve/campaigns.js`：只保存战役菜单元数据、固定编制、目标与开局台本，不接触 DOM 或战斗状态。
+- `src/pve/campaign-runtime.js`：无 DOM 的战役规则运行时，负责 AI 援军、相位跃迁和分阶段权限剥离；通过 `Team` 的默认关闭扩展点复用共享模拟，不向多人模式注入战役判断。
+- `src/pve/campaign-presentation.js`：立绘台本、阶段 HUD 与战场短台词，只消费战役定义和运行时事件。
+- `src/solo.js`：在固定逻辑帧前后调用战役运行时，并在序幕期间暂停权威模拟；标准对战、教程与 PVE 仍共用同一个 `MatchSimulation` 和战场渲染入口。
+
+战役规则必须保持可在 Node 环境无界面运行。新增或修改 PVE 机制时运行 `npm run test:pve`，并用双 AI 批量模拟检查必胜、必败和超时拖局；表现层另做桌面与极小竖屏浏览器回归。
+
 ### 联机链路
 
 - `src/online/state-sync.js`：客户端快照时间轴采样、有限外推、本地航线覆盖和显示稳定；具体状态插值复用战斗界面的纯插值模块，不读 DOM，也不管理 WebSocket。
@@ -116,6 +125,7 @@
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 朝仓视野波视觉 | `src/battle/render/vision-wave.js` | 视野波规则与单人/联机/观战回归 |
 | 单人/联机画面抖动与状态插值 | `src/battle/state-interpolation.js` | `src/solo.js`、`src/online/state-sync.js`、`scripts/verify-online-state-sync.mjs` |
+| PVE 战役编制、剧情与阶段规则 | `src/pve/campaigns.js`、`campaign-runtime.js` | `src/pve/campaign-presentation.js`、`src/solo.js`、`scripts/verify-pve-campaigns.mjs` |
 | 联机快照时间轴、外推和预测 | `src/online/state-sync.js` | `src/online/snapshot-transport.js`、`scripts/verify-online-state-sync.mjs` |
 | 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/action-dispatcher.js`、本地/远程传输测试 |
 | 规则版本与兼容门禁 | `shared/protocol/ruleset-version.js` | `src/online/snapshot-transport.js`、`server/server.js` |
@@ -135,10 +145,11 @@
 3. 新增或修改动作时运行 `npm run test:actions`。
 4. 改动权威规则并递增规则版本时运行 `npm run test:ruleset`。
 5. 规则或 AI 改动运行 `npm run test:core`。
-6. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
-7. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
-8. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
-9. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
+6. PVE 战役规则或演出改动运行 `npm run test:pve`，并回归桌面和极小竖屏。
+7. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
+8. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
+9. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
+10. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
 

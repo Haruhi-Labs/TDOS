@@ -41,6 +41,15 @@ import {
   TUTORIAL_MOVE_TARGET,
 } from "./tutorial.js";
 import { createSoloSetupFlow } from "./solo-setup.js";
+import {
+  getPveCampaign,
+  isPveCampaign,
+} from "./pve/campaigns.js";
+import {
+  createPveCampaignRuntime,
+  pveSimulationOptions,
+} from "./pve/campaign-runtime.js";
+import { createPveCampaignPresentation } from "./pve/campaign-presentation.js";
 import { showConfirm } from "./confirm-dialog.js";
 import {
   createShipDestructionEffects,
@@ -175,6 +184,9 @@ function initApp() {
   renderCurrentState: null,
   renderState: null,
   campaign: "standard",
+  campaignRuntime: null,
+  campaignPresentation: null,
+  storyActive: false,
   playerLoadout: readStoredLoadout(),
   enemyLoadout: cloneLoadout(DEFAULT_AI_LOADOUT),
   playerColor: getFaction(), // 玩家阵营立绘色（取自统一档案，可被角色选择覆盖）
@@ -271,7 +283,7 @@ function clearLog() {
 }
 
 function applyAction(action) {
-  if (!actionTransport) {
+  if (!actionTransport || app?.storyActive) {
     return false;
   }
   if (tutorial.isActive() && !tutorial.allowsAction(action)) {
@@ -388,14 +400,18 @@ function updateShipSwitchLabels(loadout) {
 }
 
 function createSimulation() {
+  const pveOptions = pveSimulationOptions(app.campaign, getDifficulty());
   return new MatchSimulation({
-    mode: "ai",
+    ...(pveOptions || { mode: "ai" }),
     worldSize: LOGICAL,
-    teamNames: {
+    teamNames: pveOptions ? {
+      A: t(pveOptions.teamNames.A),
+      B: t(pveOptions.teamNames.B),
+    } : {
       A: t("SOS先遣舰队"),
       B: t("统合思念体舰队"),
     },
-    teamLoadouts: {
+    teamLoadouts: pveOptions?.teamLoadouts || {
       A: app.playerLoadout,
       B: app.enemyLoadout,
     },
@@ -405,12 +421,23 @@ function createSimulation() {
 }
 
 function resetMatch(logMessage = true) {
+  app.campaignPresentation?.destroy();
+  app.campaignPresentation = null;
+  app.campaignRuntime = null;
+  app.storyActive = false;
   if (app.campaign === "standard") {
     app.enemyLoadout = randomAiLoadout(); // 每局随机 AI 阵容(主舰不含长门/鹤屋),结算画面据此展示敌方
+  } else if (isPveCampaign(app.campaign)) {
+    const campaign = getPveCampaign(app.campaign);
+    app.playerLoadout = campaign.playerLoadout;
+    app.enemyLoadout = campaign.enemyLoadout;
   } else {
     app.enemyLoadout = cloneLoadout(DEFAULT_AI_LOADOUT); // 教程敌舰技能由仿真层禁用，阵容只用于既有绘制结构
   }
   app.sim = createSimulation();
+  if (isPveCampaign(app.campaign)) {
+    app.campaignRuntime = createPveCampaignRuntime(app.sim, app.campaign, getDifficulty());
+  }
   app.state = app.sim.serializeState();
   app.renderPreviousState = app.state;
   app.renderCurrentState = app.state;
@@ -427,6 +454,8 @@ function resetMatch(logMessage = true) {
   const mainShip = app.sim.teamA.ships.main;
   camera.reset({ x: mainShip.x, y: mainShip.y });
   updateShipSwitchLabels(app.playerLoadout);
+  if (ui.applyLoadoutBtn) ui.applyLoadoutBtn.hidden = app.campaign !== "standard";
+  if (ui.restartBtn) ui.restartBtn.textContent = isPveCampaign(app.campaign) ? t("再次挑战") : t("再来一局");
   if (logMessage) {
     clearLog();
     log(app.mobileMode ? t("战斗开始。点战场直接移动，按住侦察并拖向目标战区。") : t("战斗开始。右键单击设目标点；左键拖控制点调曲率、拖端点调路径；左键单击空白处选战区。"));
@@ -735,12 +764,13 @@ function showResultScreen(winnerSeat) {
   const subEl = document.getElementById("resultSub");
   const diffEl = document.getElementById("resultDiff");
   const versusEl = document.getElementById("resultVersus");
+  const pveCampaign = getPveCampaign(app.campaign);
 
   let cls, eyebrow, title, sub;
   if (winnerSeat === "A") {
-    cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t("敌方舰队已被击溃");
+    cls = "result-win"; eyebrow = "VICTORY"; title = t("胜利"); sub = t(pveCampaign ? "战役目标已完成" : "敌方舰队已被击溃");
   } else if (winnerSeat === "B") {
-    cls = "result-lose"; eyebrow = "DEFEAT"; title = t("失败"); sub = t("SOS先遣舰队被歼灭");
+    cls = "result-lose"; eyebrow = "DEFEAT"; title = t("失败"); sub = t(pveCampaign ? "己方舰队被击溃" : "SOS先遣舰队被歼灭");
   } else {
     cls = "result-draw"; eyebrow = "STALEMATE"; title = t("战斗结束"); sub = t("双方同归于尽");
   }
@@ -753,14 +783,16 @@ function showResultScreen(winnerSeat) {
   const dm = difficultyMeta();
   diffEl.innerHTML = app.campaign === "tutorial"
     ? `<span class="result-diff-label">${t("战役")}</span><span class="result-diff-val rd-normal">${t("教程")}</span>`
-    : `<span class="result-diff-label">${t("难度")}</span><span class="result-diff-val rd-${dm.cls}">${t(dm.label)}</span>`;
+    : pveCampaign
+      ? `<span class="result-diff-label">${t(pveCampaign.shortTitle)}</span><span class="result-diff-val rd-${dm.cls}">${t(dm.label)}</span>`
+      : `<span class="result-diff-label">${t("难度")}</span><span class="result-diff-val rd-${dm.cls}">${t(dm.label)}</span>`;
 
   const playerFaction = getFaction();
   const enemyFaction = playerFaction === "blue" ? "red" : "blue";
   versusEl.innerHTML =
-    resultSideHTML(app.playerLoadout, playerFaction, t("SOS先遣舰队"), "result-side-player") +
+    resultSideHTML(app.playerLoadout, playerFaction, t(pveCampaign?.playerTeamName || "SOS先遣舰队"), "result-side-player") +
     `<div class="result-vs"><span>VS</span></div>` +
-    resultSideHTML(app.enemyLoadout, enemyFaction, t("统合思念体舰队"), "result-side-enemy");
+    resultSideHTML(app.enemyLoadout, enemyFaction, t(pveCampaign?.enemyTeamName || "统合思念体舰队"), "result-side-enemy");
 
   // 重新触发入场动画
   card.classList.remove("result-in");
@@ -848,7 +880,7 @@ function render(state = app.state) {
 
   // backing store(设备像素)对逻辑世界(LOGICAL)的比例:整幅画面放大到物理像素 → 矢量线条像素级清晰。
   const scale = canvas.width / LOGICAL;
-  camera.updateCamera();
+  if (!app.storyActive) camera.updateCamera();
   const view = camera.currentViewState();
   ctx.setTransform(scale, 0, 0, scale, 0, 0); // 基准变换:屏幕/UI 空间(逻辑坐标 → 物理像素)
   ctx.save();
@@ -887,7 +919,7 @@ function render(state = app.state) {
 
   // 屏幕空间:角色立绘、移动端小地图、暂停遮罩
   const activeShip = own?.ships?.[app.selectedShipKey] || null;
-  if (activeShip && activeShip.alive) {
+  if (activeShip && activeShip.alive && !app.storyActive) {
     drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, app.playerColor);
   }
 
@@ -902,12 +934,15 @@ function tick(timestamp) {
   if (!running) return;
   const simulationActive = Boolean(
     !app.paused &&
+    !app.storyActive &&
     app.sim &&
     (!app.state || app.state.phase !== "finished")
   );
   const stepCount = app.logicClock.advance(timestamp, (stepSeconds) => {
     app.renderPreviousState = app.renderCurrentState || app.state || app.sim.serializeState();
+    app.campaignRuntime?.updateBeforeStep(stepSeconds);
     app.sim.update(stepSeconds);
+    app.campaignRuntime?.updateAfterStep(stepSeconds);
     app.renderCurrentState = app.sim.serializeState();
   }, {
     active: simulationActive,
@@ -938,6 +973,7 @@ function tick(timestamp) {
     : app.state;
 
   tutorial.update(app.state);
+  app.campaignPresentation?.update();
   updateUi();
   render(app.renderState);
 
@@ -1117,6 +1153,7 @@ function bindUiEvents() {
 
   ui.restartBtn.addEventListener("click", () => {
     if (app.campaign === "tutorial") launchTutorialCampaign();
+    else if (isPveCampaign(app.campaign)) launchPveCampaign(app.campaign);
     else showCharacterSelectScreen();
   });
 
@@ -1507,6 +1544,63 @@ function launchTutorialCampaign() {
   updateUi();
 }
 
+function syncCampaignOpeningState(step) {
+  if (!app?.sim) return;
+  const state = app.sim.serializeState();
+  app.state = state;
+  app.renderPreviousState = state;
+  app.renderCurrentState = state;
+  app.renderState = state;
+  const size = app.sim.worldSize;
+  if (step?.cue === "enemy-cheat" || step?.side === "right") {
+    camera.centerCameraOn(size * 0.7, size * 0.5, true);
+  } else if (step?.cue === "yuki-arrives" || step?.cue === "ally-lock") {
+    const ally = app.campaignRuntime?.ally;
+    camera.centerCameraOn(ally?.x || size * 0.25, ally?.y || size * 0.56, true);
+  } else {
+    camera.centerCameraOn(size * 0.5, size * 0.5, true);
+  }
+  render(state);
+}
+
+function launchPveCampaign(campaignId) {
+  const campaign = getPveCampaign(campaignId);
+  if (!campaign) return;
+  setupFlow?.destroy();
+  setupFlow = null;
+  const battleView = document.getElementById("battleView");
+  battleView?.removeAttribute("inert");
+  tutorial.stop();
+  app.campaign = campaignId;
+  app.playerLoadout = campaign.playerLoadout;
+  app.enemyLoadout = campaign.enemyLoadout;
+  applyPlayerFaction(getFaction(), app.playerLoadout);
+  syncLoadoutControls(app.playerLoadout);
+  resetMatch(true);
+  app.storyActive = true;
+  app.campaignPresentation = createPveCampaignPresentation({
+    battleView,
+    campaign,
+    runtime: app.campaignRuntime,
+    getFaction: () => app.playerColor,
+    isMobile: () => app.mobileMode,
+    onOpeningCue: syncCampaignOpeningState,
+    onOpeningComplete: () => {
+      if (!app) return;
+      app.storyActive = false;
+      app.logicClock.reset(performance.now());
+      const state = app.sim.serializeState();
+      app.state = state;
+      app.renderPreviousState = state;
+      app.renderCurrentState = state;
+      app.renderState = state;
+      updateUi();
+    },
+  });
+  beginSimulationLoop();
+  updateUi();
+}
+
 function showCharacterSelectScreen({ fromSetup = false } = {}) {
   document.getElementById("battleView")?.setAttribute("inert", "");
   charSelect = createCharacterSelect((loadout, color) => {
@@ -1581,6 +1675,7 @@ export function mount(root) {
   bindUiEvents();
   setupFlow = createSoloSetupFlow({
     onStandard: () => showCharacterSelectScreen({ fromSetup: true }),
+    onPveCampaign: launchPveCampaign,
     onTutorial: launchTutorialCampaign,
     onHome: () => window.__navigate?.("/"),
   });
@@ -1595,6 +1690,7 @@ function unmount() {
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
   tutorial.stop(); // 静默拆掉独立教程覆盖层
+  app?.campaignPresentation?.destroy();
   setupFlow?.destroy();
   setupFlow = null;
   if (ac) ac.abort();

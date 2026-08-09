@@ -4373,6 +4373,304 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   }
 }
 
+/* ═══════════════ PVE 战役演出 / 战场阶段提示 ═══════════════ */
+.pve-story {
+  --pve-portrait-accent: #f0d488;
+  position: fixed;
+  inset: 0;
+  z-index: 180;
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, #02071338 0%, transparent 44%, #02050dd9 100%),
+    radial-gradient(circle at 50% 45%, transparent 0 30%, #02050d80 82%);
+  isolation: isolate;
+}
+.pve-story::before,
+.pve-story::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+}
+.pve-story::before {
+  inset: 0;
+  z-index: -1;
+  background: repeating-linear-gradient(180deg, transparent 0 4px, #8adfff08 5px);
+  opacity: 0.65;
+}
+.pve-story::after {
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: min(62vw, 860px);
+  transform: translateX(-50%);
+  border-inline: 1px solid #84dfff12;
+  background: linear-gradient(90deg, transparent, #7ce6ff08 50%, transparent);
+}
+.pve-story-scan {
+  position: absolute;
+  z-index: 0;
+  top: 14%;
+  left: 8%;
+  right: 8%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, #8eefffcc 25% 75%, transparent);
+  box-shadow: 0 0 15px #59d7ff88;
+  opacity: 0.46;
+  animation: pve-story-scan 4.8s linear infinite;
+}
+.pve-story-portrait {
+  position: absolute;
+  z-index: 1;
+  bottom: 132px;
+  width: min(43vw, 620px);
+  height: min(78vh, 820px);
+  margin: 0;
+  opacity: 0.94;
+  filter: drop-shadow(0 0 34px color-mix(in srgb, var(--pve-portrait-accent) 28%, transparent));
+  transition: left 320ms ease, right 320ms ease;
+}
+.pve-story-left .pve-story-portrait { left: max(3vw, 300px); }
+.pve-story-right .pve-story-portrait { right: 2vw; }
+.pve-story-portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  -webkit-mask-image: linear-gradient(180deg, #000 0 72%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0 72%, transparent 100%);
+}
+.pve-story-right .pve-story-portrait img { transform: scaleX(-1); }
+.pve-story-script {
+  position: absolute;
+  z-index: 3;
+  right: 4vw;
+  bottom: max(24px, env(safe-area-inset-bottom, 0px));
+  left: max(340px, 25vw);
+  min-height: 150px;
+  padding: 17px 22px 16px;
+  border: 1px solid var(--brass);
+  border-radius: 8px;
+  background:
+    linear-gradient(100deg, #110b08f2, #151018ed 70%, #0c111aed),
+    var(--tex-leather);
+  box-shadow: inset 0 0 0 1px #76522c44, 0 18px 55px #000c;
+  color: var(--ivory);
+  cursor: pointer;
+}
+.pve-story-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font: 700 0.68rem/1.2 var(--font-engrave);
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+}
+.pve-story-speaker {
+  margin: 8px 0 6px;
+  font: 800 clamp(1.14rem, 2vw, 1.48rem)/1.2 var(--font-cn);
+  letter-spacing: 0.08em;
+  color: var(--gilt-bright);
+  text-shadow: 0 1px 8px #000;
+}
+.pve-story-text {
+  max-width: 66em;
+  margin: 0;
+  font: 500 clamp(0.9rem, 1.28vw, 1.04rem)/1.68 var(--font-cn);
+  letter-spacing: 0.025em;
+  color: var(--ivory);
+}
+.pve-story-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+}
+.pve-story-actions button {
+  min-height: 34px;
+  padding: 6px 16px;
+}
+.pve-story-skip {
+  border-color: transparent !important;
+  background: none !important;
+  box-shadow: none !important;
+  color: var(--text-muted) !important;
+  font-size: 0.75rem;
+}
+.pve-story-next { min-width: 120px; }
+.pve-story-title-step .pve-story-script,
+.pve-story-objective-step .pve-story-script {
+  left: 50%;
+  width: min(760px, 86vw);
+  transform: translateX(-50%);
+  text-align: center;
+}
+.pve-story-title-step .pve-story-actions,
+.pve-story-objective-step .pve-story-actions { justify-content: center; }
+.pve-story-objective-step .pve-story-script {
+  border-color: #d9bd72;
+  box-shadow: inset 0 0 0 1px #e6ca8155, 0 0 48px #d4ae3d1c, 0 18px 55px #000c;
+}
+.pve-story-hostile .pve-story-speaker { color: #ff9c9c; }
+.pve-story-step-enter .pve-story-script { animation: pve-script-enter 260ms ease both; }
+.pve-story-step-enter .pve-story-portrait { animation: pve-portrait-enter 380ms cubic-bezier(0.2, 0.72, 0.25, 1) both; }
+.pve-story-closing { opacity: 0; transition: opacity 240ms ease; pointer-events: none; }
+
+.pve-campaign-hud {
+  position: fixed;
+  z-index: 115;
+  top: 18px;
+  left: calc(50% + 145px);
+  width: min(510px, calc(100vw - 390px));
+  transform: translateX(-50%);
+  padding: 9px 14px 10px;
+  border: 1px solid #9c7c4577;
+  border-radius: 7px;
+  background: linear-gradient(110deg, #090d17e8, #17100ce0);
+  box-shadow: 0 10px 28px #0009, inset 0 1px #e8ce8630;
+  pointer-events: none;
+}
+.pve-campaign-hud[hidden],
+.pve-event-toast[hidden] { display: none; }
+.pve-hud-heading { display: flex; align-items: baseline; gap: 9px; }
+.pve-hud-kicker { font: 800 0.6rem/1 var(--font-engrave); letter-spacing: 0.16em; color: #7bcce5; }
+.pve-hud-title { font: 800 0.88rem/1.2 var(--font-cn); letter-spacing: 0.08em; color: var(--gilt-bright); }
+.pve-hud-phase { margin-top: 4px; font: 700 0.78rem/1.25 var(--font-cn); color: var(--ivory); }
+.pve-hud-detail { margin-top: 2px; font: 500 0.67rem/1.3 var(--font-cn); color: var(--text-muted); }
+.pve-hud-timer {
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  font: 800 0.68rem/1 var(--font-engrave);
+  color: #ffbe7d;
+}
+.pve-hud-advantage { border-color: #d6b95d99; }
+.pve-hud-danger { border-color: #e05e6a99; }
+.pve-hud-danger .pve-hud-phase { color: #ffacb1; }
+
+.pve-event-toast {
+  position: fixed;
+  z-index: 125;
+  top: 112px;
+  right: 30px;
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr);
+  align-items: center;
+  width: min(410px, calc(100vw - 370px));
+  min-height: 66px;
+  overflow: hidden;
+  border: 1px solid #8f744b88;
+  border-radius: 7px;
+  background: #090c15ef;
+  box-shadow: 0 12px 32px #000a;
+  pointer-events: none;
+}
+.pve-event-portrait { width: 58px; height: 72px; object-fit: cover; object-position: top center; align-self: end; }
+.pve-event-portrait[hidden] + .pve-event-copy { grid-column: 1 / -1; }
+.pve-event-copy { padding: 9px 12px; }
+.pve-event-speaker { font: 800 0.76rem/1.2 var(--font-cn); letter-spacing: 0.08em; color: var(--gilt-bright); }
+.pve-event-text { margin: 3px 0 0; font: 500 0.72rem/1.45 var(--font-cn); color: var(--ivory); }
+.pve-event-danger { border-color: #df667488; }
+.pve-event-danger .pve-event-speaker { color: #ff9aa4; }
+.pve-event-ally { border-color: #a996db88; }
+.pve-event-toast-enter { animation: pve-toast-enter 280ms cubic-bezier(0.2, 0.74, 0.25, 1) both; }
+
+@keyframes pve-story-scan {
+  0% { transform: translateY(-16vh); opacity: 0; }
+  12%, 82% { opacity: 0.45; }
+  100% { transform: translateY(72vh); opacity: 0; }
+}
+@keyframes pve-script-enter { from { opacity: 0; transform: translateY(9px); } }
+@keyframes pve-portrait-enter { from { opacity: 0; transform: translateX(-18px); } }
+@keyframes pve-toast-enter { from { opacity: 0; transform: translateX(24px); } }
+
+@media (max-width: 720px) {
+  .campaign-story-active .mobile-battle-hud { opacity: 0; pointer-events: none; }
+  .pve-story-mobile {
+    background: linear-gradient(180deg, #02071324 0 45%, #02050dcc 72% 100%);
+  }
+  .pve-story-mobile::after { width: 100%; border: 0; }
+  .pve-story-mobile .pve-story-portrait {
+    right: -8vw;
+    bottom: min(32dvh, 250px);
+    left: auto;
+    width: min(78vw, 430px);
+    height: min(64dvh, 560px);
+    opacity: 0.9;
+  }
+  .pve-story-mobile.pve-story-left .pve-story-portrait { right: auto; left: -9vw; }
+  .pve-story-mobile.pve-story-right .pve-story-portrait { right: -9vw; }
+  .pve-story-mobile .pve-story-script,
+  .pve-story-mobile.pve-story-title-step .pve-story-script,
+  .pve-story-mobile.pve-story-objective-step .pve-story-script {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    min-height: min(31dvh, 248px);
+    padding: 13px 15px calc(env(safe-area-inset-bottom, 0px) + 12px);
+    transform: none;
+    border-width: 1px 0 0;
+    border-radius: 0;
+    text-align: left;
+    cursor: pointer;
+  }
+  .pve-story-mobile .pve-story-meta { font-size: 0.57rem; }
+  .pve-story-mobile .pve-story-speaker { margin: 7px 0 4px; font-size: 1.05rem; }
+  .pve-story-mobile .pve-story-text { font-size: clamp(0.78rem, 3.4vw, 0.9rem); line-height: 1.52; }
+  .pve-story-mobile .pve-story-actions { margin-top: 8px; }
+  .pve-story-mobile.pve-story-title-step .pve-story-actions,
+  .pve-story-mobile.pve-story-objective-step .pve-story-actions { justify-content: flex-end; }
+  .pve-story-mobile .pve-story-skip { padding-inline: 7px; }
+  .pve-story-mobile .pve-story-next { min-width: 104px; }
+
+  .pve-campaign-hud-mobile {
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+    right: 10px;
+    left: 10px;
+    width: auto;
+    transform: none;
+    padding: 7px 10px 8px;
+  }
+  .pve-campaign-hud-mobile .pve-hud-title { font-size: 0.76rem; }
+  .pve-campaign-hud-mobile .pve-hud-phase { max-width: calc(100% - 96px); font-size: 0.69rem; }
+  .pve-campaign-hud-mobile .pve-hud-detail { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.6rem; }
+  .pve-event-toast-mobile {
+    top: calc(env(safe-area-inset-top, 0px) + 82px);
+    right: 10px;
+    left: 10px;
+    width: auto;
+    grid-template-columns: 48px minmax(0, 1fr);
+    min-height: 56px;
+  }
+  .pve-event-toast-mobile .pve-event-portrait { width: 48px; height: 60px; }
+  .pve-event-toast-mobile .pve-event-copy { padding: 7px 9px; }
+  .pve-event-toast-mobile .pve-event-speaker { font-size: 0.68rem; }
+  .pve-event-toast-mobile .pve-event-text { font-size: 0.64rem; line-height: 1.35; }
+}
+
+@media (max-width: 380px), (max-height: 610px) {
+  .pve-story-mobile .pve-story-script,
+  .pve-story-mobile.pve-story-title-step .pve-story-script,
+  .pve-story-mobile.pve-story-objective-step .pve-story-script {
+    min-height: min(36dvh, 210px);
+    padding-top: 9px;
+  }
+  .pve-story-mobile .pve-story-speaker { font-size: 0.92rem; }
+  .pve-story-mobile .pve-story-text { font-size: 0.72rem; line-height: 1.4; }
+  .pve-story-mobile .pve-story-actions { margin-top: 5px; }
+  .pve-story-mobile .pve-story-actions button { min-height: 30px; padding-block: 4px; }
+  .pve-story-mobile .pve-story-portrait { bottom: min(35dvh, 210px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pve-story-scan { animation: none; }
+  .pve-story-step-enter .pve-story-script,
+  .pve-story-step-enter .pve-story-portrait,
+  .pve-event-toast-enter { animation: none; }
+}
+
 /* AI推演：对照旧AI开关 */
 .debug-legacy-toggle {
   display: flex;
