@@ -178,6 +178,7 @@ const YUKI_COMBAT_SCOUT_STATS = Object.freeze({
   damage: 16,
   fireRate: CHARACTER_DEFS.yuki.stats.fireRate,
 });
+const YUKI_COMBAT_SCOUT_LAUNCH_COUNT = 2;
 
 const TEAM_COLORS = {
   A: "#65d9ff",
@@ -2279,13 +2280,21 @@ class Team {
       return false;
     }
     const zone = this.match.zoneById(zoneId);
-    this.scouts.push(new Scout(this, source.x, source.y, {
-      zone,
-      seekPoint: options.seekPoint,
-      mission: options.mission,
-      patrolCenter: options.patrolCenter,
-      patrolRadius: options.patrolRadius,
-    }));
+    const launchCount = this.hasYukiFlagship() ? YUKI_COMBAT_SCOUT_LAUNCH_COUNT : 1;
+    const lateralAngle = source.angle + Math.PI * 0.5;
+    const lateralDistance = source.radius + 6;
+    for (let index = 0; index < launchCount; index += 1) {
+      const side = launchCount === 1 ? 0 : index * 2 - 1;
+      const x = this.match.clampX(source.x + Math.cos(lateralAngle) * lateralDistance * side, 8);
+      const y = this.match.clampY(source.y + Math.sin(lateralAngle) * lateralDistance * side, 8);
+      this.scouts.push(new Scout(this, x, y, {
+        zone,
+        seekPoint: options.seekPoint,
+        mission: options.mission,
+        patrolCenter: options.patrolCenter,
+        patrolRadius: options.patrolRadius,
+      }));
+    }
     this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
     return true;
   }

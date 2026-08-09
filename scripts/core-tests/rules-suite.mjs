@@ -304,37 +304,51 @@ function yukiFlagshipCombatScoutCheck() {
   const yukiTeam = yukiSim.teamA;
   const yukiStats = CHARACTER_DEFS.yuki.stats;
   assert(yukiTeam.launchScout(5, { fromShipKey: "sub1" }), "长门旗舰队伍未能从副舰释放侦察机");
-  const combatScout = yukiTeam.scouts[0];
-  assert(combatScout.combatCapable, "长门旗舰未将己方侦察机强化为战斗僚机");
-  assert(combatScout.vision === yukiStats.vision, "长门战斗僚机视野未提升到普通舰船级别");
-  assert(combatScout.attackRange === combatScout.vision, "长门战斗僚机射程未与自身视野保持一致");
-  assert(combatScout.effectiveDamage() === 16, "长门战斗僚机基础伤害不是16");
+  assert(yukiTeam.scouts.length === 2, "长门旗舰每次没有同时释放两架战斗僚机");
+  const [combatScout, escortScout] = yukiTeam.scouts;
+  for (const scout of yukiTeam.scouts) {
+    assert(scout.combatCapable, "长门旗舰未将己方侦察机强化为战斗僚机");
+    assert(scout.vision === yukiStats.vision, "长门战斗僚机视野未提升到普通舰船级别");
+    assert(scout.attackRange === scout.vision, "长门战斗僚机射程未与自身视野保持一致");
+    assert(scout.effectiveDamage() === 16, "长门战斗僚机基础伤害不是16");
+    assert(
+      Math.abs(scout.effectiveFireRate() - yukiStats.fireRate) < 1e-9,
+      "长门战斗僚机射速不是常规舰炮射速",
+    );
+  }
   assert(
-    Math.abs(combatScout.effectiveFireRate() - yukiStats.fireRate) < 1e-9,
-    "长门战斗僚机射速不是常规舰炮射速",
+    Math.hypot(combatScout.x - escortScout.x, combatScout.y - escortScout.y) > 0,
+    "长门同时释放的两架战斗僚机完全重叠",
   );
 
   const enemyMain = yukiSim.teamB.ships.main;
-  combatScout.x = 680;
-  combatScout.y = 720;
-  combatScout.cooldown = 0;
+  for (const [index, scout] of yukiTeam.scouts.entries()) {
+    scout.x = 680;
+    scout.y = 712 + index * 16;
+    scout.cooldown = 0;
+  }
   enemyMain.x = 800;
   enemyMain.y = 720;
   for (const ship of yukiTeam.getAllShips()) ship.cooldown = 999;
   yukiTeam.visibleEnemyIds.add(enemyMain.id);
   yukiSim.projectiles = [];
   yukiTeam.stepCombat(yukiSim.teamB);
-  assert(yukiSim.projectiles.length === 1, "长门战斗僚机未通过权威战斗循环自动开火");
-  assert(yukiSim.projectiles[0].sourceId === combatScout.id, "长门战斗僚机弹丸来源标记错误");
-  assert(yukiSim.projectiles[0].damage === 16, "长门战斗僚机弹丸伤害不是16");
+  assert(yukiSim.projectiles.length === 2, "两架长门战斗僚机未通过权威战斗循环同时开火");
   assert(
-    Math.abs(combatScout.cooldown - 1 / yukiStats.fireRate) < 1e-9,
-    "长门战斗僚机攻击间隔不是常规舰炮频率",
+    new Set(yukiSim.projectiles.map((projectile) => projectile.sourceId)).size === 2,
+    "两架长门战斗僚机的弹丸来源标记错误",
   );
+  assert(yukiSim.projectiles.every((projectile) => projectile.damage === 16), "长门战斗僚机弹丸伤害不是16");
+  for (const scout of yukiTeam.scouts) {
+    assert(
+      Math.abs(scout.cooldown - 1 / yukiStats.fireRate) < 1e-9,
+      "长门战斗僚机攻击间隔不是常规舰炮频率",
+    );
+  }
   yukiTeam.stepCombat(yukiSim.teamB);
-  assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
+  assert(yukiSim.projectiles.length === 2, "长门战斗僚机无视攻击冷却连续开火");
 
-  combatScout.cooldown = 0;
+  for (const scout of yukiTeam.scouts) scout.cooldown = 0;
   enemyMain.x = combatScout.x + combatScout.vision + 10;
   enemyMain.y = combatScout.y;
   yukiSim.projectiles = [];
@@ -347,6 +361,7 @@ function yukiFlagshipCombatScoutCheck() {
   const normalSim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const normalTeam = normalSim.teamA;
   assert(normalTeam.launchScout(5), "普通旗舰队伍未能释放对照侦察机");
+  assert(normalTeam.scouts.length === 1, "非长门旗舰队伍也一次释放了多架侦察机");
   const normalScout = normalTeam.scouts[0];
   assert(!normalScout.combatCapable, "非长门旗舰的侦察机被错误强化为战斗僚机");
   assert(normalScout.vision === 95, "非长门旗舰的普通侦察机视野被意外改动");

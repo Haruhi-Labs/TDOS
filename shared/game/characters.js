@@ -69,7 +69,7 @@ export const CHARACTER_DEFS = {
     },
     flagshipSkill: {
       id: "data_overmind_radar", name: "资讯统合雷达", type: "passive",
-      description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。己方释放的侦察机强化为战斗僚机，获得舰船级视野，并以常规舰炮射速发射16伤害的子弹。",
+      description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。己方每次释放两架战斗僚机，获得舰船级视野，并以常规舰炮射速发射16伤害的子弹。",
     },
     subSkill: {
       id: "apm_overdrive", name: "apm上万", type: "active", cooldown: 24,
