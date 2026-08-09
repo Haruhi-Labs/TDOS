@@ -60,6 +60,7 @@ import { createRemoteBattleActionTransport } from "./battle/action-transport.js"
 import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
 import { createBattleCanvasRenderer } from "./battle/webgl-canvas.js";
 import {
+  createYukiRadarGpuEffect,
   drawBackground,
   drawBattleCountdown,
   drawBattleWorld,
@@ -1281,7 +1282,9 @@ function renderFrame() {
     selectedZoneId: app.selectedZoneId,
     pendingSubSkillAim: app.pendingSubSkillAim,
     pointer: app.pointer,
+    gpuRadar: canvasRenderer.supportsRadarEffect,
   };
+  canvasRenderer.setRadarEffect(createYukiRadarGpuEffect(frame, view, scale));
   drawBattleWorld(ctx, frame);
   ctx.restore();
 

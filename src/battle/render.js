@@ -10,13 +10,17 @@
 import { DEFAULT_WORLD_SIZE, FIRE_ARC_BANDS, clamp, quadraticPoint } from "../../shared/game-core.js";
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
-import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";
+import {
+  createYukiRadarGpuEffect,
+  drawYukiRadar,
+  drawYukiRadarMinimap,
+} from "./render/radar.js";
 import {
   drawAsakuraVisionWaves,
   drawAsakuraVisionWavesMinimap,
 } from "./render/vision-wave.js";
 
-export { drawYukiRadar, drawYukiRadarMinimap };
+export { createYukiRadarGpuEffect, drawYukiRadar, drawYukiRadarMinimap };
 
 const TAU = Math.PI * 2;
 const LOGICAL = DEFAULT_WORLD_SIZE;

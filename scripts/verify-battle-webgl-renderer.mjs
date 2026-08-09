@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 
+import { createYukiRadarGpuEffect } from "../src/battle/render/radar.js";
 import { createBattleCanvasRenderer } from "../src/battle/webgl-canvas.js";
 
 class FakeGl {
@@ -58,8 +59,10 @@ class FakeGl {
   texParameteri() {}
   pixelStorei() {}
   useProgram() {}
-  getUniformLocation() { return {}; }
+  getUniformLocation(_program, name) { return { name }; }
   uniform1i() {}
+  uniform1f(location, value) { this.record("uniform1f", location.name, value); }
+  uniform2f(location, x, y) { this.record("uniform2f", location.name, x, y); }
   disable() {}
   viewport(_x, _y, width, height) { this.record("viewport", width, height); }
   texImage2D(...args) { this.record("texImage2D", ...args); }
@@ -108,15 +111,30 @@ function fakeSurface() {
   assert.equal(renderer.mode, "webgl2");
   assert.deepEqual(target.requests, ["webgl2"]);
   assert.equal(target.canvas.dataset.battleRenderer, "webgl2");
+  assert.ok(gl.calls.some(([name, type, source]) => (
+    name === "shaderSource" && type === gl.FRAGMENT_SHADER && source.includes("u_radarEnabled")
+  )));
 
   renderer.beginFrame();
   assert.equal(surface.width, 1440);
   assert.equal(surface.height, 1440);
+  renderer.setRadarEffect({
+    sourceX: 320,
+    sourceY: 720,
+    angle: 0.4,
+    length: 980,
+    elapsed: 3.2,
+    angularVelocity: -0.9,
+    scale: 1,
+  });
   renderer.present();
   renderer.present();
   assert.equal(gl.calls.filter(([name]) => name === "texImage2D").length, 1);
   assert.equal(gl.calls.filter(([name]) => name === "texSubImage2D").length, 1);
   assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 2);
+  assert.ok(gl.calls.some(([name, uniform, value]) => (
+    name === "uniform1f" && uniform === "u_radarEnabled" && value === 1
+  )));
 
   let prevented = false;
   target.listeners.get("webglcontextlost")({ preventDefault() { prevented = true; } });
@@ -141,6 +159,9 @@ function fakeSurface() {
   assert.equal(renderer.mode, "webgl1");
   assert.deepEqual(target.requests, ["webgl2", "webgl"]);
   assert.equal(target.canvas.dataset.battleRenderer, "webgl1");
+  assert.ok(gl.calls.some(([name, type, source]) => (
+    name === "shaderSource" && type === gl.FRAGMENT_SHADER && source.includes("texture2D")
+  )));
   renderer.beginFrame();
   renderer.present();
   assert.equal(gl.calls.filter(([name]) => name === "drawArrays").length, 1);
@@ -159,4 +180,27 @@ function fakeSurface() {
   assert.equal(target.canvas.dataset.battleRenderer, undefined);
 }
 
-console.log("对战地图 WebGL 渲染器验证通过：WebGL2、WebGL1 回退、上下文恢复与 2D 应急路径均正常。");
+{
+  const frame = {
+    state: { elapsed: 2.5, phase: "running" },
+    ownTeam: { ships: { main: { alive: true, x: 100, y: 200 } } },
+    radar: { active: true, angle: 0, sampledAt: 2.5, angularVelocity: -1 },
+  };
+  const effect = createYukiRadarGpuEffect(
+    frame,
+    { left: 0, top: 0, width: 1440, height: 1440, zoom: 1 },
+    2,
+  );
+  assert.deepEqual(effect, {
+    sourceX: 200,
+    sourceY: 400,
+    angle: 0,
+    length: 2680,
+    elapsed: 2.5,
+    angularVelocity: -1,
+    scale: 2,
+  });
+  assert.equal(createYukiRadarGpuEffect({ ...frame, spectating: true }, {}, 1), null);
+}
+
+console.log("对战地图 WebGL 渲染器验证通过：WebGL2 雷达、WebGL1 回退、上下文恢复与 2D 应急路径均正常。");

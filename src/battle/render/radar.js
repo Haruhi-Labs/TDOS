@@ -157,6 +157,43 @@ function drawRadarAfterimage(ctx, contact, elapsed, alpha) {
   ctx.restore();
 }
 
+// 把权威雷达状态映射到可见画布的物理像素，供最终 WebGL 合成器生成程序化扫描光束。
+// 联系点仍走共享 2D 表现层，只有连续旋转的扫线与荧光余辉交给片元着色器。
+export function createYukiRadarGpuEffect(frame, view, backingScale = 1) {
+  const { state, ownTeam, spectating = false, radar } = frame || {};
+  if (
+    spectating ||
+    !state ||
+    state.phase === "finished" ||
+    !radar?.active ||
+    !ownTeam?.ships?.main?.alive ||
+    !view
+  ) {
+    return null;
+  }
+
+  const source = ownTeam.ships.main;
+  const elapsed = Number(state.elapsed) || 0;
+  const angle = radarAngleAt(radar, elapsed);
+  const edge = rayToRectEdge(source.x, source.y, angle, 0, 0, LOGICAL, LOGICAL);
+  const worldToPixel = (point) => ({
+    x: (point.x - view.left) * view.zoom * backingScale,
+    y: (point.y - view.top) * view.zoom * backingScale,
+  });
+  const sourcePixel = worldToPixel(source);
+  const edgePixel = worldToPixel(edge);
+
+  return {
+    sourceX: sourcePixel.x,
+    sourceY: sourcePixel.y,
+    angle,
+    length: Math.max(1, Math.hypot(edgePixel.x - sourcePixel.x, edgePixel.y - sourcePixel.y)),
+    elapsed,
+    angularVelocity: Number(radar.angularVelocity) || 0,
+    scale: Math.max(0.5, view.zoom * backingScale),
+  };
+}
+
 // 长门旗舰私有雷达：只消费调用方显式传入的 frame.radar。联机对手与观战帧不带此字段，
 // 因而既看不到扫线，也看不到任何回波；回波也从不参与 visibleEnemyIds。
 export function drawYukiRadar(ctx, frame) {
@@ -169,6 +206,9 @@ export function drawYukiRadar(ctx, frame) {
   const angle = radarAngleAt(radar, elapsed);
   const edge = rayToRectEdge(source.x, source.y, angle, 0, 0, LOGICAL, LOGICAL);
 
+  // GPU 路径由可见 WebGL 画布的片元着色器绘制；只有无 WebGL 的极端应急路径
+  // 才保留原来的 2D 资讯扫描束，保证能力降级时雷达仍可读。
+  if (!frame.gpuRadar) {
   ctx.save();
   ctx.beginPath();
   ctx.rect(0, 0, LOGICAL, LOGICAL);
@@ -269,6 +309,7 @@ export function drawYukiRadar(ctx, frame) {
   ctx.arc(source.x, source.y, 17 + sourcePulse * 2, angle + 1.1, angle + Math.PI * 1.25);
   ctx.stroke();
   ctx.restore();
+  }
 
   const visibleEnemyIds = frame.visibleEnemyIds || new Set();
   for (const contact of radar.contacts || []) {
