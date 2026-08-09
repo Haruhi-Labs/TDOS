@@ -210,6 +210,10 @@ export function updateKoizumiOrb(ship, dt) {
     );
     if (ship.route.t >= 1 && Math.hypot(ship.route.p2.x - ship.x, ship.route.p2.y - ship.y) <= 38) {
       ship.route = null;
+    } else {
+      // 光球运动走独立更新分支，不会经过 Ship.update 中的常规航线约束刷新。
+      // 在移动完成后重新锚定航线，保证航线起点与高速移动的古泉始终贴合。
+      ship.enforceRouteFeasibility(ship.route.p1, false);
     }
   }
 

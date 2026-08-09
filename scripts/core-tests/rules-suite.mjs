@@ -793,6 +793,15 @@ function koizumiOrbRamCheck() {
   assert(sub1.koizumiOrb?.phase === "active", "古泉释放后未进入高速光球状态");
   assert(Math.abs(teamA.cooldowns.sub1 - 15) < 1e-6, "古泉光球技能未进入15秒冷却");
 
+  sub1.setBezierRoute(undefined, undefined, 1180, 720, 1.2, false);
+  runSteps(sim, 0.12);
+  assert(sub1.route, "古泉光球航线在抵达目标前意外消失");
+  assert(
+    Math.hypot(sub1.route.p0.x - sub1.x, sub1.route.p0.y - sub1.y) < 1e-6,
+    "古泉光球移动时航线起点没有跟随舰体",
+  );
+  sub1.route = null;
+
   teamA.visibleEnemyIds.add(enemyMain.id);
   sub1.cooldown = 0;
   sim.projectiles = [];
