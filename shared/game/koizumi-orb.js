@@ -243,29 +243,53 @@ function actualKnockbackDistance(match, ship, directionX, directionY, knockbackD
   };
 }
 
-function applySideKnockback(match, source, contactTarget) {
-  const forwardX = Math.cos(source.angle);
-  const forwardY = Math.sin(source.angle);
-  const leftX = -forwardY;
-  const leftY = forwardX;
-  const relativeX = contactTarget.x - source.x;
-  const relativeY = contactTarget.y - source.y;
-  const sideDot = relativeX * leftX + relativeY * leftY;
-  let sign = Math.abs(sideDot) > 0.5 ? Math.sign(sideDot) : ((contactTarget.id + source.id) % 2 === 0 ? 1 : -1);
-  const knockbackDistance = Math.max(1, source.effectiveVision());
-  const natural = actualKnockbackDistance(match, contactTarget, leftX * sign, leftY * sign, knockbackDistance);
-  const opposite = actualKnockbackDistance(match, contactTarget, -leftX * sign, -leftY * sign, knockbackDistance);
-  if (opposite.distance > natural.distance + knockbackDistance * 0.28) {
-    sign *= -1;
+function sweptCollisionDirection(source, target, startX, startY, probe, collisionRadius) {
+  const sweepX = source.x - startX;
+  const sweepY = source.y - startY;
+  const relativeX = startX - target.x;
+  const relativeY = startY - target.y;
+  const a = sweepX * sweepX + sweepY * sweepY;
+  const b = 2 * (relativeX * sweepX + relativeY * sweepY);
+  const c = relativeX * relativeX + relativeY * relativeY - collisionRadius * collisionRadius;
+  let contactT = probe.t;
+  if (c <= 0) {
+    contactT = 0;
+  } else if (a > 1e-8) {
+    const discriminant = b * b - 4 * a * c;
+    if (discriminant >= 0) {
+      const firstContact = (-b - Math.sqrt(discriminant)) / (2 * a);
+      if (firstContact >= 0 && firstContact <= 1) {
+        contactT = firstContact;
+      }
+    }
   }
-  const directionX = leftX * sign;
-  const directionY = leftY * sign;
+
+  const contactX = startX + sweepX * contactT;
+  const contactY = startY + sweepY * contactT;
+  let directionX = target.x - contactX;
+  let directionY = target.y - contactY;
+  let length = Math.hypot(directionX, directionY);
+  if (length < 1e-6) {
+    directionX = sweepX;
+    directionY = sweepY;
+    length = Math.hypot(directionX, directionY);
+  }
+  if (length < 1e-6) {
+    directionX = Math.cos(source.angle);
+    directionY = Math.sin(source.angle);
+    length = 1;
+  }
+  return { x: directionX / length, y: directionY / length };
+}
+
+function applyCollisionKnockback(match, source, contactTarget, direction) {
+  const knockbackDistance = Math.max(1, source.effectiveVision());
   const startedAt = match.elapsed;
   const endsAt = startedAt + ORB_KNOCKBACK_DURATION;
   const fleet = contactTarget.team.fleetMembersForShip(contactTarget);
 
   for (const ship of fleet) {
-    const destination = actualKnockbackDistance(match, ship, directionX, directionY, knockbackDistance);
+    const destination = actualKnockbackDistance(match, ship, direction.x, direction.y, knockbackDistance);
     ship.forcedKnockback = {
       startedAt,
       endsAt,
@@ -287,19 +311,23 @@ export function resolveKoizumiOrbContacts(match) {
       if (!source.alive || !state) continue;
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive) continue;
+        const startX = Number.isFinite(state.previousX) ? state.previousX : source.x;
+        const startY = Number.isFinite(state.previousY) ? state.previousY : source.y;
+        const collisionRadius = source.radius + target.radius + 5;
         const probe = linePointDistance(
-          Number.isFinite(state.previousX) ? state.previousX : source.x,
-          Number.isFinite(state.previousY) ? state.previousY : source.y,
+          startX,
+          startY,
           source.x,
           source.y,
           target.x,
           target.y,
         );
-        if (probe.dist > source.radius + target.radius + 5) continue;
+        if (probe.dist > collisionRadius) continue;
         const lastHitAt = state.hitAt.get(target.id);
         if (lastHitAt !== undefined && match.elapsed - lastHitAt < ORB_HIT_REARM_SECONDS) continue;
         state.hitAt.set(target.id, match.elapsed);
-        applySideKnockback(match, source, target);
+        const direction = sweptCollisionDirection(source, target, startX, startY, probe, collisionRadius);
+        applyCollisionKnockback(match, source, target, direction);
         target.effects.silencedUntil = Math.max(
           Number(target.effects.silencedUntil) || 0,
           match.elapsed + ORB_SILENCE_DURATION,

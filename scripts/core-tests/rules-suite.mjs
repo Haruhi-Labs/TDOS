@@ -830,7 +830,7 @@ function koizumiOrbRamCheck() {
   sub1.route = null;
   sub1.koizumiOrb.hitAt.clear();
   enemyMain.x = 790;
-  enemyMain.y = 730;
+  enemyMain.y = 720;
   enemyMain.forcedKnockback = null;
   sub1.angle = 0;
 
@@ -841,23 +841,43 @@ function koizumiOrbRamCheck() {
   sub1.y = 720;
   sim.resolveKoizumiOrbContacts();
   assert(enemyMain.hp === hpBeforeRam, "古泉光球冲撞错误造成了伤害");
-  assert(enemyMain.forcedKnockback, "古泉光球冲撞没有触发侧向击飞");
+  assert(enemyMain.forcedKnockback, "古泉光球冲撞没有触发击飞");
   assert(
-    Math.abs(enemyMain.forcedKnockback.toY - enemyMain.forcedKnockback.fromY) > sub1.effectiveVision() * 0.8,
-    "古泉光球没有把目标向侧面击飞约一个视野距离",
+    enemyMain.forcedKnockback.toX - enemyMain.forcedKnockback.fromX > sub1.effectiveVision() * 0.8,
+    "古泉正面撞击没有沿实际碰撞方向向前击飞约一个视野距离",
+  );
+  assert(
+    Math.abs(enemyMain.forcedKnockback.toY - enemyMain.forcedKnockback.fromY) < sub1.effectiveVision() * 0.15,
+    "古泉正面撞击仍然错误地把目标固定向侧面击飞",
   );
   assert(enemyMain.isSilenced(), "古泉光球冲撞没有令目标沉默");
   assert(!sim.teamB.castFlagshipSkill(), "被古泉撞击沉默的旗舰仍能释放技能");
 
   const firstSilenceUntil = enemyMain.effects.silencedUntil;
   sim.elapsed += 1;
-  sub1.koizumiOrb.hitAt.delete(enemyMain.id);
   sub1.koizumiOrb.previousX = enemyMain.x - 50;
   sub1.koizumiOrb.previousY = enemyMain.y;
   sub1.x = enemyMain.x + 50;
   sub1.y = enemyMain.y;
   sim.resolveKoizumiOrbContacts();
   assert(enemyMain.effects.silencedUntil > firstSilenceUntil + 0.9, "重复撞击没有刷新5秒沉默时间");
+  assert(enemyMain.forcedKnockback.startedAt === sim.elapsed, "正面追击没有在命中冷却后再次触发击退");
+
+  sim.elapsed += 1;
+  enemyMain.x = 790;
+  enemyMain.y = 738;
+  enemyMain.forcedKnockback = null;
+  sub1.koizumiOrb.previousX = 720;
+  sub1.koizumiOrb.previousY = 720;
+  sub1.x = 810;
+  sub1.y = 720;
+  sim.resolveKoizumiOrbContacts();
+  const obliqueKnockbackX = enemyMain.forcedKnockback.toX - enemyMain.forcedKnockback.fromX;
+  const obliqueKnockbackY = enemyMain.forcedKnockback.toY - enemyMain.forcedKnockback.fromY;
+  assert(
+    obliqueKnockbackX > sub1.effectiveVision() * 0.3 && obliqueKnockbackY > sub1.effectiveVision() * 0.3,
+    "古泉斜向擦碰没有按实际碰撞角产生斜向击退",
+  );
 
   const returnSim = new MatchSimulation({
     mode: "pvp",
