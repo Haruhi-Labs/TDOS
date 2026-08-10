@@ -598,6 +598,7 @@ export const EN_MESSAGES = {
     "个目标": " targets",
     "{value}秒": "{value}s",
     "未命中": "Miss",
+    "免疫": "Immune",
     "尾击": "Rear Hit",
     "超能力": "Esper",
     "暴击": "Crit",

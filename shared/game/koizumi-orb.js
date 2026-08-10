@@ -9,8 +9,9 @@ import {
 const ORB_BASE_CRUISE_SPEED = 164;
 const ORB_SPEED_MULTIPLIER = 4.45;
 const ORB_MIN_TURN_SPEED_RATIO = 0.78;
-const ORB_ACTIVE_MAX_TURN_RATE = 1.72;
-const ORB_RETURN_MAX_TURN_RATE = 2.55;
+const ORB_TURN_AGILITY_MULTIPLIER = 1.5;
+const ORB_ACTIVE_MAX_TURN_RATE = 1.72 * ORB_TURN_AGILITY_MULTIPLIER;
+const ORB_RETURN_MAX_TURN_RATE = 2.55 * ORB_TURN_AGILITY_MULTIPLIER;
 const ORB_ANGULAR_ACCELERATION = 5.4;
 const ORB_BOUNDARY_LOOKAHEAD = 1.05;
 const ORB_BOUNDARY_MARGIN = 150;
@@ -176,7 +177,11 @@ export function updateKoizumiOrb(ship, dt) {
   const maximumTurnRate = returning
     ? ORB_RETURN_MAX_TURN_RATE + closeReturnAssist * 1.25 + lateReturnAssist * 0.85
     : ORB_ACTIVE_MAX_TURN_RATE;
-  const requestedAngularVelocity = clamp(delta * (returning ? 3.15 : 2.35), -maximumTurnRate, maximumTurnRate);
+  const requestedAngularVelocity = clamp(
+    delta * (returning ? 3.15 : 2.35) * ORB_TURN_AGILITY_MULTIPLIER,
+    -maximumTurnRate,
+    maximumTurnRate,
+  );
   state.angularVelocity = approach(
     state.angularVelocity,
     requestedAngularVelocity,

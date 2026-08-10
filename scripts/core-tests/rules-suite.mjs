@@ -810,8 +810,29 @@ function koizumiOrbRamCheck() {
 
   sim.teamB.visibleEnemyIds = new Set([sub1.id]);
   enemyMain.cooldown = 0;
+  assert(sim.teamB.pickTargetFor(enemyMain, teamA) === sub1, "敌舰索敌没有选中古泉光球");
   enemyMain.tryAttack(sim, teamA);
-  assert(sim.projectiles.length === 0, "敌舰仍会把古泉光球选为射击目标");
+  assert(sim.projectiles.length === 1, "敌舰没有把古泉光球作为射击目标");
+  const orbHpBeforeHit = sub1.hp;
+  sub1.takeDamage(220, enemyMain, sim);
+  assert(sub1.hp === orbHpBeforeHit, "古泉光球被攻击后受到了伤害");
+
+  sub1.route = {
+    anchorToMain: false,
+    p0: { x: sub1.x, y: sub1.y },
+    p1: { x: sub1.x, y: sub1.y + 360 },
+    p2: { x: sub1.x, y: sub1.y + 620 },
+    t: 0,
+    length: 620,
+  };
+  runSteps(sim, 1.2);
+  assert(Math.abs(sub1.koizumiOrb.angularVelocity) > 0.75, "古泉光球转向机动性没有提高50%");
+  sub1.route = null;
+  sub1.koizumiOrb.hitAt.clear();
+  enemyMain.x = 790;
+  enemyMain.y = 730;
+  enemyMain.forcedKnockback = null;
+  sub1.angle = 0;
 
   const hpBeforeRam = enemyMain.hp;
   sub1.koizumiOrb.previousX = 720;
@@ -865,6 +886,9 @@ function koizumiOrbRamCheck() {
   assert(!returning.koizumiOrb, "古泉光球没有在合理时间内完成强制归航");
   assert(Math.hypot(returning.x - 720, returning.y - 720) < 1e-6, "古泉没有在战场中央恢复正常形态");
   assert(returning.canControl(), "古泉恢复正常形态后没有恢复控制权");
+  const hpAfterReturn = returning.hp;
+  returning.takeDamage(20, returnSim.teamB.ships.main, returnSim);
+  assert(returning.hp < hpAfterReturn, "古泉结束光球形态后仍然免疫伤害");
 }
 
 function beamSkillCheck() {

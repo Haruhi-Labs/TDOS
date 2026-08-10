@@ -410,9 +410,14 @@ class Projectile {
         rear = true;
       }
     }
+    const damageImmune = typeof hitTarget.isDamageImmune === "function" && hitTarget.isDamageImmune();
     hitTarget.takeDamage(damage, this.source, match);
-    match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(damage)}`, rear ? "#ffb066" : "#ffd178");
-    if (rear) {
+    if (damageImmune) {
+      match.spawnFloatingTextKey(hitTarget.x + 8, hitTarget.y - 8, "免疫", {}, "#ffc5cf");
+    } else {
+      match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(damage)}`, rear ? "#ffb066" : "#ffd178");
+    }
+    if (rear && !damageImmune) {
       match.spawnFloatingTextKey(hitTarget.x + 12, hitTarget.y - 22, "尾击", {}, "#ff9d5a");
     }
     if (this.claw && hitTarget.kind === "ship" && hitTarget.alive) {
@@ -556,7 +561,12 @@ class Ship {
   }
 
   isTargetableByFire() {
-    return !this.isKoizumiOrbActive();
+    return true;
+  }
+
+  isDamageImmune() {
+    return this.isKoizumiOrbActive()
+      || this.team.effects.taxiInvulnUntil > this.team.match.elapsed;
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -956,9 +966,14 @@ class Ship {
     marks.expiresAt = 0;
     const burstDamage = Math.max(0, Number(claw.burstDamage) || 0);
     if (burstDamage > 0) {
+      const damageImmune = this.isDamageImmune();
       this.takeDamage(burstDamage, source, match);
       match.spawnFloatingTextKey(this.x + 10, this.y - 20, "猫爪爆发", {}, "#ffd0e4");
-      match.spawnFloatingText(this.x + 8, this.y - 8, `-${Math.round(burstDamage)}`, "#ff8fbd");
+      if (damageImmune) {
+        match.spawnFloatingTextKey(this.x + 8, this.y - 8, "免疫", {}, "#ffc5cf");
+      } else {
+        match.spawnFloatingText(this.x + 8, this.y - 8, `-${Math.round(burstDamage)}`, "#ff8fbd");
+      }
       match.spawnBurst(this.x, this.y, "#ff8fbd", 12);
     }
     return true;
@@ -1187,7 +1202,7 @@ class Ship {
     if (!this.alive) {
       return;
     }
-    if (this.team.effects.taxiInvulnUntil > this.team.match.elapsed) {
+    if (this.isDamageImmune()) {
       return;
     }
     // 不分离(本船所在编队还有其它存活船):本次伤害的 FORMATION_DAMAGE_SHARE 比例平摊给其它船,
@@ -2710,8 +2725,13 @@ class Team {
           continue;
         }
         const damage = target.maxHp * BEAM_DAMAGE_RATIO;
+        const damageImmune = target.isDamageImmune();
         target.takeDamage(damage, ship, this.match);
-        this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(damage)}`, "#ffb7a8");
+        if (damageImmune) {
+          this.match.spawnFloatingTextKey(target.x + 8, target.y - 10, "免疫", {}, "#ffc5cf");
+        } else {
+          this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(damage)}`, "#ffb7a8");
+        }
         this.spawnBeamHitParticles(target.x, target.y);
         hitAny = true;
       }
