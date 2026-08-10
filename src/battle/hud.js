@@ -36,6 +36,35 @@ export function energyPercentForShip(ship) {
   return Math.round((value / max) * 100);
 }
 
+export function wxAnchorStatusLabel(own) {
+  if (!own || !Object.values(own.loadout || {}).includes("wx_emperor")) return "—";
+  const anchor = own?.wxAnchor;
+  if (anchor?.active) {
+    return t("驻锚中");
+  }
+  const overheat = Math.max(0, Number(anchor?.overheatRemaining) || 0);
+  return overheat > 0 ? `${t("过热")} ${overheat.toFixed(1)}s` : t("驻锚待命");
+}
+
+export function updateWxAnchorStatus(ui, own) {
+  if (!ui?.wxAnchorValue) return;
+  ui.wxAnchorValue.textContent = wxAnchorStatusLabel(own);
+  ui.wxAnchorValue.classList.toggle("wx-anchor-active", Boolean(own?.wxAnchor?.active));
+  ui.wxAnchorValue.classList.toggle("wx-anchor-overheat", Number(own?.wxAnchor?.overheatRemaining) > 0);
+}
+
+export function wxAnchorSkillAvailability({ own, ship, meta, scope, energy = 0 } = {}) {
+  const isWx = meta?.id === "imperial_anchor" && ship?.characterId === "wx_emperor";
+  const active = Boolean(isWx && own?.wxAnchor?.active && own.wxAnchor.scope === scope);
+  const overheatRemaining = isWx ? Math.max(0, Number(own?.wxAnchor?.overheatRemaining) || 0) : 0;
+  return {
+    isWx,
+    active,
+    overheatRemaining,
+    entryBlocked: !active && (overheatRemaining > 0 || Number(energy) < (Number(meta?.cost) || 0)),
+  };
+}
+
 // fallbackLoadout:快照/仿真尚未带 loadout 时用本地编队兜底
 export function currentFlagshipMeta(own, fallbackLoadout) {
   const loadout = own && own.loadout ? own.loadout : fallbackLoadout;
@@ -105,6 +134,13 @@ export function updateSkillButtons(ui, own, opts = {}) {
   setCooldownProgress(ui.autoScoutBtn, autoScoutEnabled ? scoutCooldown : 0, scoutDuration, "auto-scout");
 
   const flagMeta = currentFlagshipMeta(own, fallbackLoadout);
+  const wxFlagship = wxAnchorSkillAvailability({
+    own,
+    ship: mainShip,
+    meta: flagMeta,
+    scope: "fleet",
+    energy: mainEnergy,
+  });
   if (!flagMeta) {
     ui.flagshipBtn.disabled = true;
     setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能"));
@@ -121,11 +157,15 @@ export function updateSkillButtons(ui, own, opts = {}) {
       own.skillsDisabled ||
       flagshipSilenced ||
       flagshipCooldown > 0 ||
-      mainEnergy < (flagMeta.cost || 0) ||
+      (wxFlagship.isWx ? wxFlagship.entryBlocked : mainEnergy < (flagMeta.cost || 0)) ||
       !(mainShip && mainShip.alive);
     ui.flagshipBtn.disabled = disabled;
     const suffix = flagshipSilenced
       ? t("（沉默中）")
+      : wxFlagship.active
+      ? t("（驻锚中·解除）")
+      : wxFlagship.overheatRemaining > 0
+        ? t("（过热{seconds}秒）", { seconds: wxFlagship.overheatRemaining.toFixed(1) })
       : isFuture1096FormSkill
       ? flagshipCooldown > 0
         ? t("（{current}·冷却{seconds}秒）", { current: currentFuture1096Form, seconds: flagshipCooldown.toFixed(1) })
@@ -144,12 +184,19 @@ export function updateSkillButtons(ui, own, opts = {}) {
 
   const brakeCooldown = Number(selected?.brakeCooldown) || 0;
   const brakeEnergy = Number(selected?.fleetEnergy) || 0;
-  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || selected.koizumiOrb?.active || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
+  const selectedWxAnchored = Boolean(
+    selected
+      && own.wxAnchor?.active
+      && own.wxAnchor.shipKey === selected.key,
+  );
+  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || selected.koizumiOrb?.active || selectedWxAnchored || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
   let brakeSuffix = "";
   if (!selected || !selected.alive) {
     brakeSuffix = t("（切换到可控舰）");
   } else if (selected.koizumiOrb?.active) {
     brakeSuffix = selected.koizumiOrb.phase === "returning" ? t("（自动归航）") : t("（光球形态）");
+  } else if (selectedWxAnchored) {
+    brakeSuffix = t("（驻锚中）");
   } else if (!selected.canControl) {
     brakeSuffix = t("（切换到可控舰）");
   } else if (selected.attached) {
@@ -176,7 +223,19 @@ export function updateSkillButtons(ui, own, opts = {}) {
   const skillEnergy = Number(selected.fleetEnergy) || 0;
   const cooldown = Number(cooldowns[selected.key] || 0);
   const detached = !selected.attached && selected.canControl;
-  const disabled = own.skillsDisabled || selected.silenced || selected.koizumiOrb?.active || !detached || cooldown > 0 || skillEnergy < (subMeta.cost || 0);
+  const wxSub = wxAnchorSkillAvailability({
+    own,
+    ship: selected,
+    meta: subMeta,
+    scope: "self",
+    energy: skillEnergy,
+  });
+  const disabled = own.skillsDisabled
+    || selected.silenced
+    || selected.koizumiOrb?.active
+    || !detached
+    || cooldown > 0
+    || (wxSub.isWx ? wxSub.entryBlocked : skillEnergy < (subMeta.cost || 0));
 
   let suffix = "";
   if (own.skillsDisabled) {
@@ -187,6 +246,10 @@ export function updateSkillButtons(ui, own, opts = {}) {
     suffix = selected.koizumiOrb.phase === "returning" ? t("（自动归航）") : t("（光球形态）");
   } else if (!detached) {
     suffix = t("（分离后可用）");
+  } else if (wxSub.active) {
+    suffix = t("（驻锚中·解除）");
+  } else if (wxSub.overheatRemaining > 0) {
+    suffix = t("（过热{seconds}秒）", { seconds: wxSub.overheatRemaining.toFixed(1) });
   } else if (cooldown > 0) {
     suffix = t("（冷却{seconds}秒）", { seconds: cooldown.toFixed(1) });
   } else if (pendingSubSkillAim && pendingSubSkillAim.shipKey === selected.key) {
@@ -212,7 +275,12 @@ export function syncMobileHud(ui, own, opts = {}) {
 
   const shipName = selected ? shipCharacterName(selected) : t("无");
   const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
+  const anchorStatus = own?.wxAnchor?.active
+    ? ` · ${t("驻锚中")}`
+    : Number(own?.wxAnchor?.overheatRemaining) > 0
+      ? ` · ${t("过热")}`
+      : "";
+  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}% · ${throttleLabelForValue(selected?.throttle)}${anchorStatus}`;
   ui.mobileBattleHint.textContent = pendingSubSkillAim
     ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
     : t("点舰船切换 · 点战场下航线 · 拖侦察选择战区");
@@ -241,8 +309,14 @@ export function syncMobileHud(ui, own, opts = {}) {
   setCooldownButtonLabel(ui.mobileAutoScoutBtn, autoScoutEnabled ? t("自侦开") : t("自侦关"));
   ui.mobileAutoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
   setCooldownButtonLabel(ui.mobileBrakeBtn, t("急刹"));
-  setCooldownButtonLabel(ui.mobileFlagshipBtn, t("旗舰技"));
-  setCooldownButtonLabel(ui.mobileSubSkillBtn, selected && currentSubMeta(selected) ? currentSubMeta(selected).name : t("分舰技"));
+  const flagshipWxActive = own.loadout?.main === "wx_emperor" && own.wxAnchor?.active && own.wxAnchor.scope === "fleet";
+  const subWxActive = selected?.characterId === "wx_emperor" && own.wxAnchor?.active && own.wxAnchor.scope === "self";
+  setCooldownButtonLabel(ui.mobileFlagshipBtn, flagshipWxActive ? t("解除驻锚") : t("旗舰技"));
+  setCooldownButtonLabel(ui.mobileSubSkillBtn, subWxActive
+    ? t("解除驻锚")
+    : selected && currentSubMeta(selected)
+      ? currentSubMeta(selected).name
+      : t("分舰技"));
 
   mirrorCooldownProgress(ui.scoutBtn, ui.mobileScoutBtn);
   mirrorCooldownProgress(ui.autoScoutBtn, ui.mobileAutoScoutBtn);

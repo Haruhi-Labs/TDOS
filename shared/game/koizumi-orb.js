@@ -5,6 +5,7 @@ import {
   quadraticPoint,
   shortestAngleDelta,
 } from "./math.js";
+import { wxAnchorKnockbackMultiplier } from "./wx-emperor.js";
 
 const ORB_BASE_CRUISE_SPEED = 164;
 const ORB_SPEED_MULTIPLIER = 4.45;
@@ -289,7 +290,15 @@ function applyCollisionKnockback(match, source, contactTarget, direction) {
   const fleet = contactTarget.team.fleetMembersForShip(contactTarget);
 
   for (const ship of fleet) {
-    const destination = actualKnockbackDistance(match, ship, direction.x, direction.y, knockbackDistance);
+    if (ship.isWxAnchored?.()) continue;
+    const resistance = wxAnchorKnockbackMultiplier(contactTarget.team, ship);
+    const destination = actualKnockbackDistance(
+      match,
+      ship,
+      direction.x,
+      direction.y,
+      knockbackDistance * resistance,
+    );
     ship.forcedKnockback = {
       startedAt,
       endsAt,

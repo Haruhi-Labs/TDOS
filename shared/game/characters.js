@@ -1,3 +1,5 @@
+import { WX_ANCHOR_COST } from "./wx-emperor.js";
+
 const SHIP_HULL_SIZE_SCALE = 1.28;
 
 export const CHARACTER_ORDER = [
@@ -9,6 +11,7 @@ export const CHARACTER_ORDER = [
   "tsuruya",
   "asakura",
   "shamisen",
+  "wx_emperor",
 ];
 
 export const CHARACTER_DEFS = {
@@ -184,6 +187,28 @@ export const CHARACTER_DEFS = {
       cost: 52, duration: 12, target: "none", triggerHits: 5,
       burstDamage: 80, markDuration: 8,
       description: "12秒内自身子弹变为猫爪。命中同一敌舰5次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。",
+    },
+  },
+  wx_emperor: {
+    id: "wx_emperor",
+    name: "超银河帝国·王牌防御塔一世·wx陛下",
+    shortName: "wx",
+    title: "硬性驻锚防御塔",
+    flavor: "战狂越战，先把黄金王座钉进战场",
+    stats: {
+      hp: 900, energy: 150, speed: 28, turnRate: 0.30, accel: 0.80,
+      energyRegen: 12.2, moveDrain: 8.2, vision: 165, range: 500,
+      damage: 25, fireRate: 0.52, radius: 10 * SHIP_HULL_SIZE_SCALE,
+    },
+    flagshipSkill: {
+      id: "imperial_anchor", name: "黄金王座降临", type: "active",
+      cost: WX_ANCHOR_COST, target: "none",
+      description: "切换驻锚姿态：速度锁定为0并清空路线，自身获得23.1%承伤降低、36.8%抗击退、10.5%射程、6.3%射速与8.4%伤害强化；主舰为全舰队提供8.4%承伤降低和15.8%抗击退。每秒消耗8能量，归零自动解除并过热4秒。进入时向所有敌方只公开wx当前坐标3秒，并建立半径160决斗区；区内敌我舰船各获得8.4%伤害与射速。进入驻锚时随机释放一个帝王攻防技能。",
+    },
+    subSkill: {
+      id: "imperial_anchor", name: "黄金王座降临", type: "active",
+      cost: WX_ANCHOR_COST, target: "none",
+      description: "切换自身驻锚姿态，获得与旗舰技相同的自身强化、能量消耗、过热、叫阵、决斗区和随机帝王攻防技能，但不提供舰队驻锚光环。再次使用解除，能量耗尽自动解除并过热。",
     },
   },
 };

@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "start:server": "node server/server.js",
     "test:core": "node scripts/verify-core.mjs",
+    "test:wx": "node scripts/verify-wx-emperor.mjs",
     "test:core:rules": "node scripts/verify-core.mjs rules",
     "test:core:ai": "node scripts/verify-core.mjs ai",
     "test:core:tutorial": "node scripts/verify-core.mjs tutorial",
@@ -32,7 +33,7 @@
     "test:server:runtime": "node scripts/verify-server-runtime.mjs",
     "test:network:load": "node scripts/network-load-test.mjs",
     "check:modules": "node scripts/check-module-boundaries.mjs",
-    "test:all": "npm run check:modules && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:ai:simulation && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:changelog && npm run test:ui:interaction && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:network:guards"
+    "test:all": "npm run check:modules && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:wx && npm run test:ai:simulation && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:changelog && npm run test:ui:interaction && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:network:guards"
   },
   "dependencies": {
     "ws": "^8.18.0"

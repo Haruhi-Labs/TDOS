@@ -74,7 +74,6 @@ export function getLocaleInfo(locale = getLocale()) {
 
 export function t(source, args = {}) {
   const locale = getLocale();
-  if (locale === "zh") return interpolate(source, args);
   return interpolate((MESSAGES[locale] && MESSAGES[locale][source]) || source, args);
 }
 

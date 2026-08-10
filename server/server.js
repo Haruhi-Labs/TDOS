@@ -10,6 +10,7 @@ import {
   SNAPSHOT_RATE,
   normalizeLoadout,
 } from "../shared/game-core.js";
+import { serializeWxAnchor, wxComboFlashesForViewer } from "../shared/game/wx-emperor.js";
 import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
   evaluateRulesetCompatibility,
@@ -233,6 +234,17 @@ function buildSnapshotFrame(room, advanceSeq = true) {
   }
   const serverTime = Date.now();
   const serializedState = room.match.serializeState();
+  const privateWxAnchorBySeat = {
+    A: quantizeNetworkState(serializedState.teams?.A?.wxAnchor || null),
+    B: quantizeNetworkState(serializedState.teams?.B?.wxAnchor || null),
+  };
+  const visibleComboFlashesBySeat = {
+    A: quantizeNetworkState(wxComboFlashesForViewer(serializedState.comboFlashes, "A")),
+    B: quantizeNetworkState(wxComboFlashesForViewer(serializedState.comboFlashes, "B")),
+  };
+  serializedState.teams.A.wxAnchor = serializeWxAnchor(room.match.teamA, { publicOnly: true });
+  serializedState.teams.B.wxAnchor = serializeWxAnchor(room.match.teamB, { publicOnly: true });
+  serializedState.comboFlashes = wxComboFlashesForViewer(serializedState.comboFlashes);
   const {
     bots: _bots,
     zones,
@@ -257,6 +269,8 @@ function buildSnapshotFrame(room, advanceSeq = true) {
       A: quantizeNetworkState(room.match.serializeRadarForSeat("A")),
       B: quantizeNetworkState(room.match.serializeRadarForSeat("B")),
     },
+    privateWxAnchorBySeat,
+    visibleComboFlashesBySeat,
     patchCache: new Map(),
   };
 }
@@ -274,12 +288,16 @@ function sendSnapshot(room) {
     sendSnapshotToPlayer(pA, frame, {
       ackSeq: pA.lastProcessedSeq,
       radar: frame.radarBySeat.A,
+      privateWxAnchor: frame.privateWxAnchorBySeat.A,
+      visibleComboFlashes: frame.visibleComboFlashesBySeat.A,
     });
   }
   if (room.mode === "pvp" && pB) {
     sendSnapshotToPlayer(pB, frame, {
       ackSeq: pB.lastProcessedSeq,
       radar: frame.radarBySeat.B,
+      privateWxAnchor: frame.privateWxAnchorBySeat.B,
+      visibleComboFlashes: frame.visibleComboFlashesBySeat.B,
     });
   }
   // 观战者默认使用7.5Hz权威快照；每条连接会根据端到端确认独立降档，

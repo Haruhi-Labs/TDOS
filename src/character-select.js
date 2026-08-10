@@ -15,6 +15,7 @@ import {
   invalidatePortrait,
   loadPortraitImage,
 } from "./character-select/portraits.js";
+import { WX_IMPERIAL_SKILLS } from "../shared/game/wx-emperor.js";
 
 export {
   CHARACTER_THEMES,
@@ -44,7 +45,7 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 // 立绘是否真实存在（CHARACTER_THEMES 里 tsuruya/asakura 暂无图）
 const HAS_PORTRAIT = new Set([
-  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura", "shamisen",
+  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura", "shamisen", "wx_emperor",
 ]);
 
 // 把单页内容渲染为 HTML 字符串（base 与 flipper 共享同一份模板）
@@ -82,6 +83,38 @@ function renderSealHTML(charId, loadout) {
     ? `${t("已编入")}<br>${t(assignedSlot.label)}<small>${t("ASSIGNED")}</small>`
     : `${t("候补")}<small>${t("RESERVE")}</small>`;
   return `<div class="${sealClass}">${sealHTML}</div>`;
+}
+
+function renderWxImperialSkillsHTML(charId) {
+  if (charId !== "wx_emperor") return "";
+  const tabs = WX_IMPERIAL_SKILLS.map((skill, index) => `
+    <button type="button" class="cs-wx-skill-tab${index === 0 ? " active" : ""}" data-wx-skill-tab="${skill.id}" aria-selected="${index === 0 ? "true" : "false"}">${t(skill.nameKey)}</button>`).join("");
+  const panels = WX_IMPERIAL_SKILLS.map((skill, index) => `
+    <div class="cs-wx-skill-panel${index === 0 ? " active" : ""}" data-wx-skill-panel="${skill.id}"${index === 0 ? "" : " hidden"}>
+      <strong>${t(skill.nameKey)}</strong><p>${t(skill.descKey)}</p>
+    </div>`).join("");
+  return `<div class="cs-wx-skills"><div class="cs-wx-skill-tabs" role="tablist" aria-label="${t("随机帝王技")}">${tabs}</div>${panels}</div>`;
+}
+
+function bindWxImperialSkillTabs(container) {
+  if (!container) return;
+  const tabs = Array.from(container.querySelectorAll("[data-wx-skill-tab]"));
+  const panels = Array.from(container.querySelectorAll("[data-wx-skill-panel]"));
+  for (const tab of tabs) {
+    tab.addEventListener("click", () => {
+      const id = tab.dataset.wxSkillTab;
+      for (const item of tabs) {
+        const active = item === tab;
+        item.classList.toggle("active", active);
+        item.setAttribute("aria-selected", active ? "true" : "false");
+      }
+      for (const panel of panels) {
+        const active = panel.dataset.wxSkillPanel === id;
+        panel.classList.toggle("active", active);
+        panel.hidden = !active;
+      }
+    });
+  }
 }
 
 function renderRightPageHTML(charId, loadout) {
@@ -165,6 +198,7 @@ function renderRightPageHTML(charId, loadout) {
         <p class="cs-page-skill-desc">${def.subSkill.description}</p>
       </div>
     </div>
+    ${renderWxImperialSkillsHTML(charId)}
     <div class="cs-page-enlist">
       <div class="cs-enlist-prompt">${promptHTML}</div>
       <div class="cs-enlist-actions">
@@ -440,6 +474,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
 
   function renderRightInto(el, charId) {
     el.innerHTML = renderRightPageHTML(charId, state.loadout);
+    bindWxImperialSkillTabs(el);
     fitRight(el);
     const selectBtn = el.querySelector(".cs-enlist-cta[data-action='select']");
     if (selectBtn) {
@@ -1262,7 +1297,9 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     }).join("");
     els.skills.innerHTML = `
       <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("旗舰技")}</span><span class="csm-skill-name">${def.flagshipSkill.name}</span></div><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
-      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("分舰技")}</span><span class="csm-skill-name">${def.subSkill.name}</span></div><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
+      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("分舰技")}</span><span class="csm-skill-name">${def.subSkill.name}</span></div><p class="csm-skill-desc">${def.subSkill.description}</p></div>
+      ${renderWxImperialSkillsHTML(curId()).replaceAll("cs-wx-", "csm-wx-")}`;
+    bindWxImperialSkillTabs(els.skills);
     for (const d of els.dots.children) d.classList.toggle("active", Number(d.dataset.idx) === state.idx);
     renderCta();
   }

@@ -62,6 +62,7 @@ export function battleViewTemplate({
           <div><span>${t("能量")}</span><strong id="energyValue">100%</strong></div>
           <div><span>${t("分离")}</span><strong id="splitValue">${t("编队")}</strong></div>
           <div><span>${t("战区")}</span><strong id="zoneValue">${t("战区{zone}", { zone: 5 })}</strong></div>
+          <div><span>${t("帝王驻锚")}</span><strong id="wxAnchorValue">${t("驻锚待命")}</strong></div>
         </section>
 
         <div id="battleControls">

@@ -54,6 +54,7 @@ import {
   renderFleetRoster,
   syncMobileHud,
   updateSkillButtons,
+  updateWxAnchorStatus,
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
 import { createRemoteBattleActionTransport } from "./battle/action-transport.js";
@@ -119,6 +120,7 @@ function cacheDom() {
   seatValue: document.getElementById("seatValue"),
   hullValue: document.getElementById("hullValue"),
   energyValue: document.getElementById("energyValue"),
+  wxAnchorValue: document.getElementById("wxAnchorValue"),
   splitValue: document.getElementById("splitValue"),
   zoneValue: document.getElementById("zoneValue"),
   selectedValue: document.getElementById("onlineSelectedValue"),
@@ -757,6 +759,7 @@ function updateSpectatorBattleStatus(state) {
 
   ui.hullValue.textContent = `A ${hullA}% / B ${hullB}%`;
   ui.energyValue.textContent = `A ${energyA}% / B ${energyB}%`;
+  updateWxAnchorStatus(ui, null);
   ui.splitValue.textContent = `${localizedSplitLabel(teamA?.splitLevel || 0)} / ${localizedSplitLabel(teamB?.splitLevel || 0)}`;
   ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
   ui.selectedValue.textContent = t("观战");
@@ -777,6 +780,7 @@ function updateBattleStatus(state) {
   if (!own) {
     ui.hullValue.textContent = "-";
     ui.energyValue.textContent = "-";
+    updateWxAnchorStatus(ui, null);
     ui.splitValue.textContent = "-";
     ui.zoneValue.textContent = t("战区 -");
     ui.selectedValue.textContent = "-";
@@ -798,6 +802,7 @@ function updateBattleStatus(state) {
   syncShipSelectOptions(own);
   const selectedShip = own.ships ? own.ships[app.selectedShipKey] : null;
   ui.energyValue.textContent = `${energyPercentForShip(selectedShip || own.ships.main)}%`;
+  updateWxAnchorStatus(ui, own);
   ui.selectedValue.textContent =
     selectedShip && selectedShip.alive
       ? `${shipCharacterName(selectedShip)} | ${t("能量")} ${Math.round(Number(selectedShip.fleetEnergy) || 0)}/${Math.round(

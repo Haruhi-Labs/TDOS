@@ -152,6 +152,12 @@ export function createSnapshotStream({ networkStats }) {
     if (options.radar) {
       header.radar = options.radar;
     }
+    if (options.privateWxAnchor) {
+      header.privateWxAnchor = options.privateWxAnchor;
+    }
+    if (Array.isArray(options.visibleComboFlashes)) {
+      header.visibleComboFlashes = options.visibleComboFlashes;
+    }
   
     const keyframeDue =
       !supportsDeltaProtocol ||
@@ -177,7 +183,11 @@ export function createSnapshotStream({ networkStats }) {
         patch,
       };
       const deltaText = JSON.stringify(deltaPayload);
-      const privateBytes = options.radar ? Buffer.byteLength(JSON.stringify(options.radar)) : 0;
+      const privateBytes = Buffer.byteLength(JSON.stringify({
+        radar: options.radar || null,
+        privateWxAnchor: options.privateWxAnchor || null,
+        visibleComboFlashes: options.visibleComboFlashes || [],
+      }));
       if (Buffer.byteLength(deltaText) <= (frame.stateBytes + privateBytes) * MAX_DELTA_TO_FULL_RATIO) {
         serialized = deltaText;
       } else {

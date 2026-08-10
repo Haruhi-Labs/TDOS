@@ -72,6 +72,7 @@ import {
   renderFleetRoster,
   syncMobileHud,
   updateSkillButtons,
+  updateWxAnchorStatus,
 } from "./battle/hud.js";
 import { battleViewTemplate } from "./battle/template.js";
 import { createLocalBattleActionTransport } from "./battle/action-transport.js";
@@ -106,6 +107,7 @@ function cacheDom() {
   ui = {
   hullValue: document.getElementById("hullValue"),
   energyValue: document.getElementById("energyValue"),
+  wxAnchorValue: document.getElementById("wxAnchorValue"),
   splitValue: document.getElementById("splitValue"),
   selectedValue: document.getElementById("selectedValue"),
   splitOneBtn: document.getElementById("splitOneBtn"),
@@ -644,6 +646,7 @@ function updateUi() {
   const selectedState = selectedShipState();
   const selectedSim = selectedShipSim();
   ui.energyValue.textContent = `${energyPercentForShip(selectedState || own.ships.main)}%`;
+  updateWxAnchorStatus(ui, own);
   if (selectedState && selectedSim) {
     const minRadius = Math.round(selectedSim.routeConstraintProfile().minTurnRadius);
     ui.selectedValue.textContent = `${shipCharacterName(selectedState)} | ${throttleLabelForValue(selectedState.throttle)} | ${t("能量")} ${Math.round(

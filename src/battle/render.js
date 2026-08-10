@@ -8,6 +8,12 @@
 //  - solo.js / online.js 内不允许再出现与本文件同名的绘制函数(scripts/check-battle-drift.mjs 把关)。
 
 import { DEFAULT_WORLD_SIZE, FIRE_ARC_BANDS, clamp, quadraticPoint } from "../../shared/game-core.js";
+import {
+  WX_CHALLENGE_DURATION,
+  WX_DUEL_RADIUS,
+  normalizeWxAnchorSnapshot,
+  wxComboFlashesForViewer,
+} from "../../shared/game/wx-emperor.js";
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
 import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";
@@ -31,6 +37,82 @@ function teamAllShips(team) {
     return [];
   }
   return [...Object.values(team.ships), ...(team.extraShips || [])];
+}
+
+function buildWxAnchorVisualState(team) {
+  const anchor = normalizeWxAnchorSnapshot(team?.wxAnchor);
+  const anchorShip = Object.values(team?.ships || {}).find(
+    (ship) => ship?.alive && ship.characterId === "wx_emperor",
+  ) || null;
+  const challengePulse = anchor.challengePulse?.remaining > 0 ? anchor.challengePulse : null;
+  const duelZone = anchor.duelZone || (challengePulse
+    ? { x: challengePulse.x, y: challengePulse.y, radius: challengePulse.radius || WX_DUEL_RADIUS }
+    : anchor.active && anchorShip
+      ? { x: anchorShip.x, y: anchorShip.y, radius: WX_DUEL_RADIUS }
+      : null);
+  const pulseAge = challengePulse
+    ? clamp(WX_CHALLENGE_DURATION - challengePulse.remaining, 0, WX_CHALLENGE_DURATION)
+    : WX_CHALLENGE_DURATION;
+  return {
+    ...anchor,
+    anchorShip,
+    challengePulse,
+    duelZone,
+    pulseAge,
+    entryProgress: challengePulse ? clamp(pulseAge / 0.55, 0, 1) : 1,
+  };
+}
+
+function publicWxTeamView(team) {
+  if (!team) return null;
+  const challengePulse = team.wxAnchor?.challengePulse?.remaining > 0
+    ? { ...team.wxAnchor.challengePulse }
+    : null;
+  return {
+    ...team,
+    wxAnchor: challengePulse ? { challengePulse } : null,
+  };
+}
+
+function drawWxAnchorEffects(ctx, team, elapsed = 0, worldSize = DEFAULT_WORLD_SIZE) {
+  if (!ctx || !team) return;
+  const model = buildWxAnchorVisualState(team);
+  if (model.challengePulse) {
+    const radius = Math.max(18, Number(worldSize) * 0.58 * (model.pulseAge / WX_CHALLENGE_DURATION));
+    ctx.save();
+    ctx.globalAlpha = clamp(0.72 - model.pulseAge / WX_CHALLENGE_DURATION * 0.62, 0.08, 0.72);
+    ctx.strokeStyle = "#f7dc7b";
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(model.challengePulse.x, model.challengePulse.y, radius, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (model.duelZone) {
+    ctx.save();
+    ctx.globalAlpha = model.active ? 0.68 : 0.34;
+    ctx.strokeStyle = "#e9c865";
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([7, 6]);
+    ctx.lineDashOffset = -elapsed * 20;
+    ctx.beginPath();
+    ctx.arc(model.duelZone.x, model.duelZone.y, model.duelZone.radius, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
+  if (model.active && model.anchorShip) {
+    const shipRadius = Math.max(18, Number(model.anchorShip.radius) || 18);
+    ctx.save();
+    ctx.globalAlpha = 0.64 + Math.sin(elapsed * 5.5) * 0.1;
+    ctx.strokeStyle = "#c6f2ff";
+    ctx.lineWidth = 1.8;
+    ctx.shadowColor = "#e7bf58";
+    ctx.shadowBlur = 9;
+    ctx.beginPath();
+    ctx.arc(model.anchorShip.x, model.anchorShip.y, shipRadius + 11, 0, TAU);
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 // 背景渐变不随帧变化,按 ctx 缓存,省去每帧重建
@@ -648,7 +730,19 @@ export function drawProjectile(ctx, projectile, isOwnTeam) {
     ctx.globalAlpha = 1;
   }
 
-  if (projectile.visualKind === "cat_paw") {
+  if (projectile.visualKind === "imperial_bolt") {
+    const radius = Math.max(4, Number(projectile.radius) || 5);
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, radius, 0, TAU);
+    ctx.fill();
+    ctx.fillStyle = "#fff6d5";
+    ctx.beginPath();
+    ctx.arc(projectile.x, projectile.y, radius * 0.45, 0, TAU);
+    ctx.fill();
+  } else if (projectile.visualKind === "cat_paw") {
     const angle = dist > 1e-3 ? Math.atan2(dy, dx) : 0;
     ctx.translate(projectile.x, projectile.y);
     ctx.rotate(angle + Math.PI * 0.5);
@@ -688,6 +782,71 @@ export function drawBurst(ctx, burst) {
   ctx.lineWidth = 2;
   ctx.stroke();
   ctx.restore();
+}
+
+function comboHash(seed) {
+  const value = Math.sin(seed * 12.9898 + 78.233) * 43758.5453;
+  return value - Math.floor(value);
+}
+
+function drawComboFlashes(ctx, flashes) {
+  if (!Array.isArray(flashes)) return;
+  for (const flash of flashes) {
+    if (!flash || flash.kind !== "combo_flash" || flash.life <= 0) continue;
+    const maxLife = Math.max(0.1, Number(flash.maxLife) || 1.3);
+    const progress = 1 - clamp(flash.life / maxLife, 0, 1);
+    const fade = 1 - progress;
+    const x = Number(flash.x) || 0;
+    const y = Number(flash.y) || 0;
+    const color = flash.color || "#ffd86e";
+    const seed = Number(flash.id) || 1;
+
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const flashRadius = 40 + progress * 420;
+    const gradient = ctx.createRadialGradient(x, y, 0, x, y, flashRadius);
+    gradient.addColorStop(0, color);
+    gradient.addColorStop(0.5, color);
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0)");
+    ctx.globalAlpha = fade * 0.5;
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, LOGICAL, LOGICAL);
+
+    for (let index = 0; index < 14; index += 1) {
+      const angle = comboHash(seed * 0.37 + index * 7.71) * TAU;
+      const speed = 90 + comboHash(seed + index * 3.17) * 170;
+      const travel = speed * progress;
+      const size = 1.5 + comboHash(seed * 2 + index * 5.3) * 2.8;
+      ctx.globalAlpha = fade * (0.5 + comboHash(seed + index * 7.1) * 0.5);
+      ctx.fillStyle = index % 4 === 0 ? "#fff7d9" : color;
+      ctx.beginPath();
+      ctx.arc(x + Math.cos(angle) * travel, y + Math.sin(angle) * travel, size * (1 - progress * 0.55), 0, TAU);
+      ctx.fill();
+    }
+
+    for (let ring = 0; ring < 2; ring += 1) {
+      const ringProgress = clamp(progress * 1.25 - ring * 0.28, 0, 1);
+      if (ringProgress <= 0) continue;
+      ctx.globalAlpha = fade * (0.55 - ring * 0.18);
+      ctx.strokeStyle = ring === 0 ? color : "#fff2c8";
+      ctx.lineWidth = Math.max(0.8, 3 - ringProgress * 2.2 - ring * 0.6);
+      ctx.beginPath();
+      ctx.arc(x, y, 24 + ringProgress * 150 + ring * 18, 0, TAU);
+      ctx.stroke();
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = fade < 0.35 ? fade / 0.35 : 1;
+    ctx.font = "bold 28px 'Noto Sans SC', 'PingFang SC', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = "rgba(10, 10, 10, 0.88)";
+    ctx.strokeText(t(flash.textKey), x, y - 78 - 26 * progress);
+    ctx.fillStyle = "#fff2c8";
+    ctx.fillText(t(flash.textKey), x, y - 78 - 26 * progress);
+    ctx.restore();
+  }
 }
 
 export function drawFloatingText(ctx, label) {
@@ -1035,6 +1194,8 @@ export function drawBattleWorld(ctx, frame) {
     Number(state.world?.size) || LOGICAL,
   );
   drawYukiRadar(ctx, frame);
+  drawWxAnchorEffects(ctx, ownTeam, elapsed, Number(state.world?.size) || LOGICAL);
+  drawWxAnchorEffects(ctx, publicWxTeamView(enemyTeam), elapsed, Number(state.world?.size) || LOGICAL);
 
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制
   syncShipDestructionEffects(frame.destructionEffects, [
@@ -1146,6 +1307,7 @@ export function drawBattleWorld(ctx, frame) {
       drawFloatingText(ctx, label);
     }
   }
+  drawComboFlashes(ctx, wxComboFlashesForViewer(state.comboFlashes, spectating ? null : ownSeat));
 
   drawShipDestructionEffects(ctx, frame.destructionEffects);
 
