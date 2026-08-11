@@ -2897,7 +2897,9 @@ export class MatchSimulation {
     this.koizumiBarrierImpacts = [];
     this.floatingTexts = [];
     this.bots = {};
-    const legacyAiSeats = normalizeAiSeats(mode, options.legacyAiSeats); // 指定哪些AI席位用旧版AI
+    // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
+    // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
+    const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats);
     const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
     for (const seat of this.aiSeats) {
       const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));

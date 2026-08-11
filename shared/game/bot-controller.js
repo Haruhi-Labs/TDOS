@@ -7,6 +7,17 @@ import {
   recordScoutDeployment,
   scoutMissionPoint,
 } from "./bot-scout-strategy.js";
+import {
+  applyKoizumiBarrierMainStrategy,
+  barrierBlocksRangedAttack,
+  buildKoizumiBarrierTactics,
+  characterTargetPriorityBonus,
+  clampPointToAnchorRadius,
+  keepDirectiveInsideKoizumiBarrier,
+  koizumiBarrierRoleDirective,
+  predictCharacterSkillAim,
+  snapshotVisibleCharacterTactics,
+} from "./bot-character-strategy.js";
 import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
 import {
   energyRateForThrottle,
@@ -294,6 +305,31 @@ export class BotController {
       overwhelmedShipKey: context.overwhelmedShipKey || null,
       counterCollapse: context.counterCollapse,
       shipThreats: this.debugThreatMap(context.shipThreats),
+      barrierTactics: context.barrierTactics
+        ? {
+            own: context.barrierTactics.own
+              ? {
+                  active: Boolean(context.barrierTactics.own.active),
+                  radius: context.barrierTactics.own.radius,
+                  disabledRemaining: context.barrierTactics.own.disabledRemaining,
+                }
+              : null,
+            enemy: context.barrierTactics.enemy
+              ? {
+                  active: Boolean(context.barrierTactics.enemy.active),
+                  radius: context.barrierTactics.enemy.radius,
+                  disabledRemaining: context.barrierTactics.enemy.disabledRemaining,
+                  age: context.barrierTactics.enemy.age,
+                }
+              : null,
+            breachShipKey: context.barrierTactics.breachShipKey || null,
+            breachKind: context.barrierTactics.breachKind || null,
+            breachActive: Boolean(context.barrierTactics.breachActive),
+            infiltratorKey: context.barrierTactics.infiltratorKey || null,
+            incomingKind: context.barrierTactics.incoming?.kind || null,
+            incomingId: context.barrierTactics.incoming?.contact?.id || null,
+          }
+        : null,
     };
   }
 
@@ -492,6 +528,7 @@ export class BotController {
       seenAt: this.team.match.elapsed,
       zoneId: zone.id,
       source,
+      ...snapshotVisibleCharacterTactics(entity, this.team.match.elapsed),
     };
   }
 
@@ -1428,6 +1465,7 @@ export class BotController {
         + isolation * 0.82
         + overwhelmOpportunity * 0.92
         + visibleBias
+        + (this.legacy ? 0 : characterTargetPriorityBonus(contact, this.team.match.elapsed))
         - uncertaintyPenalty;
       if (score > bestScore) {
         bestScore = score;
@@ -1548,6 +1586,21 @@ export class BotController {
     const winning = this.legacy ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + 0.08);
     const closeoutWindow = this.legacy ? false : (enemyAliveCount > 0
       && (enemyAliveCount < ownAliveCount || enemyHullTeam < 0.3 || (killWindow && winning)));
+    const enemyMainContact = this.projectContact(this.enemyIntel.main, 1.2);
+    const advancedCounterplay = this.usesAdvancedSkillCounterplay();
+    const barrierTactics = buildKoizumiBarrierTactics({
+      team: this.team,
+      enemyMainContact,
+      main,
+      detachedShips,
+      enemyContacts: this.knownEnemyContacts({ maxAge: 4.5 }),
+      now: this.team.match.elapsed,
+      legacy: this.legacy,
+      advanced: advancedCounterplay,
+      mainHull,
+      localAdvantage,
+      killWindow,
+    });
 
     return {
       focus,
@@ -1596,6 +1649,7 @@ export class BotController {
       overwhelmedShipKey,
       counterCollapse,
       shipThreats,
+      barrierTactics,
     };
   }
 
@@ -1607,6 +1661,14 @@ export class BotController {
       const ship = this.team.ships.sub1;
       if (this.team.splitLevel !== 0 || !ship.alive) {
         return false;
+      }
+      if (
+        context.barrierTactics?.enemy?.active
+        && ["asakura", "koizumi"].includes(ship.characterId)
+        && elapsed > 4
+        && context.fleetHull > 0.54
+      ) {
+        return true;
       }
       const splitUtility = this.splitUtilityForShip(ship, context);
       if ((context.mainHull < 0.32 && context.mainEnergyRatio < 0.18) || context.fleetHull < 0.42 || context.energyRatio < 0.14 || (context.defensivePressure && context.maxShipThreat > 1.15)) {
@@ -1630,6 +1692,15 @@ export class BotController {
       const ship = this.team.ships.sub2;
       if (this.team.splitLevel !== 1 || !ship.alive) {
         return false;
+      }
+      if (
+        context.barrierTactics?.enemy?.active
+        && ["asakura", "koizumi"].includes(ship.characterId)
+        && elapsed > 8
+        && context.fleetHull > 0.58
+        && !context.overextended
+      ) {
+        return true;
       }
       const splitUtility = this.splitUtilityForShip(ship, context);
       if ((context.mainHull < 0.38 && context.mainEnergyRatio < 0.22) || context.fleetHull < 0.5 || context.energyRatio < 0.2 || context.overextended || (context.defensivePressure && context.maxShipThreat > 1.08)) {
@@ -2115,7 +2186,18 @@ export class BotController {
     }
     let ok = false;
     if (ship.characterId === "future1096" && estimate && estimate.source !== "spawn" && (estimate.visible || estimate.age <= 1.6)) {
-      ok = this.team.castSubSkill(shipKey, { targetX: estimate.x, targetY: estimate.y });
+      // 1096 光线蓄力期间方向已经锁定；按公开的航向和航速预判 1.05 秒后的落点，
+      // 避免高难度 AI 仍把固定射线瞄在移动目标的旧位置。
+      const aim = predictCharacterSkillAim(
+        estimate,
+        this.legacy ? 0 : 1.05,
+        this.team.match.worldSize,
+        this.safeRoutePadding(4),
+      );
+      ok = this.team.castSubSkill(shipKey, {
+        targetX: aim?.x ?? estimate.x,
+        targetY: aim?.y ?? estimate.y,
+      });
     } else if (ship.characterId === "tsuruya") {
       const zoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
       ok = this.team.castSubSkill(shipKey, { zoneId });
@@ -2128,6 +2210,15 @@ export class BotController {
       at: this.team.match.elapsed,
       target: this.debugContact(estimate),
     };
+    if (
+      ok
+      && context?.barrierTactics?.enemy?.active
+      && context.barrierTactics.breachShipKey === shipKey
+    ) {
+      // 破盾技能刚生效便立即重规划冲撞路线，不能等常规 1～2 秒改航周期。
+      this.moveTimer = 0;
+      this.koizumiOrbSteerTimer = 0;
+    }
     this.subTimers[shipKey] = ok
       ? (context?.skillAggression > 1 ? randomInRange(12, 18) : randomInRange(15, 22))
       : context?.conserveEnergy
@@ -2160,6 +2251,17 @@ export class BotController {
 
   scoreMode(mode, context) {
     const rangeRatio = context.dist / Math.max(context.rangeRef, 1);
+    const ownBarrier = context.barrierTactics?.own;
+    const enemyBarrier = context.barrierTactics?.enemy;
+    const barrierBreachWindow = Boolean(
+      enemyBarrier
+      && !enemyBarrier.active
+      && enemyBarrier.disabledRemaining > 0,
+    );
+    const organizedBreach = Boolean(
+      enemyBarrier?.active
+      && context.barrierTactics?.breachShipKey,
+    );
     if (mode === "recover") {
       return context.edgePressure * 5 + (context.mainHull < 0.22 ? 1.8 : 0);
     }
@@ -2181,6 +2283,8 @@ export class BotController {
     if (mode === "regroup") {
       return (context.overextended ? 2.1 : 0)
         + (context.defensivePressure ? 1.2 : 0)
+        + (ownBarrier && !ownBarrier.active ? 1.9 : 0)
+        + (context.barrierTactics?.incoming ? 1.45 : 0)
         + (context.energyRatio < 0.16 ? 1.1 : 0)
         + (context.enemyBroadsideRisk ? 0.8 : 0)
         + context.energyRecoveryNeed * 0.52
@@ -2188,6 +2292,8 @@ export class BotController {
     }
     if (mode === "kite") {
       return (context.defensivePressure ? 2.1 : 0)
+        + (ownBarrier && !ownBarrier.active ? 2.35 : 0)
+        + (context.barrierTactics?.incoming ? 1.8 : 0)
         + (rangeRatio < 1.06 ? 0.95 : 0)
         + (context.localAdvantage < 0.78 ? 1.1 : 0)
         + (context.enemyArcDensity > 1 ? 0.9 : 0)
@@ -2196,6 +2302,9 @@ export class BotController {
     }
     if (mode === "collapse") {
       return (context.killWindow ? 3.4 : 0)
+        + (barrierBreachWindow ? 2.3 : 0)
+        + (organizedBreach ? 0.9 : 0)
+        - (enemyBarrier?.active && !organizedBreach ? 1.15 : 0)
         + (context.localAdvantage > 1 ? 1.9 : 0)
         + (context.closeoutWindow ? 1.6 : 0) // 收尾窗口：强力倾向冲杀残敌
         + (context.intelSolid ? 1 : -0.55)
@@ -2208,6 +2317,9 @@ export class BotController {
     }
     if (mode === "broadside") {
       return (context.broadsideWindow ? 2.4 : -0.45)
+        + (ownBarrier?.active ? 0.72 : 0)
+        + (barrierBreachWindow ? 0.48 : 0)
+        - (enemyBarrier?.active && !organizedBreach ? 0.55 : 0)
         + (context.localAdvantage > 0.9 ? 0.82 : 0)
         + (context.killWindow ? 0.55 : 0)
         + (context.arcAdvantage < 0.2 ? 1 : 0)
@@ -2217,6 +2329,8 @@ export class BotController {
     }
     if (mode === "cutoff") {
       return (context.intelSolid ? 1.3 : -0.2)
+        + (enemyBarrier?.active && context.barrierTactics?.infiltratorKey ? 0.9 : 0)
+        + (organizedBreach ? 0.58 : 0)
         + (rangeRatio > 0.86 && rangeRatio < 1.95 ? 1 : 0)
         + (context.localAdvantage > 0.9 ? 0.58 : 0)
         + (context.enemyArcDensity > 1.2 ? 0.44 : 0)
@@ -2227,6 +2341,9 @@ export class BotController {
     }
     if (mode === "press") {
       return 1.55
+        + (barrierBreachWindow ? 1.85 : 0)
+        + (organizedBreach ? 0.72 : 0)
+        - (enemyBarrier?.active && !organizedBreach && !context.barrierTactics?.infiltratorKey ? 0.82 : 0)
         + (context.closeoutWindow ? 1.3 : 0) // 收尾窗口：维持压制把残敌打死
         + (rangeRatio > 1.08 ? 0.92 : 0)
         + (context.localAdvantage > 0.9 ? 0.72 : 0)
@@ -2243,8 +2360,19 @@ export class BotController {
   }
 
   chooseMode(context) {
+    const ownBarrier = context.barrierTactics?.own;
     const forcedMode = context.edgePressure > 0.34
       ? "recover"
+      : ownBarrier && !ownBarrier.active && context.dist < context.rangeRef * 1.42 && !context.winning
+        ? context.detachedCount > 0 ? "regroup" : "kite"
+      : context.barrierTactics?.incoming && !context.killWindow
+        ? "kite"
+      : context.barrierTactics?.enemy
+        && !context.barrierTactics.enemy.active
+        && context.barrierTactics.enemy.disabledRemaining > 0
+        && context.intelSolid
+        && context.mainHull > 0.32
+        ? "collapse"
       // 收尾窗口下不强制去充能(harvest)——该把残局打完，否则双方都去充能拖成平局
       : (context.energyRecoveryNeed >= 0.78 || context.energyRatio < 0.12) && !context.emergencyCommit && !context.closeoutWindow && !context.focus.visible && context.dist > context.rangeRef * 0.84
         ? "harvest"
@@ -2439,7 +2567,11 @@ export class BotController {
     };
 
     for (const ship of detachedShips) {
-      if (intelLead && ship.id === intelLead.id) {
+      if (context?.barrierTactics?.breachShipKey === ship.key) {
+        plan.roles[ship.key] = "breach";
+      } else if (context?.barrierTactics?.infiltratorKey === ship.key) {
+        plan.roles[ship.key] = "infiltrate";
+      } else if (intelLead && ship.id === intelLead.id) {
         plan.roles[ship.key] = "intel";
       } else if (retreatShip && ship.id === retreatShip.id) {
         plan.roles[ship.key] = "rear";
@@ -2484,6 +2616,17 @@ export class BotController {
     const mainAngle = Math.atan2(mainTarget.y - enemyEstimate.y, mainTarget.x - enemyEstimate.x);
     const preferredRange = clamp(ship.effectiveRange() * 0.9, 170, 380);
     const emergencyEscape = threat.overwhelmed || (threat.danger > 1.18 && role !== "intel");
+
+    const barrierDirective = koizumiBarrierRoleDirective(
+      ship,
+      role,
+      enemyEstimate,
+      context?.barrierTactics?.enemy,
+      laneSign,
+    );
+    if (barrierDirective) {
+      return barrierDirective;
+    }
 
     if (emergencyEscape) {
       const escape = this.escapeTargetForShip(ship, main.x, main.y, 7);
@@ -2728,7 +2871,7 @@ export class BotController {
   }
 
   usesAdvancedSkillCounterplay() {
-    return this.difficulty === "hard" || this.difficulty === "master";
+    return !this.legacy && (this.difficulty === "hard" || this.difficulty === "master");
   }
 
   incomingVisionWaveWillPurge(ships, buffDuration) {
@@ -2893,7 +3036,19 @@ export class BotController {
       return false;
     }
     const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
+    const enemyBarrier = context?.barrierTactics?.enemy;
+    const assignedToBreach = Boolean(
+      enemyBarrier?.active
+      && context?.barrierTactics?.breachShipKey === ship.key,
+    );
+    const breachDistance = enemyBarrier
+      ? distance(ship.x, ship.y, enemyBarrier.x, enemyBarrier.y)
+      : dist;
+    const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, 4);
     if (ship.characterId === "haruhi") {
+      if (blockedByBarrier) {
+        return false;
+      }
       return Boolean(
         estimate
         && (estimate.visible || estimate.age <= 2.5)
@@ -2902,6 +3057,15 @@ export class BotController {
       );
     }
     if (ship.characterId === "koizumi") {
+      if (assignedToBreach) {
+        return Boolean(
+          estimate
+          && !ship.isKoizumiOrbActive()
+          && estimate.source !== "spawn"
+          && (estimate.visible || estimate.age <= 4.2)
+          && breachDistance <= ship.effectiveRange() * 1.75,
+        );
+      }
       return Boolean(
         estimate
         && !ship.isKoizumiOrbActive()
@@ -2912,6 +3076,9 @@ export class BotController {
       );
     }
     if (ship.characterId === "future1096") {
+      if (blockedByBarrier) {
+        return false;
+      }
       return Boolean(
         estimate
         && estimate.source !== "spawn"
@@ -2934,6 +3101,13 @@ export class BotController {
         && (!estimate || !estimate.visible || estimate.age > 2.5 || this.team.scouts.length < 3);
     }
     if (ship.characterId === "asakura") {
+      if (assignedToBreach) {
+        return Boolean(
+          estimate
+          && (estimate.visible || estimate.age <= 4.2)
+          && breachDistance <= ship.effectiveRange() * 1.5,
+        );
+      }
       return Boolean(
         estimate
         && (estimate.visible || estimate.age <= 2.4)
@@ -2942,6 +3116,9 @@ export class BotController {
       );
     }
     if (ship.characterId === "shamisen") {
+      if (blockedByBarrier) {
+        return false;
+      }
       return Boolean(
         estimate
         && (estimate.visible || estimate.age <= 2.2)
@@ -3148,10 +3325,18 @@ export class BotController {
   engageTarget(ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
     if (this.legacy) return target; // 旧版AI：不做视野收尾压近
     if (!target || !enemy || !ship) return target;
+    // 情报前探、后卫和侧翼已有各自的距离契约；通用交火收尾只能改写正面火力角色，
+    // 否则会把长门前探从视野边缘推回普通射击距离，反而丢失情报价值。
+    if (!combatRole) return target;
     // 吊在远处打(攻击射程≈505 ≫ 视野≈166，开火只需"队伍视野")：已侦得目标(enemy.visible)且落点在
     // 0.9×射程以内→把落点外推到 0.9×射程。敌视野够不到这个距离→敌看不见我便打不还手。
     // 情境化：中立交火期远吊安全输出(也抗对手远吊)；但到了收尾窗口(已占优、敌濒覆灭)就改为压近快速补杀。
-    if (enemy.visible && !tactical.closeoutWindow) {
+    const barrierBreachWindow = Boolean(
+      tactical.barrierTactics?.enemy
+      && !tactical.barrierTactics.enemy.active
+      && tactical.barrierTactics.enemy.disabledRemaining > 0,
+    );
+    if (enemy.visible && !tactical.closeoutWindow && !barrierBreachWindow) {
       // 站在敌视野之外打：交火距离取"敌方视野×POKE_VISION_MULT"(刚好够不到我)，clamp 在射程内。
       // 比满射程远吊更靠前→火力更集中/压制更强，又仍在敌视野外→不挨打。
       const enemyVis = this.estimateVisionRange(enemy);
@@ -3246,7 +3431,13 @@ export class BotController {
     }
 
     for (const ship of activeOrbs) {
-      const estimate = this.selectEnemyFocus(ship) || context?.focus || this.primaryEnemyEstimate();
+      const barrier = context?.barrierTactics?.enemy;
+      const knownBarrierMain = barrier?.active
+        ? this.projectContact(this.enemyIntel.main, 0.8)
+        : null;
+      const estimate = knownBarrierMain
+        ? { ...knownBarrierMain, x: barrier.x, y: barrier.y }
+        : this.selectEnemyFocus(ship) || context?.focus || this.primaryEnemyEstimate();
       if (!estimate || estimate.source === "spawn") continue;
       const dist = distance(ship.x, ship.y, estimate.x, estimate.y);
       const cruiseSpeed = Math.max(120, Number(ship.koizumiOrb.cruiseSpeed) || 164);
@@ -3305,9 +3496,15 @@ export class BotController {
       shouldUseDetachedRoles: false,
     };
     const intelLeadShip = detachedPlan.intelLeadKey ? this.team.ships[detachedPlan.intelLeadKey] : null;
+    const barrierBreachWindow = Boolean(
+      tactical.barrierTactics?.enemy
+      && !tactical.barrierTactics.enemy.active
+      && tactical.barrierTactics.enemy.disabledRemaining > 0,
+    );
     let mainHeldForIntelLead = false;
     if (
       detachedPlan.intelLeadKey
+      && !barrierBreachWindow
       && !tactical.killWindow
       && (!tactical.emergencyCommit || (intelLeadShip?.characterId === "yuki" && (enemyEstimate.visible || tactical.intelSolid)))
       && (mode !== "collapse" || (intelLeadShip?.characterId === "yuki" && (enemyEstimate.visible || tactical.intelSolid)))
@@ -3338,6 +3535,15 @@ export class BotController {
     if (!mainHeldForIntelLead) {
       mainTarget = this.engageTarget(main, enemyEstimate, mainTarget, mode, tactical);
     }
+    mainTarget = applyKoizumiBarrierMainStrategy({
+      main,
+      enemyEstimate,
+      target: mainTarget,
+      tactics: tactical.barrierTactics,
+      match: this.team.match,
+      padding: this.safeRoutePadding(14),
+      flankSign: tactical.flankSign || 1,
+    });
     const throttleShift = tactical.emergencyCommit
       ? 0.06 + tactical.energySurplus * 0.05
       : tactical.energySurplus * 0.05 - tactical.energyRecoveryNeed * 0.18;
@@ -3346,7 +3552,7 @@ export class BotController {
       const adjustedMax = clamp(max + throttleShift, adjustedMin + 0.04, 1.2);
       return randomInRange(adjustedMin, adjustedMax);
     };
-    const mainThrottle = mode === "recover"
+    let mainThrottle = mode === "recover"
       ? throttleBand(1.02, 1.18)
       : mode === "harvest"
         ? throttleBand(0.68, 0.88)
@@ -3361,6 +3567,19 @@ export class BotController {
               : tactical.pressureDrive > 0.95 || tactical.emergencyCommit
                 ? throttleBand(1.02, 1.18)
                 : throttleBand(0.94, 1.14);
+    if (
+      tactical.barrierTactics?.incoming
+      || (tactical.barrierTactics?.own && !tactical.barrierTactics.own.active)
+      || (
+        tactical.barrierTactics?.enemy?.active
+        && (
+          tactical.barrierTactics.breachShipKey === "main"
+          || tactical.barrierTactics.infiltratorKey === "main"
+        )
+      )
+    ) {
+      mainThrottle = throttleForGear(4);
+    }
     const mainIssued = this.issueShipRoute(
       this.team.ships.main,
       mainTarget.x,
@@ -3391,11 +3610,20 @@ export class BotController {
       }
       const role = detachedPlan.roles[ship.key] || "fire";
       const laneSign = detachedPlan.laneSigns[ship.key] || sign;
-      const directive = this.computeDetachedDirective(ship, role, enemyEstimate, tactical, main, mainTarget, laneSign);
+      let directive = this.computeDetachedDirective(ship, role, enemyEstimate, tactical, main, mainTarget, laneSign);
       if (!directive) {
         return;
       }
-      directive.target = this.engageTarget(ship, enemyEstimate, directive.target, mode, tactical, { combatRole: role === "fire" || role === "front" });
+      if (role !== "breach" && role !== "infiltrate") {
+        directive.target = this.engageTarget(ship, enemyEstimate, directive.target, mode, tactical, { combatRole: role === "fire" || role === "front" });
+      }
+      directive = keepDirectiveInsideKoizumiBarrier(
+        directive,
+        ship,
+        mainTarget,
+        tactical.barrierTactics,
+        role,
+      );
       // 编队凝聚(反孤立)：交战角色的分离舰不得离主力太远，避免被各个击破，并让火力自然汇聚到同一片战区
       // (公平的"集中兵力"——靠站位凝聚，而非锁定目标)。后撤/侦察/逃逸不受此限。
       if (!this.legacy && (role === "fire" || role === "flank" || role === "front") && main.alive) {
@@ -3414,6 +3642,10 @@ export class BotController {
       let throttleRange = directive.throttle;
       if (role === "escape") {
         throttleRange = { min: 1.04, max: 1.2 };
+      } else if (role === "breach" || role === "infiltrate") {
+        throttleRange = role === "breach"
+          ? { min: 1.12, max: 1.2 }
+          : { min: 1.04, max: 1.18 };
       } else if (mode === "harvest" && role !== "intel") {
         throttleRange = { min: 0.58, max: Math.min(0.88, throttleRange.max) };
       } else if (mode === "regroup" && role !== "intel" && role !== "front") {
@@ -3448,7 +3680,7 @@ export class BotController {
       if (shouldUseDetachedRoles) {
         routeDetachedShip(this.team.ships.sub1);
       } else {
-        const sub1Target = mode === "search"
+        let sub1Target = mode === "search"
         ? searchAssignments.sub1
         : sectorPlan && (mode === "cutoff" || mode === "press")
           ? sectorPlan.sub1
@@ -3476,6 +3708,14 @@ export class BotController {
                       ? focus.y + side.y * sign * 220 - toward.y * 90
                       : focus.y + randomInRange(-250, 250),
           };
+      if (tactical.barrierTactics?.own) {
+        const barrier = tactical.barrierTactics.own;
+        sub1Target = clampPointToAnchorRadius(
+          sub1Target,
+          mainTarget,
+          barrier.active ? Math.max(42, barrier.radius - 34) : Math.min(96, barrier.radius * 0.58),
+        );
+      }
       const issued = this.issueShipRoute(
         this.team.ships.sub1,
         sub1Target.x,
@@ -3508,7 +3748,7 @@ export class BotController {
         routeDetachedShip(this.team.ships.sub2);
       } else {
         const orbitAngle = Number.isFinite(focus.angle) ? focus.angle : Math.atan2(focus.y - main.y, focus.x - main.x);
-        const sub2Target = mode === "search"
+        let sub2Target = mode === "search"
         ? searchAssignments.sub2
         : sectorPlan && (mode === "cutoff" || mode === "press")
           ? sectorPlan.sub2
@@ -3536,6 +3776,14 @@ export class BotController {
                       ? focus.y + side.y * sign * 120 + toward.y * 70
                       : focus.y + Math.sin(orbitAngle + Math.PI * 0.5) * randomInRange(160, 300),
           };
+      if (tactical.barrierTactics?.own) {
+        const barrier = tactical.barrierTactics.own;
+        sub2Target = clampPointToAnchorRadius(
+          sub2Target,
+          mainTarget,
+          barrier.active ? Math.max(42, barrier.radius - 34) : Math.min(96, barrier.radius * 0.58),
+        );
+      }
       const issued = this.issueShipRoute(
         this.team.ships.sub2,
         sub2Target.x,

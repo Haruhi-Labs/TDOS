@@ -121,9 +121,35 @@ function runBattle({ index, loadoutA, loadoutB }) {
   let minHullRatio = 1;
   let allShipsBlueoutTicks = 0;
   let radarContactTicks = 0;
+  let barrierDefenseTicks = 0;
+  let barrierCounterplayTicks = 0;
+  let barrierBreachWindowTicks = 0;
+  const barrierImpactIds = new Set();
+  const barrierImpacts = {
+    projectile: 0,
+    beam: 0,
+    ram: 0,
+  };
   const combatScoutProjectileIds = new Set();
   for (let tick = 0; tick < maxTicks && simulation.phase === "running"; tick += 1) {
     simulation.update(TICK_DT);
+    for (const bot of Object.values(simulation.bots)) {
+      const tactics = bot.currentContext?.barrierTactics;
+      if (tactics?.own?.active) barrierDefenseTicks += 1;
+      if (tactics?.enemy?.active && (tactics.breachShipKey || tactics.infiltratorKey)) {
+        barrierCounterplayTicks += 1;
+      }
+      if (tactics?.enemy && !tactics.enemy.active && tactics.enemy.disabledRemaining > 0) {
+        barrierBreachWindowTicks += 1;
+      }
+    }
+    for (const impact of simulation.koizumiBarrierImpacts) {
+      if (barrierImpactIds.has(impact.id)) continue;
+      barrierImpactIds.add(impact.id);
+      if (Object.hasOwn(barrierImpacts, impact.kind)) {
+        barrierImpacts[impact.kind] += 1;
+      }
+    }
     const combatScoutIds = new Set(
       [...simulation.teamA.scouts, ...simulation.teamB.scouts]
         .filter((scout) => scout.combatCapable)
@@ -168,7 +194,84 @@ function runBattle({ index, loadoutA, loadoutB }) {
     radarContactTicks,
     combatScoutShots: combatScoutProjectileIds.size,
     visionWaveBuffDeferrals,
+    barrierDefenseTicks,
+    barrierCounterplayTicks,
+    barrierBreachWindowTicks,
+    barrierImpacts,
     counters,
+  };
+}
+
+function runBarrierBreachScenario(breakerKind, seed) {
+  __resetEntityIds(1);
+  const isHaruhi = breakerKind === "haruhi_otherworlder";
+  const breakerCharacter = breakerKind === "blade_queen" ? "asakura" : "koizumi";
+  const simulation = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    aiDifficulty: "master",
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "shamisen" },
+      B: isHaruhi
+        ? { main: "haruhi", sub1: "yuki", sub2: "future1096" }
+        : { main: "kyon", sub1: breakerCharacter, sub2: "yuki" },
+    },
+  });
+  simulation.setCombatEnabled("A", false);
+  simulation.setCombatEnabled("B", false);
+  const defendingMain = simulation.teamA.ships.main;
+  const attackingTeam = simulation.teamB;
+  const bot = simulation.botBySeat("B");
+  const breaker = isHaruhi ? attackingTeam.ships.main : attackingTeam.ships.sub1;
+  if (!isHaruhi) attackingTeam.split(1);
+  if (isHaruhi) {
+    attackingTeam.haruhiFlagship.supporters.add("otherworlder");
+    attackingTeam.haruhiFlagship.otherworlderReadyAt = simulation.elapsed;
+    bot.flagshipTimer = 999;
+  } else {
+    bot.subTimers.sub1 = 0;
+  }
+
+  defendingMain.x = 650;
+  defendingMain.y = 720;
+  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
+  defendingMain.route = null;
+  breaker.x = 940;
+  breaker.y = 720;
+  breaker.angle = Math.PI;
+  breaker.energy = breaker.maxEnergy;
+  breaker.command = { x: breaker.x, y: breaker.y };
+  breaker.route = null;
+  attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
+  attackingTeam.ships.main.y = 720;
+  bot.moveTimer = 0;
+  bot.rememberContact(defendingMain, "visible");
+
+  const previousRandom = Math.random;
+  Math.random = seededRandom(seed);
+  try {
+    const maximumTicks = Math.ceil(14 / TICK_DT);
+    for (let tick = 0; tick < maximumTicks; tick += 1) {
+      simulation.update(TICK_DT);
+      const impact = simulation.koizumiBarrierImpacts.find(
+        (item) => item.kind === "ram" && item.ramKind === breakerKind,
+      );
+      if (impact) {
+        return {
+          breakerKind,
+          breached: true,
+          breachedAt: Number(simulation.elapsed.toFixed(2)),
+        };
+      }
+    }
+  } finally {
+    Math.random = previousRandom;
+  }
+  return {
+    breakerKind,
+    breached: false,
+    breachedAt: null,
   };
 }
 
@@ -206,6 +309,11 @@ try {
 
 const completed = results.filter((result) => result.completed);
 const damaged = results.filter((result) => result.minHullRatio < 0.995);
+const barrierBreachScenarios = [
+  runBarrierBreachScenario("blade_queen", 0xb1ade),
+  runBarrierBreachScenario("koizumi_orb", 0x0b12),
+  runBarrierBreachScenario("haruhi_otherworlder", 0xa117),
+];
 const summary = {
   matches: results.length,
   completed: completed.length,
@@ -223,6 +331,15 @@ const summary = {
   radarContactTicks: results.reduce((sum, result) => sum + result.radarContactTicks, 0),
   combatScoutShots: results.reduce((sum, result) => sum + result.combatScoutShots, 0),
   visionWaveBuffDeferrals: results.reduce((sum, result) => sum + result.visionWaveBuffDeferrals, 0),
+  barrierTactics: {
+    defenseTicks: results.reduce((sum, result) => sum + result.barrierDefenseTicks, 0),
+    counterplayTicks: results.reduce((sum, result) => sum + result.barrierCounterplayTicks, 0),
+    breachWindowTicks: results.reduce((sum, result) => sum + result.barrierBreachWindowTicks, 0),
+    projectileBlocks: results.reduce((sum, result) => sum + result.barrierImpacts.projectile, 0),
+    beamBlocks: results.reduce((sum, result) => sum + result.barrierImpacts.beam, 0),
+    ramBreaches: results.reduce((sum, result) => sum + result.barrierImpacts.ram, 0),
+    fixedBreachScenarios: barrierBreachScenarios,
+  },
   scoutTactics: {
     yukiLaunches: totals.scoutLaunches.yuki || 0,
     yukiRetasks: totals.scoutRetasks.yuki || 0,
@@ -250,6 +367,13 @@ assert(summary.scoutTactics.yukiLaunches > 0, "长门旗舰AI在模拟对战中�
 assert(summary.scoutTactics.yukiZones >= 3, "长门旗舰AI在模拟对战中没有形成多战区部署");
 assert(summary.scoutTactics.yukiRetasks > 0, "长门旗舰AI在模拟对战中从未重新编组战斗僚机");
 assert(summary.visionWaveBuffDeferrals > 0, "困难 AI 模拟对战从未触发朝仓视野波增益延迟");
+assert(summary.barrierTactics.defenseTicks > 0, "包含古泉旗舰的模拟对战从未进入能量圈防守战术");
+assert(summary.barrierTactics.counterplayTicks > 0, "AI 从未对已识别的古泉能量圈组织破盾或渗透");
+assert(summary.barrierTactics.projectileBlocks + summary.barrierTactics.beamBlocks > 0, "古泉能量圈在模拟对战中从未实际拦截远程攻击");
+assert(
+  barrierBreachScenarios.every((scenario) => scenario.breached),
+  `固定阵容破盾模拟失败：${barrierBreachScenarios.filter((scenario) => !scenario.breached).map((scenario) => scenario.breakerKind).join(",")}`,
+);
 for (const characterId of ["haruhi", "tsuruya", "asakura"]) {
   assert((totals.flagshipCasts[characterId] || 0) > 0, `${characterId} 旗舰主动技能在模拟对战中从未成功释放`);
 }

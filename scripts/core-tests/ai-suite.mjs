@@ -11,6 +11,13 @@ import { assert, runSteps } from "./helpers.mjs";
 
 function aiEngageCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  assert(!sim.bot.legacy, "单人 AI 在未显式指定时错误启用了旧版对照策略");
+  const legacySim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    legacyAiSeats: ["B"],
+  });
+  assert(legacySim.bot.legacy, "调试场景显式指定后没有启用旧版 AI 对照策略");
   runSteps(sim, 70);
 
   const aDamaged = sim.teamA.hullRatio() < 0.995;
@@ -1161,6 +1168,246 @@ function aiKoizumiOrbSteeringCheck() {
   );
 }
 
+function aiKoizumiBarrierDefenseCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "asakura", sub2: "future1096" },
+      B: { main: "koizumi", sub1: "yuki", sub2: "shamisen" },
+    },
+  });
+  const bot = sim.bot;
+  const team = sim.teamB;
+  const main = team.ships.main;
+  const enemyMain = sim.teamA.ships.main;
+  team.split(1);
+  team.split(2);
+  main.x = 980;
+  main.y = 720;
+  main.command = { x: main.x, y: main.y };
+  main.route = null;
+  team.ships.sub1.x = 1010;
+  team.ships.sub1.y = 680;
+  team.ships.sub2.x = 1010;
+  team.ships.sub2.y = 760;
+  enemyMain.x = 650;
+  enemyMain.y = 720;
+  enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
+  enemyMain.route = null;
+
+  bot.rememberContact(enemyMain, "visible");
+  let context = bot.buildTacticalContext(main, bot.selectEnemyFocus(main));
+  bot.issueMovement(context);
+  const barrierRadius = context.barrierTactics.own.radius;
+  assert(context.barrierTactics.own.active, "古泉旗舰AI没有识别己方闭锁空间");
+  assert(
+    Math.hypot(main.route.p2.x - enemyMain.x, main.route.p2.y - enemyMain.y) >= barrierRadius + 30,
+    "古泉旗舰AI没有把敌舰保持在能量圈外",
+  );
+  for (const ship of [team.ships.sub1, team.ships.sub2]) {
+    assert(ship.route, "古泉旗舰AI没有为盾内副舰规划路线");
+    assert(
+      Math.hypot(ship.route.p2.x - main.route.p2.x, ship.route.p2.y - main.route.p2.y) <= barrierRadius - 16,
+      "古泉旗舰AI让副舰主动驶出能量圈保护范围",
+    );
+  }
+
+  team.koizumiBarrier.disabledAt = sim.elapsed;
+  team.koizumiBarrier.disabledUntil = sim.elapsed + 5;
+  bot.modeTimer = 0;
+  context = bot.buildTacticalContext(main, bot.selectEnemyFocus(main));
+  const beforeDistance = Math.hypot(main.x - enemyMain.x, main.y - enemyMain.y);
+  bot.issueMovement(context);
+  assert(["kite", "regroup"].includes(bot.mode), "闭锁空间失效后古泉旗舰AI没有转入短时防守");
+  assert(
+    Math.hypot(main.route.p2.x - enemyMain.x, main.route.p2.y - enemyMain.y) > beforeDistance + 80,
+    "闭锁空间失效后古泉旗舰AI没有主动拉开距离等待恢复",
+  );
+  assert(main.throttle === throttleForGear(4), "闭锁空间失效后古泉旗舰AI没有使用四档脱离");
+}
+
+function aiKoizumiBarrierThreatEvasionCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "kyon", sub1: "asakura", sub2: "yuki" },
+      B: { main: "koizumi", sub1: "future1096", sub2: "shamisen" },
+    },
+  });
+  const bot = sim.bot;
+  const ownMain = sim.teamB.ships.main;
+  const enemyMain = sim.teamA.ships.main;
+  const asakura = sim.teamA.ships.sub1;
+  sim.teamA.split(1);
+  ownMain.x = 900;
+  ownMain.y = 720;
+  enemyMain.x = 590;
+  enemyMain.y = 720;
+  asakura.x = ownMain.x - ownMain.effectiveVision() - 80;
+  asakura.y = 720;
+  asakura.energy = asakura.maxEnergy;
+  assert(sim.teamA.castSubSkill("sub1"), "破盾威胁测试未能开启刀锋女王");
+  asakura.speed = asakura.effectiveSpeed();
+
+  bot.rememberContact(enemyMain, "visible");
+  bot.rememberContact(asakura, "visible");
+  const focus = bot.selectEnemyFocus(ownMain);
+  const context = bot.buildTacticalContext(ownMain, focus);
+  assert(focus.id === asakura.id, "古泉旗舰AI没有优先处理正在逼近的破盾舰");
+  assert(context.barrierTactics.incoming?.kind === "blade_queen", "古泉旗舰AI没有识别刀锋女王破盾威胁");
+  bot.issueMovement(context);
+  assert(ownMain.throttle === throttleForGear(4), "破盾舰逼近时古泉旗舰AI没有高速移动盾心规避");
+  assert(
+    Math.hypot(ownMain.route.p2.x - asakura.x, ownMain.route.p2.y - asakura.y)
+      > Math.hypot(ownMain.x - asakura.x, ownMain.y - asakura.y) + 70,
+    "破盾舰逼近时古泉旗舰AI没有与威胁拉开距离",
+  );
+}
+
+function aiKoizumiBarrierBreachCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "shamisen" },
+      B: { main: "kyon", sub1: "asakura", sub2: "future1096" },
+    },
+  });
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
+  const bot = sim.bot;
+  const defendingMain = sim.teamA.ships.main;
+  const asakura = sim.teamB.ships.sub1;
+  sim.teamB.split(1);
+  defendingMain.x = 650;
+  defendingMain.y = 720;
+  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
+  defendingMain.route = null;
+  asakura.x = 940;
+  asakura.y = 720;
+  asakura.angle = Math.PI;
+  asakura.energy = asakura.maxEnergy;
+  asakura.command = { x: asakura.x, y: asakura.y };
+  asakura.route = null;
+
+  const hiddenContext = bot.buildTacticalContext(
+    sim.teamB.ships.main,
+    bot.primaryEnemyEstimate(),
+  );
+  assert(!hiddenContext.barrierTactics.enemy, "AI在识别古泉旗舰前偷看了隐藏的能量圈信息");
+  bot.rememberContact(defendingMain, "visible");
+  const context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
+  assert(context.barrierTactics.enemy?.active, "AI没有识别已确认的敌方闭锁空间");
+  assert(context.barrierTactics.breachShipKey === "sub1", "AI没有选择朝仓分舰承担破盾任务");
+  bot.subTimers.sub1 = 0;
+  bot.trySubSkill("sub1", context);
+  assert(asakura.hasEffect("bladeQueenUntil"), "AI没有为破盾主动开启刀锋女王");
+  bot.issueMovement(context);
+  assert(bot.lastTacticalPlan.detachedPlan.roles.sub1 === "breach", "朝仓分舰没有进入专门破盾角色");
+  assert(
+    Math.hypot(asakura.route.p2.x - defendingMain.x, asakura.route.p2.y - defendingMain.y) < 8,
+    "朝仓破盾路线没有径直瞄准古泉能量圈圆心",
+  );
+
+  runSteps(sim, 4.8);
+  assert(!sim.teamA.serialize().koizumiBarrier.active, "朝仓破盾AI没有在技能窗口内实际撞破闭锁空间");
+  assert(
+    sim.koizumiBarrierImpacts.some((impact) => impact.kind === "ram" && impact.ramKind === "blade_queen"),
+    "朝仓破盾AI没有产生真实的刀锋女王破盾事件",
+  );
+}
+
+function aiKoizumiBarrierRangedCounterplayCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "shamisen" },
+      B: { main: "kyon", sub1: "yuki", sub2: "future1096" },
+    },
+  });
+  const bot = sim.bot;
+  const defendingMain = sim.teamA.ships.main;
+  const future1096 = sim.teamB.ships.sub2;
+  sim.teamB.split(1);
+  sim.teamB.split(2);
+  defendingMain.x = 650;
+  defendingMain.y = 720;
+  future1096.x = 940;
+  future1096.y = 720;
+  future1096.energy = future1096.maxEnergy;
+  bot.rememberContact(defendingMain, "visible");
+  let context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
+  context.skillAggression = 1.4;
+  assert(!bot.shouldCastSubSkill(future1096, context.focus, context), "1096 AI仍会从盾外浪费光线");
+  bot.modeTimer = 0;
+  bot.issueMovement(context);
+  const activeBarrierMainRange = Math.hypot(
+    sim.teamB.ships.main.route.p2.x - defendingMain.x,
+    sim.teamB.ships.main.route.p2.y - defendingMain.y,
+  );
+
+  future1096.x = defendingMain.x + 80;
+  future1096.y = defendingMain.y;
+  assert(bot.shouldCastSubSkill(future1096, context.focus, context), "1096 AI进入盾内后仍错误保留光线");
+
+  // 关闭护盾后验证蓄力射线会对移动目标做前置量，而非瞄准旧位置。
+  sim.teamA.koizumiBarrier.disabledAt = sim.elapsed;
+  sim.teamA.koizumiBarrier.disabledUntil = sim.elapsed + 5;
+  defendingMain.angle = Math.PI * 0.5;
+  defendingMain.speed = 40;
+  bot.rememberContact(defendingMain, "visible");
+  context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
+  context.skillAggression = 1.4;
+  assert(!context.barrierTactics.enemy.active, "AI没有识别闭锁空间的5秒失效窗口");
+  bot.modeTimer = 0;
+  bot.issueMovement(context);
+  const breachWindowMainRange = Math.hypot(
+    sim.teamB.ships.main.route.p2.x - defendingMain.x,
+    sim.teamB.ships.main.route.p2.y - defendingMain.y,
+  );
+  assert(
+    breachWindowMainRange < activeBarrierMainRange - 55,
+    `AI没有在闭锁空间失效窗口集中压近：${activeBarrierMainRange.toFixed(1)}→${breachWindowMainRange.toFixed(1)}`,
+  );
+  bot.subTimers.sub2 = 0;
+  bot.trySubSkill("sub2", context);
+  const beam = sim.teamB.beams.at(-1);
+  assert(beam && beam.phase === "charge", "1096 AI没有在破盾窗口释放光线");
+  assert(beam.dirY > 0.08, "1096 AI光线没有按蓄力时间预判移动目标位置");
+}
+
+function aiHaruhiOtherworlderBarrierBreachCheck() {
+  const sim = new MatchSimulation({
+    mode: "ai",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "shamisen" },
+      B: { main: "haruhi", sub1: "yuki", sub2: "future1096" },
+    },
+  });
+  const bot = sim.bot;
+  const haruhi = sim.teamB.ships.main;
+  const defendingMain = sim.teamA.ships.main;
+  sim.teamB.haruhiFlagship.supporters.add("otherworlder");
+  sim.teamB.haruhiFlagship.otherworlderReadyAt = sim.elapsed;
+  haruhi.x = 980;
+  haruhi.y = 720;
+  defendingMain.x = 650;
+  defendingMain.y = 720;
+  bot.rememberContact(defendingMain, "visible");
+  const context = bot.buildTacticalContext(haruhi, bot.selectEnemyFocus(haruhi));
+  assert(context.barrierTactics.breachShipKey === "main", "春日获得异世界人后没有被选为破盾手");
+  bot.issueMovement(context);
+  assert(
+    Math.hypot(haruhi.route.p2.x - defendingMain.x, haruhi.route.p2.y - defendingMain.y) < 8,
+    "春日异世界人破盾路线没有对准古泉能量圈圆心",
+  );
+  assert(haruhi.throttle === throttleForGear(4), "春日异世界人破盾没有使用足够的冲撞航速");
+}
+
 function aiFuture1096FormDecisionCheck() {
   const sim = new MatchSimulation({
     mode: "ai",
@@ -1366,6 +1613,11 @@ export function runAiSuite() {
   aiHighEnergySkillAggressionCheck();
   aiHaruhiFlagshipAggressionCheck();
   aiKoizumiOrbSteeringCheck();
+  aiKoizumiBarrierDefenseCheck();
+  aiKoizumiBarrierThreatEvasionCheck();
+  aiKoizumiBarrierBreachCheck();
+  aiKoizumiBarrierRangedCounterplayCheck();
+  aiHaruhiOtherworlderBarrierBreachCheck();
   aiFuture1096FormDecisionCheck();
   aiEmergencyEnergyReserveCheck();
   aiPressureCheck();
