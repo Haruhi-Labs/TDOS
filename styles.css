@@ -325,6 +325,8 @@ h1::after {
   font-size: 0.9rem;
   text-shadow: 0 1px 1px #160c05;
 }
+.status strong.wx-anchor-active { color: #ffe08a; text-shadow: 0 0 7px #d7a72a88; }
+.status strong.wx-anchor-overheat { color: #ff8d82; }
 
 /* ═══════════════════════════════════════════════════
    分区
@@ -2580,6 +2582,31 @@ button.toggle-active {
   line-height: 1.5;
   color: var(--ink-soft);
 }
+.cs-wx-skills { margin-top: 7px; }
+.cs-wx-skill-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px;
+}
+.cs-wx-skill-tab {
+  min-width: 0;
+  border: 1px solid #8a602066;
+  border-radius: 2px;
+  padding: 3px 4px;
+  background: #0000000b;
+  color: var(--ink-soft);
+  font-family: var(--font-kai);
+  font-size: 0.68rem;
+  line-height: 1.25;
+}
+.cs-wx-skill-tab.active {
+  border-color: var(--gilt-deep);
+  background: #8a60201a;
+  color: var(--ink);
+}
+.cs-wx-skill-panel { padding: 5px 7px 0; color: var(--ink-soft); }
+.cs-wx-skill-panel strong { font-family: var(--font-kai); font-size: 0.76rem; color: var(--ink); }
+.cs-wx-skill-panel p { margin: 2px 0 0; font-family: var(--font-cn); font-size: 0.7rem; line-height: 1.35; }
 
 /* 顺序编入向导 */
 .cs-page-enlist { margin-top: 10px; }
@@ -3158,6 +3185,27 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   line-height: 1.36;
   color: var(--text-soft);
 }
+.csm-wx-skills { grid-column: 1 / -1; margin-top: 1px; }
+.csm-wx-skill-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+.csm-wx-skill-tab {
+  min-width: 0;
+  border: 1px solid var(--brass-dark);
+  border-radius: 4px;
+  padding: 5px 3px;
+  background: #160c0566;
+  color: var(--text-soft);
+  font-family: var(--font-kai);
+  font-size: 0.68rem;
+  line-height: 1.2;
+}
+.csm-wx-skill-tab.active { border-color: var(--gilt); color: var(--gilt-bright); background: #5a351c99; }
+.csm-wx-skill-panel { padding: 6px 8px 0; color: var(--text-soft); text-align: left; }
+.csm-wx-skill-panel strong { font-family: var(--font-kai); font-size: 0.78rem; color: var(--gilt-pale); }
+.csm-wx-skill-panel p { margin: 3px 0 0; font-size: 0.7rem; line-height: 1.38; }
 
 .csm-bar {
   flex: 0 0 auto;

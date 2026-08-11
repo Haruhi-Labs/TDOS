@@ -275,8 +275,24 @@ export function createOnlineSnapshotTransport({ app, nowMs, socketSend, updateCo
       app.serverSnapshotRate = snapshotRate;
       app.snapshotIntervalMs = 1000 / snapshotRate;
     }
-    const state = decodeSnapshotState(message);
-    if (!state) return null;
+    const decodedState = decodeSnapshotState(message);
+    if (!decodedState) return null;
+    let state = decodedState;
+    if (!message.spectating && app.seat && decodedState.teams?.[app.seat]) {
+      state = {
+        ...decodedState,
+        comboFlashes: Array.isArray(message.visibleComboFlashes)
+          ? message.visibleComboFlashes
+          : decodedState.comboFlashes,
+        teams: {
+          ...decodedState.teams,
+          [app.seat]: {
+            ...decodedState.teams[app.seat],
+            wxAnchor: message.privateWxAnchor || decodedState.teams[app.seat].wxAnchor,
+          },
+        },
+      };
+    }
 
     const snapshotSeq = Number(message.snapshotSeq) || 0;
     sendSnapshotDeliveryAck(snapshotSeq, message.type === "snapshot");

@@ -108,6 +108,32 @@ import {
   serializeHaruhiFlagship,
   updateHaruhiFlagship,
 } from "./game/haruhi-flagship.js";
+import {
+  IMPERIAL_CAMPAIGN_BOLT_SPEED,
+  IMPERIAL_CAMPAIGN_COLOR,
+  IMPERIAL_CAMPAIGN_DAMAGE_RATIO,
+  IMPERIAL_COMBO_FLASH_DURATION,
+  IMPERIAL_GUARD_DURATION,
+  IMPERIAL_MIGHT_DURATION,
+  WX_ANCHOR_COST,
+  WX_ANCHOR_UPKEEP,
+  WX_CHALLENGE_DURATION,
+  WX_DUEL_RADIUS,
+  WX_OVERHEAT_DURATION,
+  createWxAnchorState,
+  imperialGuardActive,
+  imperialGuardDamageTakenMultiplier,
+  imperialMightActive,
+  imperialMightDamageMultiplier,
+  pickRandomImperialSkill,
+  serializeWxAnchor,
+  wxAnchorBoostsShip,
+  wxAnchorDamageTakenMultiplier,
+  wxAnchorLockForShip,
+  wxAnchorStateForShip,
+  wxDuelBoostForTarget,
+  wxEntityInDuelZone,
+} from "./game/wx-emperor.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -318,6 +344,42 @@ class Burst {
   }
 }
 
+class ComboFlash {
+  constructor(x, y, color, skillId, textKey, teamSeat, visibleToEnemy = false) {
+    this.id = nextEntityId();
+    this.kind = "combo_flash";
+    this.x = x;
+    this.y = y;
+    this.color = color;
+    this.skillId = skillId;
+    this.textKey = textKey;
+    this.teamSeat = teamSeat;
+    this.visibleToEnemy = Boolean(visibleToEnemy);
+    this.life = IMPERIAL_COMBO_FLASH_DURATION;
+    this.maxLife = IMPERIAL_COMBO_FLASH_DURATION;
+  }
+
+  update(dt) {
+    this.life -= dt;
+  }
+
+  serialize() {
+    return {
+      id: this.id,
+      kind: this.kind,
+      x: this.x,
+      y: this.y,
+      color: this.color,
+      skillId: this.skillId,
+      textKey: this.textKey,
+      teamSeat: this.teamSeat,
+      visibleToEnemy: this.visibleToEnemy,
+      life: this.life,
+      maxLife: this.maxLife,
+    };
+  }
+}
+
 class Projectile {
   constructor({
     team,
@@ -332,6 +394,7 @@ class Projectile {
     color,
     visualKind = "shell",
     claw = null,
+    skillBolt = false,
   }) {
     this.id = nextEntityId();
     this.kind = "projectile";
@@ -348,6 +411,7 @@ class Projectile {
     this.color = color || team.projectileColor;
     this.visualKind = visualKind;
     this.claw = claw ? { ...claw } : null;
+    this.skillBolt = Boolean(skillBolt);
     this.radius = 2;
     this.alive = true;
     // 发射点(射手开火时的位置),用于尾击判定:看来袭方向落在目标哪个射界
@@ -395,14 +459,14 @@ class Projectile {
     }
     // 小目标闪避:体型越小越容易被打空(侦察机/僚机),正常体型舰船不受影响
     const evade = clamp((SMALL_TARGET_REF_RADIUS - hitTarget.radius) / SMALL_TARGET_REF_RADIUS, 0, 1) * SMALL_TARGET_MAX_MISS;
-    if (evade > 0 && Math.random() < evade) {
+    if (!this.skillBolt && evade > 0 && Math.random() < evade) {
       match.spawnFloatingTextKey(hitTarget.x, hitTarget.y - 6, "未命中", {}, "#92c5ff");
       return;
     }
     // 尾击:来袭方向(发射点相对目标)落在目标尾部射界(|θ|>150°)→ 伤害 ×1.2
     let damage = this.damage;
     let rear = false;
-    if (hitTarget.kind === "ship" && Number.isFinite(hitTarget.angle)) {
+    if (!this.skillBolt && hitTarget.kind === "ship" && Number.isFinite(hitTarget.angle)) {
       const bearing = Math.atan2(this.originY - hitTarget.y, this.originX - hitTarget.x);
       const rel = Math.abs(shortestAngleDelta(hitTarget.angle, bearing));
       if (rel >= REAR_STRIKE_MIN_DEG * DEG_TO_RAD) {
@@ -445,6 +509,7 @@ class Projectile {
       radius: this.radius,
       color: this.color,
       visualKind: this.visualKind,
+      skillBolt: this.skillBolt,
     };
   }
 }
@@ -546,6 +611,14 @@ class Ship {
 
   hasEffect(effectKey) {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
+  }
+
+  isWxAnchored() {
+    return wxAnchorLockForShip(this.team, this);
+  }
+
+  inWxDuelZone(entity = this) {
+    return wxEntityInDuelZone(this.team, entity);
   }
 
   isEmergencyBraking() {
@@ -666,12 +739,15 @@ class Ship {
   }
 
   effectiveRange() {
-    return this.statWithBuffs("range", this.base.range);
+    return this.statWithBuffs("range", this.base.range) * wxAnchorBoostsShip(this.team, this, "range");
   }
 
   effectiveDamage() {
     // 末乘难度数值缩放(简单0.8/普通1.0/困难1.2/极限1.0);玩家队 statMult 恒为1,不受影响。
-    return this.statWithBuffs("damage", this.base.damage) * (this.team.statMult || 1);
+    return this.statWithBuffs("damage", this.base.damage)
+      * (this.team.statMult || 1)
+      * wxAnchorBoostsShip(this.team, this, "damage")
+      * imperialMightDamageMultiplier(this.team);
   }
 
   effectiveFireRate() {
@@ -680,7 +756,15 @@ class Ship {
     if (this.team.fleetMemberCountForShip(this) <= 1) {
       value *= SOLO_FIRE_RATE_BONUS;
     }
-    return value;
+    return value * wxAnchorBoostsShip(this.team, this, "fireRate");
+  }
+
+  effectiveDamageAgainst(target) {
+    return this.effectiveDamage() * wxDuelBoostForTarget(this.team, this, target, "damage");
+  }
+
+  effectiveFireRateAgainst(target) {
+    return this.effectiveFireRate() * wxDuelBoostForTarget(this.team, this, target, "fireRate");
   }
 
   damageTakenMultiplier() {
@@ -690,7 +774,9 @@ class Ship {
     }
     value *= this.team.future1096DamageTakenMultiplier();
     value *= haruhiDamageTakenMultiplier(this.team);
-    return value;
+    return value
+      * wxAnchorDamageTakenMultiplier(this.team, this)
+      * imperialGuardDamageTakenMultiplier(this.team);
   }
 
   markActiveSkillEffectStarted(effectKey) {
@@ -984,6 +1070,16 @@ class Ship {
       return;
     }
 
+    if (this.isWxAnchored()) {
+      this.speed = 0;
+      this.route = null;
+      this.command.x = this.x;
+      this.command.y = this.y;
+      this.forcedKnockback = null;
+      this.cooldown = Math.max(0, this.cooldown - dt);
+      return;
+    }
+
     const match = this.team.match;
     this.cooldown = Math.max(0, this.cooldown - dt);
 
@@ -1157,7 +1253,7 @@ class Ship {
     if (fireDensity <= 0) {
       return;
     }
-    let damage = this.effectiveDamage();
+    let damage = this.effectiveDamageAgainst(target);
     if (this.effects.nextShotDamageMultiplier > 1) {
       damage *= this.effects.nextShotDamageMultiplier;
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "超能力", {}, "#9be0ff");
@@ -1195,7 +1291,7 @@ class Ship {
           : null,
       }),
     );
-    this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
+    this.cooldown = 1 / Math.max(0.01, this.effectiveFireRateAgainst(target) * fireDensity);
   }
 
   takeDamage(amount, _source = null, match = null, share = true) {
@@ -1682,7 +1778,11 @@ class Team {
       taxiInvulnUntil: 0,
       sponsorUntil: 0,
       haruhiBoostUntil: 0,
+      imperialGuardUntil: 0,
+      imperialMightUntil: 0,
     };
+    this.wxAnchor = createWxAnchorState();
+    this.pickImperialSkill = null;
     this.future1096Form = null;
     this.haruhiFlagship = createHaruhiFlagshipState(facing);
     this.activeSkillEffectStartedTicks = Object.create(null);
@@ -1738,6 +1838,157 @@ class Team {
 
   hasTsuruyaFlagship() {
     return this.mainCharacterId() === "tsuruya";
+  }
+
+  wxAnchorForShip(ship) {
+    return wxAnchorStateForShip(this, ship);
+  }
+
+  wxAnchorIsActive() {
+    return Boolean(this.wxAnchor?.active);
+  }
+
+  toggleWxAnchor(ship, scope = "self") {
+    if (!ship || !ship.alive || ship.characterId !== "wx_emperor") return false;
+    const state = this.wxAnchor;
+    if (state.active) {
+      if (state.shipKey !== ship.key) return false;
+      this.exitWxAnchor("manual");
+      return true;
+    }
+    if (state.overheatRemaining > 0 || this.availableEnergyForShip(ship.key) < WX_ANCHOR_COST) return false;
+    if (!this.spendEnergyForShip(ship.key, WX_ANCHOR_COST)) return false;
+    ship.speed = 0;
+    ship.route = null;
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    state.active = true;
+    state.scope = scope === "fleet" ? "fleet" : "self";
+    state.shipKey = ship.key;
+    state.activatedAt = this.match.elapsed;
+    state.remaining = ship.energy;
+    state.challengePulse = { x: ship.x, y: ship.y, radius: WX_DUEL_RADIUS, remaining: WX_CHALLENGE_DURATION };
+    state.duelZone = { x: ship.x, y: ship.y, radius: WX_DUEL_RADIUS };
+    this.match.spawnFloatingTextKey(ship.x, ship.y - ship.radius - 18, "wx_anchor_enter", {}, "#f4d37a");
+    this.match.spawnBurst(ship.x, ship.y, "#f4d37a", Math.max(16, ship.radius * 1.8));
+    const imperial = typeof this.pickImperialSkill === "function"
+      ? this.pickImperialSkill()
+      : pickRandomImperialSkill(this.match.random || Math.random);
+    if (imperial && this.applyImperialSkill(ship, imperial.id)) {
+      this.match.spawnComboFlash(ship.x, ship.y, imperial.color, imperial.id, imperial.nameKey, this.seat, false);
+    }
+    return true;
+  }
+
+  exitWxAnchor(reason = "manual") {
+    const state = this.wxAnchor;
+    if (!state.active) return false;
+    const ship = this.shipByKey(state.shipKey);
+    if (ship) {
+      ship.speed = 0;
+      ship.route = null;
+      ship.forcedKnockback = null;
+    }
+    state.active = false;
+    state.remaining = 0;
+    state.scope = "self";
+    state.activatedAt = 0;
+    state.challengePulse = null;
+    state.duelZone = null;
+    state.overheatRemaining = WX_OVERHEAT_DURATION;
+    if (ship) {
+      const textKey = reason === "energy" ? "wx_anchor_overheat" : "wx_anchor_exit";
+      this.match.spawnFloatingTextKey(ship.x, ship.y - ship.radius - 18, textKey, {}, reason === "energy" ? "#ff6969" : "#f4d37a");
+      this.match.spawnBurst(ship.x, ship.y, reason === "energy" ? "#ff6969" : "#f4d37a", Math.max(12, ship.radius * 1.4));
+    }
+    return true;
+  }
+
+  hasActiveImperialGuard() {
+    return imperialGuardActive(this);
+  }
+
+  hasActiveImperialMight() {
+    return imperialMightActive(this);
+  }
+
+  findNearestVisibleEnemyShip(ship) {
+    if (!ship?.alive) return null;
+    let nearest = null;
+    let bestDistance = Infinity;
+    for (const target of this.match.enemyTeamBySeat(this.seat).getAllShips()) {
+      if (!target.alive || !this.visibleEnemyIds.has(target.id)) continue;
+      const candidateDistance = distance(ship.x, ship.y, target.x, target.y);
+      if (candidateDistance < bestDistance) {
+        bestDistance = candidateDistance;
+        nearest = target;
+      }
+    }
+    return nearest;
+  }
+
+  applyImperialSkill(ship, skillId) {
+    if (!ship?.alive || ship.characterId !== "wx_emperor") return false;
+    if (skillId === "imperial_guard") {
+      this.effects.imperialGuardUntil = this.match.elapsed + IMPERIAL_GUARD_DURATION;
+      this.markActiveSkillEffectStarted("imperialGuardUntil");
+      return true;
+    }
+    if (skillId === "imperial_might") {
+      this.effects.imperialMightUntil = this.match.elapsed + IMPERIAL_MIGHT_DURATION;
+      this.markActiveSkillEffectStarted("imperialMightUntil");
+      return true;
+    }
+    if (skillId === "imperial_campaign") {
+      const target = this.findNearestVisibleEnemyShip(ship);
+      if (!target) return { skillId, kind: "attack", fizzled: true };
+      this.match.projectiles.push(new Projectile({
+        team: this,
+        source: ship,
+        x: ship.x,
+        y: ship.y,
+        targetX: target.x,
+        targetY: target.y,
+        damage: target.maxHp * IMPERIAL_CAMPAIGN_DAMAGE_RATIO,
+        speed: IMPERIAL_CAMPAIGN_BOLT_SPEED,
+        hitRadius: 8,
+        color: IMPERIAL_CAMPAIGN_COLOR,
+        visualKind: "imperial_bolt",
+        skillBolt: true,
+      }));
+      this.match.spawnComboFlash(
+        target.x,
+        target.y,
+        IMPERIAL_CAMPAIGN_COLOR,
+        "imperial_campaign",
+        "wx_skill_imperial_campaign",
+        this.seat,
+        true,
+      );
+      return { skillId, kind: "attack", targetId: target.id };
+    }
+    return false;
+  }
+
+  updateWxAnchor(dt) {
+    const safeDt = Math.max(0, Number(dt) || 0);
+    this.wxAnchor.overheatRemaining = Math.max(0, this.wxAnchor.overheatRemaining - safeDt);
+    if (!this.wxAnchor.active && this.wxAnchor.overheatRemaining <= 0) {
+      this.wxAnchor.shipKey = null;
+    }
+    if (this.wxAnchor.challengePulse) {
+      this.wxAnchor.challengePulse.remaining = Math.max(0, this.wxAnchor.challengePulse.remaining - safeDt);
+      if (this.wxAnchor.challengePulse.remaining <= 0) this.wxAnchor.challengePulse = null;
+    }
+    if (!this.wxAnchor.active) return;
+    const ship = this.shipByKey(this.wxAnchor.shipKey);
+    if (!ship?.alive) {
+      this.exitWxAnchor("destroyed");
+      return;
+    }
+    ship.energy = Math.max(0, ship.energy - WX_ANCHOR_UPKEEP * safeDt);
+    this.wxAnchor.remaining = ship.energy;
+    if (ship.energy <= 1e-9) this.exitWxAnchor("energy");
   }
 
   future1096FormDefinition(form = this.future1096Form) {
@@ -2097,6 +2348,8 @@ class Team {
     clearTeamEffect("taxiInvulnUntil");
     clearTeamEffect("sponsorUntil");
     clearTeamEffect("haruhiBoostUntil");
+    clearTeamEffect("imperialGuardUntil");
+    clearTeamEffect("imperialMightUntil");
     if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
       cleared = true;
     }
@@ -2128,7 +2381,7 @@ class Team {
   }
 
   blinkShip(ship, targetX, targetY, maxRange = 240) {
-    if (!ship || !ship.alive) {
+    if (!ship || !ship.alive || ship.isWxAnchored()) {
       return false;
     }
     const fromX = ship.x;
@@ -2235,7 +2488,8 @@ class Team {
       }
       const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
       const energyRate = energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
-      ship.energy = clamp(ship.energy + energyRate * dt, 0, ship.maxEnergy);
+      const overheatMultiplier = this.wxAnchor.overheatRemaining > 0 && this.wxAnchor.shipKey === ship.key ? 0.5 : 1;
+      ship.energy = clamp(ship.energy + energyRate * overheatMultiplier * dt, 0, ship.maxEnergy);
     }
   }
 
@@ -2247,6 +2501,7 @@ class Team {
     this.cooldowns.sub1 = Math.max(0, this.cooldowns.sub1 - cooldownStep);
     this.cooldowns.sub2 = Math.max(0, this.cooldowns.sub2 - cooldownStep);
 
+    this.updateWxAnchor(dt);
     this.sponsorRegeneration(dt);
     this.updateEnergy(dt);
     for (const ship of this.getAllShips()) {
@@ -2360,7 +2615,7 @@ class Team {
 
   emergencyBrake(shipOrKey) {
     const ship = typeof shipOrKey === "string" ? this.shipByKey(shipOrKey) : shipOrKey;
-    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached() || ship.isKoizumiOrbActive()) {
+    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached() || ship.isKoizumiOrbActive() || ship.isWxAnchored()) {
       return false;
     }
     if ((ship.effects.brakeCooldownUntil || 0) > this.match.elapsed) {
@@ -2455,6 +2710,12 @@ class Team {
     }
     if (this.cooldowns.flagship > 0) {
       return false;
+    }
+
+    if (characterId === "wx_emperor") {
+      const ok = this.toggleWxAnchor(this.ships.main, "fleet");
+      if (ok) this.revealCasterIfSeen(this.ships.main);
+      return ok;
     }
 
     let ok = false;
@@ -2554,6 +2815,11 @@ class Team {
     }
     if ((this.cooldowns[shipKey] || 0) > 0) {
       return false;
+    }
+    if (ship.characterId === "wx_emperor") {
+      const ok = this.toggleWxAnchor(ship, "self");
+      if (ok) this.revealCasterIfSeen(ship);
+      return ok;
     }
     if (!this.spendEnergyForShip(ship, meta.cost || 0)) {
       return false;
@@ -2804,6 +3070,7 @@ class Team {
       hullRatio: this.hullRatio(),
       future1096Form: this.future1096Form,
       haruhiFlagship: serializeHaruhiFlagship(this),
+      wxAnchor: serializeWxAnchor(this),
       skillsDisabled: this.areSkillsDisabled(),
       autoScout: {
         enabled: this.autoScout.enabled,
@@ -2889,6 +3156,7 @@ export class MatchSimulation {
 
     this.projectiles = [];
     this.bursts = [];
+    this.comboFlashes = [];
     this.floatingTexts = [];
     this.bots = {};
     const legacyAiSeats = normalizeAiSeats(mode, options.legacyAiSeats); // 指定哪些AI席位用旧版AI
@@ -3049,6 +3317,10 @@ export class MatchSimulation {
     this.bursts.push(new Burst(x, y, color, radius));
   }
 
+  spawnComboFlash(x, y, color, skillId, textKey, teamSeat, visibleToEnemy = false) {
+    this.comboFlashes.push(new ComboFlash(x, y, color, skillId, textKey, teamSeat, visibleToEnemy));
+  }
+
   updateProjectiles(dt) {
     for (const projectile of this.projectiles) {
       const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
@@ -3069,6 +3341,11 @@ export class MatchSimulation {
       burst.update(dt);
     }
     this.bursts = this.bursts.filter((burst) => burst.life > 0);
+
+    for (const flash of this.comboFlashes) {
+      flash.update(dt);
+    }
+    this.comboFlashes = this.comboFlashes.filter((flash) => flash.life > 0);
 
     for (const label of this.floatingTexts) {
       label.update(dt);
@@ -3152,6 +3429,7 @@ export class MatchSimulation {
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
+      comboFlashes: this.comboFlashes.map((flash) => flash.serialize()),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
       teams: {
         A: this.teamA.serialize(),

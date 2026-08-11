@@ -204,6 +204,32 @@ function interpolateVisualList(previousList, currentList, ratio) {
   });
 }
 
+function interpolateWxAnchor(previous, current, ratio) {
+  if (!previous || !current) return current || previous || null;
+  const interpolateZone = (before, after, includeRemaining = false) => {
+    if (!before || !after) return after || null;
+    const zone = {
+      ...after,
+      x: lerp(before.x, after.x, ratio),
+      y: lerp(before.y, after.y, ratio),
+      radius: lerp(before.radius, after.radius, ratio),
+    };
+    if (includeRemaining) zone.remaining = lerp(before.remaining, after.remaining, ratio);
+    return zone;
+  };
+  return {
+    ...current,
+    remaining: lerp(Number(previous.remaining) || 0, Number(current.remaining) || 0, ratio),
+    overheatRemaining: lerp(
+      Number(previous.overheatRemaining) || 0,
+      Number(current.overheatRemaining) || 0,
+      ratio,
+    ),
+    challengePulse: interpolateZone(previous.challengePulse, current.challengePulse, true),
+    duelZone: interpolateZone(previous.duelZone, current.duelZone),
+  };
+}
+
 function interpolateTeam(previous, current, ratio) {
   if (!previous || !current) {
     return current || previous || null;
@@ -237,6 +263,7 @@ function interpolateTeam(previous, current, ratio) {
           }
         : current.haruhiFlagship?.esperOrb || null,
     },
+    wxAnchor: interpolateWxAnchor(previous.wxAnchor, current.wxAnchor, ratio),
     ships: {
       main: interpolateShip(previous.ships.main, current.ships.main, ratio),
       sub1: interpolateShip(previous.ships.sub1, current.ships.sub1, ratio),
@@ -269,6 +296,7 @@ export function interpolateBattleState(previousState, currentState, ratio, { spa
       safeSpanSeconds,
     ),
     bursts: interpolateVisualList(previousState.bursts, currentState.bursts, safeRatio),
+    comboFlashes: interpolateVisualList(previousState.comboFlashes, currentState.comboFlashes, safeRatio),
     floatingTexts: interpolateVisualList(previousState.floatingTexts, currentState.floatingTexts, safeRatio),
     teams: {
       A: interpolateTeam(previousState.teams.A, currentState.teams.A, safeRatio),

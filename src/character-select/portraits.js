@@ -90,6 +90,16 @@ export const CHARACTER_THEMES = {
     glow: "#e3a064",
     accent: "#f0d488",
   },
+  wx_emperor: {
+    primary: "#c7a24a",
+    secondary: "#d9f2ff",
+    dark: "#4a160d",
+    bgCenter: "#3a1618",
+    bgMid: "#101c32",
+    bgOuter: "#050912",
+    glow: "#f0cb62",
+    accent: "#f4df91",
+  },
 };
 
 // ═══════════════════════════════════════════════════
@@ -109,7 +119,11 @@ function pkey(charId, color) {
 
 // 公共目录中的立绘没有构建哈希；资源内容发生替换时改用新文件名，避免线上长期缓存继续命中旧图。
 export function getPortraitAssetUrl(charId, color = "blue") {
-  const fileName = charId === "shamisen" ? "shamisen-paw" : charId;
+  const fileName = charId === "shamisen"
+    ? "shamisen-paw"
+    : charId === "wx_emperor"
+      ? "wx-emperor"
+      : charId;
   return `${import.meta.env.BASE_URL}assets/portraits/${color}/${fileName}.webp`;
 }
 

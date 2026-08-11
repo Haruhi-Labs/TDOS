@@ -7,6 +7,7 @@ import {
   haruhiOtherworlderReady,
   triggerHaruhiOtherworlder,
 } from "./haruhi-flagship.js";
+import { wxAnchorKnockbackMultiplier } from "./wx-emperor.js";
 
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_HIT_INTERVAL = 1;
@@ -41,10 +42,23 @@ export function resolveShipCollisions(match) {
         const normalX = deltaX / currentDistance;
         const normalY = deltaY / currentDistance;
         const push = (minimumDistance - currentDistance) * 0.5;
-        left.x = match.clampX(left.x - normalX * push, 8);
-        left.y = match.clampY(left.y - normalY * push, 8);
-        right.x = match.clampX(right.x + normalX * push, 8);
-        right.y = match.clampY(right.y + normalY * push, 8);
+        const leftAnchored = left.isWxAnchored?.() === true;
+        const rightAnchored = right.isWxAnchored?.() === true;
+        if (!leftAnchored && !rightAnchored) {
+          left.x = match.clampX(left.x - normalX * push, 8);
+          left.y = match.clampY(left.y - normalY * push, 8);
+          right.x = match.clampX(right.x + normalX * push, 8);
+          right.y = match.clampY(right.y + normalY * push, 8);
+        } else if (leftAnchored !== rightAnchored) {
+          const movablePush = push * 2;
+          if (leftAnchored) {
+            right.x = match.clampX(right.x + normalX * movablePush, 8);
+            right.y = match.clampY(right.y + normalY * movablePush, 8);
+          } else {
+            left.x = match.clampX(left.x - normalX * movablePush, 8);
+            left.y = match.clampY(left.y - normalY * movablePush, 8);
+          }
+        }
         if (!previousContacts.has(pairKey)) {
           const until = match.elapsed + COLLISION_SLOW_DURATION;
           left.collisionSlowUntil = Math.max(left.collisionSlowUntil, until);
@@ -75,14 +89,16 @@ function applyForcedKnockback(match, source, contactTarget) {
   const endsAt = startedAt + HARUHI_OTHERWORLDER_KNOCKBACK_DURATION;
 
   for (const ship of fleet) {
+    if (ship.isWxAnchored?.()) continue;
     const padding = Math.max(8, ship.radius + 2);
+    const resistance = wxAnchorKnockbackMultiplier(targetTeam, ship);
     ship.forcedKnockback = {
       startedAt,
       endsAt,
       fromX: ship.x,
       fromY: ship.y,
-      toX: match.clampX(ship.x + directionX * knockbackDistance, padding),
-      toY: match.clampY(ship.y + directionY * knockbackDistance, padding),
+      toX: match.clampX(ship.x + directionX * knockbackDistance * resistance, padding),
+      toY: match.clampY(ship.y + directionY * knockbackDistance * resistance, padding),
     };
     ship.speed = 0;
     ship.route = null;

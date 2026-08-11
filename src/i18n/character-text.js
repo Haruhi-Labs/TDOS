@@ -64,6 +64,14 @@ export const CHARACTER_TEXT = Object.freeze({
       flagshipSkill: { name: "主舰能力待定", description: "主舰能力仍在设计中，当前不会产生额外效果。" },
       subSkill: { name: "猫爪乱舞", description: "12秒内自身子弹变为猫爪。命中同一敌舰5次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。" },
     },
+    wx_emperor: {
+      name: "超银河帝国·王牌防御塔一世·wx陛下",
+      shortName: "wx",
+      title: "硬性驻锚防御塔",
+      flavor: "战狂越战，先把黄金王座钉进战场",
+      flagshipSkill: { name: "黄金王座降临", description: "主动切换驻锚姿态：速度锁定为0，清空路线，获得23.1%承伤降低、36.8%抗击退、10.5%射程、6.3%射速与8.4%伤害强化；主舰为本舰队提供8.4%承伤降低和15.8%抗击退。每秒消耗8能量，归零自动解除并过热4秒。进入时触发叫阵：向所有敌方只公开wx当前坐标3秒，不公开完整编队、生命或隐身目标；并在驻锚点建立半径160决斗区，进入区域的敌我舰船各获得8.4%伤害与8.4%射速，效果不叠加、不跨区传播、不强制位移。进入驻锚时随机释放一个帝王攻防技能。" },
+      subSkill: { name: "黄金王座降临", description: "主动切换自身驻锚姿态，获得与旗舰技相同的自身强化、能量消耗与过热；进入时同样触发叫阵、建立决斗区并随机释放一个帝王攻防技能，但不为本舰队提供减伤与抗击退光环。再次使用解除，能量耗尽自动解除并过热。" },
+    },
   },
   ja: {
     haruhi: {
@@ -130,6 +138,14 @@ export const CHARACTER_TEXT = Object.freeze({
       flagshipSkill: { name: "旗艦能力未定", description: "旗艦能力は設計中で、現在は追加効果を持たない。" },
       subSkill: { name: "猫爪乱舞", description: "12秒間、自身の弾が猫の足跡弾になる。同じ敵艦に5回命中すると爪痕が爆発し、追加で80ダメージ。爪痕は8秒間更新されないと消える。" },
     },
+    wx_emperor: {
+      name: "超銀河帝国・エース防衛塔一世・wx陛下",
+      shortName: "wx",
+      title: "強制アンカー防衛塔",
+      flavor: "黄金の玉座を戦場に打ち込み、挑戦状を叩きつける戦狂い",
+      flagshipSkill: { name: "黄金玉座、降臨", description: "アンカー姿勢を切り替える。速度を0に固定し、航路を消去。自身は被ダメージ23.1%減、ノックバック耐性36.8%、射程10.5%、連射6.3%、ダメージ8.4%を得る。旗艦なら艦隊に被ダメージ8.4%減とノックバック耐性15.8%。毎秒8エネルギーを消費し、0で解除、4秒過熱。発動時の挑戦状で敵全員にwxの現在座標だけを3秒間公開し、アンカー地点に半径160の決闘ゾーンを作る。入った敵味方の艦船はダメージと連射が8.4%上昇する。効果は重複・伝播せず、強制移動も起こさない。発動時に帝王攻防スキルを1つランダムに放つ。" },
+      subSkill: { name: "黄金玉座、降臨", description: "自身だけのアンカー姿勢を切り替える。旗艦技と同じ個人強化・エネルギー消費・過熱ロックを持ち、発動時の挑戦状・決闘ゾーン・ランダムスキルも同様に発生する。副艦アンカーは艦隊オーラを与えない。もう一度使うと解除、エネルギー0で自動解除。" },
+    },
   },
   en: {
     haruhi: {
@@ -195,6 +211,14 @@ export const CHARACTER_TEXT = Object.freeze({
       flavor: "A talking calico cat that leaves claw marks without a sound",
       flagshipSkill: { name: "Flagship Ability Pending", description: "The flagship ability is still being designed and currently grants no additional effect." },
       subSkill: { name: "Claw Barrage", description: "For 12 seconds, shots become cat paws. Hitting the same enemy ship 5 times detonates the marks for 80 bonus damage. Marks fade if not refreshed for 8 seconds." },
+    },
+    wx_emperor: {
+      name: "Supreme Galactic Empire · wx Emperor",
+      shortName: "wx",
+      title: "Hard-Anchor Defense Tower",
+      flavor: "Plants a golden throne in the battlefield and calls the whole map to war",
+      flagshipSkill: { name: "Golden Throne Descends", description: "Toggle anchor stance: speed becomes 0, routes are cleared, and wx gains 23.1% damage reduction, 36.8% knockback resistance, 10.5% range, 6.3% fire rate, and 8.4% damage. A flagship anchor grants its fleet 8.4% damage reduction and 15.8% knockback resistance. It drains 8 energy per second, auto-releases at zero, and overheats for 4 seconds. Entering reveals only wx's current coordinates to every enemy for 3 seconds and creates a 160-radius duel zone where ships from either side gain 8.4% damage and fire rate. Bonuses do not stack or spread between zones, and enemies are not displaced. Entering also casts one random Imperial skill." },
+      subSkill: { name: "Golden Throne Descends", description: "Toggle a self-only anchor stance with the same personal bonuses, energy drain, and overheat lock. Entering also triggers the challenge, duel zone, and a random Imperial skill, but a sub-ship anchor grants no fleet aura. Use again to release; it auto-releases at zero energy." },
     },
   },
 });

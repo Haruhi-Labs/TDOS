@@ -2045,6 +2045,15 @@ export class BotController {
     const estimate = context?.focus || this.primaryEnemyEstimate();
     const characterId = this.team.mainCharacterId();
     const isHaruhi = characterId === "haruhi";
+    if (characterId === "wx_emperor" && this.team.wxAnchor?.active) {
+      const focus = context?.focus || this.primaryEnemyEstimate();
+      const inDuel = Boolean(focus?.visible && distance(this.team.ships.main.x, this.team.ships.main.y, focus.x, focus.y) <= 160);
+      if (this.team.ships.main.energy < 24 || (!inDuel && this.team.match.elapsed - this.team.wxAnchor.activatedAt >= 4)) {
+        this.team.exitWxAnchor(this.team.ships.main.energy < 24 ? "energy" : "ai");
+      }
+      this.flagshipTimer = 0.35;
+      return;
+    }
     if (!this.shouldCastFlagshipSkill(estimate, context)) {
       this.lastFlagshipDecision = {
         action: "hold",
@@ -2095,6 +2104,16 @@ export class BotController {
         target: null,
       };
       this.subTimers[shipKey] = randomInRange(4, 7);
+      return;
+    }
+
+    if (ship.characterId === "wx_emperor" && this.team.wxAnchor?.active) {
+      const focus = context?.focus || this.primaryEnemyEstimate();
+      const inDuel = Boolean(focus?.visible && distance(ship.x, ship.y, focus.x, focus.y) <= 160);
+      if (ship.energy < 24 || (!inDuel && this.team.match.elapsed - this.team.wxAnchor.activatedAt >= 4)) {
+        this.team.exitWxAnchor(ship.energy < 24 ? "energy" : "ai");
+      }
+      this.subTimers[shipKey] = 0.35;
       return;
     }
 
@@ -2806,6 +2825,14 @@ export class BotController {
     if (!meta || meta.type !== "active") {
       return false; // 被动旗舰(阿虚/有希):没有可主动释放的技能,别空试
     }
+    if (characterId === "wx_emperor") {
+      const distanceToEnemy = estimate ? distance(main.x, main.y, estimate.x, estimate.y) : Infinity;
+      return main.energy >= 56
+        && main.hp / Math.max(1, main.maxHp) > 0.35
+        && Boolean(estimate?.visible)
+        && distanceToEnemy <= main.effectiveRange() * 1.15
+        && this.team.fleetMemberCountForShip("main") > 1;
+    }
     if (this.shouldDelayFlagshipBuff(characterId, meta)) {
       return false;
     }
@@ -2899,6 +2926,11 @@ export class BotController {
       return false;
     }
     const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
+    if (ship.characterId === "wx_emperor") {
+      return ship.energy >= 44
+        && Boolean(estimate?.visible)
+        && dist <= ship.effectiveRange() * 1.15;
+    }
     if (ship.characterId === "haruhi") {
       return Boolean(
         estimate
