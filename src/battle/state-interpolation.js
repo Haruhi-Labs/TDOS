@@ -237,6 +237,29 @@ function interpolateTeam(previous, current, ratio) {
           }
         : current.haruhiFlagship?.esperOrb || null,
     },
+    koizumiBarrier: previous.koizumiBarrier && current.koizumiBarrier
+      ? {
+          ...current.koizumiBarrier,
+          x: lerp(previous.koizumiBarrier.x, current.koizumiBarrier.x, ratio),
+          y: lerp(previous.koizumiBarrier.y, current.koizumiBarrier.y, ratio),
+          radius: lerp(previous.koizumiBarrier.radius, current.koizumiBarrier.radius, ratio),
+          disabledRemaining: lerp(
+            previous.koizumiBarrier.disabledRemaining,
+            current.koizumiBarrier.disabledRemaining,
+            ratio,
+          ),
+          recoveryProgress: lerp(
+            previous.koizumiBarrier.recoveryProgress,
+            current.koizumiBarrier.recoveryProgress,
+            ratio,
+          ),
+          recoveryAge: lerp(
+            previous.koizumiBarrier.recoveryAge,
+            current.koizumiBarrier.recoveryAge,
+            ratio,
+          ),
+        }
+      : current.koizumiBarrier || null,
     ships: {
       main: interpolateShip(previous.ships.main, current.ships.main, ratio),
       sub1: interpolateShip(previous.ships.sub1, current.ships.sub1, ratio),
@@ -269,6 +292,11 @@ export function interpolateBattleState(previousState, currentState, ratio, { spa
       safeSpanSeconds,
     ),
     bursts: interpolateVisualList(previousState.bursts, currentState.bursts, safeRatio),
+    koizumiBarrierImpacts: interpolateVisualList(
+      previousState.koizumiBarrierImpacts,
+      currentState.koizumiBarrierImpacts,
+      safeRatio,
+    ),
     floatingTexts: interpolateVisualList(previousState.floatingTexts, currentState.floatingTexts, safeRatio),
     teams: {
       A: interpolateTeam(previousState.teams.A, currentState.teams.A, safeRatio),

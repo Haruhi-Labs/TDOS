@@ -93,23 +93,29 @@ function applyForcedKnockback(match, source, contactTarget) {
   match.spawnBurst(contactTarget.x, contactTarget.y, "#ffcf8e", 14);
 }
 
-function haruhiBowTouchesTarget(source, target) {
+export function haruhiRamApproachEligible(source, targetX, targetY) {
   const minimumRamSpeed = source.effectiveSpeed() * throttleForGear(HARUHI_RAM_MINIMUM_GEAR);
   if (source.speed + HARUHI_RAM_SPEED_TOLERANCE < minimumRamSpeed) {
     return false;
   }
   const forwardX = Math.cos(source.angle);
   const forwardY = Math.sin(source.angle);
-  const deltaX = target.x - source.x;
-  const deltaY = target.y - source.y;
+  const deltaX = targetX - source.x;
+  const deltaY = targetY - source.y;
   const centerDistance = Math.hypot(deltaX, deltaY);
   if (centerDistance < 1e-6) {
     return false;
   }
   const facingDot = (deltaX * forwardX + deltaY * forwardY) / centerDistance;
-  if (facingDot < HARUHI_BOW_ARC_COS) {
+  return facingDot >= HARUHI_BOW_ARC_COS;
+}
+
+function haruhiBowTouchesTarget(source, target) {
+  if (!haruhiRamApproachEligible(source, target.x, target.y)) {
     return false;
   }
+  const forwardX = Math.cos(source.angle);
+  const forwardY = Math.sin(source.angle);
   const bowX = source.x + forwardX * source.radius;
   const bowY = source.y + forwardY * source.radius;
   return distance(bowX, bowY, target.x, target.y) <= target.radius + HARUHI_BOW_CONTACT_TOLERANCE;

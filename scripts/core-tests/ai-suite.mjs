@@ -584,7 +584,7 @@ function aiVisionWaveBuffCounterplayCheck() {
       aiDifficulty: difficulty,
       teamLoadouts: {
         A: { main: "asakura", sub1: "haruhi", sub2: "yuki" },
-        B: { main: "koizumi", sub1: "kyon", sub2: "future1096" },
+        B: { main: "tsuruya", sub1: "kyon", sub2: "future1096" },
       },
     });
     const bot = sim.botBySeat("B");
@@ -626,7 +626,7 @@ function aiVisionWaveBuffCounterplayCheck() {
     bot.subTimers.sub1 = 0;
     bot.tryFlagshipSkill(context);
     bot.trySubSkill("sub1", context);
-    assert(aiMain.team.effects.taxiUntil <= bot.team.match.elapsed, `${difficulty} AI 未实际暂缓旗舰增益`);
+    assert(aiMain.team.effects.sponsorUntil <= bot.team.match.elapsed, `${difficulty} AI 未实际暂缓旗舰增益`);
     assert(!kyon.hasEffect("reliableUntil"), `${difficulty} AI 未实际暂缓分舰增益`);
   }
 
@@ -1025,9 +1025,9 @@ function aiHighEnergySkillAggressionCheck() {
         sub2: "tsuruya",
       },
       B: {
-        main: "koizumi",
+        main: "tsuruya",
         sub1: "haruhi",
-        sub2: "tsuruya",
+        sub2: "koizumi",
       },
     },
   });
@@ -1067,7 +1067,7 @@ function aiHighEnergySkillAggressionCheck() {
   bot.tryFlagshipSkill(context);
   bot.trySubSkill("sub1", context);
 
-  assert(aiTeam.effects.taxiUntil > sim.elapsed, "AI高能接敌时未积极释放旗舰技能");
+  assert(aiTeam.effects.sponsorUntil > sim.elapsed, "AI高能接敌时未积极释放旗舰技能");
   assert(aiTeam.ships.sub1.hasEffect("critUntil"), "AI高能接敌时未积极释放分舰技能");
 }
 
@@ -1210,9 +1210,9 @@ function aiEmergencyEnergyReserveCheck() {
         sub2: "tsuruya",
       },
       B: {
-        main: "koizumi",
+        main: "tsuruya",
         sub1: "haruhi",
-        sub2: "tsuruya",
+        sub2: "koizumi",
       },
     },
   });
@@ -1247,7 +1247,7 @@ function aiEmergencyEnergyReserveCheck() {
   bot.enforceEnergyThrottleCaps();
 
   assert(bot.mode !== "harvest", "AI接敌紧急时仍错误进入回能模式");
-  assert(aiTeam.effects.taxiUntil <= sim.elapsed, "AI接敌紧急时仍会为一次技能把舰队能量压到保底以下");
+  assert(aiTeam.effects.sponsorUntil <= sim.elapsed, "AI接敌紧急时仍会为一次技能把舰队能量压到保底以下");
   assert(aiMain.throttle === throttleForGear(2), "AI保留技能能量后错误降档");
 }
 

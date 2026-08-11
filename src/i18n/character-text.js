@@ -13,7 +13,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "古泉",
       title: "均衡型机动指挥舰",
       flavor: "能够出现在他应该出现的任何地方",
-      flagshipSkill: { name: "机关的力量", description: "全舰队加速度×1.75，持续12秒；前6秒全队无敌。" },
+      flagshipSkill: { name: "闭锁空间", description: "被动在主舰视野边界维持红色能量圈，吸收从圈外进入的子弹并截断射线。朝仓分舰的刀锋女王、古泉分舰的光球，以及春日获得异世界人后的冲撞可令能量圈失效5秒。" },
       subSkill: { name: "超能力", description: "化作高速红色光球8秒，无法射击；可以被攻击但不会受到伤害。撞击会沿碰撞方向击飞敌舰并沉默5秒，不造成伤害。结束后保持光球形态自动归航战场中央。" },
     },
     yuki: {
@@ -79,7 +79,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "古泉",
       title: "均衡型機動指揮艦",
       flavor: "必要な場所に、必要な時に現れる",
-      flagshipSkill: { name: "機関の力", description: "全艦隊の加速度を×1.75、12秒間。最初の6秒は全艦無敵。" },
+      flagshipSkill: { name: "閉鎖空間", description: "旗艦の視界境界に赤いエネルギーリングを常時展開し、外側から侵入する弾丸を吸収してビームを遮断する。朝倉のブレードクイーン、古泉の光球、異世界人を得たハルヒの体当たりを受けると5秒間消失する。" },
       subSkill: { name: "超能力", description: "8秒間、高速の赤い光球となり、射撃不能。攻撃対象にはなるがダメージを受けない。接触方向へ敵艦を弾き飛ばし、ダメージなしで5秒間沈黙させる。終了後も光球のまま戦場中央へ自動帰還する。" },
     },
     yuki: {
@@ -145,7 +145,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "Koizumi",
       title: "Balanced Mobile Command Ship",
       flavor: "Appears exactly where he is supposed to be",
-      flagshipSkill: { name: "Power of the Agency", description: "Fleet acceleration ×1.75 for 12 seconds; the whole fleet is invulnerable for the first 6 seconds." },
+      flagshipSkill: { name: "Closed Space", description: "Passively maintains a red energy ring along the flagship's vision boundary, absorbing bullets entering from outside and stopping beams. Blade Queen, Koizumi's orb, and Haruhi's Otherworlder ram disable it for 5 seconds." },
       subSkill: { name: "Esper Power", description: "Becomes a high-speed red orb for 8 seconds and cannot fire. It can be targeted, but takes no damage. Contact knocks enemy ships away along the collision direction and silences them for 5 seconds without damage. The orb then automatically returns to the battlefield center before reverting." },
     },
     yuki: {

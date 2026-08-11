@@ -46,9 +46,8 @@ export const CHARACTER_DEFS = {
       damage: 23, fireRate: 0.5, radius: 9 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "agency_power", name: "机关的力量", type: "active", cooldown: 18, cost: 58,
-      duration: 12, target: "none", invulnerableDuration: 6,
-      description: "全舰队加速度×1.75，持续12秒；前6秒全队无敌。",
+      id: "closed_space_barrier", name: "闭锁空间", type: "passive",
+      description: "被动在主舰视野边界维持红色能量圈，吸收从圈外进入的子弹并截断射线。刀锋女王、古泉光球与异世界人冲撞可令能量圈失效5秒。",
     },
     subSkill: {
       id: "esper", name: "超能力", type: "active", cooldown: 15, cost: 50,

@@ -16,6 +16,10 @@ import {
   drawAsakuraVisionWavesMinimap,
 } from "./render/vision-wave.js";
 import { drawKoizumiOrb } from "./render/koizumi-orb.js";
+import {
+  drawKoizumiBarrier,
+  drawKoizumiBarrierImpacts,
+} from "./render/koizumi-barrier.js";
 
 export { drawYukiRadar, drawYukiRadarMinimap };
 
@@ -1009,6 +1013,7 @@ export function drawPauseOverlay(ctx) {
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
 //   radar              己方长门旗舰的私有雷达状态；对手与观战帧必须为空
 //   visionWaves        位于各队序列化状态中；所有视角都绘制双方，但只有施放方获得波带视野
+//   koizumiBarrier     位于各队序列化状态中；敌方能量圈只在主舰可见或被己方命中时显现
 //   mobileMode         移动端:不画航线曲度旋钮
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer
 export function drawBattleWorld(ctx, frame) {
@@ -1035,6 +1040,12 @@ export function drawBattleWorld(ctx, frame) {
     Number(state.world?.size) || LOGICAL,
   );
   drawYukiRadar(ctx, frame);
+
+  drawKoizumiBarrier(ctx, ownTeam, elapsed);
+  const enemyBarrierMainId = enemyTeam?.ships?.main?.id;
+  if (spectating || (enemyBarrierMainId && enemyVisible(enemyBarrierMainId))) {
+    drawKoizumiBarrier(ctx, enemyTeam, elapsed);
+  }
 
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制
   syncShipDestructionEffects(frame.destructionEffects, [
@@ -1141,6 +1152,17 @@ export function drawBattleWorld(ctx, frame) {
       drawBurst(ctx, burst);
     }
   }
+  drawKoizumiBarrierImpacts(
+    ctx,
+    state.koizumiBarrierImpacts,
+    (impact) => {
+      if (spectating || impact.teamSeat === ownSeat || impact.sourceSeat === ownSeat) {
+        return true;
+      }
+      const defendingMainId = state.teams?.[impact.teamSeat]?.ships?.main?.id;
+      return Boolean(defendingMainId && enemyVisible(defendingMainId));
+    },
+  );
   if (Array.isArray(state.floatingTexts)) {
     for (const label of state.floatingTexts) {
       drawFloatingText(ctx, label);

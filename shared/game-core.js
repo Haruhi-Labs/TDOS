@@ -96,6 +96,13 @@ import {
   updateKoizumiOrb,
 } from "./game/koizumi-orb.js";
 import {
+  createKoizumiBarrierState,
+  koizumiBarrierBeamImpact,
+  koizumiBarrierProjectileImpact,
+  resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts,
+  serializeKoizumiBarrier,
+} from "./game/koizumi-barrier.js";
+import {
   HARUHI_SUPPORT_LABELS,
   activateHaruhiFlagship,
   createHaruhiFlagshipState,
@@ -467,6 +474,9 @@ class Ship {
     this.x = x;
     this.y = y;
     this.angle = facing;
+    this.previousX = x;
+    this.previousY = y;
+    this.previousAngle = facing;
     this.speed = 0;
     this.throttle = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR];
     this.command = { x, y };
@@ -565,8 +575,7 @@ class Ship {
   }
 
   isDamageImmune() {
-    return this.isKoizumiOrbActive()
-      || this.team.effects.taxiInvulnUntil > this.team.match.elapsed;
+    return this.isKoizumiOrbActive();
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -985,6 +994,9 @@ class Ship {
     }
 
     const match = this.team.match;
+    this.previousX = this.x;
+    this.previousY = this.y;
+    this.previousAngle = this.angle;
     this.cooldown = Math.max(0, this.cooldown - dt);
 
     if (this.updateForcedKnockback()) {
@@ -1678,13 +1690,12 @@ class Team {
     };
 
     this.effects = {
-      taxiUntil: 0,
-      taxiInvulnUntil: 0,
       sponsorUntil: 0,
       haruhiBoostUntil: 0,
     };
     this.future1096Form = null;
     this.haruhiFlagship = createHaruhiFlagshipState(facing);
+    this.koizumiBarrier = createKoizumiBarrierState();
     this.activeSkillEffectStartedTicks = Object.create(null);
 
     const sub1FormationOffset = { x: -36, y: 22 };
@@ -1950,9 +1961,6 @@ class Team {
 
   accelerationModifierForShip(shipOrKey) {
     let value = 1;
-    if (this.effects.taxiUntil > this.match.elapsed) {
-      value *= 1.75;
-    }
     if (this.hasKyonFlagship()) {
       value *= 1.16;
     }
@@ -2034,12 +2042,6 @@ class Team {
     if (ship.isEmergencyBraking()) {
       list.push("急刹");
     }
-    if (this.effects.taxiUntil > this.match.elapsed) {
-      list.push("机关的力量");
-    }
-    if (this.effects.taxiInvulnUntil > this.match.elapsed) {
-      list.push("无敌");
-    }
     if (this.hasActiveSponsor()) {
       list.push("神秘赞助人");
     }
@@ -2093,8 +2095,6 @@ class Team {
       this.effects[effectKey] = 0;
       delete this.activeSkillEffectStartedTicks[effectKey];
     };
-    clearTeamEffect("taxiUntil");
-    clearTeamEffect("taxiInvulnUntil");
     clearTeamEffect("sponsorUntil");
     clearTeamEffect("haruhiBoostUntil");
     if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
@@ -2480,18 +2480,6 @@ class Team {
         this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, key, {}, "#fff3c5");
       }
       ok = true;
-    } else if (characterId === "koizumi") {
-      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
-        return false;
-      }
-      this.effects.taxiUntil = this.match.elapsed + (meta.duration || 12);
-      this.effects.taxiInvulnUntil = this.match.elapsed + (meta.invulnerableDuration || 6);
-      this.markActiveSkillEffectStarted("taxiUntil");
-      this.markActiveSkillEffectStarted("taxiInvulnUntil");
-      for (const ship of this.fleetMembersByKey("main")) {
-        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "加速", {}, "#9be0ff");
-      }
-      ok = true;
     } else if (characterId === "future1096") {
       ok = this.switchFuture1096Form();
     } else if (characterId === "tsuruya") {
@@ -2715,6 +2703,20 @@ class Team {
       beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
       beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
 
+      const barrierImpact = koizumiBarrierBeamImpact(beam, enemyTeam);
+      if (barrierImpact) {
+        beam.x2 = barrierImpact.x;
+        beam.y2 = barrierImpact.y;
+        beam.blockedByBarrier = true;
+        beam.barrierTeamSeat = enemyTeam.seat;
+        this.match.spawnKoizumiBarrierImpact({
+          ...barrierImpact,
+          teamSeat: enemyTeam.seat,
+          sourceSeat: this.seat,
+          kind: "beam",
+        });
+      }
+
       let hitAny = false;
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive || !target.isTargetableByFire()) {
@@ -2804,6 +2806,7 @@ class Team {
       hullRatio: this.hullRatio(),
       future1096Form: this.future1096Form,
       haruhiFlagship: serializeHaruhiFlagship(this),
+      koizumiBarrier: serializeKoizumiBarrier(this),
       skillsDisabled: this.areSkillsDisabled(),
       autoScout: {
         enabled: this.autoScout.enabled,
@@ -2837,6 +2840,8 @@ class Team {
         color: beam.color,
         life: beam.life,
         maxLife: beam.maxLife || beam.life,
+        blockedByBarrier: Boolean(beam.blockedByBarrier),
+        barrierTeamSeat: beam.barrierTeamSeat || null,
       })),
     };
   }
@@ -2889,6 +2894,7 @@ export class MatchSimulation {
 
     this.projectiles = [];
     this.bursts = [];
+    this.koizumiBarrierImpacts = [];
     this.floatingTexts = [];
     this.bots = {};
     const legacyAiSeats = normalizeAiSeats(mode, options.legacyAiSeats); // 指定哪些AI席位用旧版AI
@@ -3003,6 +3009,10 @@ export class MatchSimulation {
     resolveMatchKoizumiOrbContacts(this);
   }
 
+  resolveKoizumiBarrierRamContacts() {
+    resolveMatchKoizumiBarrierRamContacts(this);
+  }
+
   resolveScoutClashes() {
     resolveMatchScoutClashes(this);
   }
@@ -3049,9 +3059,42 @@ export class MatchSimulation {
     this.bursts.push(new Burst(x, y, color, radius));
   }
 
+  spawnKoizumiBarrierImpact(options = {}) {
+    const kind = options.kind || "projectile";
+    const maxLife = kind === "ram" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
+    this.koizumiBarrierImpacts.push({
+      id: nextEntityId(),
+      kind,
+      ramKind: options.ramKind || null,
+      teamSeat: options.teamSeat || null,
+      sourceSeat: options.sourceSeat || null,
+      x: Number(options.x) || 0,
+      y: Number(options.y) || 0,
+      centerX: Number(options.centerX) || 0,
+      centerY: Number(options.centerY) || 0,
+      radius: Math.max(1, Number(options.radius) || 1),
+      angle: Number(options.angle) || 0,
+      normalX: Number(options.normalX) || 0,
+      normalY: Number(options.normalY) || 0,
+      life: maxLife,
+      maxLife,
+    });
+  }
+
   updateProjectiles(dt) {
     for (const projectile of this.projectiles) {
       const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
+      const barrierImpact = koizumiBarrierProjectileImpact(projectile, dt, defendingTeam);
+      if (barrierImpact) {
+        projectile.alive = false;
+        this.spawnKoizumiBarrierImpact({
+          ...barrierImpact,
+          teamSeat: defendingTeam.seat,
+          sourceSeat: projectile.team.seat,
+          kind: "projectile",
+        });
+        continue;
+      }
       const orb = haruhiEsperOrb(defendingTeam);
       const absorbedAt = projectileAbsorptionPoint(projectile, dt, orb);
       if (absorbedAt) {
@@ -3069,6 +3112,11 @@ export class MatchSimulation {
       burst.update(dt);
     }
     this.bursts = this.bursts.filter((burst) => burst.life > 0);
+
+    for (const impact of this.koizumiBarrierImpacts) {
+      impact.life -= dt;
+    }
+    this.koizumiBarrierImpacts = this.koizumiBarrierImpacts.filter((impact) => impact.life > 0);
 
     for (const label of this.floatingTexts) {
       label.update(dt);
@@ -3114,6 +3162,7 @@ export class MatchSimulation {
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
 
+    this.resolveKoizumiBarrierRamContacts();
     this.resolveKoizumiOrbContacts();
     this.resolveHaruhiOtherworlderContacts();
     this.resolveShipCollisions();
@@ -3152,6 +3201,7 @@ export class MatchSimulation {
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
+      koizumiBarrierImpacts: this.koizumiBarrierImpacts.map((impact) => ({ ...impact })),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
       teams: {
         A: this.teamA.serialize(),

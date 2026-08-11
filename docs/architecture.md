@@ -58,6 +58,7 @@
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
 - `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、环带覆盖判定、失效清理与公共状态序列化。
+- `shared/game/koizumi-barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
 - `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
 - `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法。
 - `shared/game/collision-system.js`：舰船碰撞、侦察机相撞和刀锋女王接触结算。
@@ -71,6 +72,7 @@
 - `src/battle/state-interpolation.js`：单人逻辑帧与联机快照共用的纯显示插值，统一处理舰船、侦察机、僚机、弹体、光束和视觉效果。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
 - `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；双方都能看到波纹，但只有施放方获得波带覆盖区域的真实视野。
+- `src/battle/render/koizumi-barrier.js`：古泉能量圈、局部受击弧光与三类冲撞对应的破盾动画。
 - `src/solo.js`、`src/online.js`：只编排各模式生命周期、输入和数据来源，不复制公共战场表现。
 
 ### 联机链路
@@ -110,11 +112,13 @@
 | 角色数值或技能描述元数据 | `shared/game/characters.js` | `src/i18n/character-text.js` |
 | 技能实际生效过程 | `shared/game-core.js` | 对应 `shared/game/*` 叶模块、核心测试 |
 | 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
+| 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game-core.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js`、核心 AI 测试 |
 | 侦察战区规划与长门僚机编组 | `shared/game/bot-scout-strategy.js` | `shared/game/bot-controller.js`、`shared/game-core.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 朝仓视野波视觉 | `src/battle/render/vision-wave.js` | 视野波规则与单人/联机/观战回归 |
+| 古泉能量圈视觉 | `src/battle/render/koizumi-barrier.js` | 弹体、射线、冲撞事件与单人/联机/观战回归 |
 | 单人/联机画面抖动与状态插值 | `src/battle/state-interpolation.js` | `src/solo.js`、`src/online/state-sync.js`、`scripts/verify-online-state-sync.mjs` |
 | 联机快照时间轴、外推和预测 | `src/online/state-sync.js` | `src/online/snapshot-transport.js`、`scripts/verify-online-state-sync.mjs` |
 | 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/action-dispatcher.js`、本地/远程传输测试 |

@@ -618,6 +618,7 @@ export const EN_MESSAGES = {
     "找到了异世界人！": "FOUND A SLIDER!",
     "找到了超能力者！": "FOUND AN ESPER!",
     "异世界冲击": "Otherworld Impact",
+    "能量圈失效": "Barrier Disrupted",
     "宇宙人": "Alien",
     "超能力者": "Esper",
     "未来人": "Time Traveler",

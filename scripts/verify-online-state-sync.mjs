@@ -25,6 +25,7 @@ function team(offset = 0) {
     autoScout: { enabled: false, zoneId: 5 },
     cooldowns: { scout: 0, flagship: 0, sub1: 0, sub2: 0 },
     haruhiFlagship: { boostActive: false, supporters: [], otherworlderReady: false, esperOrb: null },
+    koizumiBarrier: null,
     ships: {
       main: ship(offset + 1, 10, { key: "main" }),
       sub1: ship(offset + 2, 12, { key: "sub1" }),
@@ -44,6 +45,7 @@ function battleState(elapsed = 0) {
     winnerSeat: null,
     projectiles: [],
     bursts: [],
+    koizumiBarrierImpacts: [],
     floatingTexts: [],
     teams: { A: team(0), B: team(10) },
   };
@@ -94,8 +96,28 @@ nextState.teams.A.ships.main.x = 30;
 nextState.teams.A.extraShips[0].x = 36;
 previousState.teams.A.haruhiFlagship.esperOrb = { x: 30, y: 40, angle: 6.1, radius: 10, absorbRadius: 20 };
 nextState.teams.A.haruhiFlagship.esperOrb = { x: 50, y: 60, angle: 0.1, radius: 10, absorbRadius: 20 };
+previousState.teams.A.koizumiBarrier = {
+  x: 10,
+  y: 20,
+  radius: 150,
+  active: false,
+  disabledRemaining: 5,
+  recoveryProgress: 0,
+  recoveryAge: 0,
+};
+nextState.teams.A.koizumiBarrier = {
+  x: 30,
+  y: 20,
+  radius: 170,
+  active: true,
+  disabledRemaining: 0,
+  recoveryProgress: 1,
+  recoveryAge: 0.4,
+};
 previousState.projectiles = [ship(100, 20, { targetX: 80, targetY: 20 })];
 nextState.projectiles = [ship(100, 40, { targetX: 80, targetY: 20 })];
+previousState.koizumiBarrierImpacts = [{ id: 200, x: 20, y: 30, radius: 150, life: 0.8 }];
+nextState.koizumiBarrierImpacts = [{ id: 200, x: 20, y: 30, radius: 150, life: 0.4 }];
 const interpolated = sync.interpolateSnapshotState(
   { tick: 0, state: previousState },
   { tick: 30, state: nextState },
@@ -107,6 +129,12 @@ assert.equal(interpolated.teams.A.extraShips[0].x, 26, "额外舰船插值异常
 assert.equal(interpolated.projectiles[0].x, 30, "弹体位置插值异常");
 assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.x, 40, "春日超能力者光球横坐标未平滑插值");
 assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.y, 50, "春日超能力者光球纵坐标未平滑插值");
+assert.equal(interpolated.teams.A.koizumiBarrier.radius, 160, "古泉能量圈半径未平滑插值");
+assert.equal(interpolated.teams.A.koizumiBarrier.active, true, "古泉能量圈生效状态没有采用最新权威帧");
+assert(
+  Math.abs(interpolated.koizumiBarrierImpacts[0].life - 0.6) < 1e-9,
+  "古泉能量圈受击动画寿命未平滑插值",
+);
 assert(
   interpolated.teams.A.haruhiFlagship.esperOrb.angle > 6.1,
   "春日超能力者光球跨零点公转角度走了错误的长路径",
@@ -173,4 +201,4 @@ app.snapshots = [{ tick: 0, state: battleState(0), serverTimeMs: 1000, receivedA
 now = 1000;
 assert(sync.getRenderState()?.teams?.A?.ships?.main, "单快照无法生成显示状态");
 
-console.log("在线显示状态校验通过：航线覆盖、舰船/光球插值、额外舰船、弹体与边界外推均保持一致。");
+console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈插值、额外舰船、弹体与边界外推均保持一致。");

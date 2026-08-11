@@ -250,7 +250,7 @@ assert(summary.scoutTactics.yukiLaunches > 0, "长门旗舰AI在模拟对战中�
 assert(summary.scoutTactics.yukiZones >= 3, "长门旗舰AI在模拟对战中没有形成多战区部署");
 assert(summary.scoutTactics.yukiRetasks > 0, "长门旗舰AI在模拟对战中从未重新编组战斗僚机");
 assert(summary.visionWaveBuffDeferrals > 0, "困难 AI 模拟对战从未触发朝仓视野波增益延迟");
-for (const characterId of ["haruhi", "koizumi", "tsuruya", "asakura"]) {
+for (const characterId of ["haruhi", "tsuruya", "asakura"]) {
   assert((totals.flagshipCasts[characterId] || 0) > 0, `${characterId} 旗舰主动技能在模拟对战中从未成功释放`);
 }
 for (const characterId of CHARACTER_ORDER) {

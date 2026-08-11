@@ -2781,7 +2781,7 @@ export class BotController {
   }
 
   shouldDelayFlagshipBuff(characterId, meta) {
-    if (!["haruhi", "koizumi", "tsuruya", "asakura"].includes(characterId)) {
+    if (!["haruhi", "tsuruya", "asakura"].includes(characterId)) {
       return false;
     }
     const targets = this.team.getAllShips();
@@ -2820,10 +2820,6 @@ export class BotController {
       // 常驻支援集齐后，16秒团队强化本身仍值得尽快使用；不再等待接敌或距离条件。
       return true;
     }
-    if (characterId === "koizumi") {
-      return (estimate.visible || estimate.age <= 6 || this.mode === "search" || this.mode === "recover")
-        && ((context?.skillAggression || 0) > 0.1 || (context?.trackableIntel) || this.energyProfile("main").high);
-    }
     if (characterId === "future1096") {
       const form = this.team.future1096Form;
       const hull = this.team.hullRatio();
@@ -2854,8 +2850,6 @@ export class BotController {
       if (visibleShips.length > 0) {
         visibleBuffRemaining = Math.max(
           0,
-          this.enemy.effects.taxiUntil - now,
-          this.enemy.effects.taxiInvulnUntil - now,
           this.enemy.effects.sponsorUntil - now,
           this.enemy.effects.haruhiBoostUntil - now,
           this.enemy.visionWaveSkill.activeUntil - now,

@@ -17,7 +17,9 @@ import {
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
   HARUHI_SUPPORTS,
+  haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
+import { KOIZUMI_BARRIER_DISABLE_SECONDS } from "../../shared/game/koizumi-barrier.js";
 import { assert, runSteps } from "./helpers.mjs";
 
 function closeRangeCombatCheck() {
@@ -715,7 +717,7 @@ function yukiPassiveCheck() {
   assert(sim.serializeRadarForSeat("A") === null, "长门旗舰被击毁后雷达仍从无来源位置工作");
 }
 
-function koizumiFlagshipInvulnCheck() {
+function koizumiFlagshipBarrierCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
     worldSize: 1440,
@@ -733,22 +735,179 @@ function koizumiFlagshipInvulnCheck() {
     },
   });
   const teamA = sim.teamA;
+  const teamB = sim.teamB;
   const main = teamA.ships.main;
-  const beforeHp = main.hp;
+  const attacker = teamB.ships.main;
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
+  main.x = 720;
+  main.y = 720;
+  main.previousX = main.x;
+  main.previousY = main.y;
+  main.command = { x: main.x, y: main.y };
+  main.route = null;
 
-  const castOk = teamA.castFlagshipSkill();
-  assert(castOk, "古泉旗舰技能释放失败");
-  assert(Math.abs(teamA.effects.taxiUntil - sim.elapsed - 12) < 1e-6, "古泉旗舰技能加速未持续12秒");
-  assert(Math.abs(teamA.effects.taxiInvulnUntil - sim.elapsed - 6) < 1e-6, "古泉旗舰技能无敌未持续6秒");
-  assert(Math.abs(teamA.accelerationModifierForShip(main) - 1.75) < 1e-6, "古泉旗舰技能未使全舰队加速度×1.75");
+  const initialBarrier = teamA.serialize().koizumiBarrier;
+  assert(CHARACTER_DEFS.koizumi.flagshipSkill.type === "passive", "古泉旗舰技能没有改为被动技能");
+  assert(!teamA.castFlagshipSkill(), "古泉被动旗舰技能仍可主动释放");
+  assert(initialBarrier?.active, "古泉主舰没有自动生成能量圈");
+  assert(
+    Math.abs(initialBarrier.radius - main.effectiveVision()) < 1e-9,
+    "古泉能量圈没有贴合主舰视野边界",
+  );
 
-  runSteps(sim, 5.9);
-  main.takeDamage(220, null, sim);
-  assert(main.hp === beforeHp, "古泉旗舰技能前6秒无敌未生效");
+  attacker.x = main.x + initialBarrier.radius + 90;
+  attacker.y = main.y;
+  attacker.angle = Math.PI / 2;
+  attacker.command = { x: attacker.x, y: attacker.y };
+  attacker.route = null;
+  attacker.cooldown = 0;
+  teamB.visibleEnemyIds = new Set([main.id]);
+  const hullBeforeShell = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+  attacker.tryAttack(sim, teamA);
+  assert(sim.projectiles.length === 1, "古泉能量圈测试未生成圈外炮弹");
+  sim.updateProjectiles(2);
+  assert(sim.projectiles.length === 0, "古泉能量圈没有吸收从圈外进入的炮弹");
+  assert(
+    teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0) === hullBeforeShell,
+    "圈外炮弹穿过古泉能量圈造成了伤害",
+  );
+  assert(
+    sim.koizumiBarrierImpacts.some((impact) => impact.kind === "projectile"),
+    "炮弹被能量圈吸收时没有生成专属受击状态",
+  );
 
-  runSteps(sim, 0.2);
-  main.takeDamage(220, null, sim);
-  assert(main.hp < beforeHp, "古泉旗舰技能无敌结束后仍未恢复正常受伤");
+  const hullBeforeBeam = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+  assert(teamB.queueBeamDirection(attacker, -1, 0), "古泉能量圈测试未生成圈外射线");
+  const beam = teamB.beams.at(-1);
+  beam.life = 0;
+  teamB.resolveChargedBeams(teamA);
+  assert(beam.blockedByBarrier, "古泉能量圈没有截断圈外射线");
+  assert(
+    Math.abs(beam.x2 - (main.x + initialBarrier.radius)) < 1,
+    "被拦截射线的终点没有落在能量圈上",
+  );
+  assert(
+    teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0) === hullBeforeBeam,
+    "被能量圈截断的射线仍伤害了圈内舰船",
+  );
+  assert(
+    sim.koizumiBarrierImpacts.some((impact) => impact.kind === "beam"),
+    "射线被能量圈截断时没有生成专属受击状态",
+  );
+
+  // 已经进入圈内的攻击不应被反向吞掉，保证能量圈是边界防护而非全域无敌。
+  sim.projectiles = [];
+  attacker.x = main.x + initialBarrier.radius * 0.5;
+  attacker.y = main.y;
+  attacker.angle = Math.PI / 2;
+  attacker.cooldown = 0;
+  const hullBeforeInsideShot = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+  attacker.tryAttack(sim, teamA);
+  assert(sim.projectiles.length === 1, "古泉能量圈测试未生成圈内炮弹");
+  sim.updateProjectiles(1);
+  assert(
+    teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0) < hullBeforeInsideShot,
+    "古泉能量圈错误吸收了从圈内发出的攻击",
+  );
+
+  const createRamScenario = (ramKind) => {
+    const haruhiRam = ramKind === "haruhi_otherworlder";
+    const subCharacter = ramKind === "blade_queen" ? "asakura" : "koizumi";
+    const ramSim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      teamLoadouts: {
+        A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+        B: haruhiRam
+          ? { main: "haruhi", sub1: "yuki", sub2: "kyon" }
+          : { main: "kyon", sub1: subCharacter, sub2: "yuki" },
+      },
+    });
+    ramSim.setCombatEnabled("A", false);
+    ramSim.setCombatEnabled("B", false);
+    const defendingTeam = ramSim.teamA;
+    const defendingMain = defendingTeam.ships.main;
+    defendingMain.x = 720;
+    defendingMain.y = 720;
+    defendingMain.previousX = defendingMain.x;
+    defendingMain.previousY = defendingMain.y;
+    defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
+    defendingMain.route = null;
+
+    const attackingTeam = ramSim.teamB;
+    const source = haruhiRam ? attackingTeam.ships.main : attackingTeam.ships.sub1;
+    if (!haruhiRam) {
+      attackingTeam.split(1);
+      assert(attackingTeam.castSubSkill("sub1"), `${ramKind}破盾测试未能释放分舰技能`);
+    } else {
+      attackingTeam.haruhiFlagship.supporters.add("otherworlder");
+      attackingTeam.haruhiFlagship.otherworlderReadyAt = ramSim.elapsed;
+    }
+
+    const barrierRadius = defendingMain.effectiveVision();
+    source.angle = Math.PI;
+    source.previousAngle = source.angle;
+    source.y = defendingMain.y;
+    source.previousY = source.y;
+    const contactPadding = haruhiRam ? source.radius + 5 : source.radius;
+    source.previousX = defendingMain.x + barrierRadius + contactPadding + 8;
+    source.x = defendingMain.x + barrierRadius + contactPadding - 2;
+    source.command = { x: source.x - 300, y: source.y };
+    source.route = null;
+    if (haruhiRam) {
+      source.speed = source.effectiveSpeed() * throttleForGear(2) + 1;
+    }
+    const hullBeforeRam = defendingTeam.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+    ramSim.resolveKoizumiBarrierRamContacts();
+    const serialized = defendingTeam.serialize().koizumiBarrier;
+    assert(!serialized.active, `${ramKind}冲撞没有令古泉能量圈失效`);
+    assert(
+      Math.abs(serialized.disabledRemaining - KOIZUMI_BARRIER_DISABLE_SECONDS) < 1e-9,
+      `${ramKind}冲撞后的能量圈失效时间不是5秒`,
+    );
+    assert(
+      defendingTeam.getAllShips().reduce((sum, ship) => sum + ship.hp, 0) === hullBeforeRam,
+      `${ramKind}破盾本身错误造成了额外舰体伤害`,
+    );
+    const impact = ramSim.koizumiBarrierImpacts.at(-1);
+    assert(impact?.kind === "ram" && impact.ramKind === ramKind, `${ramKind}没有生成对应的破盾交互动画状态`);
+    assert(
+      ramSim.floatingTexts.some((item) => item.textKey === "能量圈失效"),
+      `${ramKind}破盾没有显示失效反馈`,
+    );
+    if (haruhiRam) {
+      assert(!haruhiOtherworlderReady(attackingTeam), "异世界人撞破能量圈后没有进入原有8秒碰撞冷却");
+    }
+    ramSim.elapsed += KOIZUMI_BARRIER_DISABLE_SECONDS + 0.01;
+    assert(defendingTeam.serialize().koizumiBarrier.active, `${ramKind}破盾5秒后能量圈没有自动恢复`);
+  };
+
+  for (const ramKind of ["blade_queen", "koizumi_orb", "haruhi_otherworlder"]) {
+    createRamScenario(ramKind);
+  }
+
+  const normalSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "haruhi", sub2: "yuki" },
+    },
+  });
+  const normalBarrierMain = normalSim.teamA.ships.main;
+  const normalShip = normalSim.teamB.ships.main;
+  normalBarrierMain.previousX = normalBarrierMain.x;
+  normalBarrierMain.previousY = normalBarrierMain.y;
+  normalShip.angle = Math.PI;
+  normalShip.previousAngle = normalShip.angle;
+  normalShip.y = normalBarrierMain.y;
+  normalShip.previousY = normalShip.y;
+  normalShip.previousX = normalBarrierMain.x + normalBarrierMain.effectiveVision() + normalShip.radius + 8;
+  normalShip.x = normalBarrierMain.x + normalBarrierMain.effectiveVision() + normalShip.radius - 2;
+  normalSim.resolveKoizumiBarrierRamContacts();
+  assert(normalSim.teamA.serialize().koizumiBarrier.active, "普通舰船接触错误击破了古泉能量圈");
+  assert(normalSim.koizumiBarrierImpacts.length === 0, "普通舰船接触错误生成了破盾动画");
 }
 
 function koizumiOrbRamCheck() {
@@ -1350,9 +1509,9 @@ function asakuraFlagshipCheck() {
         sub2: "yuki",
       },
       B: {
-        main: "koizumi",
+        main: "tsuruya",
         sub1: "haruhi",
-        sub2: "tsuruya",
+        sub2: "koizumi",
       },
     },
   });
@@ -1390,8 +1549,7 @@ function asakuraFlagshipCheck() {
   assert(castOk, "朝仓旗舰技能释放失败");
   sim.teamA.computeVisibility(sim.teamB);
 
-  assert(teamB.effects.taxiUntil > sim.elapsed, "朝仓旗舰技能仍在施放瞬间净化敌方团队增益");
-  assert(teamB.effects.taxiInvulnUntil > sim.elapsed, "朝仓旗舰技能仍在施放瞬间净化敌方无敌效果");
+  assert(teamB.effects.sponsorUntil > sim.elapsed, "朝仓旗舰技能仍在施放瞬间净化敌方团队增益");
   assert(enemySub1.hasEffect("critUntil"), "朝仓旗舰技能仍在施放瞬间净化敌方舰船增益");
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能仍在施放瞬间全图揭示敌方");
 
@@ -1407,8 +1565,7 @@ function asakuraFlagshipCheck() {
   }
   assert(seenByFirstWave, "朝仓视野波扫过敌舰时未获得真实视野");
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "朝仓视野波离开后仍持续保留敌舰视野");
-  assert(teamB.effects.taxiUntil <= sim.elapsed, "朝仓视野波扫到敌舰后未清除团队主动增益");
-  assert(teamB.effects.taxiInvulnUntil <= sim.elapsed, "朝仓视野波扫到敌舰后未清除团队无敌效果");
+  assert(teamB.effects.sponsorUntil <= sim.elapsed, "朝仓视野波扫到敌舰后未清除团队主动增益");
   assert(enemySub1.hasEffect("critUntil"), "尚未被视野波扫到的敌舰被提前净化");
 
   runSteps(sim, 0.7);
@@ -1643,7 +1800,7 @@ export function runRulesSuite() {
   flagshipLossAutoSplitCheck();
   skippedSplitLevelCheck();
   yukiPassiveCheck();
-  koizumiFlagshipInvulnCheck();
+  koizumiFlagshipBarrierCheck();
   koizumiOrbRamCheck();
   beamSkillCheck();
   tsuruyaFlagshipActiveCheck();
