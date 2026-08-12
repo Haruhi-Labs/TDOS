@@ -58,7 +58,6 @@ import {
 import { battleViewTemplate } from "./battle/template.js";
 import { createRemoteBattleActionTransport } from "./battle/action-transport.js";
 import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
-import { createBattleCanvasRenderer } from "./battle/webgl-canvas.js";
 import {
   drawBackground,
   drawBattleCountdown,
@@ -77,7 +76,6 @@ import {
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
-let canvasRenderer = null; // 可见大地图使用 WebGL2；WebGL1 兜底，2D 仅作极端应急
 let ac = null; // AbortController：统一移除 window 级监听
 let rafId = 0; // 渲染循环句柄
 let running = false; // 渲染循环开关
@@ -97,8 +95,7 @@ function addWin(type, handler) {
 
 function cacheDom() {
   canvas = document.getElementById("gameCanvas");
-  canvasRenderer = createBattleCanvasRenderer(canvas);
-  ctx = canvasRenderer.ctx;
+  ctx = canvas.getContext("2d");
   ui = {
   serverTargetValue: document.getElementById("serverTargetValue"),
   connectBtn: document.getElementById("connectBtn"),
@@ -1221,7 +1218,6 @@ function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
 
 function renderFrame() {
   if (!running) return;
-  canvasRenderer.beginFrame();
   const state = stateSync.getRenderState();
   app.lastRenderState = state;
 
@@ -1248,7 +1244,6 @@ function renderFrame() {
     if (app.room?.status === "countdown") {
       drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - stateSync.estimateServerNowMs());
     }
-    canvasRenderer.present();
     rafId = requestAnimationFrame(renderFrame);
     return;
   }
@@ -1307,8 +1302,6 @@ function renderFrame() {
   if (app.room?.status === "countdown") {
     drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - stateSync.estimateServerNowMs());
   }
-
-  canvasRenderer.present();
 
   rafId = requestAnimationFrame(renderFrame);
 }
@@ -2066,8 +2059,6 @@ function unmount() {
   }
   charSelect = null;
   actionTransport = null;
-  canvasRenderer?.destroy();
-  canvasRenderer = null;
 }
 
 

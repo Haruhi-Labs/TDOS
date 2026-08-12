@@ -77,7 +77,6 @@ import { battleViewTemplate } from "./battle/template.js";
 import { createLocalBattleActionTransport } from "./battle/action-transport.js";
 import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
 import { interpolateBattleState } from "./battle/state-interpolation.js";
-import { createBattleCanvasRenderer } from "./battle/webgl-canvas.js";
 import {
   characterShortName,
   shipCharacterName,
@@ -89,7 +88,6 @@ import {
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
-let canvasRenderer = null; // 可见大地图使用 WebGL2；WebGL1 兜底，2D 仅作极端应急
 let camera = null; // 共享战场相机（src/battle/camera.js），mount 时创建
 let ac = null; // AbortController：统一移除 window 级监听
 let rafId = 0; // 渲染循环句柄
@@ -104,8 +102,7 @@ function addWin(type, handler) {
 
 function cacheDom() {
   canvas = document.getElementById("gameCanvas");
-  canvasRenderer = createBattleCanvasRenderer(canvas);
-  ctx = canvasRenderer.ctx;
+  ctx = canvas.getContext("2d");
   ui = {
   hullValue: document.getElementById("hullValue"),
   energyValue: document.getElementById("energyValue"),
@@ -836,8 +833,6 @@ function render(state = app.state) {
     return;
   }
 
-  canvasRenderer.beginFrame();
-
   const tutorialIllustration = tutorial.isActive() ? tutorial.getIllustration() : null;
   if (app.mobileMode && tutorialIllustration === "moveTarget") {
     const main = state.teams?.A?.ships?.main;
@@ -901,7 +896,6 @@ function render(state = app.state) {
   if (app.paused) {
     drawPauseOverlay(ctx);
   }
-  canvasRenderer.present();
 }
 
 function tick(timestamp) {
@@ -1611,8 +1605,6 @@ function unmount() {
   }
   charSelect = null;
   actionTransport = null;
-  canvasRenderer?.destroy();
-  canvasRenderer = null;
   app = null;
 }
 

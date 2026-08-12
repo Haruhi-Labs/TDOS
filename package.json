@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "npm run check:modules && node scripts/check-battle-drift.mjs && npm run test:ui:webgl && vite build",
+    "build": "npm run check:modules && node scripts/check-battle-drift.mjs && vite build",
     "preview": "vite preview",
     "start:server": "node server/server.js",
     "test:core": "node scripts/verify-core.mjs",
@@ -23,7 +23,6 @@
     "test:ui:cooldown": "node scripts/verify-cooldown-progress.mjs",
     "test:ui:changelog": "node scripts/verify-changelog-ui.mjs",
     "test:ui:interaction": "node scripts/verify-interaction-feedback.mjs",
-    "test:ui:webgl": "node scripts/verify-battle-webgl-renderer.mjs",
     "test:api": "node scripts/verify-public-api.mjs",
     "test:actions": "node scripts/verify-action-protocol.mjs",
     "test:ruleset": "node scripts/verify-ruleset-version.mjs",
