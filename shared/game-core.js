@@ -116,6 +116,16 @@ import {
   serializeHaruhiFlagship,
   updateHaruhiFlagship,
 } from "./game/haruhi-flagship.js";
+import {
+  SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
+  createShamisenHuntState,
+  ensureShamisenHuntTarget,
+  hasShamisenFlagship,
+  isShamisenHuntTarget,
+  resolveShamisenHuntKill,
+  serializeShamisenHunt,
+  shamisenHuntDamageMultiplier,
+} from "./game/shamisen-hunt.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -422,11 +432,12 @@ class Projectile {
       }
     }
     const damageImmune = typeof hitTarget.isDamageImmune === "function" && hitTarget.isDamageImmune();
+    const displayedDamage = damage * shamisenHuntDamageMultiplier(this.source, hitTarget);
     hitTarget.takeDamage(damage, this.source, match);
     if (damageImmune) {
       match.spawnFloatingTextKey(hitTarget.x + 8, hitTarget.y - 8, "免疫", {}, "#ffc5cf");
     } else {
-      match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(damage)}`, rear ? "#ffb066" : "#ffd178");
+      match.spawnFloatingText(hitTarget.x + 8, hitTarget.y - 8, `-${Math.round(displayedDamage)}`, rear ? "#ffb066" : "#ffd178");
     }
     if (rear && !damageImmune) {
       match.spawnFloatingTextKey(hitTarget.x + 12, hitTarget.y - 22, "尾击", {}, "#ff9d5a");
@@ -980,12 +991,13 @@ class Ship {
     const burstDamage = Math.max(0, Number(claw.burstDamage) || 0);
     if (burstDamage > 0) {
       const damageImmune = this.isDamageImmune();
+      const displayedDamage = burstDamage * shamisenHuntDamageMultiplier(source, this);
       this.takeDamage(burstDamage, source, match);
       match.spawnFloatingTextKey(this.x + 10, this.y - 20, "猫爪爆发", {}, "#ffd0e4");
       if (damageImmune) {
         match.spawnFloatingTextKey(this.x + 8, this.y - 8, "免疫", {}, "#ffc5cf");
       } else {
-        match.spawnFloatingText(this.x + 8, this.y - 8, `-${Math.round(burstDamage)}`, "#ff8fbd");
+        match.spawnFloatingText(this.x + 8, this.y - 8, `-${Math.round(displayedDamage)}`, "#ff8fbd");
       }
       match.spawnBurst(this.x, this.y, "#ff8fbd", 12);
     }
@@ -1221,6 +1233,11 @@ class Ship {
     if (this.isDamageImmune()) {
       return;
     }
+    // 猎杀令放大的是“直接攻击猎杀目标”的整次伤害。先乘二再分摊，既保证总伤害正确，
+    // 又避免分摊递归碰巧落到猎杀目标时重复乘二。
+    if (share) {
+      amount *= shamisenHuntDamageMultiplier(_source, this);
+    }
     // 不分离(本船所在编队还有其它存活船):本次伤害的 FORMATION_DAMAGE_SHARE 比例平摊给其它船,
     // 本船只承担其余部分。平摊出去的份额以 share=false 再投递,不会二次平摊(避免连锁/递归)。
     if (share) {
@@ -1246,6 +1263,7 @@ class Ship {
     this.team.resolvePostCasualtyState(match);
     if (match) {
       match.spawnBurst(this.x, this.y, "#ff9d7d", 10);
+      match.onShipDestroyed(this, _source);
     }
   }
 
@@ -1700,6 +1718,7 @@ class Team {
     this.future1096Form = null;
     this.haruhiFlagship = createHaruhiFlagshipState(facing);
     this.koizumiBarrier = createKoizumiBarrierState();
+    this.shamisenHunt = createShamisenHuntState();
     this.activeSkillEffectStartedTicks = Object.create(null);
 
     const sub1FormationOffset = { x: -36, y: 22 };
@@ -1753,6 +1772,22 @@ class Team {
 
   hasTsuruyaFlagship() {
     return this.mainCharacterId() === "tsuruya";
+  }
+
+  hasShamisenFlagship() {
+    return hasShamisenFlagship(this);
+  }
+
+  ensureShamisenHuntTarget(enemyTeam) {
+    return ensureShamisenHuntTarget(this, enemyTeam);
+  }
+
+  isShamisenHuntTarget(target) {
+    return isShamisenHuntTarget(this, target);
+  }
+
+  huntDamageMultiplierAgainst(target) {
+    return shamisenHuntDamageMultiplier(this, target);
   }
 
   future1096FormDefinition(form = this.future1096Form) {
@@ -2731,12 +2766,13 @@ class Team {
           continue;
         }
         const damage = target.maxHp * BEAM_DAMAGE_RATIO;
+        const displayedDamage = damage * this.huntDamageMultiplierAgainst(target);
         const damageImmune = target.isDamageImmune();
         target.takeDamage(damage, ship, this.match);
         if (damageImmune) {
           this.match.spawnFloatingTextKey(target.x + 8, target.y - 10, "免疫", {}, "#ffc5cf");
         } else {
-          this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(damage)}`, "#ffb7a8");
+          this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(displayedDamage)}`, "#ffb7a8");
         }
         this.spawnBeamHitParticles(target.x, target.y);
         hitAny = true;
@@ -2811,6 +2847,7 @@ class Team {
       future1096Form: this.future1096Form,
       haruhiFlagship: serializeHaruhiFlagship(this),
       koizumiBarrier: serializeKoizumiBarrier(this),
+      shamisenHunt: serializeShamisenHunt(this),
       skillsDisabled: this.areSkillsDisabled(),
       autoScout: {
         enabled: this.autoScout.enabled,
@@ -2898,9 +2935,12 @@ export class MatchSimulation {
 
     this.projectiles = [];
     this.bursts = [];
+    this.shamisenHuntKillEffects = [];
     this.koizumiBarrierImpacts = [];
     this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
     this.floatingTexts = [];
+    this.teamA.ensureShamisenHuntTarget(this.teamB);
+    this.teamB.ensureShamisenHuntTarget(this.teamA);
     this.bots = {};
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
     // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
@@ -3028,6 +3068,36 @@ export class MatchSimulation {
     resolveMatchBladeQueenContacts(this);
   }
 
+  refreshShamisenHunts() {
+    this.teamA.ensureShamisenHuntTarget(this.teamB);
+    this.teamB.ensureShamisenHuntTarget(this.teamA);
+  }
+
+  onShipDestroyed(ship) {
+    if (!ship) {
+      return;
+    }
+    const pairs = [[this.teamA, this.teamB], [this.teamB, this.teamA]];
+    for (const [hunter, huntedTeam] of pairs) {
+      if (hunter.shamisenHunt?.targetId !== ship.id) {
+        continue;
+      }
+      const effectId = nextEntityId();
+      this.shamisenHuntKillEffects.push({
+        id: effectId,
+        hunterSeat: hunter.seat,
+        targetId: ship.id,
+        x: ship.x,
+        y: ship.y,
+        radius: Math.max(10, Number(ship.radius) || 10),
+        seed: effectId * 0.61803398875,
+        life: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
+        maxLife: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
+      });
+      resolveShamisenHuntKill(hunter, huntedTeam, ship);
+    }
+  }
+
   checkVictory() {
     if (this.phase !== "running") {
       return;
@@ -3140,6 +3210,11 @@ export class MatchSimulation {
     }
     this.bursts = this.bursts.filter((burst) => burst.life > 0);
 
+    for (const effect of this.shamisenHuntKillEffects) {
+      effect.life -= dt;
+    }
+    this.shamisenHuntKillEffects = this.shamisenHuntKillEffects.filter((effect) => effect.life > 0);
+
     for (const impact of this.koizumiBarrierImpacts) {
       impact.life -= dt;
     }
@@ -3181,6 +3256,8 @@ export class MatchSimulation {
     const safeDt = clamp(dt, 0, 0.05);
     this.tick += 1;
     this.elapsed += safeDt;
+
+    this.refreshShamisenHunts();
 
     for (const [seat, bot] of Object.entries(this.bots)) {
       if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
@@ -3228,6 +3305,7 @@ export class MatchSimulation {
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
+      shamisenHuntKillEffects: this.shamisenHuntKillEffects.map((effect) => ({ ...effect })),
       koizumiBarrierImpacts: this.koizumiBarrierImpacts.map((impact) => ({ ...impact })),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
       teams: {

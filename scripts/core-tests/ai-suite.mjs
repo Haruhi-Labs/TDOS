@@ -1671,6 +1671,41 @@ function aiDebugSnapshotCheck() {
   assert(Number.isFinite(state.bots.B.flagshipDecision?.nextIn), "B 队 AI 调试快照缺少旗舰技计时");
 }
 
+function aiShamisenHuntIntelCheck() {
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0.999;
+    assert(randomAiLoadout().main === "shamisen", "三味线旗舰完成后仍未进入随机 AI 主舰池");
+  } finally {
+    Math.random = originalRandom;
+  }
+
+  try {
+    Math.random = () => 0.37;
+    const sim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      aiSeats: ["A"],
+      teamLoadouts: {
+        A: { main: "shamisen", sub1: "koizumi", sub2: "yuki" },
+        B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
+      },
+    });
+    const bot = sim.botBySeat("A");
+    const targetId = sim.teamA.shamisenHunt.targetId;
+    sim.teamA.visibleEnemyIds = new Set();
+    bot.refreshIntel();
+
+    const contact = bot.enemyIntel.entities.get(targetId);
+    assert(contact?.source === "hunt", "AI没有把无视野猎杀标记作为特殊追踪情报读取");
+    assert(contact.characterId === null && contact.hp === null, "AI通过猎杀标记偷看了角色或血量");
+    assert(!sim.teamA.visibleEnemyIds.has(targetId), "AI读取猎杀标记时错误获得了真实视野");
+    assert(bot.selectEnemyFocus(sim.teamA.ships.main)?.id === targetId, "AI没有优先围绕猎杀目标规划战场");
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
 function aiEdgeRecoveryCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
   const bot = sim.bot;
@@ -1711,6 +1746,7 @@ export function runAiSuite() {
   aiFireArcAwarenessCheck();
   dualAiSeatCheck();
   aiDebugSnapshotCheck();
+  aiShamisenHuntIntelCheck();
   aiProbePressureCheck();
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();

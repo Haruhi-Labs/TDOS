@@ -165,6 +165,78 @@ void main() {
   gl_FragColor = vec4(rayColor * alpha, alpha);
 }`;
 
+// 三味线猎杀目标被击毁时的 WebGL2 专属程序化特效。冲击波、能量碎片与三道猫爪切痕
+// 全部由单个四边形上的片元着色器生成，不上传逐帧纹理，也不会增加 CPU 粒子数量。
+const HUNT_KILL_VERTEX_WEBGL2 = `#version 300 es
+in vec2 a_position;
+in vec2 a_local;
+uniform vec2 u_resolution;
+out vec2 v_local;
+void main() {
+  vec2 clip = a_position / u_resolution * 2.0 - 1.0;
+  gl_Position = vec4(clip.x, -clip.y, 0.0, 1.0);
+  v_local = a_local;
+}`;
+
+const HUNT_KILL_FRAGMENT_WEBGL2 = `#version 300 es
+precision highp float;
+uniform float u_progress;
+uniform float u_seed;
+in vec2 v_local;
+out vec4 outColor;
+
+float band(float value, float center, float width) {
+  return 1.0 - smoothstep(width, width + 0.018, abs(value - center));
+}
+
+void main() {
+  vec2 p = v_local;
+  float radius = length(p);
+  float angle = atan(p.y, p.x);
+  float progress = clamp(u_progress, 0.0, 1.0);
+  float fade = pow(1.0 - progress, 1.28);
+  float eased = 1.0 - pow(1.0 - progress, 3.0);
+
+  float shockRadius = mix(0.12, 0.91, eased);
+  float shock = band(radius, shockRadius, mix(0.048, 0.013, progress));
+  float echo = band(radius, shockRadius * 0.72, 0.012) * (1.0 - progress);
+  float core = (1.0 - smoothstep(0.0, mix(0.34, 0.08, progress), radius))
+    * (1.0 - smoothstep(0.0, 0.24, progress));
+
+  float angular = max(0.0, cos(angle * 11.0 + u_seed * 6.2831 + progress * 7.0));
+  float shards = pow(angular, 18.0)
+    * (1.0 - smoothstep(0.18, 0.82, radius))
+    * smoothstep(0.04, 0.24, radius)
+    * fade;
+
+  // 三条斜向切痕先闪白，再被猩红能量拖曳拉开。
+  float slashSpan = 1.0 - smoothstep(0.38, 0.96, abs(p.x + p.y) * 0.72);
+  float slash0 = band(p.y - p.x * -0.72, -0.17, 0.018);
+  float slash1 = band(p.y - p.x * -0.72, 0.00, 0.025);
+  float slash2 = band(p.y - p.x * -0.72, 0.17, 0.018);
+  float slashWindow = smoothstep(0.0, 0.08, progress) * (1.0 - smoothstep(0.62, 0.98, progress));
+  float slashes = (slash0 + slash1 * 1.35 + slash2) * slashSpan * slashWindow;
+
+  float turbulence = 0.5 + 0.5 * sin(radius * 46.0 - progress * 18.0 + angle * 5.0 + u_seed * 9.0);
+  float mist = (1.0 - smoothstep(0.16, 0.88, radius)) * turbulence * fade * 0.13;
+
+  float alpha = clamp(
+    shock * 0.78 * fade
+    + echo * 0.38 * fade
+    + core * 1.15
+    + shards * 0.72
+    + slashes * 0.82
+    + mist,
+    0.0,
+    1.0
+  );
+  vec3 crimson = mix(vec3(0.82, 0.015, 0.11), vec3(1.0, 0.24, 0.38), radius);
+  vec3 hot = vec3(1.0, 0.88, 0.91);
+  float heat = clamp(core + slashes * 0.75 + shock * 0.22, 0.0, 1.0);
+  vec3 color = mix(crimson, hot, heat);
+  outColor = vec4(color * alpha, alpha);
+}`;
+
 function compileShader(gl, type, source) {
   const shader = gl.createShader(type);
   if (!shader) throw new Error("无法创建原生战场着色器");
@@ -241,6 +313,18 @@ export function appendRadarCommand(commands, vertices, options) {
   });
 }
 
+export function appendHuntKillCommand(commands, vertices, options) {
+  if (!vertices.length) return;
+  commands.push({
+    kind: "hunt-kill",
+    vertices: [...vertices],
+    blend: options.blend,
+    clip: options.clip ? { ...options.clip } : null,
+    progress: options.progress,
+    seed: options.seed,
+  });
+}
+
 export function acquireBattleGl(canvas, { preferWebGL1 = false } = {}) {
   let gl = null;
   if (!preferWebGL1) {
@@ -257,7 +341,7 @@ export class NativeWebGLDriver {
     this.canvas = canvas;
     this.webgl2 = webgl2;
     this.resources = null;
-    this.stats = { drawCalls: 0, triangles: 0, textureUploads: 0 };
+    this.stats = { drawCalls: 0, triangles: 0, textureUploads: 0, huntShaderEffects: 0 };
     this.buildResources();
   }
 
@@ -278,13 +362,18 @@ export class NativeWebGLDriver {
       this.webgl2 ? RADAR_VERTEX_WEBGL2 : RADAR_VERTEX_WEBGL1,
       this.webgl2 ? RADAR_FRAGMENT_WEBGL2 : RADAR_FRAGMENT_WEBGL1,
     );
+    const huntKillProgram = this.webgl2
+      ? createProgram(gl, HUNT_KILL_VERTEX_WEBGL2, HUNT_KILL_FRAGMENT_WEBGL2)
+      : null;
     this.resources = {
       colorProgram,
       textureProgram,
       radarProgram,
+      huntKillProgram,
       colorBuffer: gl.createBuffer(),
       textureBuffer: gl.createBuffer(),
       radarBuffer: gl.createBuffer(),
+      huntKillBuffer: this.webgl2 ? gl.createBuffer() : null,
       color: {
         position: gl.getAttribLocation(colorProgram, "a_position"),
         color: gl.getAttribLocation(colorProgram, "a_color"),
@@ -304,6 +393,13 @@ export class NativeWebGLDriver {
         length: gl.getUniformLocation(radarProgram, "u_length"),
         alpha: gl.getUniformLocation(radarProgram, "u_alpha"),
       },
+      huntKill: huntKillProgram ? {
+        position: gl.getAttribLocation(huntKillProgram, "a_position"),
+        local: gl.getAttribLocation(huntKillProgram, "a_local"),
+        resolution: gl.getUniformLocation(huntKillProgram, "u_resolution"),
+        progress: gl.getUniformLocation(huntKillProgram, "u_progress"),
+        seed: gl.getUniformLocation(huntKillProgram, "u_seed"),
+      } : null,
     };
     gl.disable(gl.DEPTH_TEST);
     gl.disable(gl.CULL_FACE);
@@ -312,7 +408,7 @@ export class NativeWebGLDriver {
 
   beginFrame() {
     const gl = this.gl;
-    this.stats = { drawCalls: 0, triangles: 0, textureUploads: 0 };
+    this.stats = { drawCalls: 0, triangles: 0, textureUploads: 0, huntShaderEffects: 0 };
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.disable(gl.SCISSOR_TEST);
     gl.clearColor(0.02, 0.05, 0.09, 1);
@@ -402,12 +498,38 @@ export class NativeWebGLDriver {
     this.stats.triangles += data.length / 12;
   }
 
+  drawHuntKill(command) {
+    const gl = this.gl;
+    const {
+      huntKillProgram,
+      huntKillBuffer,
+      huntKill,
+    } = this.resources;
+    if (!this.webgl2 || !huntKillProgram || !huntKillBuffer || !huntKill) return;
+    const data = new Float32Array(command.vertices);
+    gl.useProgram(huntKillProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, huntKillBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(huntKill.position);
+    gl.vertexAttribPointer(huntKill.position, 2, gl.FLOAT, false, 16, 0);
+    gl.enableVertexAttribArray(huntKill.local);
+    gl.vertexAttribPointer(huntKill.local, 2, gl.FLOAT, false, 16, 8);
+    gl.uniform2f(huntKill.resolution, this.canvas.width, this.canvas.height);
+    gl.uniform1f(huntKill.progress, Math.max(0, Math.min(1, Number(command.progress) || 0)));
+    gl.uniform1f(huntKill.seed, Number(command.seed) || 0);
+    gl.drawArrays(gl.TRIANGLES, 0, data.length / 4);
+    this.stats.drawCalls += 1;
+    this.stats.triangles += data.length / 12;
+    this.stats.huntShaderEffects += 1;
+  }
+
   present(commands) {
     for (const command of commands) {
       this.applyBlend(command.blend);
       this.applyClip(command.clip);
       if (command.kind === "texture") this.drawTexture(command.texture, command.vertices);
       else if (command.kind === "radar") this.drawRadar(command);
+      else if (command.kind === "hunt-kill") this.drawHuntKill(command);
       else this.drawColor(command.vertices);
     }
     this.gl.disable(this.gl.SCISSOR_TEST);
@@ -443,9 +565,11 @@ export class NativeWebGLDriver {
     gl.deleteBuffer(this.resources.colorBuffer);
     gl.deleteBuffer(this.resources.textureBuffer);
     gl.deleteBuffer(this.resources.radarBuffer);
+    if (this.resources.huntKillBuffer) gl.deleteBuffer(this.resources.huntKillBuffer);
     gl.deleteProgram(this.resources.colorProgram);
     gl.deleteProgram(this.resources.textureProgram);
     gl.deleteProgram(this.resources.radarProgram);
+    if (this.resources.huntKillProgram) gl.deleteProgram(this.resources.huntKillProgram);
     this.resources = null;
   }
 

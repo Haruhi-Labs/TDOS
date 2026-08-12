@@ -20,6 +20,11 @@ import {
   drawKoizumiBarrier,
   drawKoizumiBarrierImpacts,
 } from "./render/koizumi-barrier.js";
+import {
+  drawShamisenHuntKillEffects,
+  drawShamisenHuntMarkers,
+  drawShamisenHuntMarkersMinimap,
+} from "./render/shamisen-hunt.js";
 
 export { drawYukiRadar, drawYukiRadarMinimap };
 
@@ -934,6 +939,14 @@ export function drawMinimap(ctx, frame, rect, view) {
     plotShip(ship, ship.key === enemySelectedKey ? "#ffe184" : "#ff95a0");
   }
 
+  // 小地图只补猎杀图标，不把目标加入敌舰点集合，保持“可追踪但没有真实视野”的语义。
+  drawShamisenHuntMarkersMinimap(
+    ctx,
+    frame,
+    rect,
+    Number(state.world?.size) || LOGICAL,
+  );
+
   ctx.strokeStyle = "#ffe08a";
   ctx.lineWidth = 1.6;
   ctx.strokeRect(
@@ -1133,6 +1146,9 @@ export function drawBattleWorld(ctx, frame) {
     drawShip(ctx, ship, enemyColor, ship.key === enemySelectedKey, ship.attached, true, spectating);
   }
 
+  // 猎杀方始终能看见目标标记；目标未进入真实视野时这里只画标记，不会补画舰体或名字。
+  drawShamisenHuntMarkers(ctx, frame);
+
   for (const scout of ownTeam?.scouts || []) {
     drawScout(ctx, scout, true);
   }
@@ -1176,6 +1192,7 @@ export function drawBattleWorld(ctx, frame) {
   }
 
   drawShipDestructionEffects(ctx, frame.destructionEffects);
+  drawShamisenHuntKillEffects(ctx, state.shamisenHuntKillEffects);
 
   // 选中舰的火力扇区 + 视野圈;观战时双方都画,便于理解走位与输出朝向
   if (spectating) {

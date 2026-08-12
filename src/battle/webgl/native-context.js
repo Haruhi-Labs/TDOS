@@ -14,7 +14,12 @@ import {
   multiplyMatrix,
   transformPoint,
 } from "./matrix.js";
-import { appendColorCommand, appendRadarCommand, appendTextureCommand } from "./driver.js";
+import {
+  appendColorCommand,
+  appendHuntKillCommand,
+  appendRadarCommand,
+  appendTextureCommand,
+} from "./driver.js";
 import { NativeTextCache } from "./text-cache.js";
 import { drawNativeProjectileBatch } from "./projectile-batch.js";
 
@@ -462,6 +467,34 @@ export class NativeBattleContext {
       length: logicalLength,
       alpha: this.state.globalAlpha,
     });
+  }
+
+  drawShamisenHuntKillEffect(effect) {
+    if (!this.driver.webgl2 || !effect) {
+      return false;
+    }
+    const maxLife = Math.max(0.01, Number(effect.maxLife) || 1.65);
+    const progress = Math.max(0, Math.min(1, 1 - (Number(effect.life) || 0) / maxLife));
+    const radius = Math.max(12, Number(effect.radius) || 12);
+    const extent = Math.max(92, radius * 8.5);
+    const corners = [
+      { ...this.point(effect.x - extent, effect.y - extent), u: -1, v: -1 },
+      { ...this.point(effect.x + extent, effect.y - extent), u: 1, v: -1 },
+      { ...this.point(effect.x + extent, effect.y + extent), u: 1, v: 1 },
+      { ...this.point(effect.x - extent, effect.y + extent), u: -1, v: 1 },
+    ];
+    const vertices = [];
+    for (const index of [0, 1, 2, 0, 2, 3]) {
+      const point = corners[index];
+      vertices.push(point.x, point.y, point.u, point.v);
+    }
+    appendHuntKillCommand(this.commands, vertices, {
+      blend: "lighter",
+      clip: this.state.clip,
+      progress,
+      seed: Number(effect.seed) || Number(effect.id) || 0,
+    });
+    return true;
   }
 
   shadowTriangles(triangles) {

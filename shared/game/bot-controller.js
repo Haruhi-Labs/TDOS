@@ -616,6 +616,42 @@ export class BotController {
     }
   }
 
+  ingestShamisenHuntTarget() {
+    if (!this.team.hasShamisenFlagship?.()) {
+      return;
+    }
+    const targetId = this.team.shamisenHunt?.targetId;
+    const target = this.enemy.getAllShips().find((ship) => ship.alive && ship.id === targetId);
+    if (!target || this.team.visibleEnemyIds.has(target.id)) {
+      return;
+    }
+    const zone = this.zoneForPoint(target.x, target.y);
+    // AI读取的内容与玩家看到的迷雾标记相同：精确位置会更新，但不偷看角色、席位、
+    // 血量、朝向或舰体半径；source=hunt 也不会被当作真实视野。
+    const snapshot = {
+      id: target.id,
+      kind: "ship",
+      key: null,
+      slotKey: null,
+      characterId: null,
+      x: target.x,
+      y: target.y,
+      angle: 0,
+      speed: 0,
+      hp: null,
+      maxHp: null,
+      radius: null,
+      seenAt: this.team.match.elapsed,
+      zoneId: zone.id,
+      source: "hunt",
+      confidence: 1,
+      uncertainty: 0,
+      visible: false,
+    };
+    this.enemyIntel.entities.set(target.id, snapshot);
+    this.enemyIntel.searchZoneId = zone.id;
+  }
+
   predictEnemyVector(contact) {
     if (!contact) {
       return {
@@ -850,6 +886,13 @@ export class BotController {
       }
     }
 
+    // 猎杀令的标记本来就持续显示精确位置，因此可以形成一个精确搜索峰；它仍不把
+    // 其它敌人或目标属性写入情报。长门雷达则只注入带误差的接触。
+    for (const stored of this.enemyIntel.entities.values()) {
+      if (stored.source !== "hunt") continue;
+      w[this.beliefIdxFor(b, stored.x, stored.y)] += 2.4;
+    }
+
     // 长门雷达只把带误差的接触注入占据图，不会像真实视野一样把概率坍缩到真值。
     // 模糊接触铺得更宽，近距离高置信接触则形成更集中的搜索峰。
     for (const stored of this.enemyIntel.entities.values()) {
@@ -916,6 +959,7 @@ export class BotController {
 
   refreshIntel() {
     this.ingestRadarContacts();
+    this.ingestShamisenHuntTarget();
     for (const entity of this.enemy.getEntities()) {
       if (this.team.visibleEnemyIds.has(entity.id)) {
         this.queueSighting(entity);
@@ -1465,6 +1509,7 @@ export class BotController {
       );
       const typeBias = contact.slotKey === "main" ? 1.28 : contact.kind === "ship" ? 0.9 : 0.32;
       const visibleBias = contact.visible ? 0.82 : 0.3;
+      const huntBias = contact.source === "hunt" ? 3.2 : 0;
       const uncertaintyPenalty = clamp((contact.uncertainty || 0) / 240, 0, 1.4);
       const score = typeBias
         + proximity
@@ -1473,6 +1518,7 @@ export class BotController {
         + isolation * 0.82
         + overwhelmOpportunity * 0.92
         + visibleBias
+        + huntBias
         + (this.legacy ? 0 : characterTargetPriorityBonus(contact, this.team.match.elapsed))
         - uncertaintyPenalty;
       if (score > bestScore) {

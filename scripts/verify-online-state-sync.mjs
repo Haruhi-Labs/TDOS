@@ -45,6 +45,7 @@ function battleState(elapsed = 0) {
     winnerSeat: null,
     projectiles: [],
     bursts: [],
+    shamisenHuntKillEffects: [],
     koizumiBarrierImpacts: [],
     floatingTexts: [],
     teams: { A: team(0), B: team(10) },
@@ -118,6 +119,8 @@ previousState.projectiles = [ship(100, 20, { targetX: 80, targetY: 20 })];
 nextState.projectiles = [ship(100, 40, { targetX: 80, targetY: 20 })];
 previousState.koizumiBarrierImpacts = [{ id: 200, x: 20, y: 30, radius: 150, life: 0.8 }];
 nextState.koizumiBarrierImpacts = [{ id: 200, x: 20, y: 30, radius: 150, life: 0.4 }];
+previousState.shamisenHuntKillEffects = [{ id: 201, x: 40, y: 50, radius: 16, life: 1.4, maxLife: 1.65 }];
+nextState.shamisenHuntKillEffects = [{ id: 201, x: 40, y: 50, radius: 16, life: 1, maxLife: 1.65 }];
 const interpolated = sync.interpolateSnapshotState(
   { tick: 0, state: previousState },
   { tick: 30, state: nextState },
@@ -134,6 +137,10 @@ assert.equal(interpolated.teams.A.koizumiBarrier.active, true, "古泉能量圈�
 assert(
   Math.abs(interpolated.koizumiBarrierImpacts[0].life - 0.6) < 1e-9,
   "古泉能量圈受击动画寿命未平滑插值",
+);
+assert(
+  Math.abs(interpolated.shamisenHuntKillEffects[0].life - 1.2) < 1e-9,
+  "三味线猎杀击杀特效寿命未平滑插值",
 );
 assert(
   interpolated.teams.A.haruhiFlagship.esperOrb.angle > 6.1,
@@ -193,12 +200,14 @@ assert.deepEqual(
 const extrapolationSource = battleState(2);
 extrapolationSource.teams.A.ships.main.x = 95;
 extrapolationSource.teams.A.ships.main.speed = 100;
+extrapolationSource.shamisenHuntKillEffects = [{ id: 202, x: 50, y: 50, radius: 16, life: 1, maxLife: 1.65 }];
 const extrapolated = sync.extrapolateState(extrapolationSource, 1);
 assert.equal(extrapolated.elapsed, 2.18, "外推时长未按上限截断");
 assert.equal(extrapolated.teams.A.ships.main.x, 98, "舰船外推未遵守地图边界");
+assert(Math.abs(extrapolated.shamisenHuntKillEffects[0].life - 0.82) < 1e-9, "猎杀击杀特效外推期间发生冻结");
 
 app.snapshots = [{ tick: 0, state: battleState(0), serverTimeMs: 1000, receivedAtMs: 1000 }];
 now = 1000;
 assert(sync.getRenderState()?.teams?.A?.ships?.main, "单快照无法生成显示状态");
 
-console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈插值、额外舰船、弹体与边界外推均保持一致。");
+console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈/猎杀特效插值、额外舰船、弹体与边界外推均保持一致。");

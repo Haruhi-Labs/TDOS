@@ -292,6 +292,11 @@ export function interpolateBattleState(previousState, currentState, ratio, { spa
       safeSpanSeconds,
     ),
     bursts: interpolateVisualList(previousState.bursts, currentState.bursts, safeRatio),
+    shamisenHuntKillEffects: interpolateVisualList(
+      previousState.shamisenHuntKillEffects,
+      currentState.shamisenHuntKillEffects,
+      safeRatio,
+    ),
     koizumiBarrierImpacts: interpolateVisualList(
       previousState.koizumiBarrierImpacts,
       currentState.koizumiBarrierImpacts,

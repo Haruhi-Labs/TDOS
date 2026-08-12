@@ -70,6 +70,12 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
       bursts: Array.isArray(state.bursts)
         ? state.bursts.map((b) => ({ ...b, life: Math.max(0, (Number(b.life) || 0) - safeDt) }))
         : state.bursts,
+      shamisenHuntKillEffects: Array.isArray(state.shamisenHuntKillEffects)
+        ? state.shamisenHuntKillEffects.map((effect) => ({
+            ...effect,
+            life: Math.max(0, (Number(effect.life) || 0) - safeDt),
+          }))
+        : state.shamisenHuntKillEffects,
       floatingTexts: Array.isArray(state.floatingTexts)
         ? state.floatingTexts.map((f) => ({ ...f, life: Math.max(0, (Number(f.life) || 0) - safeDt) }))
         : state.floatingTexts,

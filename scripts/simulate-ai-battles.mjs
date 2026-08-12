@@ -25,8 +25,7 @@ function seededRandom(seed) {
 }
 
 function loadoutAt(index) {
-  // 三味线的主舰能力仍在设计中，综合 AI 回归只让它作为分舰参战，避免无技能主舰污染结论。
-  const mainOrder = CHARACTER_ORDER.filter((characterId) => characterId !== "shamisen");
+  const mainOrder = CHARACTER_ORDER;
   const main = mainOrder[index % mainOrder.length];
   const subOrder = CHARACTER_ORDER.filter((characterId) => characterId !== main);
   return {

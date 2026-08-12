@@ -1823,6 +1823,98 @@ function shamisenCatPawCheck() {
   assert(!shamisen.hasEffect("catPawUntil"), "朝仓净化逻辑无法移除三味线猫爪弹增益");
 }
 
+function shamisenFlagshipHuntCheck() {
+  const originalRandom = Math.random;
+  try {
+    Math.random = () => 0.37;
+    const sim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      teamLoadouts: {
+        A: { main: "shamisen", sub1: "koizumi", sub2: "yuki" },
+        B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
+      },
+    });
+    const teamA = sim.teamA;
+    const teamB = sim.teamB;
+    teamA.split(1);
+    teamA.split(2);
+    teamB.split(1);
+    teamB.split(2);
+
+    const hunter = teamA.ships.main;
+    const targetId = teamA.shamisenHunt.targetId;
+    const target = teamB.getAllShips().find((ship) => ship.id === targetId);
+    const decoy = teamB.getAllShips().find((ship) => ship !== target);
+    assert(target?.alive, "三味线旗舰开局没有生成有效猎杀目标");
+    assert(CHARACTER_DEFS.shamisen.flagshipSkill.type === "passive", "三味线猎杀令没有配置为被动旗舰技能");
+
+    hunter.x = 500;
+    hunter.y = 720;
+    hunter.angle = Math.PI / 2;
+    hunter.route = null;
+    target.x = 820;
+    target.y = 720;
+    target.route = null;
+    decoy.x = 650;
+    decoy.y = 720;
+    decoy.route = null;
+
+    teamA.visibleEnemyIds = new Set();
+    assert(
+      teamA.pickTargetFor(hunter, teamB) === null,
+      "猎杀标记在没有真实视野时错误允许舰队射击",
+    );
+    assert(!teamA.visibleEnemyIds.has(target.id), "猎杀标记错误写入真实视野集合");
+
+    teamA.visibleEnemyIds.add(decoy.id);
+    assert(teamA.pickTargetFor(hunter, teamB) === decoy, "不可见猎杀目标错误压过了可见敌舰");
+    teamA.visibleEnemyIds.add(target.id);
+    assert(teamA.pickTargetFor(hunter, teamB) === target, "猎杀目标进入真实视野后没有获得最高锁定优先级");
+
+    const targetHpBefore = target.hp;
+    target.takeDamage(25, hunter, sim);
+    assert(Math.abs(target.hp - (targetHpBefore - 50)) < 1e-9, "猎杀目标没有受到双倍伤害");
+    const decoyHpBefore = decoy.hp;
+    decoy.takeDamage(25, hunter, sim);
+    assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猎杀令错误放大了非目标伤害");
+
+    teamA.visibleEnemyIds = new Set();
+    target.hp = 30;
+    target.takeDamage(20, hunter, sim);
+    assert(!target.alive, "猎杀目标在致命双倍伤害后仍存活");
+    assert(sim.shamisenHuntKillEffects.length === 1, "猎杀目标被击毁时没有生成专属击杀特效状态");
+    assert(sim.shamisenHuntKillEffects[0].targetId === target.id, "猎杀击杀特效没有绑定被击毁目标");
+    assert(
+      teamA.shamisenHunt.targetId !== target.id
+        && teamB.getAllShips().some((ship) => ship.alive && ship.id === teamA.shamisenHunt.targetId),
+      "猎杀目标被击毁后没有自动轮换到下一艘存活敌舰",
+    );
+    const snapshot = sim.serializeState();
+    assert(snapshot.teams.A.shamisenHunt.targetId === teamA.shamisenHunt.targetId, "猎杀目标没有进入权威快照");
+    assert(snapshot.shamisenHuntKillEffects.length === 1, "猎杀击杀特效没有进入权威快照");
+    assert(!snapshot.teams.A.visibleEnemyIds.includes(teamA.shamisenHunt.targetId), "新猎杀标记错误授予了真实视野");
+
+    const formationSim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      teamLoadouts: {
+        A: { main: "shamisen", sub1: "koizumi", sub2: "yuki" },
+        B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
+      },
+    });
+    const formationTarget = formationSim.teamB.getAllShips().find(
+      (ship) => ship.id === formationSim.teamA.shamisenHunt.targetId,
+    );
+    const fleetHpBefore = formationSim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+    formationTarget.takeDamage(25, formationSim.teamA.ships.main, formationSim);
+    const fleetHpAfter = formationSim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
+    assert(Math.abs(fleetHpBefore - fleetHpAfter - 50) < 1e-9, "猎杀双倍伤害在编队分摊时发生了重复倍率");
+  } finally {
+    Math.random = originalRandom;
+  }
+}
+
 export function runRulesSuite() {
   closeRangeCombatCheck();
   speedAndEnergyRuleCheck();
@@ -1850,5 +1942,6 @@ export function runRulesSuite() {
   asakuraFlagshipCheck();
   asakuraSimultaneousSkillPurgeCheck();
   asakuraBladeQueenCheck();
+  shamisenFlagshipHuntCheck();
   shamisenCatPawCheck();
 }

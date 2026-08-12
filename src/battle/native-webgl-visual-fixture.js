@@ -88,6 +88,11 @@ export function createNativeBattleVisualFixture() {
     nameRevealed: true,
     clawMarks: { stacks: 4, required: 5, color: "#ffd0e4" },
   });
+  teamA.shamisenHunt = {
+    targetId: teamB.ships.sub2.id,
+    sequence: 2,
+    damageMultiplier: 2,
+  };
 
   teamA.koizumiBarrier = {
     active: true,
@@ -145,6 +150,17 @@ export function createNativeBattleVisualFixture() {
     projectile(113, "B", 860, 570, 420, 620),
   ];
   state.bursts = [{ id: 121, x: 760, y: 570, radius: 16, life: 0.24, color: "#ffdb9b" }];
+  state.shamisenHuntKillEffects = [{
+    id: 126,
+    hunterSeat: "A",
+    targetId: 9990,
+    x: 820,
+    y: 880,
+    radius: 16,
+    seed: 12.7,
+    life: 1.02,
+    maxLife: 1.65,
+  }];
   state.koizumiBarrierImpacts = [{
     id: 131,
     kind: "projectile",

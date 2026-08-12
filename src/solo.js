@@ -409,7 +409,7 @@ function createSimulation() {
 
 function resetMatch(logMessage = true) {
   if (app.campaign === "standard") {
-    app.enemyLoadout = randomAiLoadout(); // 每局随机 AI 阵容(主舰不含长门/鹤屋),结算画面据此展示敌方
+    app.enemyLoadout = randomAiLoadout(); // 每局随机 AI 阵容（主舰暂不含鹤屋），结算画面据此展示敌方
   } else {
     app.enemyLoadout = cloneLoadout(DEFAULT_AI_LOADOUT); // 教程敌舰技能由仿真层禁用，阵容只用于既有绘制结构
   }
