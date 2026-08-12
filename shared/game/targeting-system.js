@@ -15,7 +15,7 @@ export function fireCandidates(team, attacker, enemyTeam) {
       && attacker.hasEffect("critUntil")
       && arc > 0;
     // 猎杀标记不等于真实视野：迷雾中只能追踪和走位，必须由任意己方视野实际发现后
-    // 才能开火。春日分舰技能原有的盲射规则保持独立，不受猎杀令影响。
+    // 才能开火。春日分舰技能原有的盲射规则保持独立，不受“猫爪印记”影响。
     if (!team.visibleEnemyIds.has(target.id) && !blindfire) continue;
     candidates.push({ target, dist: targetDistance, arc });
   }

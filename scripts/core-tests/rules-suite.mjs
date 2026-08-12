@@ -1847,7 +1847,7 @@ function shamisenFlagshipHuntCheck() {
     const target = teamB.getAllShips().find((ship) => ship.id === targetId);
     const decoy = teamB.getAllShips().find((ship) => ship !== target);
     assert(target?.alive, "三味线旗舰开局没有生成有效猎杀目标");
-    assert(CHARACTER_DEFS.shamisen.flagshipSkill.type === "passive", "三味线猎杀令没有配置为被动旗舰技能");
+    assert(CHARACTER_DEFS.shamisen.flagshipSkill.type === "passive", "三味线“猫爪印记”没有配置为被动旗舰技能");
 
     hunter.x = 500;
     hunter.y = 720;
@@ -1877,7 +1877,7 @@ function shamisenFlagshipHuntCheck() {
     assert(Math.abs(target.hp - (targetHpBefore - 50)) < 1e-9, "猎杀目标没有受到双倍伤害");
     const decoyHpBefore = decoy.hp;
     decoy.takeDamage(25, hunter, sim);
-    assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猎杀令错误放大了非目标伤害");
+    assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猫爪印记错误放大了非目标伤害");
 
     teamA.visibleEnemyIds = new Set();
     target.hp = 30;

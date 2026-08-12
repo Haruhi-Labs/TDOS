@@ -22,7 +22,7 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
             {
               id: "shamisen",
               title: "新增角色「三味线」",
-              body: "新增主舰被动“猎杀令”，持续标记一名敌舰；全舰队会优先锁定并对其造成双倍伤害，目标被击杀后自动转移标记。分舰技能“猫爪乱舞”可用猫爪弹叠加抓痕并引爆额外伤害。",
+              body: "新增主舰被动“猫爪印记”，持续标记一名敌舰；全舰队会优先锁定并对其造成双倍伤害，目标被击杀后自动转移标记。分舰技能“猫爪乱舞”可用猫爪弹叠加抓痕并引爆额外伤害。",
             },
             {
               id: "yuki-flagship",
@@ -100,7 +100,7 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
             {
               id: "shamisen",
               title: "新キャラクター「シャミセン」",
-              body: "主艦パッシブ「狩猟命令」を追加。敵1隻を継続追跡し、艦隊全体が優先ロックして2倍のダメージを与えます。撃破後は次の敵へ標識が移ります。分艦技能「猫爪乱舞」は猫爪弾で爪痕を重ね、追加ダメージを炸裂させます。",
+              body: "主艦パッシブ「猫の爪印」を追加。敵1隻を継続追跡し、艦隊全体が優先ロックして2倍のダメージを与えます。撃破後は次の敵へ標識が移ります。分艦技能「猫爪乱舞」は猫爪弾で爪痕を重ね、追加ダメージを炸裂させます。",
             },
             {
               id: "yuki-flagship",
@@ -178,7 +178,7 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
             {
               id: "shamisen",
               title: "New Character: Shamisen",
-              body: "Adds the flagship passive “Hunt Decree,” continuously marking one enemy for priority lock and double fleet damage before moving to the next target on a kill. His sub-ship skill “Claw Barrage” stacks and detonates claw marks for bonus damage.",
+              body: "Adds the flagship passive “Claw Mark,” continuously marking one enemy for priority lock and double fleet damage before moving to the next target on a kill. His sub-ship skill “Claw Barrage” stacks and detonates claw marks for bonus damage.",
             },
             {
               id: "yuki-flagship",

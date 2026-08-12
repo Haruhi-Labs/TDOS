@@ -918,7 +918,7 @@ export class BotController {
       }
     }
 
-    // 猎杀令的标记本来就持续显示精确位置，因此可以形成一个精确搜索峰；它仍不把
+    // “猫爪印记”的标记本来就持续显示精确位置，因此可以形成一个精确搜索峰；它仍不把
     // 其它敌人或目标属性写入情报。长门雷达则只注入带误差的接触。
     for (const stored of this.enemyIntel.entities.values()) {
       if (stored.source !== "hunt") continue;

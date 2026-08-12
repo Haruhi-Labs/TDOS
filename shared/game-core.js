@@ -1233,7 +1233,7 @@ class Ship {
     if (this.isDamageImmune()) {
       return;
     }
-    // 猎杀令放大的是“直接攻击猎杀目标”的整次伤害。先乘二再分摊，既保证总伤害正确，
+    // “猫爪印记”放大的是“直接攻击猎杀目标”的整次伤害。先乘二再分摊，既保证总伤害正确，
     // 又避免分摊递归碰巧落到猎杀目标时重复乘二。
     if (share) {
       amount *= shamisenHuntDamageMultiplier(_source, this);

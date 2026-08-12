@@ -175,7 +175,7 @@ export const CHARACTER_DEFS = {
       damage: 18, fireRate: 0.7, radius: 7 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "hunt_decree", name: "猎杀令", type: "passive",
+      id: "hunt_decree", name: "猫爪印记", type: "passive",
       damageMultiplier: 2,
       description: "开局标记一名猎杀目标；全舰队可持续追踪但不会获得真实视野。目标进入真实视野后会被优先锁定，攻击目标时造成双倍伤害；击杀后自动标记下一名敌人。",
     },
