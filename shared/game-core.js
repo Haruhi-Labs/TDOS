@@ -126,6 +126,7 @@ import {
   serializeShamisenHunt,
   shamisenHuntDamageMultiplier,
 } from "./game/shamisen-hunt.js";
+import { DAMAGE_KIND, normalizeDamageContext } from "./game/damage.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -432,8 +433,13 @@ class Projectile {
       }
     }
     const damageImmune = typeof hitTarget.isDamageImmune === "function" && hitTarget.isDamageImmune();
-    const displayedDamage = damage * shamisenHuntDamageMultiplier(this.source, hitTarget);
-    hitTarget.takeDamage(damage, this.source, match);
+    const damageContext = { kind: DAMAGE_KIND.PROJECTILE };
+    const displayedDamage = damage * shamisenHuntDamageMultiplier(
+      this.source,
+      hitTarget,
+      damageContext.kind,
+    );
+    hitTarget.takeDamage(damage, this.source, match, damageContext);
     if (damageImmune) {
       match.spawnFloatingTextKey(hitTarget.x + 8, hitTarget.y - 8, "免疫", {}, "#ffc5cf");
     } else {
@@ -991,8 +997,13 @@ class Ship {
     const burstDamage = Math.max(0, Number(claw.burstDamage) || 0);
     if (burstDamage > 0) {
       const damageImmune = this.isDamageImmune();
-      const displayedDamage = burstDamage * shamisenHuntDamageMultiplier(source, this);
-      this.takeDamage(burstDamage, source, match);
+      const damageContext = { kind: DAMAGE_KIND.ATTACK_EFFECT };
+      const displayedDamage = burstDamage * shamisenHuntDamageMultiplier(
+        source,
+        this,
+        damageContext.kind,
+      );
+      this.takeDamage(burstDamage, source, match, damageContext);
       match.spawnFloatingTextKey(this.x + 10, this.y - 20, "猫爪爆发", {}, "#ffd0e4");
       if (damageImmune) {
         match.spawnFloatingTextKey(this.x + 8, this.y - 8, "免疫", {}, "#ffc5cf");
@@ -1226,17 +1237,18 @@ class Ship {
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
   }
 
-  takeDamage(amount, _source = null, match = null, share = true) {
+  takeDamage(amount, _source = null, match = null, context = undefined) {
     if (!this.alive) {
       return;
     }
     if (this.isDamageImmune()) {
       return;
     }
-    // “猫爪印记”放大的是“直接攻击猎杀目标”的整次伤害。先乘二再分摊，既保证总伤害正确，
-    // 又避免分摊递归碰巧落到猎杀目标时重复乘二。
+    const { share, kind: damageKind } = normalizeDamageContext(context);
+    // “猫爪印记”只放大子弹和攻击命中特效。先乘二再分摊，保证整次攻击总伤害正确；
+    // 分摊递归以 share=false 投递，不会因份额碰巧落到猎杀目标而再次乘二。
     if (share) {
-      amount *= shamisenHuntDamageMultiplier(_source, this);
+      amount *= shamisenHuntDamageMultiplier(_source, this, damageKind);
     }
     // 不分离(本船所在编队还有其它存活船):本次伤害的 FORMATION_DAMAGE_SHARE 比例平摊给其它船,
     // 本船只承担其余部分。平摊出去的份额以 share=false 再投递,不会二次平摊(避免连锁/递归)。
@@ -1247,7 +1259,7 @@ class Ship {
         amount -= shared;
         const per = shared / others.length;
         for (const m of others) {
-          m.takeDamage(per, _source, match, false);
+          m.takeDamage(per, _source, match, { share: false, kind: damageKind });
         }
       }
     }
@@ -1784,10 +1796,6 @@ class Team {
 
   isShamisenHuntTarget(target) {
     return isShamisenHuntTarget(this, target);
-  }
-
-  huntDamageMultiplierAgainst(target) {
-    return shamisenHuntDamageMultiplier(this, target);
   }
 
   future1096FormDefinition(form = this.future1096Form) {
@@ -2766,9 +2774,9 @@ class Team {
           continue;
         }
         const damage = target.maxHp * BEAM_DAMAGE_RATIO;
-        const displayedDamage = damage * this.huntDamageMultiplierAgainst(target);
+        const displayedDamage = damage;
         const damageImmune = target.isDamageImmune();
-        target.takeDamage(damage, ship, this.match);
+        target.takeDamage(damage, ship, this.match, { kind: DAMAGE_KIND.SKILL });
         if (damageImmune) {
           this.match.spawnFloatingTextKey(target.x + 8, target.y - 10, "免疫", {}, "#ffc5cf");
         } else {

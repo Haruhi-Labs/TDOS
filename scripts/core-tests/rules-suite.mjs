@@ -20,6 +20,7 @@ import {
   haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
 import { KOIZUMI_BARRIER_DISABLE_SECONDS } from "../../shared/game/koizumi-barrier.js";
+import { DAMAGE_KIND } from "../../shared/game/damage.js";
 import { assert, runSteps } from "./helpers.mjs";
 
 function closeRangeCombatCheck() {
@@ -1873,15 +1874,30 @@ function shamisenFlagshipHuntCheck() {
     assert(teamA.pickTargetFor(hunter, teamB) === target, "猎杀目标进入真实视野后没有获得最高锁定优先级");
 
     const targetHpBefore = target.hp;
-    target.takeDamage(25, hunter, sim);
-    assert(Math.abs(target.hp - (targetHpBefore - 50)) < 1e-9, "猎杀目标没有受到双倍伤害");
+    target.takeDamage(25, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
+    assert(Math.abs(target.hp - (targetHpBefore - 50)) < 1e-9, "猎杀目标没有受到子弹双倍伤害");
+    const attackEffectHpBefore = target.hp;
+    target.takeDamage(25, hunter, sim, { kind: DAMAGE_KIND.ATTACK_EFFECT });
+    assert(
+      Math.abs(target.hp - (attackEffectHpBefore - 50)) < 1e-9,
+      "猎杀目标没有受到攻击命中特效的双倍伤害",
+    );
+    for (const [kind, label] of [
+      [DAMAGE_KIND.SKILL, "伤害技能"],
+      [DAMAGE_KIND.STATUS_EFFECT, "状态效果"],
+      [DAMAGE_KIND.COLLISION, "碰撞"],
+    ]) {
+      const hpBefore = target.hp;
+      target.takeDamage(25, hunter, sim, { kind });
+      assert(Math.abs(target.hp - (hpBefore - 25)) < 1e-9, `猫爪印记错误放大了${label}伤害`);
+    }
     const decoyHpBefore = decoy.hp;
-    decoy.takeDamage(25, hunter, sim);
+    decoy.takeDamage(25, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
     assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猫爪印记错误放大了非目标伤害");
 
     teamA.visibleEnemyIds = new Set();
     target.hp = 30;
-    target.takeDamage(20, hunter, sim);
+    target.takeDamage(20, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
     assert(!target.alive, "猎杀目标在致命双倍伤害后仍存活");
     assert(sim.shamisenHuntKillEffects.length === 1, "猎杀目标被击毁时没有生成专属击杀特效状态");
     assert(sim.shamisenHuntKillEffects[0].targetId === target.id, "猎杀击杀特效没有绑定被击毁目标");
@@ -1907,7 +1923,12 @@ function shamisenFlagshipHuntCheck() {
       (ship) => ship.id === formationSim.teamA.shamisenHunt.targetId,
     );
     const fleetHpBefore = formationSim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
-    formationTarget.takeDamage(25, formationSim.teamA.ships.main, formationSim);
+    formationTarget.takeDamage(
+      25,
+      formationSim.teamA.ships.main,
+      formationSim,
+      { kind: DAMAGE_KIND.PROJECTILE },
+    );
     const fleetHpAfter = formationSim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
     assert(Math.abs(fleetHpBefore - fleetHpAfter - 50) < 1e-9, "猎杀双倍伤害在编队分摊时发生了重复倍率");
   } finally {

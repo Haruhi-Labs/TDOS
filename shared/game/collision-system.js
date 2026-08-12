@@ -7,6 +7,7 @@ import {
   haruhiOtherworlderReady,
   triggerHaruhiOtherworlder,
 } from "./haruhi-flagship.js";
+import { DAMAGE_KIND } from "./damage.js";
 
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_HIT_INTERVAL = 1;
@@ -88,7 +89,12 @@ function applyForcedKnockback(match, source, contactTarget) {
     ship.route = null;
   }
 
-  contactTarget.takeDamage(contactTarget.maxHp * HARUHI_OTHERWORLDER_DAMAGE_RATIO, source, match);
+  contactTarget.takeDamage(
+    contactTarget.maxHp * HARUHI_OTHERWORLDER_DAMAGE_RATIO,
+    source,
+    match,
+    { kind: DAMAGE_KIND.COLLISION },
+  );
   match.spawnFloatingTextKey(contactTarget.x + 10, contactTarget.y - 16, "异世界冲击", {}, "#ffcf8e");
   match.spawnBurst(contactTarget.x, contactTarget.y, "#ffcf8e", 14);
 }
@@ -161,7 +167,12 @@ export function resolveBladeQueenContacts(match) {
         const lastHitAt = hitLog.get(target.id);
         if (lastHitAt !== undefined && match.elapsed - lastHitAt < BLADE_QUEEN_HIT_INTERVAL) continue;
         hitLog.set(target.id, match.elapsed);
-        target.takeDamage(target.maxHp * BLADE_QUEEN_HIT_FRACTION, ship, match);
+        target.takeDamage(
+          target.maxHp * BLADE_QUEEN_HIT_FRACTION,
+          ship,
+          match,
+          { kind: DAMAGE_KIND.SKILL },
+        );
         for (let spark = 0; spark < 3; spark += 1) {
           const offset = randomInRange(0, target.radius + 6);
           const angle = randomInRange(0, TAU);

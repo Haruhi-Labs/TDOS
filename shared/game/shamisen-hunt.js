@@ -1,3 +1,5 @@
+import { isAttackDamageKind } from "./damage.js";
+
 export const SHAMISEN_HUNT_DAMAGE_MULTIPLIER = 2;
 export const SHAMISEN_HUNT_KILL_EFFECT_SECONDS = 1.65;
 
@@ -50,10 +52,11 @@ export function isShamisenHuntTarget(team, target) {
   );
 }
 
-// 只在一次攻击的直接承伤入口放大；编队分摊的递归伤害不得再次乘二。
-export function shamisenHuntDamageMultiplier(source, target) {
+// 只放大子弹与其命中触发的攻击特效；技能、状态效果和碰撞即使带有攻击方来源也不增幅。
+// 编队分摊的递归伤害由承伤入口保证不再次乘二。
+export function shamisenHuntDamageMultiplier(source, target, damageKind = null) {
   const sourceTeam = source?.team || source;
-  return isShamisenHuntTarget(sourceTeam, target)
+  return isAttackDamageKind(damageKind) && isShamisenHuntTarget(sourceTeam, target)
     ? SHAMISEN_HUNT_DAMAGE_MULTIPLIER
     : 1;
 }
