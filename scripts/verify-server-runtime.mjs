@@ -72,6 +72,7 @@ function matchLifecycleCheck() {
   let roomCloses = 0;
   let closeReason = null;
   let updates = 0;
+  let finishedCallbacks = 0;
   const room = {
     id: "room",
     status: "countdown",
@@ -100,6 +101,10 @@ function matchLifecycleCheck() {
       closeReason = reason;
       rooms.delete(roomId);
     },
+    onMatchFinished(target) {
+      finishedCallbacks += 1;
+      assert.equal(target.id, room.id, "统计回调应收到已完成房间");
+    },
     now: () => time,
     schedule() {},
     tickDt: 0.1,
@@ -122,6 +127,7 @@ function matchLifecycleCheck() {
   assert.equal(roomStates, 2, "倒计时结束与结算时均应广播房间状态");
   assert.equal(lobbyBroadcasts, 2, "房间关键状态变化均应刷新大厅");
   assert.equal(room.result.roomId, room.id, "结算数据应来自统一结果构建器");
+  assert.equal(finishedCallbacks, 1, "同一场对局只能触发一次统计回调");
   assert.equal(
     room.closesAt,
     room.finishedAt + FINISHED_ROOM_CLOSE_DELAY_MS,
@@ -131,6 +137,7 @@ function matchLifecycleCheck() {
   time = room.closesAt - 1;
   runtime.tickRooms();
   assert.equal(roomCloses, 0, "十秒倒计时结束前不得提前关闭结算房间");
+  assert.equal(finishedCallbacks, 1, "结算等待期间不得重复统计同一场对局");
   time = room.closesAt;
   runtime.tickRooms();
   assert.equal(roomCloses, 1, "十秒倒计时到点后必须强制关闭结算房间");

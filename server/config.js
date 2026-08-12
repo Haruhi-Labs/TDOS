@@ -1,4 +1,5 @@
 import { SNAPSHOT_RATE } from "../shared/game/constants.js";
+import { resolve } from "node:path";
 
 function envInteger(name, fallback, min, max) {
   const value = Number(process.env[name]);
@@ -35,3 +36,5 @@ export const MAX_SPECTATORS_PER_ROOM = envInteger("MAX_SPECTATORS_PER_ROOM", 24,
 export const MAX_STREAM_CAPACITY_UNITS = envInteger("MAX_STREAM_CAPACITY_UNITS", 72, 4, 2048);
 export const HEARTBEAT_INTERVAL_MS = envInteger("HEARTBEAT_INTERVAL_MS", 30_000, 100, 120_000);
 export const NETWORK_METRICS_INTERVAL_MS = envInteger("NETWORK_METRICS_INTERVAL_MS", 60_000, 1000, 600_000);
+export const STATS_DATA_DIR = process.env.STATS_DATA_DIR || resolve(process.cwd(), "data/statistics");
+export const STATS_HASH_SALT = process.env.STATS_HASH_SALT || "";

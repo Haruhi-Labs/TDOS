@@ -127,6 +127,14 @@ import {
   shamisenHuntDamageMultiplier,
 } from "./game/shamisen-hunt.js";
 import { DAMAGE_KIND, normalizeDamageContext } from "./game/damage.js";
+import {
+  createMatchTelemetry,
+  recordTelemetryAction,
+  recordTelemetryAttack,
+  recordTelemetryDamage,
+  recordTelemetryShipLoss,
+  serializeMatchTelemetry,
+} from "./game/match-telemetry.js";
 
 export {
   DEFAULT_MAP_PADDING,
@@ -451,6 +459,7 @@ class Projectile {
       damageContext.kind,
     );
     hitTarget.takeDamage(damage, this.source, match, damageContext);
+    match.recordAttack(this.team.seat, "projectile_hit");
     if (damageImmune) {
       match.spawnFloatingTextKey(hitTarget.x + 8, hitTarget.y - 8, "免疫", {}, "#ffc5cf");
     } else {
@@ -1245,6 +1254,7 @@ class Ship {
           : null,
       }),
     );
+    match.recordAttack(this.team.seat, "projectile");
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
   }
 
@@ -1276,7 +1286,11 @@ class Ship {
     }
     const finalAmount = amount * this.damageTakenMultiplier();
     const damageFloor = this.maxHp * clamp(Number(this.team.damageFloorRatio) || 0, 0, 1);
+    const hpBefore = this.hp;
     this.hp = Math.max(damageFloor, this.hp - finalAmount);
+    if (match) {
+      match.recordDamage(_source, this, hpBefore - this.hp, damageKind);
+    }
     if (this.hp > 0) {
       return;
     }
@@ -1285,6 +1299,7 @@ class Ship {
     this.route = null;
     this.team.resolvePostCasualtyState(match);
     if (match) {
+      match.recordShipLoss(this.team.seat);
       match.spawnBurst(this.x, this.y, "#ff9d7d", 10);
       match.onShipDestroyed(this, _source);
     }
@@ -1541,6 +1556,7 @@ class Scout {
         color: this.team.projectileColor,
       }),
     );
+    match.recordAttack(this.team.seat, "projectile");
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate());
   }
 
@@ -1664,6 +1680,7 @@ class Wingman {
         color: this.team.projectileColor,
       }),
     );
+    match.recordAttack(this.team.seat, "projectile");
     this.cooldown = 1.4;
   }
 
@@ -2276,11 +2293,13 @@ class Team {
     if (level === 1 && this.splitLevel === 0 && this.ships.sub1.alive) {
       this.splitLevel = 1;
       this.ships.sub1.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y + 100, 1, false);
+      this.match.recordAction(this.seat, "split");
       return true;
     }
     if (level === 2 && this.splitLevel === 1 && this.ships.sub2.alive) {
       this.splitLevel = 2;
       this.ships.sub2.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y - 100, 1, false);
+      this.match.recordAction(this.seat, "split");
       return true;
     }
     return false;
@@ -2413,6 +2432,7 @@ class Team {
       }));
     }
     this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
+    this.match.recordAction(this.seat, options.cooldownMultiplier ? "auto_scout" : "launch_scout");
     return true;
   }
 
@@ -2432,6 +2452,7 @@ class Team {
     ship.effects.brakeCooldownUntil = this.match.elapsed + EMERGENCY_BRAKE_COOLDOWN;
     this.match.spawnBurst(ship.x, ship.y, "#98e9ff", 7);
     this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "急刹", {}, "#9eefff");
+    this.match.recordAction(this.seat, "emergency_brake");
     return true;
   }
 
@@ -2568,6 +2589,7 @@ class Team {
       return false;
     }
     this.cooldowns.flagship = meta.cooldown || 0;
+    this.match.recordAction(this.seat, "flagship_skill");
     this.revealCasterIfSeen(this.ships.main); // 旗舰技由主舰施放:若此刻正被敌方看见,永久暴露其名字
     return true;
   }
@@ -2641,6 +2663,7 @@ class Team {
       return false;
     }
     this.cooldowns[shipKey] = meta.cooldown || 0;
+    this.match.recordAction(this.seat, "sub_skill");
     this.revealCasterIfSeen(ship); // 分舰技由该舰施放:若此刻正被敌方看见,永久暴露其名字
     return true;
   }
@@ -2784,6 +2807,7 @@ class Team {
         return probe.dist <= target.radius + BEAM_HIT_RADIUS && probe.t >= 0 && probe.t <= 1;
       });
       const damageRatio = beamDamageRatioForHitCount(hitTargets.length);
+      this.match.recordAttack(this.seat, "beam", hitTargets.length);
       for (const target of hitTargets) {
         const damage = target.maxHp * damageRatio;
         const displayedDamage = damage;
@@ -2958,6 +2982,7 @@ export class MatchSimulation {
     this.koizumiBarrierImpacts = [];
     this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
     this.floatingTexts = [];
+    this.telemetry = createMatchTelemetry();
     this.teamA.ensureShamisenHuntTarget(this.teamB);
     this.teamB.ensureShamisenHuntTarget(this.teamA);
     this.bots = {};
@@ -3059,6 +3084,54 @@ export class MatchSimulation {
 
   applyAction(team, action) {
     return applyMatchAction(team, action);
+  }
+
+  recordAction(seat, action) {
+    recordTelemetryAction(this.telemetry, seat, action);
+  }
+
+  recordAttack(seat, kind, hitCount = 0) {
+    recordTelemetryAttack(this.telemetry, seat, kind, hitCount);
+  }
+
+  recordDamage(source, target, amount, kind) {
+    recordTelemetryDamage(this.telemetry, source?.team?.seat, target?.team?.seat, amount, kind);
+  }
+
+  recordShipLoss(seat) {
+    recordTelemetryShipLoss(this.telemetry, seat);
+  }
+
+  statisticsSummary() {
+    const summarizeTeam = (team) => ({
+      seat: team.seat,
+      loadout: cloneLoadout(team.loadout),
+      splitLevel: team.splitLevel,
+      hullRatio: Math.round(team.hullRatio() * 10000) / 10000,
+      ships: Object.fromEntries(["main", "sub1", "sub2"].map((key) => {
+        const ship = team.ships[key];
+        return [key, {
+          alive: Boolean(ship.alive),
+          hp: Math.round(Math.max(0, ship.hp) * 100) / 100,
+          maxHp: Math.round(Math.max(0, ship.maxHp) * 100) / 100,
+          energy: Math.round(Math.max(0, ship.energy) * 100) / 100,
+          maxEnergy: Math.round(Math.max(0, ship.maxEnergy) * 100) / 100,
+        }];
+      })),
+      survivingScouts: team.scouts.filter((item) => item.alive).length,
+      survivingWingmen: team.wingmen.filter((item) => item.alive).length,
+    });
+    return {
+      tick: this.tick,
+      durationSeconds: Math.round(this.elapsed * 1000) / 1000,
+      winnerSeat: this.winnerSeat,
+      worldSize: this.worldSize,
+      teams: {
+        A: summarizeTeam(this.teamA),
+        B: summarizeTeam(this.teamB),
+      },
+      telemetry: serializeMatchTelemetry(this.telemetry),
+    };
   }
 
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次

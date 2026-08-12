@@ -7,6 +7,9 @@ export const CONTROL_MESSAGE_TYPES = new Set([
   "spectate_room",
   "join_private",
   "leave_room",
+  "set_statistics_profile",
+  "get_winrate_stats",
+  "report_solo_match",
 ]);
 
 export const RULESET_GUARDED_MESSAGE_TYPES = new Set([
@@ -16,6 +19,7 @@ export const RULESET_GUARDED_MESSAGE_TYPES = new Set([
   "join_private",
   "select_ship",
   "input",
+  "report_solo_match",
 ]);
 
 const MESSAGE_CODES = {

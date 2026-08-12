@@ -28,6 +28,8 @@ import {
   NETWORK_PROTOCOL_VERSION,
   PORT,
   PVP_COUNTDOWN_MS,
+  STATS_DATA_DIR,
+  STATS_HASH_SALT,
 } from "./config.js";
 import { createInputQueue } from "./input-queue.js";
 import { createMatchRuntime } from "./match-runtime.js";
@@ -39,6 +41,17 @@ import {
 import { createRoomLifecycle } from "./room-lifecycle.js";
 import { createRoomRegistry } from "./room-registry.js";
 import { createSnapshotStream } from "./snapshot-stream.js";
+import { createStatisticsStore } from "./statistics-store.js";
+import {
+  buildServerMatchStatisticsRecord,
+  buildSoloStatisticsRecord,
+} from "./statistics-records.js";
+
+const statisticsStore = createStatisticsStore({
+  dataDir: STATS_DATA_DIR,
+  hashSalt: STATS_HASH_SALT,
+});
+await statisticsStore.ready();
 
 const players = new Map();
 const rooms = new Map();
@@ -179,6 +192,7 @@ function startMatch(room) {
 
   const needsCountdown = room.mode === "pvp";
   room.status = needsCountdown ? "countdown" : "running";
+  room.startedAt = Date.now();
   room.countdownEndsAt = needsCountdown ? Date.now() + PVP_COUNTDOWN_MS : null;
   room.match = new MatchSimulation({
     mode: room.mode,
@@ -351,6 +365,7 @@ wss.on("connection", (ws) => {
     networkProtocolVersion: 1,
     rulesetVersion: "",
     rulesetCompatible: true,
+    statisticsProfile: null,
   };
   resetSnapshotStream(player);
 
@@ -396,6 +411,12 @@ wss.on("connection", (ws) => {
     if (CONTROL_MESSAGE_TYPES.has(type) && !consumeRateLimit(player, "control", 10, 20, messageNow)) {
       return;
     }
+    if (type === "get_winrate_stats" && !consumeRateLimit(player, "statistics_query", 0.2, 2, messageNow)) {
+      return;
+    }
+    if (type === "report_solo_match" && !consumeRateLimit(player, "statistics_report", 0.1, 2, messageNow)) {
+      return;
+    }
     if (RULESET_GUARDED_MESSAGE_TYPES.has(type) && player.rulesetCompatible === false) {
       sendRulesetMismatch(player, type);
       return;
@@ -426,6 +447,41 @@ wss.on("connection", (ws) => {
         }
       }
       broadcastLobby();
+      return;
+    }
+
+    if (type === "set_statistics_profile") {
+      const profile = data.profile && typeof data.profile === "object" ? data.profile : {};
+      player.statisticsProfile = {
+        clientId: String(profile.clientId || "").trim().slice(0, 160),
+        nickname: String(profile.nickname || "").trim().slice(0, 16),
+        faction: profile.faction === "red" ? "red" : profile.faction === "blue" ? "blue" : "",
+        locale: ["zh", "ja", "en"].includes(profile.locale) ? profile.locale : "",
+      };
+      return;
+    }
+
+    if (type === "get_winrate_stats") {
+      sendToPlayer(player, {
+        type: "winrate_stats",
+        stats: statisticsStore.publicLeaderboard(),
+      });
+      return;
+    }
+
+    if (type === "report_solo_match") {
+      const record = buildSoloStatisticsRecord(data, player, {
+        hashSalt: STATS_HASH_SALT,
+        now: messageNow,
+      });
+      void statisticsStore.record(record).then((result) => {
+        sendToPlayer(player, {
+          type: "statistics_report_result",
+          eventId: String(data.eventId || "").slice(0, 80),
+          accepted: result.accepted,
+          reason: result.reason || "",
+        });
+      });
       return;
     }
 
@@ -625,6 +681,7 @@ wss.on("close", () => {
     clearTimeout(lobbyBroadcastTimer);
     lobbyBroadcastTimer = null;
   }
+  void statisticsStore.flush();
 });
 
 const matchRuntime = createMatchRuntime({
@@ -637,8 +694,18 @@ const matchRuntime = createMatchRuntime({
   broadcastLobby,
   buildMatchResult,
   closeRoom,
+  onMatchFinished(room, currentTime) {
+    const record = buildServerMatchStatisticsRecord({
+      room,
+      getPlayerById,
+      hashSalt: STATS_HASH_SALT,
+      now: currentTime,
+    });
+    if (!record) return;
+    void statisticsStore.record(record, { trusted: true });
+  },
   finishedRoomCloseDelayMs: FINISHED_ROOM_CLOSE_DELAY_MS,
 });
 matchRuntime.runServerLoop();
 
-console.log(`网络对战服务器已启动 ws://localhost:${PORT}`);
+console.log(`网络对战服务器已启动 ws://localhost:${PORT}，统计目录 ${STATS_DATA_DIR}`);

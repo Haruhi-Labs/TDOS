@@ -15,6 +15,7 @@ export function createMatchRuntime({
   broadcastLobby,
   buildMatchResult,
   closeRoom,
+  onMatchFinished = () => {},
   finishedRoomCloseDelayMs = FINISHED_ROOM_CLOSE_DELAY_MS,
   now = Date.now,
   schedule = setTimeout,
@@ -71,6 +72,11 @@ export function createMatchRuntime({
           room.finishedAt = currentTime;
           room.closesAt = currentTime + closeDelayMs;
           room.result = buildMatchResult(room, currentTime);
+          try {
+            onMatchFinished(room, currentTime);
+          } catch (error) {
+            console.error(`对局统计回调失败：${error instanceof Error ? error.message : String(error)}`);
+          }
           sendSnapshot(room);
           sendRoomStateToMembers(room);
           broadcastLobby();

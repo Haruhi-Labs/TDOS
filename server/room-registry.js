@@ -245,6 +245,7 @@ export function createRoomRegistry({
       countdownEndsAt: null,
       seats: { A: null, B: null },
       createdAt: now,
+      startedAt: null,
       match: null,
       snapshotAccumulator: 0,
       snapshotSeq: 0,
