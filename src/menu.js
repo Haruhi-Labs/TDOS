@@ -36,6 +36,10 @@ function groupLinkHTML() {
   return `<a class="ts-group" href="${GROUP_URL}" target="_blank" rel="noopener noreferrer" aria-label="${t("加入游戏交流群")}" title="${t("加入游戏交流群")}">${label}</a>`;
 }
 
+function statisticsLinkHTML() {
+  return `<a class="ts-group ts-statistics" href="/statistics">${t("胜率统计")}</a>`;
+}
+
 // 页脚版本号也是更新日志入口；比新增独立图标更符合用户查阅版本内容的习惯。
 function versionLinkHTML() {
   return `<a class="ts-ver ts-ver-link" href="/changelog">${t(CURRENT_VERSION_LABEL)}</a>`;
@@ -78,7 +82,7 @@ function mobileTemplate(faction) {
         <div class="ts-hero mmenu-hero" aria-hidden="true"><canvas class="ts-hero-img"></canvas></div>
         <nav class="ts-menu mmenu-list" aria-label="${t("主菜单")}">${menuItemsHTML()}</nav>
         <footer class="mmenu-foot">
-          <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}</span>
+          <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}${statisticsLinkHTML()}</span>
           ${versionLinkHTML()}
         </footer>
       </div>
@@ -112,7 +116,7 @@ function template(faction) {
         </nav>
 
         <footer class="ts-foot">
-          <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}</span>
+          <span class="ts-foot-actions">${githubLinkHTML()}${groupLinkHTML()}${statisticsLinkHTML()}</span>
           <span class="ts-foot-info">${versionLinkHTML()}<span class="ts-foot-dot">·</span><span class="ts-hint">${t("↑ ↓ 选择　Enter 进入")}</span></span>
         </footer>
       </div>

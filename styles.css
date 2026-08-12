@@ -3679,6 +3679,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   .ts-group:hover { color: var(--gilt-bright); border-color: var(--brass); transform: translateY(-1px); }
 }
 .mmenu-foot .ts-group { font-size: 0.7rem; padding: 4px 10px; }
+.ts-statistics { padding-inline: 9px; border-color: #6f542866; }
 .ts-language {
   display: inline-flex;
   align-items: center;
@@ -3937,6 +3938,127 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .cl-mobile-body .cl-items { grid-template-columns: 1fr; gap: 14px; }
 .cl-mobile-body .cl-item h4 { font-size: 0.86rem; }
 .cl-mobile-body .cl-item p { font-size: 0.75rem; line-height: 1.65; }
+
+/* 胜率统计：以紧凑的舰队档案行呈现，不做通用后台式大卡片。 */
+.stats-frame { width: min(920px, 94%); padding-top: 40px; gap: 14px; }
+.stats-title { font-size: clamp(1.7rem, 4vw, 2.1rem); }
+.stats-scroll { gap: 10px; }
+.stats-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 12px;
+  border-block: 1px solid #6f542866;
+}
+.stats-tabs { display: inline-flex; align-items: center; gap: 4px; }
+.stats-tab {
+  appearance: none;
+  min-height: 34px;
+  padding: 6px 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-family: var(--font-cn);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.stats-tab.active { color: var(--gilt-pale); border-color: #8a6a3288; background: #3a241555; }
+@media (hover: hover) and (pointer: fine) {
+  .stats-tab:hover:not(.active) { color: var(--gilt-bright); border-color: #6f542866; }
+}
+.stats-sort-label { display: inline-flex; align-items: center; gap: 8px; color: var(--text-muted); font: 0.72rem var(--font-cn); letter-spacing: 0.06em; }
+.stats-sort {
+  min-width: 104px;
+  padding: 6px 28px 6px 10px;
+  border: 1px solid #6f542888;
+  border-radius: 999px;
+  background-color: #090f22cc;
+  color: var(--text-soft);
+  font: 0.75rem var(--font-cn);
+}
+.stats-meta { min-height: 1.3em; padding: 0 13px; color: var(--text-muted); font: 0.7rem var(--font-cn); letter-spacing: 0.05em; }
+.stats-board { display: flex; flex-direction: column; gap: 5px; }
+.stats-column-head {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 92px 104px;
+  gap: 12px;
+  padding: 0 16px 5px;
+  color: var(--text-deep);
+  font: 0.66rem var(--font-cn);
+  letter-spacing: 0.12em;
+}
+.stats-column-head span:first-child { grid-column: 2; }
+.stats-column-head span:not(:first-child) { text-align: right; }
+.stats-row {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 92px 104px;
+  align-items: center;
+  gap: 12px;
+  min-height: 66px;
+  padding: 9px 16px;
+  border: 1px solid #6f542855;
+  border-radius: 7px;
+  background: linear-gradient(100deg, #10182fd9 0%, #090f22e8 72%);
+  box-shadow: inset 3px 0 0 #8a6a3255;
+}
+.stats-rank { color: var(--brass); font: 0.78rem var(--font-engrave); letter-spacing: 0.08em; }
+.stats-lineup { display: flex; align-items: stretch; gap: 7px; min-width: 0; }
+.stats-ship {
+  display: flex;
+  flex: 0 1 130px;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  padding: 5px 8px;
+  border-left: 1px solid #6f542866;
+}
+.stats-ship-main { border-left-color: var(--gilt); }
+.stats-ship-role { color: var(--text-deep); font: 0.58rem var(--font-cn); letter-spacing: 0.08em; }
+.stats-ship-name { overflow: hidden; color: var(--text-soft); font: 0.82rem var(--font-cn); white-space: nowrap; text-overflow: ellipsis; }
+.stats-ship-main .stats-ship-name { color: var(--gilt-pale); }
+.stats-value { display: flex; align-items: baseline; justify-content: flex-end; gap: 4px; text-align: right; }
+.stats-value strong { color: var(--text-primary); font: 1.02rem var(--font-engrave); font-variant-numeric: tabular-nums; }
+.stats-value span { color: var(--text-deep); font: 0.62rem var(--font-cn); }
+.stats-rate strong { color: var(--gilt-bright); }
+.stats-status {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font: 0.82rem var(--font-cn);
+}
+.stats-loader { width: 15px; height: 15px; border: 1px solid #6f542888; border-top-color: var(--gilt); border-radius: 50%; animation: stats-spin 0.9s linear infinite; }
+@keyframes stats-spin { to { transform: rotate(360deg); } }
+.stats-retry { padding: 5px 12px; border: 1px solid #6f542888; border-radius: 999px; background: transparent; color: var(--text-soft); font: 0.72rem var(--font-cn); cursor: pointer; }
+
+.stats-mobile-body { gap: 8px; }
+.stats-mobile-body .stats-controls { position: sticky; top: -6px; z-index: 2; margin-inline: -4px; padding-inline: 4px; background: #090f22ee; }
+.stats-mobile-body .stats-meta { padding-inline: 5px; }
+.stats-mobile-body .stats-column-head { display: none; }
+.stats-mobile-body .stats-row { grid-template-columns: 28px minmax(0, 1fr) 62px; gap: 7px; min-height: 82px; padding: 9px 8px; }
+.stats-mobile-body .stats-lineup { gap: 3px; }
+.stats-mobile-body .stats-ship { flex-basis: 90px; padding: 5px 4px; }
+.stats-mobile-body .stats-ship-role { font-size: 0.53rem; }
+.stats-mobile-body .stats-ship-name { font-size: 0.72rem; }
+.stats-mobile-body .stats-games { grid-column: 3; grid-row: 1; align-self: start; }
+.stats-mobile-body .stats-rate { grid-column: 3; grid-row: 1; align-self: end; }
+.stats-mobile-body .stats-value { flex-direction: column; align-items: flex-end; gap: 0; }
+.stats-mobile-body .stats-value strong { font-size: 0.84rem; }
+.stats-mobile-body .stats-value span { font-size: 0.54rem; }
+@media (max-width: 420px) {
+  .stats-controls { align-items: stretch; flex-direction: column; gap: 7px; }
+  .stats-tabs { display: grid; grid-template-columns: 1fr 1fr; }
+  .stats-sort-label { justify-content: flex-end; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .stats-loader { animation-duration: 1.8s; }
+}
 
 @media (max-width: 760px) {
   .cl-items { grid-template-columns: 1fr; }

@@ -8,6 +8,7 @@
 //   /profile  指挥官档案（呼号 + 阵营；出战编队在对战时选）
 //   /guide    玩法说明
 //   /changelog 公共更新日志
+//   /statistics 公开阵容胜率统计
 // 三个游戏模块体量大，按需懒加载（代码分割）。
 // ═══════════════════════════════════════════════════════════════
 
@@ -30,6 +31,7 @@ const routes = {
   "/profile": profileView,
   "/guide": guide,
   "/changelog": () => import("./changelog.js"),
+  "/statistics": () => import("./statistics.js"),
   "/credits": credits,
   "/play": () => import("./solo.js"),
   "/play/tutorial": () => import("./solo.js"),
