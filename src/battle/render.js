@@ -19,6 +19,7 @@ import { drawKoizumiOrb } from "./render/koizumi-orb.js";
 import {
   drawKoizumiBarrier,
   drawKoizumiBarrierImpacts,
+  koizumiBarrierVisibleArcs,
 } from "./render/koizumi-barrier.js";
 import {
   drawShamisenHuntKillEffects,
@@ -1037,7 +1038,7 @@ export function drawPauseOverlay(ctx) {
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
 //   radar              己方长门旗舰的私有雷达状态；对手与观战帧必须为空
 //   visionWaves        位于各队序列化状态中；所有视角都绘制双方，但只有施放方获得波带视野
-//   koizumiBarrier     位于各队序列化状态中；敌方能量圈只在主舰可见或被己方命中时显现
+//   koizumiBarrier     位于各队序列化状态中；敌方本体不可见时，仅显示落入己方真实视野的圆弧
 //   mobileMode         移动端:不画航线曲度旋钮
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer
 export function drawBattleWorld(ctx, frame) {
@@ -1069,6 +1070,10 @@ export function drawBattleWorld(ctx, frame) {
   const enemyBarrierMainId = enemyTeam?.ships?.main?.id;
   if (spectating || (enemyBarrierMainId && enemyVisible(enemyBarrierMainId))) {
     drawKoizumiBarrier(ctx, enemyTeam, elapsed);
+  } else {
+    drawKoizumiBarrier(ctx, enemyTeam, elapsed, {
+      visibleArcs: koizumiBarrierVisibleArcs(enemyTeam, ownTeam, elapsed),
+    });
   }
 
   // 击毁粒子:先按最新状态同步存活/触发(敌方按视野裁剪),粒子本体在世界元素之后绘制

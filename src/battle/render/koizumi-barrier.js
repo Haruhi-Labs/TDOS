@@ -43,7 +43,184 @@ function circleIntersectsCanvas(ctx, x, y, radius, padding = 0) {
     && screenY - screenRadius <= ctx.canvas.height;
 }
 
-function traceSegmentedRing(ctx, x, y, radius, phase, alpha, lineWidth = 1.2) {
+function normalizeArc(start, end) {
+  const span = Math.max(0, Number(end) - Number(start));
+  if (span >= TAU - 1e-6) {
+    return [[0, TAU]];
+  }
+  let normalizedStart = Number(start) % TAU;
+  if (normalizedStart < 0) normalizedStart += TAU;
+  const normalizedEnd = normalizedStart + span;
+  return normalizedEnd <= TAU
+    ? [[normalizedStart, normalizedEnd]]
+    : [[normalizedStart, TAU], [0, normalizedEnd - TAU]];
+}
+
+function mergeArcs(arcs) {
+  const sorted = (arcs || [])
+    .filter((arc) => Array.isArray(arc) && arc.length >= 2 && arc[1] - arc[0] > 1e-6)
+    .map(([start, end]) => [clamp(start, 0, TAU), clamp(end, 0, TAU)])
+    .sort((left, right) => left[0] - right[0]);
+  const merged = [];
+  for (const arc of sorted) {
+    const previous = merged[merged.length - 1];
+    if (!previous || arc[0] > previous[1] + 1e-6) {
+      merged.push(arc);
+    } else {
+      previous[1] = Math.max(previous[1], arc[1]);
+    }
+  }
+  return merged;
+}
+
+function intersectArcs(leftArcs, rightArcs) {
+  const intersections = [];
+  for (const left of leftArcs) {
+    for (const right of rightArcs) {
+      const start = Math.max(left[0], right[0]);
+      const end = Math.min(left[1], right[1]);
+      if (end - start > 1e-6) intersections.push([start, end]);
+    }
+  }
+  return intersections;
+}
+
+function subtractArcs(baseArcs, cutArcs) {
+  let remaining = mergeArcs(baseArcs);
+  for (const [cutStart, cutEnd] of mergeArcs(cutArcs)) {
+    const next = [];
+    for (const [start, end] of remaining) {
+      if (cutEnd <= start || cutStart >= end) {
+        next.push([start, end]);
+        continue;
+      }
+      if (cutStart > start) next.push([start, Math.min(cutStart, end)]);
+      if (cutEnd < end) next.push([Math.max(cutEnd, start), end]);
+    }
+    remaining = next;
+  }
+  return remaining;
+}
+
+function circleCoverageArcs(centerX, centerY, radius, sourceX, sourceY, sourceRadius) {
+  const safeRadius = Math.max(1, Number(radius) || 1);
+  const safeSourceRadius = Math.max(0, Number(sourceRadius) || 0);
+  if (safeSourceRadius <= 0) return [];
+  const dx = Number(sourceX) - centerX;
+  const dy = Number(sourceY) - centerY;
+  const distance = Math.hypot(dx, dy);
+  if (safeSourceRadius >= distance + safeRadius - 1e-6) {
+    return [[0, TAU]];
+  }
+  if (
+    distance >= safeRadius + safeSourceRadius
+    || distance + safeSourceRadius <= safeRadius
+    || distance < 1e-6
+  ) {
+    return [];
+  }
+  const cosine = clamp(
+    (distance * distance + safeRadius * safeRadius - safeSourceRadius * safeSourceRadius)
+      / (2 * distance * safeRadius),
+    -1,
+    1,
+  );
+  const halfAngle = Math.acos(cosine);
+  const centerAngle = Math.atan2(dy, dx);
+  return normalizeArc(centerAngle - halfAngle, centerAngle + halfAngle);
+}
+
+function serializedVisionSources(team) {
+  const sources = [];
+  for (const [key, ship] of Object.entries(team?.ships || {})) {
+    if (!ship?.alive || (key !== "main" && ship.attached)) continue;
+    sources.push(ship);
+  }
+  for (const entity of [
+    ...(team?.extraShips || []),
+    ...(team?.scouts || []),
+    ...(team?.wingmen || []),
+  ]) {
+    if (entity?.alive) sources.push(entity);
+  }
+  return sources;
+}
+
+/**
+ * 返回敌方古泉能量圈落入 viewerTeam 真实视野的圆周角区间。
+ * 这里仅裁切表现，不把能量圈圆心或古泉本体加入可见单位集合。
+ */
+export function koizumiBarrierVisibleArcs(team, viewerTeam, elapsed = 0) {
+  const barrier = team?.koizumiBarrier;
+  const main = team?.ships?.main;
+  if (!barrier || !main?.alive || !viewerTeam) return [];
+  const x = Number(main.x);
+  const y = Number(main.y);
+  const radius = Math.max(1, Number(barrier.radius) || Number(main.vision) || 1);
+  const arcs = [];
+
+  for (const source of serializedVisionSources(viewerTeam)) {
+    arcs.push(...circleCoverageArcs(
+      x,
+      y,
+      radius,
+      Number(source.x),
+      Number(source.y),
+      Number(source.vision),
+    ));
+  }
+
+  // 朝仓视野波是有宽度的环带；用“外圆覆盖减去内圆覆盖”得到圆周交集，
+  // 保持和权威层的真实视野波判定一致。
+  for (const wave of viewerTeam.visionWaves || []) {
+    const age = Number(elapsed) - (Number(wave.emittedAt) || 0);
+    const expiresAt = Number(wave.expiresAt);
+    if (age < 0 || (Number.isFinite(expiresAt) && elapsed >= expiresAt)) continue;
+    const waveRadius = age * Math.max(0, Number(wave.speed) || 0);
+    const halfWidth = Math.max(0.5, Number(wave.width) * 0.5 || 0.5);
+    const outerArcs = circleCoverageArcs(
+      x,
+      y,
+      radius,
+      Number(wave.x),
+      Number(wave.y),
+      waveRadius + halfWidth,
+    );
+    const innerRadius = Math.max(0, waveRadius - halfWidth);
+    arcs.push(...(innerRadius > 0
+      ? subtractArcs(
+        outerArcs,
+        circleCoverageArcs(x, y, radius, Number(wave.x), Number(wave.y), innerRadius),
+      )
+      : outerArcs));
+  }
+
+  return mergeArcs(arcs);
+}
+
+function traceRingArcs(ctx, x, y, radius, visibleArcs) {
+  for (const [start, end] of visibleArcs) {
+    ctx.moveTo(x + Math.cos(start) * radius, y + Math.sin(start) * radius);
+    ctx.arc(x, y, radius, start, end);
+  }
+}
+
+function angleIsVisible(angle, visibleArcs) {
+  let normalized = angle % TAU;
+  if (normalized < 0) normalized += TAU;
+  return visibleArcs.some(([start, end]) => normalized >= start && normalized <= end);
+}
+
+function traceSegmentedRing(
+  ctx,
+  x,
+  y,
+  radius,
+  phase,
+  alpha,
+  lineWidth = 1.2,
+  visibleArcs = [[0, TAU]],
+) {
   const segments = 10;
   ctx.lineCap = "round";
   ctx.lineWidth = lineWidth;
@@ -52,13 +229,18 @@ function traceSegmentedRing(ctx, x, y, radius, phase, alpha, lineWidth = 1.2) {
   for (let index = 0; index < segments; index += 1) {
     const offset = index * TAU / segments + phase;
     const length = 0.2 + (index % 3) * 0.04;
-    ctx.moveTo(x + Math.cos(offset) * radius, y + Math.sin(offset) * radius);
-    ctx.arc(x, y, radius, offset, offset + length);
+    traceRingArcs(
+      ctx,
+      x,
+      y,
+      radius,
+      intersectArcs(normalizeArc(offset, offset + length), visibleArcs),
+    );
   }
   ctx.stroke();
 }
 
-export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
+export function drawKoizumiBarrier(ctx, team, elapsed = 0, options = {}) {
   const barrier = team?.koizumiBarrier;
   const main = team?.ships?.main;
   if (!barrier || !main?.alive) {
@@ -67,6 +249,12 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
   const x = Number(main.x);
   const y = Number(main.y);
   const radius = Math.max(1, Number(barrier.radius) || Number(main.vision) || 1);
+  const visibleArcs = options.visibleArcs == null
+    ? [[0, TAU]]
+    : mergeArcs(options.visibleArcs);
+  if (visibleArcs.length === 0) {
+    return false;
+  }
   if (!circleIntersectsCanvas(ctx, x, y, radius, 24)) {
     return false;
   }
@@ -90,6 +278,7 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
         elapsed * 0.32,
         recovery * 0.58,
         4.2,
+        visibleArcs,
       );
       ctx.strokeStyle = "#ff6681";
       traceSegmentedRing(
@@ -100,6 +289,7 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
         elapsed * 0.32,
         recovery * 0.3,
         0.8 + recovery * 0.9,
+        visibleArcs,
       );
     }
     ctx.restore();
@@ -115,14 +305,14 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
   ctx.globalAlpha = (0.45 + pulse * 0.08) * rebuild;
   ctx.lineWidth = 5.2;
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, TAU);
+  traceRingArcs(ctx, x, y, radius, visibleArcs);
   ctx.stroke();
 
   ctx.strokeStyle = RED;
   ctx.globalAlpha = (0.3 + pulse * 0.06) * rebuild;
   ctx.lineWidth = 1.15;
   ctx.beginPath();
-  ctx.arc(x, y, radius, 0, TAU);
+  traceRingArcs(ctx, x, y, radius, visibleArcs);
   ctx.stroke();
 
   ctx.strokeStyle = "#ff6681";
@@ -134,6 +324,7 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
     (reducedMotion ? 0 : elapsed * 0.16) + Number(main.id || 0) * 0.19,
     (0.32 + pulse * 0.08) * rebuild,
     1.4,
+    visibleArcs,
   );
 
   // 少量沿圆周缓慢游走的能量节点，让护盾有生命感，但不盖住视野圈本身。
@@ -143,6 +334,7 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0) {
   ctx.beginPath();
   for (let index = 0; index < nodes; index += 1) {
     const angle = index * TAU / nodes - (reducedMotion ? 0 : elapsed * 0.22);
+    if (!angleIsVisible(angle, visibleArcs)) continue;
     const nodePulse = 0.65 + Math.sin(elapsed * 3.1 + index * 1.7) * 0.25;
     ctx.moveTo(x + Math.cos(angle) * radius + nodePulse * 1.5, y + Math.sin(angle) * radius);
     ctx.arc(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius, nodePulse * 1.5, 0, TAU);
