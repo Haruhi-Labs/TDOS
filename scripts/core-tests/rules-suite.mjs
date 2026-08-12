@@ -777,6 +777,45 @@ function koizumiFlagshipBarrierCheck() {
     "炮弹被能量圈吸收时没有生成专属受击状态",
   );
 
+  // 密集火力仍逐颗结算拦截，但表现层状态必须有稳定上限；否则单人会堆积绘制，
+  // 多人还会把每个受击火花加入快照差量与插值列表。
+  const visualSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "haruhi", sub2: "future1096" },
+    },
+  });
+  let peakProjectileImpacts = 0;
+  for (let tick = 0; tick < 120; tick += 1) {
+    for (let shot = 0; shot < 100; shot += 1) {
+      visualSim.spawnKoizumiBarrierImpact({
+        kind: "projectile",
+        teamSeat: "A",
+        sourceSeat: "B",
+        x: 720,
+        y: 540,
+        centerX: 540,
+        centerY: 540,
+        radius: 180,
+        angle: 0,
+        normalX: 1,
+        normalY: 0,
+      });
+    }
+    peakProjectileImpacts = Math.max(
+      peakProjectileImpacts,
+      visualSim.koizumiBarrierImpacts.length,
+    );
+    visualSim.updateVisualEffects(1 / 30);
+    visualSim.elapsed += 1 / 30;
+  }
+  assert(
+    peakProjectileImpacts <= 10,
+    `密集火力令古泉护盾受击状态失控：峰值${peakProjectileImpacts}`,
+  );
+
   const hullBeforeBeam = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
   assert(teamB.queueBeamDirection(attacker, -1, 0), "古泉能量圈测试未生成圈外射线");
   const beam = teamB.beams.at(-1);

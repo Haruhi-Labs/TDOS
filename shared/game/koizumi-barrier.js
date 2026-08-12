@@ -10,6 +10,7 @@ export const KOIZUMI_BARRIER_DISABLE_SECONDS = 5;
 
 const HARUHI_BARRIER_CONTACT_TOLERANCE = 5;
 const ENTRY_EPSILON = 0.35;
+const RECOVERY_EFFECT_SECONDS = 0.9;
 
 export function createKoizumiBarrierState() {
   return {
@@ -35,7 +36,13 @@ export function koizumiBarrierGeometry(team) {
   const disabledAt = team.koizumiBarrier?.disabledAt;
   const recoveryAge = disabledRemaining > 0 || !Number.isFinite(disabledAt)
     ? 0
-    : Math.max(0, now - Number(team.koizumiBarrier.disabledUntil || 0));
+    // 重组动画结束后固定为上限，避免这个仅供显示的值永久逐帧变化，
+    // 令多人差量包持续携带无意义的护盾状态更新。
+    : clamp(
+      now - Number(team.koizumiBarrier.disabledUntil || 0),
+      0,
+      RECOVERY_EFFECT_SECONDS,
+    );
   return {
     x: main.x,
     y: main.y,
@@ -173,9 +180,22 @@ function movingCircleImpact(source, main, geometry, { bow = false, extraRadius =
   };
 }
 
-export function koizumiBarrierProjectileImpact(projectile, dt, defendingTeam) {
-  const geometry = koizumiBarrierGeometry(defendingTeam);
-  if (!projectile?.alive || !geometry?.active || projectile.team === defendingTeam) {
+export function koizumiBarrierProjectileImpact(
+  projectile,
+  dt,
+  defendingTeam,
+  preparedGeometry = undefined,
+) {
+  // 炮弹风暴时同一队的护盾几何完全相同，允许调用方每逻辑帧只计算一次。
+  const geometry = preparedGeometry === undefined
+    ? koizumiBarrierGeometry(defendingTeam)
+    : preparedGeometry;
+  if (
+    !projectile?.alive
+    || !geometry?.active
+    || !hasKoizumiBarrier(defendingTeam)
+    || projectile.team === defendingTeam
+  ) {
     return null;
   }
   const deltaX = projectile.targetX - projectile.x;

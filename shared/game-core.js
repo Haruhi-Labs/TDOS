@@ -98,6 +98,7 @@ import {
 import {
   createKoizumiBarrierState,
   koizumiBarrierBeamImpact,
+  koizumiBarrierGeometry,
   koizumiBarrierProjectileImpact,
   resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts,
   serializeKoizumiBarrier,
@@ -160,6 +161,9 @@ const BEAM_VISUAL_DURATION = 0.26;
 const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
 const BEAM_DAMAGE_RATIO = 0.28;
+// 护盾仍会拦截每一颗炮弹，但受击动画无需跟着炮弹数量无限增长。
+// 15 次/秒已经能连续表现密集火力，同时把单人绘制和多人状态同步控制在稳定上限。
+const KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL = 1 / 15;
 const FUTURE_1096_FORMS = Object.freeze({
   A: Object.freeze({ damageTaken: 2, speed: 1.5, fireRate: 2 }),
   B: Object.freeze({ damageTaken: 0.5, speed: 0.5, fireRate: 0.5 }),
@@ -2895,6 +2899,7 @@ export class MatchSimulation {
     this.projectiles = [];
     this.bursts = [];
     this.koizumiBarrierImpacts = [];
+    this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
     this.floatingTexts = [];
     this.bots = {};
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
@@ -3063,12 +3068,21 @@ export class MatchSimulation {
 
   spawnKoizumiBarrierImpact(options = {}) {
     const kind = options.kind || "projectile";
+    const teamSeat = options.teamSeat || null;
+    if (kind === "projectile" && teamSeat) {
+      const nextAt = Number(this.koizumiBarrierProjectileImpactNextAt[teamSeat]) || 0;
+      if (this.elapsed + 1e-9 < nextAt) {
+        return false;
+      }
+      this.koizumiBarrierProjectileImpactNextAt[teamSeat]
+        = this.elapsed + KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL;
+    }
     const maxLife = kind === "ram" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
     this.koizumiBarrierImpacts.push({
       id: nextEntityId(),
       kind,
       ramKind: options.ramKind || null,
-      teamSeat: options.teamSeat || null,
+      teamSeat,
       sourceSeat: options.sourceSeat || null,
       x: Number(options.x) || 0,
       y: Number(options.y) || 0,
@@ -3081,12 +3095,23 @@ export class MatchSimulation {
       life: maxLife,
       maxLife,
     });
+    return true;
   }
 
   updateProjectiles(dt) {
+    // 两队每逻辑帧各准备一次几何，避免每颗炮弹都重复读取旗舰视野和护盾状态。
+    const barrierGeometryBySeat = {
+      A: koizumiBarrierGeometry(this.teamA),
+      B: koizumiBarrierGeometry(this.teamB),
+    };
     for (const projectile of this.projectiles) {
       const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
-      const barrierImpact = koizumiBarrierProjectileImpact(projectile, dt, defendingTeam);
+      const barrierImpact = koizumiBarrierProjectileImpact(
+        projectile,
+        dt,
+        defendingTeam,
+        barrierGeometryBySeat[defendingTeam.seat],
+      );
       if (barrierImpact) {
         projectile.alive = false;
         this.spawnKoizumiBarrierImpact({
