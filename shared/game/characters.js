@@ -95,7 +95,7 @@ export const CHARACTER_DEFS = {
     subSkill: {
       id: "beam_1096", name: "1096光线", type: "active", cooldown: 12,
       cost: 74, target: "point",
-      description: "蓄力1.05秒后向指定方向发射光线，对命中的每个敌舰造成其最大生命值28%的伤害。",
+      description: "蓄力1.05秒后向指定方向发射光线。命中1艘时造成其最大生命值28%的伤害；命中2艘时各造成21%；命中3艘及以上时各造成18%。",
     },
   },
   kyon: {

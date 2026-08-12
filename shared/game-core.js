@@ -171,7 +171,11 @@ const BEAM_CHARGE_DURATION = 1.05;
 const BEAM_VISUAL_DURATION = 0.26;
 const BEAM_BASE_RANGE = 1460;
 const BEAM_HIT_RADIUS = 11;
-const BEAM_DAMAGE_RATIO = 0.28;
+const BEAM_DAMAGE_RATIOS = Object.freeze({
+  single: 0.28,
+  double: 0.21,
+  triple: 0.18,
+});
 // 护盾仍会拦截每一颗炮弹，但受击动画无需跟着炮弹数量无限增长。
 // 15 次/秒已经能连续表现密集火力，同时把单人绘制和多人状态同步控制在稳定上限。
 const KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL = 1 / 15;
@@ -182,6 +186,13 @@ const FUTURE_1096_FORMS = Object.freeze({
 const FUTURE_1096_BASE_FORM = Object.freeze({ damageTaken: 1, speed: 1, fireRate: 1 });
 const DEG_TO_RAD = Math.PI / 180;
 const EMERGENCY_BRAKE_DURATION = 0.82;
+
+function beamDamageRatioForHitCount(hitCount) {
+  if (hitCount >= 3) return BEAM_DAMAGE_RATIOS.triple;
+  if (hitCount === 2) return BEAM_DAMAGE_RATIOS.double;
+  return BEAM_DAMAGE_RATIOS.single;
+}
+
 const FLAGSHIP_TURN_PENALTIES = {
   1: 1.14,
   2: 0.88,
@@ -2764,16 +2775,17 @@ class Team {
         });
       }
 
-      let hitAny = false;
-      for (const target of enemyTeam.getAllShips()) {
-        if (!target.alive || !target.isTargetableByFire()) {
-          continue;
-        }
+      // 先固定本次光线的完整命中集合，再按数量选择统一倍率，避免边结算边击毁目标时
+      // 后续目标因存活数量变化而使用不同伤害档位。护盾已在上方截断射线，因此这里
+      // 统计的就是屏障之后真正能被光线触及的舰船。
+      const hitTargets = enemyTeam.getAllShips().filter((target) => {
+        if (!target.alive || !target.isTargetableByFire()) return false;
         const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
-        if (probe.dist > target.radius + BEAM_HIT_RADIUS || probe.t < 0 || probe.t > 1) {
-          continue;
-        }
-        const damage = target.maxHp * BEAM_DAMAGE_RATIO;
+        return probe.dist <= target.radius + BEAM_HIT_RADIUS && probe.t >= 0 && probe.t <= 1;
+      });
+      const damageRatio = beamDamageRatioForHitCount(hitTargets.length);
+      for (const target of hitTargets) {
+        const damage = target.maxHp * damageRatio;
         const displayedDamage = damage;
         const damageImmune = target.isDamageImmune();
         target.takeDamage(damage, ship, this.match, { kind: DAMAGE_KIND.SKILL });
@@ -2783,10 +2795,9 @@ class Team {
           this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(displayedDamage)}`, "#ffb7a8");
         }
         this.spawnBeamHitParticles(target.x, target.y);
-        hitAny = true;
       }
 
-      if (!hitAny) {
+      if (hitTargets.length === 0) {
         this.match.spawnBurst(beam.x2, beam.y2, "#78dfff", 9);
       }
     }

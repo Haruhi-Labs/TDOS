@@ -1180,6 +1180,73 @@ function beamSkillCheck() {
   assert(enemyFleetHpBefore - enemyFleetHpAfter >= enemyMain.maxHp * 0.25, "1096光线未命中点击坐标处的目标或伤害明显偏低");
 }
 
+function beamHitCountDamageCheck() {
+  const runScenario = (hitCount, merged = false) => {
+    const sim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      teamLoadouts: {
+        A: { main: "kyon", sub1: "tsuruya", sub2: "future1096" },
+        B: { main: "haruhi", sub1: "koizumi", sub2: "future1096" },
+      },
+    });
+    const sourceTeam = sim.teamA;
+    const targetTeam = sim.teamB;
+    sourceTeam.split(1);
+    sourceTeam.split(2);
+    const source = sourceTeam.ships.sub2;
+    source.x = 300;
+    source.y = 700;
+    source.angle = 0;
+
+    if (merged) {
+      targetTeam.splitLevel = 0;
+      Object.assign(targetTeam.ships.main, { x: 800, y: 700 });
+      Object.assign(targetTeam.ships.sub1, { x: 818, y: 689 });
+      Object.assign(targetTeam.ships.sub2, { x: 818, y: 711 });
+    } else {
+      targetTeam.splitLevel = 2;
+      const positions = [
+        { x: 800, y: 700 },
+        { x: 950, y: hitCount >= 2 ? 700 : 1040 },
+        { x: 1100, y: hitCount >= 3 ? 700 : 360 },
+      ];
+      targetTeam.getAllShips().forEach((ship, index) => Object.assign(ship, positions[index]));
+    }
+
+    const before = new Map(targetTeam.getAllShips().map((ship) => [ship.id, ship.hp]));
+    assert(sourceTeam.queueBeamDirection(source, 1, 0), "命中数量测试未能创建1096光线");
+    sourceTeam.beams.at(-1).life = 0;
+    sourceTeam.resolveChargedBeams(targetTeam);
+    return {
+      targetTeam,
+      damageByShip: targetTeam.getAllShips().map((ship) => before.get(ship.id) - ship.hp),
+    };
+  };
+
+  for (const [hitCount, expectedRatio] of [[1, 0.28], [2, 0.21], [3, 0.18]]) {
+    const { targetTeam, damageByShip } = runScenario(hitCount);
+    targetTeam.getAllShips().forEach((ship, index) => {
+      const expected = index < hitCount ? ship.maxHp * expectedRatio : 0;
+      assert(
+        Math.abs(damageByShip[index] - expected) < 1e-9,
+        `1096光线命中${hitCount}艘时，第${index + 1}艘伤害档位错误`,
+      );
+    });
+  }
+
+  const merged = runScenario(3, true);
+  const mergedTotalDamage = merged.damageByShip.reduce((sum, damage) => sum + damage, 0);
+  const mergedExpectedDamage = merged.targetTeam.getAllShips().reduce(
+    (sum, ship) => sum + ship.maxHp * 0.18,
+    0,
+  );
+  assert(
+    Math.abs(mergedTotalDamage - mergedExpectedDamage) < 1e-9,
+    "1096光线正穿合并三舰时没有按每艘18%结算总伤害",
+  );
+}
+
 function tsuruyaFlagshipActiveCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -1955,6 +2022,7 @@ export function runRulesSuite() {
   koizumiFlagshipBarrierCheck();
   koizumiOrbRamCheck();
   beamSkillCheck();
+  beamHitCountDamageCheck();
   tsuruyaFlagshipActiveCheck();
   fireArcDensityCheck();
   kyonUniformFireRateCheck();
