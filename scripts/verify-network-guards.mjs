@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import WebSocket from "ws";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 
 function delay(ms) {
@@ -12,6 +15,7 @@ const url = `ws://127.0.0.1:${port}`;
 let server = null;
 let serverOutput = "";
 const clients = new Set();
+const statisticsDataDir = await mkdtemp(join(tmpdir(), "haruhi-network-statistics-"));
 
 class GuardClient {
   constructor(options = {}) {
@@ -109,6 +113,7 @@ async function startServer() {
       MAX_STREAM_CAPACITY_UNITS: "5",
       HEARTBEAT_INTERVAL_MS: "100",
       NETWORK_METRICS_INTERVAL_MS: "1000",
+      STATS_DATA_DIR: statisticsDataDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -299,6 +304,40 @@ async function messageFloodCheck() {
   client.terminate();
 }
 
+async function statisticsPrivacyCheck() {
+  const client = await new GuardClient().open();
+  client.send({
+    type: "protocol_hello",
+    protocolVersion: 2,
+    rulesetVersion: RULESET_VERSION,
+  });
+  client.send({
+    type: "report_solo_match",
+    eventId: "guard-solo-1",
+    difficulty: "normal",
+    rulesetVersion: RULESET_VERSION,
+    profile: { clientId: "private-raw-client-id", nickname: "隐私测试", faction: "blue", locale: "zh" },
+    summary: {
+      durationSeconds: 20,
+      tick: 600,
+      winnerSeat: "A",
+      teams: {
+        A: { loadout: { main: "haruhi", sub1: "yuki", sub2: "koizumi" } },
+        B: { loadout: { main: "kyon", sub1: "tsuruya", sub2: "asakura" } },
+      },
+    },
+  });
+  const report = await client.waitFor((message) => message.type === "statistics_report_result");
+  assert.equal(report.accepted, true, "合法单人结算没有被统计服务接收");
+  client.send({ type: "get_winrate_stats" });
+  const response = await client.waitFor((message) => message.type === "winrate_stats");
+  assert.deepEqual(Object.keys(response.stats.modes).sort(), ["multiplayer", "solo"], "公开统计应只分单人与多人榜单");
+  assert.equal(response.stats.modes.solo.matches, 1, "单人结算上报没有进入公开聚合");
+  assert.equal(JSON.stringify(response).includes("trackedPlayers"), false, "公开统计响应不得包含玩家聚合信息");
+  assert.equal(JSON.stringify(response).includes("隐私测试"), false, "公开统计响应不得包含玩家昵称");
+  client.terminate();
+}
+
 async function stopEverything() {
   await terminateClients();
   if (server && server.exitCode === null) {
@@ -323,7 +362,8 @@ try {
   await spectatorLimitCheck();
   await activeRoomLimitCheck();
   await messageFloodCheck();
-  console.log("网络保护校验通过：大包、心跳、连接、规则握手、房间、雷达隐私、观战与消息洪泛均已受控。");
+  await statisticsPrivacyCheck();
+  console.log("网络保护校验通过：大包、心跳、连接、规则握手、房间、雷达隐私、观战、统计隐私与消息洪泛均已受控。");
 } catch (error) {
   console.error(`网络保护校验失败：${error instanceof Error ? error.stack || error.message : String(error)}`);
   if (serverOutput.trim()) {
@@ -332,4 +372,5 @@ try {
   process.exitCode = 1;
 } finally {
   await stopEverything();
+  await rm(statisticsDataDir, { recursive: true, force: true });
 }

@@ -15,6 +15,7 @@
 
 - **单人 vs AI**:四档难度(简单 / 普通 / 困难 / 极限)。难度同时调整敌方数值、AI 反应速度与战术风格;极限难度的 AI 会智能集火残血。AI 会依据公开视野、雷达误差接触与历史动向组织搜索，长门旗舰可编组战斗僚机执行前沿任务，三味线旗舰则会组织猎杀突破或针对性护卫撤游。AI 通过大量对抗模拟逐项调校。
 - **在线对战与观战**:基于 WebSocket 的实时 PvP，支持公开房、私人房、AI 训练房和对战观战；多人开战前有三秒倒计时。
+- **公开胜率统计**:首页底部可进入单人/多人阵容榜，按出场场次或胜率排序；对局档案与匿名玩家汇总仅在结算时异步写入，不进入实时快照链路。
 - **8 名角色**:凉宫春日、阿虚、长门有希、古泉一树、朝比奈1096、朝仓凉子、鹤屋、三味线——每名角色在「主舰位」与「副舰位」拥有不同的主动或被动技能。
 - **机制深度**:
   - **视野 ≪ 射程** —— 派侦察机开图、主力吊在敌方视野外输出;侦察机还能吸引火力。
@@ -66,6 +67,7 @@ npm run test:ai:simulation # 16 局固定种子双 AI 模拟对战
 - **统一动作、时钟与显示插值**:`shared/protocol/match-actions.js` 定义单人/多人共用动作，`src/battle/action-transport.js` 只区分本地或远程传输；单人和服务端共用固定 30Hz 逻辑时钟，单人逻辑帧与多人 15Hz 快照都通过 `src/battle/state-interpolation.js` 生成平滑显示状态，且从不写回权威模拟。
 - **规则版本保护**:`shared/protocol/ruleset-version.js` 在客户端与服务端之间协商规则版本。显式版本冲突会阻止进入对局；未声明版本的旧端暂时走兼容模式。
 - **联机服务端**:`server/server.js`(基于 `ws`)只负责编排连接和消息；房间注册、生命周期、输入队列、比赛循环与快照流已拆到 `server/` 下的独立模块。
+- **统计归档**:`server/statistics-store.js` 以按月 JSONL 追加日志作为事实来源，在内存中缓存公开阵容聚合；`shared/game/match-telemetry.js` 只维护常数级计数器，且统计字段不会进入 `serializeState()` 或网络快照。
 - **渲染**:战场由原生 WebGL2 直接绘制，使用批量弹体、GPU 三角形与有界字形/立绘纹理缓存；不支持 WebGL2 的设备使用同源 WebGL1 后端，仅在 WebGL 完全不可用时保留 Canvas 2D 可用性兜底。菜单与普通页面仍按各自现有 DOM/Canvas 实现。
 
 详细依赖方向、权威边界、修改定位表和验证要求见 [`docs/architecture.md`](docs/architecture.md)；测试站发布、正式站隔离与回滚约定见 [`docs/operations.md`](docs/operations.md)。
@@ -79,6 +81,8 @@ src/
   router.js           History 路由
   menu.js             主菜单(首页)
   changelog.js        公共更新日志页面（版本内容与元数据在 changelog/）
+  statistics.js       单人/多人阵容胜率榜页面
+  statistics-client.js 结算单次上报与榜单单次请求
   solo.js             单人对战
   online.js           在线对战页面编排（快照显示状态在 online/state-sync.js）
   character-select.js 翻书式角色选择（立绘在 character-select/portraits.js）
@@ -91,7 +95,7 @@ shared/
   game-core.js        游戏规则兼容入口与模拟编排
   game/               角色、规则、推进能量、视野/雷达、固定时钟、数学工具与 AI
   protocol/           标准战斗动作与规则版本协商
-server/               房间、输入队列、权威循环、协议和快照流
+server/               房间、输入队列、权威循环、协议、快照流与对局统计归档
 scripts/              核心、联机、网络与模块边界校验
 docs/                 架构边界与发布运维约定
 ```

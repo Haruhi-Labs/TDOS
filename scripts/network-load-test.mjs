@@ -1,6 +1,9 @@
 import { execFile } from "node:child_process";
 import { spawn } from "node:child_process";
 import { promisify } from "node:util";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import WebSocket from "ws";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { applyStatePatch } from "../shared/network-patch.js";
@@ -43,6 +46,7 @@ const wsUrl = configuredUrl || `ws://127.0.0.1:${localPort}`;
 const shouldStartServer = !configuredUrl;
 
 let localServer = null;
+let localStatisticsDataDir = null;
 let shuttingDown = false;
 const clients = [];
 
@@ -260,11 +264,13 @@ class LoadClient {
 }
 
 async function startLocalServer() {
+  localStatisticsDataDir = await mkdtemp(join(tmpdir(), "haruhi-load-statistics-"));
   localServer = spawn(process.execPath, ["server/server.js"], {
     cwd: process.cwd(),
     env: {
       ...process.env,
       PORT: String(localPort),
+      STATS_DATA_DIR: localStatisticsDataDir,
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
@@ -329,6 +335,10 @@ async function stopEverything() {
     if (localServer.exitCode === null) {
       localServer.kill("SIGKILL");
     }
+  }
+  if (localStatisticsDataDir) {
+    await rm(localStatisticsDataDir, { recursive: true, force: true });
+    localStatisticsDataDir = null;
   }
 }
 

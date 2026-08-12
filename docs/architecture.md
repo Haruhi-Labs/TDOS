@@ -64,6 +64,7 @@
 - `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
 - `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法。
 - `shared/game/collision-system.js`：舰船碰撞、侦察机相撞和刀锋女王接触结算。
+- `shared/game/match-telemetry.js`：对局内常数级动作、攻击、伤害和损失计数；只由结算摘要读取，不进入显示状态或网络快照。
 
 只有需要协调多种规则、修改实时战斗状态的逻辑才留在 `game-core.js`。新增纯数据、纯计算或 AI 策略时，应直接放入对应叶模块，再由兼容入口按需导出。
 
@@ -100,6 +101,18 @@
 - `server/input-queue.js`：客户端输入顺序、连续操作合并、队列上限和逐帧消费。
 - `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算、结算后 10 秒强制回收房间和追帧保护。
 - `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
+- `server/statistics-records.js`：把服务端权威对局或客户端单人结算归一为同一份对局档案，负责匿名玩家字段与终局摘要组装。
+- `server/statistics-store.js`：按月追加 JSONL、对局 ID 去重、私有玩家聚合和公开阵容榜缓存。磁盘写入只在结算发生，服务端比赛循环不等待写盘。
+- `src/statistics-client.js`：单人结算的一次性上报与榜单页的一次性查询；独立短连接不会加入房间或订阅快照。
+- `src/statistics.js`：仅展示单人/多人阵容的出场场次与胜率，客户端排序不重复请求服务端。
+
+### 统计数据边界
+
+- 多人对局由服务端权威结算直接归档；单人对局在浏览器结算后上报，并明确记录为未验证来源。
+- 原始客户端标识在落盘前做 SHA-256 截断哈希；不持久化 IP、完整 User-Agent 等直接网络身份信息。
+- 私有档案包含规则版本、模式、难度、时长、胜负、双方编队、终局舰体/能量状态、匿名玩家档案字段和战斗汇总计数，供后续平衡与留存分析。
+- 公开接口只返回 `solo`、`multiplayer` 两个榜单的有序阵容、出场场次和胜率，不返回玩家信息或完整对局记录。
+- `MatchSimulation.serializeState()` 不包含统计字段，常规 15Hz 快照大小和广播次数不因统计功能增加。
 
 ### 内容与素材
 
@@ -138,6 +151,7 @@
 | 输入积压、合并与确认 | `server/input-queue.js` | `scripts/verify-server-runtime.mjs` |
 | 服务端逻辑帧与快照节拍 | `server/match-runtime.js` | 运行时与网络保护测试 |
 | 快照带宽和拥塞保护 | `server/snapshot-stream.js`、`server/config.js` | `shared/network-patch.js` |
+| 对局统计字段与公开榜单 | `server/statistics-store.js`、`statistics-records.js` | `shared/game/match-telemetry.js`、`src/statistics*.js`、统计测试 |
 | 日英翻译文本 | `src/i18n/messages-ja.js`、`messages-en.js` | `src/i18n/catalog.js` |
 | 版本号与公共更新日志 | `src/changelog/meta.js`、`entries.js` | `src/changelog.js`、`src/menu.js`、`scripts/verify-changelog.mjs` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
@@ -154,6 +168,7 @@
 8. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
 9. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
 10. 战场视觉或渲染后端改动运行 `npm run test:ui:webgl`，核对 WebGL2/WebGL1 一致性、Canvas 视觉基准、弹幕压力性能和逐帧纹理上传守卫。
+11. 统计采集、聚合或榜单页面改动运行 `npm run test:statistics` 与 `npm run test:ui:statistics`，并确认 `test:network:guards` 的公开字段隔离仍通过。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
 
