@@ -94,9 +94,8 @@ void main() {
   gl_FragColor = vec4(sampleColor.rgb * sampleColor.a, sampleColor.a);
 }`;
 
-// 雷达主扫线是全图高速旋转的长虚线。若沿用通用 Canvas 路径兼容层，每帧需要把
-// 两条数据轨拆成数百段小矩形；这里让片元着色器直接生成亮芯、辉光与两条数据轨，
-// 整条扫线始终只提交一个四边形。校准节点和数据包仍走共享矢量绘制，外观保持一致。
+// 雷达主扫线是全图高速旋转的长线。这里让片元着色器直接生成中央亮线，整条扫线
+// 始终只提交一个四边形；校准节点和数据包仍走共享矢量绘制，避免恢复 CPU 路径开销。
 const RADAR_VERTEX_WEBGL2 = `#version 300 es
 in vec2 a_position;
 in vec2 a_radarCoord;
@@ -111,19 +110,12 @@ void main() {
 const RADAR_FRAGMENT_WEBGL2 = `#version 300 es
 precision mediump float;
 uniform float u_length;
-uniform float u_phase;
 uniform float u_alpha;
 in vec2 v_radarCoord;
 out vec4 outColor;
 
 float band(float distanceToCenter, float halfWidth) {
   return 1.0 - smoothstep(halfWidth, halfWidth + 0.72, distanceToCenter);
-}
-
-vec4 over(vec4 under, vec3 color, float alpha) {
-  float nextAlpha = alpha + under.a * (1.0 - alpha);
-  vec3 premultiplied = color * alpha + under.rgb * under.a * (1.0 - alpha);
-  return vec4(nextAlpha > 0.0001 ? premultiplied / nextAlpha : vec3(0.0), nextAlpha);
 }
 
 void main() {
@@ -135,17 +127,8 @@ void main() {
     : mix(vec3(0.494, 0.929, 0.878), vec3(0.239, 0.667, 0.745), (progress - 0.5) * 2.0);
   float rayFade = progress < 0.5 ? mix(0.82, 0.62, progress * 2.0) : mix(0.62, 0.08, (progress - 0.5) * 2.0);
 
-  vec4 color = vec4(0.0);
-  color = over(color, rayColor, band(abs(across), 2.1) * 0.20 * rayFade * u_alpha);
-  color = over(color, rayColor, band(abs(across), 0.41) * 0.92 * rayFade * u_alpha);
-
-  float firstPhase = mod(along - u_phase * 34.0 + 22000.0, 22.0);
-  float firstDash = step(firstPhase, 9.0) + step(15.0, firstPhase) * step(firstPhase, 17.0);
-  float secondPhase = mod(along + u_phase * 27.0 + 27000.0, 27.0);
-  float secondDash = step(secondPhase, 3.0) + step(8.0, secondPhase) * step(secondPhase, 20.0);
-  color = over(color, vec3(0.749, 1.0, 0.961), band(abs(across + 4.3), 0.34) * min(1.0, firstDash) * 0.46 * u_alpha);
-  color = over(color, vec3(0.349, 0.839, 0.851), band(abs(across - 4.3), 0.34) * min(1.0, secondDash) * 0.46 * u_alpha);
-  outColor = vec4(color.rgb * color.a, color.a);
+  float alpha = band(abs(across), 0.41) * 0.92 * rayFade * u_alpha;
+  outColor = vec4(rayColor * alpha, alpha);
 }`;
 
 const RADAR_VERTEX_WEBGL1 = `
@@ -162,18 +145,11 @@ void main() {
 const RADAR_FRAGMENT_WEBGL1 = `
 precision mediump float;
 uniform float u_length;
-uniform float u_phase;
 uniform float u_alpha;
 varying vec2 v_radarCoord;
 
 float band(float distanceToCenter, float halfWidth) {
   return 1.0 - smoothstep(halfWidth, halfWidth + 0.72, distanceToCenter);
-}
-
-vec4 over(vec4 under, vec3 color, float alpha) {
-  float nextAlpha = alpha + under.a * (1.0 - alpha);
-  vec3 premultiplied = color * alpha + under.rgb * under.a * (1.0 - alpha);
-  return vec4(nextAlpha > 0.0001 ? premultiplied / nextAlpha : vec3(0.0), nextAlpha);
 }
 
 void main() {
@@ -185,17 +161,8 @@ void main() {
     : mix(vec3(0.494, 0.929, 0.878), vec3(0.239, 0.667, 0.745), (progress - 0.5) * 2.0);
   float rayFade = progress < 0.5 ? mix(0.82, 0.62, progress * 2.0) : mix(0.62, 0.08, (progress - 0.5) * 2.0);
 
-  vec4 color = vec4(0.0);
-  color = over(color, rayColor, band(abs(across), 2.1) * 0.20 * rayFade * u_alpha);
-  color = over(color, rayColor, band(abs(across), 0.41) * 0.92 * rayFade * u_alpha);
-
-  float firstPhase = mod(along - u_phase * 34.0 + 22000.0, 22.0);
-  float firstDash = step(firstPhase, 9.0) + step(15.0, firstPhase) * step(firstPhase, 17.0);
-  float secondPhase = mod(along + u_phase * 27.0 + 27000.0, 27.0);
-  float secondDash = step(secondPhase, 3.0) + step(8.0, secondPhase) * step(secondPhase, 20.0);
-  color = over(color, vec3(0.749, 1.0, 0.961), band(abs(across + 4.3), 0.34) * min(1.0, firstDash) * 0.46 * u_alpha);
-  color = over(color, vec3(0.349, 0.839, 0.851), band(abs(across - 4.3), 0.34) * min(1.0, secondDash) * 0.46 * u_alpha);
-  gl_FragColor = vec4(color.rgb * color.a, color.a);
+  float alpha = band(abs(across), 0.41) * 0.92 * rayFade * u_alpha;
+  gl_FragColor = vec4(rayColor * alpha, alpha);
 }`;
 
 function compileShader(gl, type, source) {
@@ -270,7 +237,6 @@ export function appendRadarCommand(commands, vertices, options) {
     blend: options.blend,
     clip: options.clip ? { ...options.clip } : null,
     length: options.length,
-    phase: options.phase,
     alpha: options.alpha,
   });
 }
@@ -336,7 +302,6 @@ export class NativeWebGLDriver {
         coordinate: gl.getAttribLocation(radarProgram, "a_radarCoord"),
         resolution: gl.getUniformLocation(radarProgram, "u_resolution"),
         length: gl.getUniformLocation(radarProgram, "u_length"),
-        phase: gl.getUniformLocation(radarProgram, "u_phase"),
         alpha: gl.getUniformLocation(radarProgram, "u_alpha"),
       },
     };
@@ -431,7 +396,6 @@ export class NativeWebGLDriver {
     gl.vertexAttribPointer(radar.coordinate, 2, gl.FLOAT, false, 16, 8);
     gl.uniform2f(radar.resolution, this.canvas.width, this.canvas.height);
     gl.uniform1f(radar.length, Math.max(1, Number(command.length) || 1));
-    gl.uniform1f(radar.phase, Number(command.phase) || 0);
     gl.uniform1f(radar.alpha, Math.max(0, Math.min(1, Number(command.alpha) || 0)));
     gl.drawArrays(gl.TRIANGLES, 0, data.length / 4);
     this.stats.drawCalls += 1;

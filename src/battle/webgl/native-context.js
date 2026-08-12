@@ -435,7 +435,7 @@ export class NativeBattleContext {
     drawNativeProjectileBatch(this, projectiles, ownSeat);
   }
 
-  drawRadarSweep(sourceX, sourceY, edgeX, edgeY, elapsed = 0) {
+  drawRadarSweep(sourceX, sourceY, edgeX, edgeY) {
     const source = this.point(sourceX, sourceY);
     const edge = this.point(edgeX, edgeY);
     const dx = edge.x - source.x;
@@ -444,12 +444,12 @@ export class NativeBattleContext {
     const logicalLength = Math.max(1e-6, Math.hypot(edgeX - sourceX, edgeY - sourceY));
     const nx = -dy / screenLength;
     const ny = dx / screenLength;
-    const halfWidth = 7.2 * matrixScale(this.state.transform);
+    const halfWidth = 1.2 * matrixScale(this.state.transform);
     const corners = [
-      { x: source.x - nx * halfWidth, y: source.y - ny * halfWidth, along: 0, across: -7.2 },
-      { x: source.x + nx * halfWidth, y: source.y + ny * halfWidth, along: 0, across: 7.2 },
-      { x: edge.x + nx * halfWidth, y: edge.y + ny * halfWidth, along: logicalLength, across: 7.2 },
-      { x: edge.x - nx * halfWidth, y: edge.y - ny * halfWidth, along: logicalLength, across: -7.2 },
+      { x: source.x - nx * halfWidth, y: source.y - ny * halfWidth, along: 0, across: -1.2 },
+      { x: source.x + nx * halfWidth, y: source.y + ny * halfWidth, along: 0, across: 1.2 },
+      { x: edge.x + nx * halfWidth, y: edge.y + ny * halfWidth, along: logicalLength, across: 1.2 },
+      { x: edge.x - nx * halfWidth, y: edge.y - ny * halfWidth, along: logicalLength, across: -1.2 },
     ];
     const vertices = [];
     for (const index of [0, 1, 2, 0, 2, 3]) {
@@ -460,7 +460,6 @@ export class NativeBattleContext {
       blend: this.state.globalCompositeOperation,
       clip: this.state.clip,
       length: logicalLength,
-      phase: elapsed,
       alpha: this.state.globalAlpha,
     });
   }

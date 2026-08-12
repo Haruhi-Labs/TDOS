@@ -183,43 +183,23 @@ export function drawYukiRadar(ctx, frame) {
   const normalX = -rayDy / rayLength;
   const normalY = rayDx / rayLength;
 
-  // 资讯扫描束：不使用扇形铺色，以一条高精度亮芯、两条异步数据轨和离散校准节点
-  // 构成扫描线本体，保持科技感的同时不遮盖战区信息。
+  // 资讯扫描束只保留一条高精度中央亮线；离散校准节点提供科技感，不再绘制两侧边轨。
   ctx.lineCap = "round";
   if (ctx.nativeWebGL && typeof ctx.drawRadarSweep === "function") {
     ctx.globalAlpha = 1;
-    ctx.drawRadarSweep(source.x, source.y, edge.x, edge.y, elapsed);
+    ctx.drawRadarSweep(source.x, source.y, edge.x, edge.y);
   } else {
     const rayGradient = ctx.createLinearGradient(source.x, source.y, edge.x, edge.y);
     rayGradient.addColorStop(0, "rgba(220, 255, 248, 0.82)");
     rayGradient.addColorStop(0.5, "rgba(126, 237, 224, 0.62)");
     rayGradient.addColorStop(1, "rgba(61, 170, 190, 0.08)");
     ctx.strokeStyle = rayGradient;
-    ctx.globalAlpha = 0.2;
-    ctx.lineWidth = 4.2;
+    ctx.globalAlpha = 0.92;
+    ctx.lineWidth = 0.82;
     ctx.beginPath();
     ctx.moveTo(source.x, source.y);
     ctx.lineTo(edge.x, edge.y);
     ctx.stroke();
-
-    ctx.globalAlpha = 0.92;
-    ctx.lineWidth = 0.82;
-    ctx.stroke();
-
-    for (const rail of [-1, 1]) {
-      const railOffset = rail * 4.3;
-      ctx.strokeStyle = rail < 0 ? "rgba(191, 255, 245, 0.72)" : "rgba(89, 214, 217, 0.62)";
-      ctx.globalAlpha = 0.46;
-      ctx.lineWidth = 0.68;
-      ctx.setLineDash(rail < 0 ? [9, 6, 2, 5] : [3, 5, 12, 7]);
-      ctx.lineDashOffset = elapsed * (rail < 0 ? -34 : 27);
-      ctx.beginPath();
-      ctx.moveTo(source.x + normalX * railOffset, source.y + normalY * railOffset);
-      ctx.lineTo(edge.x + normalX * railOffset, edge.y + normalY * railOffset);
-      ctx.stroke();
-    }
-    ctx.setLineDash([]);
-    ctx.lineDashOffset = 0;
   }
 
   ctx.strokeStyle = "#b9f8ef";
