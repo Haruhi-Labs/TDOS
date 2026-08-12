@@ -676,6 +676,17 @@ export function drawProjectile(ctx, projectile, isOwnTeam) {
   ctx.restore();
 }
 
+function drawProjectiles(ctx, projectiles, ownSeat) {
+  if (ctx?.nativeWebGL && typeof ctx.drawProjectileBatch === "function") {
+    ctx.drawProjectileBatch(projectiles, ownSeat);
+    return;
+  }
+  for (const projectile of projectiles || []) {
+    if (!projectile?.alive) continue;
+    drawProjectile(ctx, projectile, projectile.teamSeat === ownSeat);
+  }
+}
+
 export function drawBurst(ctx, burst) {
   if (!burst) {
     return;
@@ -1103,12 +1114,7 @@ export function drawBattleWorld(ctx, frame) {
   }
 
   if (Array.isArray(state.projectiles)) {
-    for (const projectile of state.projectiles) {
-      if (!projectile || !projectile.alive) {
-        continue;
-      }
-      drawProjectile(ctx, projectile, projectile.teamSeat === ownSeat);
-    }
+    drawProjectiles(ctx, state.projectiles, ownSeat);
   }
 
   const ownSelectedKey = selectedKeyForTeam(ownTeam);

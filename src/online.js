@@ -73,9 +73,11 @@ import {
   t,
   translateServerText,
 } from "./i18n.js";
+import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
+let battleRenderer = null;
 let ac = null; // AbortController：统一移除 window 级监听
 let rafId = 0; // 渲染循环句柄
 let running = false; // 渲染循环开关
@@ -95,7 +97,8 @@ function addWin(type, handler) {
 
 function cacheDom() {
   canvas = document.getElementById("gameCanvas");
-  ctx = canvas.getContext("2d");
+  battleRenderer = createNativeBattleRenderer(canvas);
+  ctx = battleRenderer.ctx;
   ui = {
   serverTargetValue: document.getElementById("serverTargetValue"),
   connectBtn: document.getElementById("connectBtn"),
@@ -1218,6 +1221,7 @@ function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
 
 function renderFrame() {
   if (!running) return;
+  battleRenderer.beginFrame();
   const state = stateSync.getRenderState();
   app.lastRenderState = state;
 
@@ -1244,6 +1248,7 @@ function renderFrame() {
     if (app.room?.status === "countdown") {
       drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - stateSync.estimateServerNowMs());
     }
+    battleRenderer.present();
     rafId = requestAnimationFrame(renderFrame);
     return;
   }
@@ -1302,6 +1307,8 @@ function renderFrame() {
   if (app.room?.status === "countdown") {
     drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - stateSync.estimateServerNowMs());
   }
+
+  battleRenderer.present();
 
   rafId = requestAnimationFrame(renderFrame);
 }
@@ -2058,6 +2065,8 @@ function unmount() {
     charSelect.hide();
   }
   charSelect = null;
+  battleRenderer?.destroy();
+  battleRenderer = null;
   actionTransport = null;
 }
 

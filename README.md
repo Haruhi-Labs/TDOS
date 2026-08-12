@@ -66,7 +66,7 @@ npm run test:ai:simulation # 16 局固定种子双 AI 模拟对战
 - **统一动作、时钟与显示插值**:`shared/protocol/match-actions.js` 定义单人/多人共用动作，`src/battle/action-transport.js` 只区分本地或远程传输；单人和服务端共用固定 30Hz 逻辑时钟，单人逻辑帧与多人 15Hz 快照都通过 `src/battle/state-interpolation.js` 生成平滑显示状态，且从不写回权威模拟。
 - **规则版本保护**:`shared/protocol/ruleset-version.js` 在客户端与服务端之间协商规则版本。显式版本冲突会阻止进入对局；未声明版本的旧端暂时走兼容模式。
 - **联机服务端**:`server/server.js`(基于 `ws`)只负责编排连接和消息；房间注册、生命周期、输入队列、比赛循环与快照流已拆到 `server/` 下的独立模块。
-- **渲染**:Canvas 2D,按设备像素绘制,矢量线条像素级清晰。
+- **渲染**:战场由原生 WebGL2 直接绘制，使用批量弹体、GPU 三角形与有界字形/立绘纹理缓存；不支持 WebGL2 的设备使用同源 WebGL1 后端，仅在 WebGL 完全不可用时保留 Canvas 2D 可用性兜底。菜单与普通页面仍按各自现有 DOM/Canvas 实现。
 
 详细依赖方向、权威边界、修改定位表和验证要求见 [`docs/architecture.md`](docs/architecture.md)；测试站发布、正式站隔离与回滚约定见 [`docs/operations.md`](docs/operations.md)。
 
@@ -82,7 +82,7 @@ src/
   solo.js             单人对战
   online.js           在线对战页面编排（快照显示状态在 online/state-sync.js）
   character-select.js 翻书式角色选择（立绘在 character-select/portraits.js）
-  battle/             单人/联机共用相机、输入、HUD、显示插值与渲染（专项效果位于 render/）
+  battle/             单人/联机共用相机、输入、HUD、显示插值与渲染（专项效果位于 render/，原生 GPU 后端位于 webgl/）
   i18n/               日英词典与角色文本
   changelog/          当前版本元数据与多语言版本更新数据
   tutorial.js         新手引导教程

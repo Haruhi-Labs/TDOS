@@ -24,6 +24,7 @@
     "test:ui:changelog": "node scripts/verify-changelog-ui.mjs",
     "test:ui:interaction": "node scripts/verify-interaction-feedback.mjs",
     "test:ui:koizumi": "node scripts/verify-koizumi-barrier-render.mjs",
+    "test:ui:webgl": "node scripts/verify-native-webgl-battlefield.mjs",
     "test:api": "node scripts/verify-public-api.mjs",
     "test:actions": "node scripts/verify-action-protocol.mjs",
     "test:ruleset": "node scripts/verify-ruleset-version.mjs",
@@ -33,7 +34,7 @@
     "test:server:runtime": "node scripts/verify-server-runtime.mjs",
     "test:network:load": "node scripts/network-load-test.mjs",
     "check:modules": "node scripts/check-module-boundaries.mjs",
-    "test:all": "npm run check:modules && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:ai:simulation && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:changelog && npm run test:ui:interaction && npm run test:ui:koizumi && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:network:guards"
+    "test:all": "npm run check:modules && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:ai:simulation && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:changelog && npm run test:ui:interaction && npm run test:ui:koizumi && npm run test:ui:webgl && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:network:guards"
   },
   "dependencies": {
     "ws": "^8.18.0"

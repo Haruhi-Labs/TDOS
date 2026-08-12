@@ -7,7 +7,7 @@
 ```text
 页面编排（solo.js / online.js / server.js）
   ├─ 领域入口（game-core.js / i18n.js / character-select.js / battle/render.js）
-  │    └─ 单一职责模块（shared/game/*、src/i18n/*、src/character-select/*、src/battle/render/*）
+  │    └─ 单一职责模块（shared/game/*、src/i18n/*、src/character-select/*、src/battle/render/*、src/battle/webgl/*）
   └─ 基础设施（shared/protocol/*、battle/action-transport.js、online/*、network-patch.js、server/*）
 ```
 
@@ -69,7 +69,12 @@
 ### 战斗界面
 
 - `src/battle/camera.js`、`input.js`、`throttle.js`、`hud.js`、`template.js`：分别负责相机、命中与航线输入、推进控件、战斗 HUD 和公共 DOM 骨架。
-- `src/battle/render.js`：单人、联机和观战共用的 Canvas 战场渲染入口。
+- `src/battle/render.js`：单人、联机和观战共用的战场绘制语义入口；只描述绘制顺序和视觉参数，不管理 GPU 生命周期。
+- `src/battle/native-webgl-renderer.js`：生产战场渲染后端入口，优先创建原生 WebGL2，失败时使用同一套几何与批处理实现回退到原生 WebGL1；只有两者都不可用才启用 Canvas 2D 可用性兜底。禁止把完整 2D 战场逐帧上传为纹理。
+- `src/battle/webgl/driver.js`：WebGL1/2 着色器、动态缓冲、纹理、混合、裁剪、上下文释放与 GPU 绘制提交。
+- `src/battle/webgl/native-context.js`：把共享绘制语义转换为原生三角形、弹体批次和字形/立绘纹理命令；文字允许离屏生成小型字形纹理，但最终战场合成始终由 WebGL 完成。
+- `src/battle/webgl/geometry.js`、`matrix.js`、`color.js`：无 DOM 的路径三角化、虚线/曲线采样、二维矩阵和颜色/渐变计算；`projectile-batch.js` 负责将普通弹体与猫爪弹合并为固定数量的 GPU 批次。
+- `src/battle/webgl/text-cache.js`：有界字形纹理缓存，避免战斗文字逐帧上传。
 - `src/battle/state-interpolation.js`：单人逻辑帧与联机快照共用的纯显示插值，统一处理舰船、侦察机、僚机、弹体、光束和视觉效果。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
 - `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；双方都能看到波纹，但只有施放方获得波带覆盖区域的真实视野。
@@ -118,6 +123,7 @@
 | AI 角色识别与针对性反制 | `shared/game/bot-character-strategy.js` | `shared/game/bot-controller.js`、角色技能叶模块、核心 AI 测试 |
 | 侦察战区规划与长门僚机编组 | `shared/game/bot-scout-strategy.js` | `shared/game/bot-controller.js`、`shared/game-core.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
+| WebGL 图元、批处理与着色器 | `src/battle/webgl/*` | `src/battle/native-webgl-renderer.js`、`npm run test:ui:webgl` |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
 | 朝仓视野波视觉 | `src/battle/render/vision-wave.js` | 视野波规则与单人/联机/观战回归 |
 | 古泉能量圈视觉 | `src/battle/render/koizumi-barrier.js` | 弹体、射线、冲撞事件与单人/联机/观战回归 |
@@ -145,6 +151,7 @@
 7. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
 8. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
 9. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
+10. 战场视觉或渲染后端改动运行 `npm run test:ui:webgl`，核对 WebGL2/WebGL1 一致性、Canvas 视觉基准、弹幕压力性能和逐帧纹理上传守卫。
 
 `npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
 
