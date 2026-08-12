@@ -25,6 +25,17 @@ const LEGACY_NICKNAME_COOKIE = "haruhi_online_nickname";
 export const FACTIONS = ["blue", "red"];
 const NICKNAME_MAX = 16;
 
+function createClientId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `client-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
+}
+
+function sanitizeClientId(value) {
+  return String(value || "").trim().slice(0, 160);
+}
+
 function hasStorage() {
   return typeof window !== "undefined" && !!window.localStorage;
 }
@@ -67,6 +78,7 @@ export function sanitizeFaction(faction) {
 
 function defaultProfile() {
   return {
+    clientId: createClientId(),
     nickname: "",
     loadout: cloneLoadout(DEFAULT_TEAM_LOADOUT),
     faction: "blue",
@@ -78,6 +90,7 @@ function normalizeProfile(raw) {
   const base = defaultProfile();
   if (!raw || typeof raw !== "object") return base;
   return {
+    clientId: sanitizeClientId(raw.clientId) || base.clientId,
     nickname: sanitizeNickname(raw.nickname),
     loadout: normalizeLoadout(raw.loadout || {}, DEFAULT_TEAM_LOADOUT),
     faction: sanitizeFaction(raw.faction),
@@ -124,6 +137,7 @@ function ensureLoaded() {
   const existing = safeParse(window.localStorage.getItem(PROFILE_KEY));
   if (existing) {
     cache = normalizeProfile(existing);
+    persist(); // 老档案首次读取时补齐匿名统计标识。
   } else {
     cache = migrateFromLegacy();
     persist(); // 落盘新键，之后不再触发迁移
@@ -136,6 +150,7 @@ function ensureLoaded() {
 export function getProfile() {
   const p = ensureLoaded();
   return {
+    clientId: p.clientId,
     nickname: p.nickname,
     loadout: cloneLoadout(p.loadout),
     faction: p.faction,
@@ -145,6 +160,7 @@ export function getProfile() {
 export function saveProfile(patch = {}) {
   const p = ensureLoaded();
   if ("nickname" in patch) p.nickname = sanitizeNickname(patch.nickname);
+  if ("clientId" in patch) p.clientId = sanitizeClientId(patch.clientId) || p.clientId;
   if ("loadout" in patch) p.loadout = normalizeLoadout(patch.loadout || {}, DEFAULT_TEAM_LOADOUT);
   if ("faction" in patch) p.faction = sanitizeFaction(patch.faction);
   persist();
@@ -162,6 +178,10 @@ export function setLoadout(loadout) {
 
 export function getNickname() {
   return ensureLoaded().nickname;
+}
+
+export function getClientId() {
+  return ensureLoaded().clientId;
 }
 
 export function setNickname(name) {

@@ -74,6 +74,7 @@ import {
   translateServerText,
 } from "./i18n.js";
 import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
+import { statisticsProfile } from "./statistics-client.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
@@ -499,6 +500,7 @@ function connectServer() {
         socketSend({ type: "set_name", name });
       }
       socketSend({ type: "set_loadout", loadout: app.playerLoadout });
+      socketSend({ type: "set_statistics_profile", profile: statisticsProfile() });
       socketSend({ type: "list_rooms" });
       snapshotTransport.startPingLoop();
     });

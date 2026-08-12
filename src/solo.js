@@ -86,6 +86,7 @@ import {
   splitLabel as localizedSplitLabel,
   t,
 } from "./i18n.js";
+import { reportSoloMatchStatistics } from "./statistics-client.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
@@ -193,6 +194,9 @@ function initApp() {
   gameOverLogged: false,
   tickRunning: false,
   paused: false,
+  statisticsEventId: "",
+  statisticsStartedAt: 0,
+  statisticsReported: false,
   mobileMode: false,
   stars: Array.from({ length: 220 }, () => ({
     x: Math.random() * LOGICAL,
@@ -414,6 +418,11 @@ function resetMatch(logMessage = true) {
     app.enemyLoadout = cloneLoadout(DEFAULT_AI_LOADOUT); // 教程敌舰技能由仿真层禁用，阵容只用于既有绘制结构
   }
   app.sim = createSimulation();
+  app.statisticsEventId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `solo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  app.statisticsStartedAt = Date.now();
+  app.statisticsReported = false;
   app.state = app.sim.serializeState();
   app.renderPreviousState = app.state;
   app.renderCurrentState = app.state;
@@ -769,6 +778,19 @@ function showResultScreen(winnerSeat) {
   card.classList.remove("result-in");
   void card.offsetWidth;
   card.classList.add("result-in");
+
+  if (app.campaign === "standard" && !app.statisticsReported) {
+    app.statisticsReported = true;
+    void reportSoloMatchStatistics({
+      eventId: app.statisticsEventId,
+      startedAt: app.statisticsStartedAt,
+      difficulty: getDifficulty(),
+      summary: app.sim.statisticsSummary(),
+      renderer: battleRenderer?.mode || "unknown",
+    }).catch(() => {
+      // 统计完全旁路战斗和结算；网络不可用时不打扰玩家，也不做重试风暴。
+    });
+  }
 }
 
 function drawTutorialIllustration(kind) {
