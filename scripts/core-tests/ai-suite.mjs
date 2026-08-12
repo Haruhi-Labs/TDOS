@@ -1311,11 +1311,128 @@ function aiKoizumiBarrierBreachCheck() {
     "朝仓破盾路线没有径直瞄准古泉能量圈圆心",
   );
 
-  runSteps(sim, 4.8);
+  // 本测试验证的是破盾决策与执行，持续提供等价于可见状态的旗舰接触，避免反应延迟
+  // 把手工挪动前的出生点轨迹掺入预判而令测试结果依赖随机改航时机。
+  for (let tick = 0; tick < Math.ceil(4.8 / TICK_DT); tick += 1) {
+    bot.rememberContact(defendingMain, "visible");
+    sim.update(TICK_DT);
+  }
   assert(!sim.teamA.serialize().koizumiBarrier.active, "朝仓破盾AI没有在技能窗口内实际撞破闭锁空间");
   assert(
     sim.koizumiBarrierImpacts.some((impact) => impact.kind === "ram" && impact.ramKind === "blade_queen"),
     "朝仓破盾AI没有产生真实的刀锋女王破盾事件",
+  );
+}
+
+function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    aiDifficulty: "master",
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      // 刻意使用完全不具备破盾冲撞的阵容，验证策略不依赖系统匹配克制角色。
+      B: { main: "kyon", sub1: "yuki", sub2: "shamisen" },
+    },
+  });
+  sim.setCombatEnabled("A", false);
+  const bot = sim.botBySeat("B");
+  const defendingMain = sim.teamA.ships.main;
+  const attackingTeam = sim.teamB;
+  const attackingMain = attackingTeam.ships.main;
+  defendingMain.x = 650;
+  defendingMain.y = 720;
+  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
+  defendingMain.route = null;
+  attackingMain.x = 930;
+  attackingMain.y = 720;
+  attackingMain.angle = Math.PI;
+  attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
+  attackingMain.route = null;
+
+  bot.rememberContact(defendingMain, "visible");
+  let context = bot.buildTacticalContext(attackingMain, bot.selectEnemyFocus(attackingMain));
+  assert(!context.barrierTactics.breachShipKey, "无破盾阵容被AI凭空分配了破盾能力");
+  assert(context.barrierTactics.infiltration?.phase === "stage", "无破盾阵容没有先在能量圈外组织突入");
+  assert(
+    context.barrierTactics.infiltration.splitShipKeys.length === 2,
+    "无破盾阵容没有准备拆分舰队形成多方向切入",
+  );
+
+  let maximumInsideCount = 0;
+  let sawCommit = false;
+  let sawSeparatedApproaches = false;
+  const maximumTicks = Math.ceil(30 / TICK_DT);
+  for (let tick = 0; tick < maximumTicks; tick += 1) {
+    sim.update(TICK_DT);
+    context = bot.currentContext;
+    const infiltration = context?.barrierTactics?.infiltration;
+    if (infiltration?.phase === "commit") sawCommit = true;
+    const routes = attackingTeam.getPlayerShips()
+      .filter((ship) => ship.route)
+      .map((ship) => ship.route.p2);
+    if (
+      routes.length === 3
+      && Math.max(
+        Math.hypot(routes[0].x - routes[1].x, routes[0].y - routes[1].y),
+        Math.hypot(routes[0].x - routes[2].x, routes[0].y - routes[2].y),
+        Math.hypot(routes[1].x - routes[2].x, routes[1].y - routes[2].y),
+      ) > 150
+    ) {
+      sawSeparatedApproaches = true;
+    }
+    const radius = context?.barrierTactics?.enemy?.radius || defendingMain.effectiveVision();
+    const insideCount = attackingTeam.getPlayerShips().filter((ship) => (
+      ship.alive
+      && Math.hypot(ship.x - defendingMain.x, ship.y - defendingMain.y)
+        <= radius - Math.max(8, ship.radius)
+    )).length;
+    maximumInsideCount = Math.max(maximumInsideCount, insideCount);
+  }
+
+  assert(attackingTeam.splitLevel === 2, "无破盾阵容没有完成多路突入所需的舰队拆分");
+  assert(sawSeparatedApproaches, "无破盾阵容没有从不同角度接近古泉能量圈");
+  assert(sawCommit, "无破盾阵容在集结完成后没有同步突入能量圈");
+  assert(maximumInsideCount >= 2, "无破盾阵容没有形成至少两舰同时入圈的交叉火力");
+  assert(sim.teamA.hullRatio() < 0.9, "无破盾阵容进入圈内后仍未能对古泉舰队造成有效伤害");
+  assert(
+    sim.teamA.koizumiBarrier.disabledAt === null,
+    "无破盾阵容错误地产生了破盾碰撞事件",
+  );
+
+  const normalSim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    aiDifficulty: "normal",
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "yuki", sub2: "shamisen" },
+    },
+  });
+  const normalBot = normalSim.botBySeat("B");
+  const normalDefender = normalSim.teamA.ships.main;
+  const normalAttacker = normalSim.teamB.ships.main;
+  normalDefender.x = 650;
+  normalDefender.y = 720;
+  normalAttacker.x = 892;
+  normalAttacker.y = 720;
+  normalBot.rememberContact(normalDefender, "visible");
+  const normalContext = normalBot.buildTacticalContext(
+    normalAttacker,
+    normalBot.selectEnemyFocus(normalAttacker),
+  );
+  assert(normalContext.barrierTactics.infiltration, "普通AI没有掌握进入能量圈内才能有效攻击的基本规则");
+  assert(
+    normalContext.barrierTactics.infiltration.splitShipKeys.length === 0,
+    "普通AI错误启用了困难以上的多路同步突入",
+  );
+  normalBot.issueMovement(normalContext);
+  assert(
+    Math.hypot(normalAttacker.route.p2.x - normalDefender.x, normalAttacker.route.p2.y - normalDefender.y)
+      < normalContext.barrierTactics.enemy.radius,
+    "普通AI没有以现有编队直接进入古泉能量圈",
   );
 }
 
@@ -1616,6 +1733,7 @@ export function runAiSuite() {
   aiKoizumiBarrierDefenseCheck();
   aiKoizumiBarrierThreatEvasionCheck();
   aiKoizumiBarrierBreachCheck();
+  aiKoizumiBarrierNoBreakerInfiltrationCheck();
   aiKoizumiBarrierRangedCounterplayCheck();
   aiHaruhiOtherworlderBarrierBreachCheck();
   aiFuture1096FormDecisionCheck();

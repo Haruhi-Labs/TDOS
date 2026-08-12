@@ -3,6 +3,7 @@ import {
   MatchSimulation,
   TICK_DT,
   __resetEntityIds,
+  distance,
 } from "../shared/game-core.js";
 
 const MATCH_LIMIT_SECONDS = 240;
@@ -136,7 +137,10 @@ function runBattle({ index, loadoutA, loadoutB }) {
     for (const bot of Object.values(simulation.bots)) {
       const tactics = bot.currentContext?.barrierTactics;
       if (tactics?.own?.active) barrierDefenseTicks += 1;
-      if (tactics?.enemy?.active && (tactics.breachShipKey || tactics.infiltratorKey)) {
+      if (
+        tactics?.enemy?.active
+        && (tactics.breachShipKey || tactics.infiltration?.shipKeys?.length)
+      ) {
         barrierCounterplayTicks += 1;
       }
       if (tactics?.enemy && !tactics.enemy.active && tactics.enemy.disabledRemaining > 0) {
@@ -275,6 +279,67 @@ function runBarrierBreachScenario(breakerKind, seed) {
   };
 }
 
+function runBarrierInfiltrationScenario(seed) {
+  __resetEntityIds(1);
+  const simulation = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    aiDifficulty: "master",
+    teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "yuki", sub2: "shamisen" },
+    },
+  });
+  simulation.setCombatEnabled("A", false);
+  const defendingMain = simulation.teamA.ships.main;
+  const attackingTeam = simulation.teamB;
+  const attackingMain = attackingTeam.ships.main;
+  const bot = simulation.botBySeat("B");
+  defendingMain.x = 650;
+  defendingMain.y = 720;
+  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
+  defendingMain.route = null;
+  attackingMain.x = 930;
+  attackingMain.y = 720;
+  attackingMain.angle = Math.PI;
+  attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
+  attackingMain.route = null;
+  bot.moveTimer = 0;
+  bot.rememberContact(defendingMain, "visible");
+
+  let maximumInsideCount = 0;
+  let sawStage = false;
+  let sawCommit = false;
+  const previousRandom = Math.random;
+  Math.random = seededRandom(seed);
+  try {
+    const maximumTicks = Math.ceil(30 / TICK_DT);
+    for (let tick = 0; tick < maximumTicks; tick += 1) {
+      simulation.update(TICK_DT);
+      const tactics = bot.currentContext?.barrierTactics;
+      sawStage ||= tactics?.infiltration?.phase === "stage";
+      sawCommit ||= tactics?.infiltration?.phase === "commit";
+      const radius = tactics?.enemy?.radius || defendingMain.effectiveVision();
+      const insideCount = attackingTeam.getPlayerShips().filter((ship) => (
+        ship.alive
+        && distance(ship.x, ship.y, defendingMain.x, defendingMain.y)
+          <= radius - Math.max(8, ship.radius)
+      )).length;
+      maximumInsideCount = Math.max(maximumInsideCount, insideCount);
+    }
+  } finally {
+    Math.random = previousRandom;
+  }
+  return {
+    sawStage,
+    sawCommit,
+    maximumInsideCount,
+    defenderHullRatio: Number(simulation.teamA.hullRatio().toFixed(4)),
+    barrierWasDisrupted: Number.isFinite(simulation.teamA.koizumiBarrier.disabledAt),
+  };
+}
+
 const originalRandom = Math.random;
 const totals = {
   flagshipAttempts: {},
@@ -314,6 +379,7 @@ const barrierBreachScenarios = [
   runBarrierBreachScenario("koizumi_orb", 0x0b12),
   runBarrierBreachScenario("haruhi_otherworlder", 0xa117),
 ];
+const barrierInfiltrationScenario = runBarrierInfiltrationScenario(0x1f117);
 const summary = {
   matches: results.length,
   completed: completed.length,
@@ -339,6 +405,7 @@ const summary = {
     beamBlocks: results.reduce((sum, result) => sum + result.barrierImpacts.beam, 0),
     ramBreaches: results.reduce((sum, result) => sum + result.barrierImpacts.ram, 0),
     fixedBreachScenarios: barrierBreachScenarios,
+    noBreakerInfiltration: barrierInfiltrationScenario,
   },
   scoutTactics: {
     yukiLaunches: totals.scoutLaunches.yuki || 0,
@@ -373,6 +440,14 @@ assert(summary.barrierTactics.projectileBlocks + summary.barrierTactics.beamBloc
 assert(
   barrierBreachScenarios.every((scenario) => scenario.breached),
   `固定阵容破盾模拟失败：${barrierBreachScenarios.filter((scenario) => !scenario.breached).map((scenario) => scenario.breakerKind).join(",")}`,
+);
+assert(
+  barrierInfiltrationScenario.sawStage
+    && barrierInfiltrationScenario.sawCommit
+    && barrierInfiltrationScenario.maximumInsideCount >= 2
+    && barrierInfiltrationScenario.defenderHullRatio < 0.9
+    && !barrierInfiltrationScenario.barrierWasDisrupted,
+  `无破盾阵容常规突入模拟失败：${JSON.stringify(barrierInfiltrationScenario)}`,
 );
 for (const characterId of ["haruhi", "tsuruya", "asakura"]) {
   assert((totals.flagshipCasts[characterId] || 0) > 0, `${characterId} 旗舰主动技能在模拟对战中从未成功释放`);

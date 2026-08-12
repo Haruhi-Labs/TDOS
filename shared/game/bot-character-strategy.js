@@ -11,6 +11,12 @@ const BREAKER_PRIORITY = Object.freeze({
   haruhi_otherworlder: 1,
 });
 
+const INFILTRATION_SLOT_ANGLES = Object.freeze({
+  main: 0,
+  sub1: 0.72,
+  sub2: -0.72,
+});
+
 function remaining(until, now) {
   return Math.max(0, Number(until || 0) - now);
 }
@@ -287,38 +293,111 @@ function infiltrationScore(ship) {
   return hpRatio * 0.7 + energyRatio * 0.3 + Number(ship.baseSpeed?.() || 0) / 80;
 }
 
+function infiltrationPoint(infiltration, shipKey, phase = infiltration?.phase) {
+  if (!infiltration) {
+    return null;
+  }
+  const angle = infiltration.approachAngle + (INFILTRATION_SLOT_ANGLES[shipKey] || 0);
+  const radius = phase === "commit"
+    ? infiltration.commitRadius
+    : infiltration.stageRadius;
+  return {
+    x: infiltration.centerX + Math.cos(angle) * radius,
+    y: infiltration.centerY + Math.sin(angle) * radius,
+    angle,
+    radius,
+  };
+}
+
+function buildBarrierInfiltration(team, enemy, { coordinated = false } = {}) {
+  const playerShips = (team?.getPlayerShips?.() || []).filter((ship) => ship?.alive);
+  const livingShips = playerShips
+    .filter((ship) => ship.canControl?.())
+    .sort((left, right) => infiltrationScore(right) - infiltrationScore(left));
+  if (!enemy?.active || livingShips.length === 0) {
+    return null;
+  }
+
+  // 无破盾能力时不等待系统“补发”克制角色，而是从现有阵容里组织常规突入。
+  // 优先保全濒死舰，但至少保留一支能真正进入圈内作战的力量，避免永久在盾外空射。
+  const healthyShips = livingShips.filter((ship) => (
+    Number(ship.hp || 0) / Math.max(1, Number(ship.maxHp || 1)) >= 0.42
+  ));
+  const minimumForce = Math.min(2, livingShips.length);
+  const assaultShips = [...healthyShips];
+  for (const ship of livingShips) {
+    if (assaultShips.length >= minimumForce) break;
+    if (!assaultShips.includes(ship)) assaultShips.push(ship);
+  }
+  if (assaultShips.length === 0) assaultShips.push(livingShips[0]);
+
+  const centerX = enemy.x;
+  const centerY = enemy.y;
+  const formationX = assaultShips.reduce((sum, ship) => sum + ship.x, 0) / assaultShips.length;
+  const formationY = assaultShips.reduce((sum, ship) => sum + ship.y, 0) / assaultShips.length;
+  const approachAngle = Math.atan2(formationY - centerY, formationX - centerX);
+  const plan = {
+    phase: "stage",
+    shipKeys: assaultShips.map((ship) => ship.key),
+    splitShipKeys: coordinated && Number(team.hullRatio?.() || 0) >= 0.56
+      ? playerShips
+          .filter((ship) => ship.key !== "main" && ship.isAttached?.())
+          .filter((ship) => Number(ship.hp || 0) / Math.max(1, Number(ship.maxHp || 1)) >= 0.38)
+          .map((ship) => ship.key)
+      : [],
+    stagedShipKeys: [],
+    insideShipKeys: [],
+    centerX,
+    centerY,
+    approachAngle,
+    stageRadius: enemy.radius + 82,
+    commitRadius: Math.max(42, enemy.radius * 0.4),
+  };
+
+  for (const ship of assaultShips) {
+    const radialDistance = distance(ship.x, ship.y, centerX, centerY);
+    if (radialDistance <= enemy.radius - Math.max(8, Number(ship.radius || 0))) {
+      plan.insideShipKeys.push(ship.key);
+      plan.stagedShipKeys.push(ship.key);
+      continue;
+    }
+    const stagePoint = infiltrationPoint(plan, ship.key, "stage");
+    if (distance(ship.x, ship.y, stagePoint.x, stagePoint.y) <= 72) {
+      plan.stagedShipKeys.push(ship.key);
+    }
+  }
+
+  // 任一舰已经入圈后必须继续跟进，不能让先头舰孤军作战；尚未突入时则等各路舰船
+  // 到达各自的外圈切入点，再同步越过能量圈边界。
+  if (
+    plan.insideShipKeys.length > 0
+    || (
+      plan.splitShipKeys.length === 0
+      && plan.stagedShipKeys.length === plan.shipKeys.length
+    )
+  ) {
+    plan.phase = "commit";
+  }
+  return plan;
+}
+
 export function buildKoizumiBarrierTactics({
   team,
   enemyMainContact,
   main,
-  detachedShips,
   enemyContacts,
   now,
   legacy = false,
   advanced = false,
-  mainHull = 1,
-  localAdvantage = 1,
-  killWindow = false,
 }) {
   const own = legacy ? null : ownKoizumiBarrier(team);
   const enemy = legacy ? null : knownKoizumiBarrier(enemyMainContact, now);
   const breaker = advanced && enemy?.active
     ? chooseKoizumiBarrierBreaker(team)
     : null;
-  const possibleInfiltrators = advanced && enemy?.active && !breaker
-    ? (detachedShips || [])
-        .filter((ship) => Number(ship.hp || 0) / Math.max(1, Number(ship.maxHp || 1)) > 0.48)
-        .sort((left, right) => infiltrationScore(right) - infiltrationScore(left))
-    : [];
-  const infiltratorKey = possibleInfiltrators[0]?.key || (
-    advanced
-    && enemy?.active
-    && !breaker
-    && mainHull > 0.55
-    && (localAdvantage > 1.05 || killWindow)
-      ? "main"
-      : null
-  );
+  const infiltration = !legacy && enemy?.active && !breaker
+    ? buildBarrierInfiltration(team, enemy, { coordinated: advanced })
+    : null;
   const incoming = advanced && own?.active
     ? incomingKoizumiBarrierBreaker(enemyContacts, main, own, now)
     : null;
@@ -328,15 +407,16 @@ export function buildKoizumiBarrierTactics({
     breachShipKey: breaker?.ship?.key || null,
     breachKind: breaker?.kind || null,
     breachActive: Boolean(breaker?.active),
-    infiltratorKey,
+    infiltration,
     incoming,
   };
 }
 
-export function koizumiBarrierRoleDirective(ship, role, enemyEstimate, barrier, laneSign = 1) {
+export function koizumiBarrierRoleDirective(ship, role, enemyEstimate, tactics, laneSign = 1) {
   if (!ship || !enemyEstimate || !["breach", "infiltrate"].includes(role)) {
     return null;
   }
+  const barrier = tactics?.enemy;
   const centerX = barrier?.x ?? enemyEstimate.x;
   const centerY = barrier?.y ?? enemyEstimate.y;
   if (role === "breach") {
@@ -352,23 +432,22 @@ export function koizumiBarrierRoleDirective(ship, role, enemyEstimate, barrier, 
     };
   }
 
-  const enemySideX = -Math.sin(Number(enemyEstimate.angle) || 0);
-  const enemySideY = Math.cos(Number(enemyEstimate.angle) || 0);
-  const fromCenterX = ship.x - centerX;
-  const fromCenterY = ship.y - centerY;
-  const fromCenterLength = Math.max(1, Math.hypot(fromCenterX, fromCenterY));
-  const inwardRadius = Math.max(36, Number(barrier?.radius || 160) * 0.48);
-  const targetX = centerX + (fromCenterX / fromCenterLength) * inwardRadius + enemySideX * laneSign * 24;
-  const targetY = centerY + (fromCenterY / fromCenterLength) * inwardRadius + enemySideY * laneSign * 24;
+  const infiltration = tactics?.infiltration;
+  const point = infiltrationPoint(infiltration, ship.key);
+  if (!point) return null;
+  const committing = infiltration.phase === "commit";
   return {
     target: {
-      x: targetX,
-      y: targetY,
-      intentAngle: Math.atan2(centerY - targetY, centerX - targetX) - laneSign * Math.PI * 0.5,
-      preferredRange: inwardRadius,
+      x: point.x,
+      y: point.y,
+      intentAngle: Math.atan2(centerY - point.y, centerX - point.x) - laneSign * Math.PI * 0.5,
+      preferredRange: point.radius,
     },
-    throttle: { min: 1.04, max: 1.18 },
+    throttle: committing
+      ? { min: 1.12, max: 1.2 }
+      : { min: 0.94, max: 1.04 },
     role,
+    phase: infiltration.phase,
   };
 }
 
@@ -426,17 +505,14 @@ export function applyKoizumiBarrierMainStrategy({
     };
   }
 
-  if (enemy?.active && tactics.infiltratorKey === "main") {
-    const fromCenterX = main.x - enemy.x;
-    const fromCenterY = main.y - enemy.y;
-    const fromCenterLength = Math.max(1, Math.hypot(fromCenterX, fromCenterY));
-    const inwardRadius = Math.max(38, enemy.radius * 0.48);
+  if (enemy?.active && tactics.infiltration?.shipKeys?.includes("main")) {
+    const point = infiltrationPoint(tactics.infiltration, "main");
     return {
       ...target,
-      x: match.clampX(enemy.x + (fromCenterX / fromCenterLength) * inwardRadius, padding),
-      y: match.clampY(enemy.y + (fromCenterY / fromCenterLength) * inwardRadius, padding),
+      x: match.clampX(point.x, padding),
+      y: match.clampY(point.y, padding),
       intentAngle: Math.atan2(enemy.y - main.y, enemy.x - main.x) - flankSign * Math.PI * 0.5,
-      preferredRange: inwardRadius,
+      preferredRange: point.radius,
     };
   }
 

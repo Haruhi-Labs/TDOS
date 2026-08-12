@@ -325,7 +325,15 @@ export class BotController {
             breachShipKey: context.barrierTactics.breachShipKey || null,
             breachKind: context.barrierTactics.breachKind || null,
             breachActive: Boolean(context.barrierTactics.breachActive),
-            infiltratorKey: context.barrierTactics.infiltratorKey || null,
+            infiltration: context.barrierTactics.infiltration
+              ? {
+                  phase: context.barrierTactics.infiltration.phase,
+                  shipKeys: [...context.barrierTactics.infiltration.shipKeys],
+                  splitShipKeys: [...context.barrierTactics.infiltration.splitShipKeys],
+                  stagedShipKeys: [...context.barrierTactics.infiltration.stagedShipKeys],
+                  insideShipKeys: [...context.barrierTactics.infiltration.insideShipKeys],
+                }
+              : null,
             incomingKind: context.barrierTactics.incoming?.kind || null,
             incomingId: context.barrierTactics.incoming?.contact?.id || null,
           }
@@ -1592,14 +1600,10 @@ export class BotController {
       team: this.team,
       enemyMainContact,
       main,
-      detachedShips,
       enemyContacts: this.knownEnemyContacts({ maxAge: 4.5 }),
       now: this.team.match.elapsed,
       legacy: this.legacy,
       advanced: advancedCounterplay,
-      mainHull,
-      localAdvantage,
-      killWindow,
     });
 
     return {
@@ -1664,7 +1668,10 @@ export class BotController {
       }
       if (
         context.barrierTactics?.enemy?.active
-        && ["asakura", "koizumi"].includes(ship.characterId)
+        && (
+          ["asakura", "koizumi"].includes(ship.characterId)
+          || context.barrierTactics.infiltration?.splitShipKeys?.includes(ship.key)
+        )
         && elapsed > 4
         && context.fleetHull > 0.54
       ) {
@@ -1695,7 +1702,10 @@ export class BotController {
       }
       if (
         context.barrierTactics?.enemy?.active
-        && ["asakura", "koizumi"].includes(ship.characterId)
+        && (
+          ["asakura", "koizumi"].includes(ship.characterId)
+          || context.barrierTactics.infiltration?.splitShipKeys?.includes(ship.key)
+        )
         && elapsed > 8
         && context.fleetHull > 0.58
         && !context.overextended
@@ -2262,6 +2272,10 @@ export class BotController {
       enemyBarrier?.active
       && context.barrierTactics?.breachShipKey,
     );
+    const organizedInfiltration = Boolean(
+      enemyBarrier?.active
+      && context.barrierTactics?.infiltration?.shipKeys?.length,
+    );
     if (mode === "recover") {
       return context.edgePressure * 5 + (context.mainHull < 0.22 ? 1.8 : 0);
     }
@@ -2304,7 +2318,8 @@ export class BotController {
       return (context.killWindow ? 3.4 : 0)
         + (barrierBreachWindow ? 2.3 : 0)
         + (organizedBreach ? 0.9 : 0)
-        - (enemyBarrier?.active && !organizedBreach ? 1.15 : 0)
+        + (context.barrierTactics?.infiltration?.phase === "commit" ? 1.05 : 0)
+        - (enemyBarrier?.active && !organizedBreach && !organizedInfiltration ? 1.15 : 0)
         + (context.localAdvantage > 1 ? 1.9 : 0)
         + (context.closeoutWindow ? 1.6 : 0) // 收尾窗口：强力倾向冲杀残敌
         + (context.intelSolid ? 1 : -0.55)
@@ -2329,7 +2344,8 @@ export class BotController {
     }
     if (mode === "cutoff") {
       return (context.intelSolid ? 1.3 : -0.2)
-        + (enemyBarrier?.active && context.barrierTactics?.infiltratorKey ? 0.9 : 0)
+        + (context.barrierTactics?.infiltration?.phase === "stage" ? 1.35 : 0)
+        + (context.barrierTactics?.infiltration?.phase === "commit" ? 0.72 : 0)
         + (organizedBreach ? 0.58 : 0)
         + (rangeRatio > 0.86 && rangeRatio < 1.95 ? 1 : 0)
         + (context.localAdvantage > 0.9 ? 0.58 : 0)
@@ -2343,7 +2359,8 @@ export class BotController {
       return 1.55
         + (barrierBreachWindow ? 1.85 : 0)
         + (organizedBreach ? 0.72 : 0)
-        - (enemyBarrier?.active && !organizedBreach && !context.barrierTactics?.infiltratorKey ? 0.82 : 0)
+        + (context.barrierTactics?.infiltration?.phase === "commit" ? 0.88 : 0)
+        - (enemyBarrier?.active && !organizedBreach && !organizedInfiltration ? 0.82 : 0)
         + (context.closeoutWindow ? 1.3 : 0) // 收尾窗口：维持压制把残敌打死
         + (rangeRatio > 1.08 ? 0.92 : 0)
         + (context.localAdvantage > 0.9 ? 0.72 : 0)
@@ -2569,7 +2586,7 @@ export class BotController {
     for (const ship of detachedShips) {
       if (context?.barrierTactics?.breachShipKey === ship.key) {
         plan.roles[ship.key] = "breach";
-      } else if (context?.barrierTactics?.infiltratorKey === ship.key) {
+      } else if (context?.barrierTactics?.infiltration?.shipKeys?.includes(ship.key)) {
         plan.roles[ship.key] = "infiltrate";
       } else if (intelLead && ship.id === intelLead.id) {
         plan.roles[ship.key] = "intel";
@@ -2621,7 +2638,7 @@ export class BotController {
       ship,
       role,
       enemyEstimate,
-      context?.barrierTactics?.enemy,
+      context?.barrierTactics,
       laneSign,
     );
     if (barrierDirective) {
@@ -3574,11 +3591,19 @@ export class BotController {
         tactical.barrierTactics?.enemy?.active
         && (
           tactical.barrierTactics.breachShipKey === "main"
-          || tactical.barrierTactics.infiltratorKey === "main"
+          || (
+            tactical.barrierTactics.infiltration?.phase === "commit"
+            && tactical.barrierTactics.infiltration.shipKeys.includes("main")
+          )
         )
       )
     ) {
       mainThrottle = throttleForGear(4);
+    } else if (
+      tactical.barrierTactics?.infiltration?.phase === "stage"
+      && tactical.barrierTactics.infiltration.shipKeys.includes("main")
+    ) {
+      mainThrottle = throttleForGear(3);
     }
     const mainIssued = this.issueShipRoute(
       this.team.ships.main,
@@ -3645,7 +3670,9 @@ export class BotController {
       } else if (role === "breach" || role === "infiltrate") {
         throttleRange = role === "breach"
           ? { min: 1.12, max: 1.2 }
-          : { min: 1.04, max: 1.18 };
+          : tactical.barrierTactics?.infiltration?.phase === "commit"
+            ? { min: 1.12, max: 1.2 }
+            : { min: 0.94, max: 1.04 };
       } else if (mode === "harvest" && role !== "intel") {
         throttleRange = { min: 0.58, max: Math.min(0.88, throttleRange.max) };
       } else if (mode === "regroup" && role !== "intel" && role !== "front") {
