@@ -147,6 +147,7 @@ const requiredLinks = [
   ["shared/game-core.js", "./game/koizumi-barrier.js"],
   ["shared/game-core.js", "./game/shamisen-hunt.js"],
   ["shared/game/bot-controller.js", "./bot-character-strategy.js"],
+  ["shared/game/bot-controller.js", "./bot-shamisen-strategy.js"],
   ["server/match-runtime.js", "../shared/game/fixed-step-clock.js"],
   ["server/server.js", "../shared/protocol/ruleset-version.js"],
   ["shared/game/action-dispatcher.js", "../protocol/match-actions.js"],

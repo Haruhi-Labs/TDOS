@@ -57,6 +57,7 @@
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/bot-character-strategy.js`：角色针对性战术层，负责公开技能状态快照、威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
+- `shared/game/bot-shamisen-strategy.js`：三味线猎杀令的攻守编队层，负责无视野追踪、分阶段突破、防线识别、追击收束，以及被猎杀舰的战线外撤游与护卫屏障；猎杀标记不会在此被提升为真实视野。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
 - `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、环带覆盖判定、失效清理与公共状态序列化。
 - `shared/game/koizumi-barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
@@ -121,6 +122,7 @@
 | 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game-core.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js`、核心 AI 测试 |
 | AI 角色识别与针对性反制 | `shared/game/bot-character-strategy.js` | `shared/game/bot-controller.js`、角色技能叶模块、核心 AI 测试 |
+| 三味线猎杀攻守编队 | `shared/game/bot-shamisen-strategy.js` | `shared/game/bot-controller.js`、`shared/game/shamisen-hunt.js`、核心 AI 测试 |
 | 侦察战区规划与长门僚机编组 | `shared/game/bot-scout-strategy.js` | `shared/game/bot-controller.js`、`shared/game-core.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | WebGL 图元、批处理与着色器 | `src/battle/webgl/*` | `src/battle/native-webgl-renderer.js`、`npm run test:ui:webgl` |

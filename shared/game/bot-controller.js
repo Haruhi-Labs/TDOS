@@ -8,6 +8,11 @@ import {
   scoutMissionPoint,
 } from "./bot-scout-strategy.js";
 import {
+  buildShamisenHuntTactics,
+  planShamisenHuntFormation,
+  shamisenHuntNeedsSplit,
+} from "./bot-shamisen-strategy.js";
+import {
   applyKoizumiBarrierMainStrategy,
   barrierBlocksRangedAttack,
   buildKoizumiBarrierTactics,
@@ -305,6 +310,32 @@ export class BotController {
       overwhelmedShipKey: context.overwhelmedShipKey || null,
       counterCollapse: context.counterCollapse,
       shipThreats: this.debugThreatMap(context.shipThreats),
+      shamisenHunt: context.shamisenHunt
+        ? {
+            attack: context.shamisenHunt.attack
+              ? {
+                  active: true,
+                  targetId: context.shamisenHunt.attack.targetId,
+                  targetVisible: Boolean(context.shamisenHunt.attack.targetVisible),
+                  phase: context.shamisenHunt.attack.phase,
+                  overcommitRisk: Boolean(context.shamisenHunt.attack.overcommitRisk),
+                  leadShipKey: context.shamisenHunt.attack.leadShipKey,
+                  leadGap: context.shamisenHunt.attack.leadGap,
+                  spread: context.shamisenHunt.attack.spread,
+                  blockerId: context.shamisenHunt.attack.blockerId,
+                }
+              : null,
+            defense: context.shamisenHunt.defense
+              ? {
+                  active: true,
+                  huntedShipKey: context.shamisenHunt.defense.huntedShipKey,
+                  huntedShipId: context.shamisenHunt.defense.huntedShipId,
+                  huntedIsMain: Boolean(context.shamisenHunt.defense.huntedIsMain),
+                  huntedHpRatio: context.shamisenHunt.defense.huntedHpRatio,
+                }
+              : null,
+          }
+        : null,
       barrierTactics: context.barrierTactics
         ? {
             own: context.barrierTactics.own
@@ -385,6 +416,7 @@ export class BotController {
       combatCenter: this.lastTacticalPlan?.combatCenter || null,
       searchAssignments: this.lastTacticalPlan?.searchAssignments || null,
       sectorPlan: this.lastTacticalPlan?.sectorPlan || null,
+      shamisenHuntPlan: this.lastTacticalPlan?.shamisenHuntPlan || null,
       detachedPlan: this.lastTacticalPlan?.detachedPlan || null,
       orders: this.lastTacticalPlan?.orders || {},
       useSearchSectorPlan: Boolean(this.lastTacticalPlan?.useSearchSectorPlan),
@@ -1541,8 +1573,26 @@ export class BotController {
     const friendlyEscort = this.friendlyPowerAround(main.x, main.y, 240);
     const enemyLocal = this.enemyThreatAround(focus.x, focus.y, 330, 8);
     const localAdvantage = (friendlyLocal + friendlyEscort * 0.34 + 0.25) / Math.max(enemyLocal + 0.25, 0.25);
-    const intelSolid = focus.visible || (focus.source !== "spawn" && focus.age <= 5.5 && focus.confidence >= 0.42);
-    const searchRequired = focus.source === "spawn" || focus.age > 9 || focus.confidence < 0.26;
+    const shamisenHunt = buildShamisenHuntTactics({
+      team: this.team,
+      enemy: this.enemy,
+      main,
+      focus,
+      knownContacts: this.knownEnemyContacts({ maxAge: 8 }),
+      localAdvantage,
+    });
+    const hiddenHuntTarget = Boolean(
+      shamisenHunt.attack?.active
+      && shamisenHunt.attack.isFocus
+      && !shamisenHunt.attack.targetVisible,
+    );
+    const intelSolid = focus.visible || (
+      focus.source !== "spawn"
+      && focus.source !== "hunt"
+      && focus.age <= 5.5
+      && focus.confidence >= 0.42
+    );
+    const searchRequired = hiddenHuntTarget || focus.source === "spawn" || focus.age > 9 || focus.confidence < 0.26;
     const killWindow = this.contactHpRatio(focus) < 0.44 && dist < rangeRef * 1.75;
     const broadsideWindow = dist > rangeRef * 0.58 && dist < rangeRef * 1.2 && intelSolid;
     const detachedShips = [this.team.ships.sub1, this.team.ships.sub2].filter((ship) => ship.alive && !ship.isAttached());
@@ -1561,7 +1611,9 @@ export class BotController {
         overwhelmedShipKey = ship.key;
       }
     }
-    const defensivePressure = (localAdvantage < 0.72 && dist < rangeRef * 1.22) || mainHull < 0.28;
+    const defensivePressure = (localAdvantage < 0.72 && dist < rangeRef * 1.22)
+      || mainHull < 0.28
+      || Boolean(shamisenHunt.defense?.active && shamisenHunt.defense.huntedHpRatio < 0.62);
     const flankSign = this.preferredFlankSign(main, focus);
     const ownArcDensity = this.arcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, this.team.hasKyonFlagship());
     const enemyArcDensity = this.arcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, this.enemy.hasKyonFlagship());
@@ -1587,7 +1639,7 @@ export class BotController {
     const emergencyCommit = killWindow
       || maxShipThreat > 0.96
       || (focus.visible && (combatUrgency > 0.68 || dist < rangeRef * 0.92))
-      || (trackableIntel && dist < rangeRef * 0.82 && localAdvantage > 1.12);
+      || (trackableIntel && !hiddenHuntTarget && dist < rangeRef * 0.82 && localAdvantage > 1.12);
     const energySurplus = clamp((energyRatio - 0.58) / 0.42, 0, 1);
     const energyRecoveryNeed = clamp((0.46 - energyRatio) / 0.46, 0, 1) * (emergencyCommit ? 0.18 : 0.82);
     const conserveEnergy = energyRecoveryNeed > 0.78 && !emergencyCommit && !trackableIntel;
@@ -1606,6 +1658,7 @@ export class BotController {
       intelUrgency * 0.94
       + (searchRequired ? 0.34 : 0)
       + (trackableIntel ? 0.34 : 0)
+      + (hiddenHuntTarget ? 0.42 : 0)
       + Math.max(0, maxShipThreat - 0.9) * 0.45
       - combatUrgency * 0.22
       - energyRecoveryNeed * 0.28,
@@ -1629,6 +1682,8 @@ export class BotController {
       + (emergencyCommit ? 0.28 : 0)
       + counterCollapse * 0.22
       + isolatedTargetScore * 0.26
+      + (shamisenHunt.attack?.targetVisible && !shamisenHunt.attack.overcommitRisk ? 0.62 : 0)
+      - (shamisenHunt.attack?.overcommitRisk ? 0.7 : 0)
       - energyRecoveryNeed * 0.32;
 
     // 收尾判断：是否占优(领先) + 是否到了该收尾的窗口(敌方濒临覆灭)。
@@ -1699,6 +1754,7 @@ export class BotController {
       overwhelmedShipKey,
       counterCollapse,
       shipThreats,
+      shamisenHunt,
       barrierTactics,
     };
   }
@@ -1706,6 +1762,16 @@ export class BotController {
   shouldSplit(level, context, elapsed) {
     if (!context) {
       return false;
+    }
+    const huntSplitNeeded = shamisenHuntNeedsSplit(context.shamisenHunt, level, elapsed);
+    if (
+      huntSplitNeeded
+      && (
+        context.shamisenHunt?.defense?.active
+        || (context.fleetHull > 0.34 && context.energyRatio > 0.1)
+      )
+    ) {
+      return true;
     }
     if (level === 1) {
       const ship = this.team.ships.sub1;
@@ -2439,6 +2505,10 @@ export class BotController {
       // 收尾窗口下不强制去充能(harvest)——该把残局打完，否则双方都去充能拖成平局
       : (context.energyRecoveryNeed >= 0.78 || context.energyRatio < 0.12) && !context.emergencyCommit && !context.closeoutWindow && !context.focus.visible && context.dist > context.rangeRef * 0.84
         ? "harvest"
+      : context.shamisenHunt?.attack?.active
+        && context.shamisenHunt.attack.isFocus
+        && !context.shamisenHunt.attack.targetVisible
+        ? "search"
       : context.searchRequired && context.focus.source === "spawn"
         ? "search"
         : null;
@@ -3547,12 +3617,51 @@ export class BotController {
     const side = { x: -toward.y, y: toward.x };
     const sign = tactical.flankSign || this.preferredFlankSign(main, enemyEstimate);
     const detachedPlan = this.planDetachedRoles(main, enemyEstimate, tactical);
+    let shamisenHuntPlan = planShamisenHuntFormation({
+      tactics: tactical.shamisenHunt,
+      team: this.team,
+      main,
+      focus: enemyEstimate,
+      now: this.team.match.elapsed,
+      padding: this.safeRoutePadding(12),
+    });
+    // 古泉盾的突破/渗透已有独立的精确策略。猎杀方先执行破盾战术，避免把“追标记”
+    // 误解成无视能量圈硬冲；防守方的护卫阵型仍保持生效。
+    if (shamisenHuntPlan?.kind === "attack" && tactical.barrierTactics?.enemy?.active) {
+      shamisenHuntPlan = null;
+    }
+    // 脱离地图边缘优先于角色战术，否则后撤中的被猎杀舰可能被自己的护卫阵型钉在边界。
+    if (tactical.edgePressure > 0.34) {
+      shamisenHuntPlan = null;
+    }
+    if (shamisenHuntPlan) {
+      for (const [shipKey, role] of Object.entries(shamisenHuntPlan.roles)) {
+        detachedPlan.roles[shipKey] = role;
+      }
+      detachedPlan.intelLeadKey = shamisenHuntPlan.kind === "attack"
+        ? shamisenHuntPlan.leadKey
+        : null;
+      detachedPlan.retreatKey = shamisenHuntPlan.kind === "defense"
+        ? tactical.shamisenHunt?.defense?.huntedShipKey || null
+        : null;
+    }
     const debugPlan = {
       focus: this.debugContact(enemyEstimate),
       searchCenter: this.debugPoint(searchCenter),
       combatCenter: this.debugPoint(center),
       searchAssignments: this.debugPointMap(searchAssignments),
       sectorPlan: this.debugPointMap(sectorPlan),
+      shamisenHuntPlan: shamisenHuntPlan
+        ? {
+            kind: shamisenHuntPlan.kind,
+            phase: shamisenHuntPlan.phase,
+            targetId: shamisenHuntPlan.targetId,
+            blockerId: shamisenHuntPlan.blockerId,
+            leadKey: shamisenHuntPlan.leadKey,
+            points: this.debugPointMap(shamisenHuntPlan.points),
+            roles: { ...shamisenHuntPlan.roles },
+          }
+        : null,
       detachedPlan: this.debugDetachedPlan(detachedPlan),
       orders: {},
       useSearchSectorPlan,
@@ -3567,6 +3676,7 @@ export class BotController {
     let mainHeldForIntelLead = false;
     if (
       detachedPlan.intelLeadKey
+      && !shamisenHuntPlan
       && !barrierBreachWindow
       && !tactical.killWindow
       && (!tactical.emergencyCommit || (intelLeadShip?.characterId === "yuki" && (enemyEstimate.visible || tactical.intelSolid)))
@@ -3595,8 +3705,11 @@ export class BotController {
       }
     }
     // U1 视野收尾：主舰若非"为前探僚舰保持火力支援位"，则在进攻意图下压近到视野距离夺取目标
-    if (!mainHeldForIntelLead) {
+    if (!mainHeldForIntelLead && !shamisenHuntPlan) {
       mainTarget = this.engageTarget(main, enemyEstimate, mainTarget, mode, tactical);
+    }
+    if (shamisenHuntPlan?.points?.main) {
+      mainTarget = shamisenHuntPlan.points.main;
     }
     mainTarget = applyKoizumiBarrierMainStrategy({
       main,
@@ -3630,6 +3743,10 @@ export class BotController {
               : tactical.pressureDrive > 0.95 || tactical.emergencyCommit
                 ? throttleBand(1.02, 1.18)
                 : throttleBand(0.94, 1.14);
+    if (shamisenHuntPlan?.throttles?.main) {
+      const band = shamisenHuntPlan.throttles.main;
+      mainThrottle = throttleBand(band.min, band.max);
+    }
     if (
       tactical.barrierTactics?.incoming
       || (tactical.barrierTactics?.own && !tactical.barrierTactics.own.active)
@@ -3661,7 +3778,7 @@ export class BotController {
     if (mainIssued) {
       debugPlan.orders.main = {
         shipKey: "main",
-        role: mode,
+        role: shamisenHuntPlan?.roles?.main || mode,
         detached: false,
         target: this.debugPoint(mainTarget),
         throttle: mainIssued.throttle,
@@ -3671,9 +3788,11 @@ export class BotController {
     }
 
     const focus = mode === "search" ? searchCenter : enemyEstimate;
-    const shouldUseDetachedRoles = this.team.splitLevel > 0
-      && !(sectorPlan && !tactical.intelSolid && !enemyEstimate.visible && tactical.trackableIntel)
-      && (mode !== "search" || tactical.trackableIntel || tactical.intelSolid || tactical.focus.source !== "spawn");
+    const shouldUseDetachedRoles = this.team.splitLevel > 0 && (Boolean(shamisenHuntPlan)
+      || (
+        !(sectorPlan && !tactical.intelSolid && !enemyEstimate.visible && tactical.trackableIntel)
+        && (mode !== "search" || tactical.trackableIntel || tactical.intelSolid || tactical.focus.source !== "spawn")
+      ));
     debugPlan.shouldUseDetachedRoles = shouldUseDetachedRoles;
     const routeDetachedShip = (ship) => {
       if (!ship || !ship.alive || ship.isAttached()) {
@@ -3681,11 +3800,18 @@ export class BotController {
       }
       const role = detachedPlan.roles[ship.key] || "fire";
       const laneSign = detachedPlan.laneSigns[ship.key] || sign;
-      let directive = this.computeDetachedDirective(ship, role, enemyEstimate, tactical, main, mainTarget, laneSign);
+      const huntPoint = shamisenHuntPlan?.points?.[ship.key];
+      let directive = huntPoint
+        ? {
+            target: huntPoint,
+            throttle: shamisenHuntPlan.throttles[ship.key] || { min: 0.9, max: 1.08 },
+            role,
+          }
+        : this.computeDetachedDirective(ship, role, enemyEstimate, tactical, main, mainTarget, laneSign);
       if (!directive) {
         return;
       }
-      if (role !== "breach" && role !== "infiltrate") {
+      if (!huntPoint && role !== "breach" && role !== "infiltrate") {
         directive.target = this.engageTarget(ship, enemyEstimate, directive.target, mode, tactical, { combatRole: role === "fire" || role === "front" });
       }
       directive = keepDirectiveInsideKoizumiBarrier(
@@ -3697,7 +3823,7 @@ export class BotController {
       );
       // 编队凝聚(反孤立)：交战角色的分离舰不得离主力太远，避免被各个击破，并让火力自然汇聚到同一片战区
       // (公平的"集中兵力"——靠站位凝聚，而非锁定目标)。后撤/侦察/逃逸不受此限。
-      if (!this.legacy && (role === "fire" || role === "flank" || role === "front") && main.alive) {
+      if (!huntPoint && !this.legacy && (role === "fire" || role === "flank" || role === "front") && main.alive) {
         const leash = clamp(main.effectiveRange() * 0.40, 150, 235);
         const dxm = directive.target.x - main.x;
         const dym = directive.target.y - main.y;

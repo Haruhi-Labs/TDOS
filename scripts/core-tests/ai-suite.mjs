@@ -1701,9 +1701,127 @@ function aiShamisenHuntIntelCheck() {
     assert(contact.characterId === null && contact.hp === null, "AI通过猎杀标记偷看了角色或血量");
     assert(!sim.teamA.visibleEnemyIds.has(targetId), "AI读取猎杀标记时错误获得了真实视野");
     assert(bot.selectEnemyFocus(sim.teamA.ships.main)?.id === targetId, "AI没有优先围绕猎杀目标规划战场");
+    const context = bot.buildTacticalContext(sim.teamA.ships.main, contact);
+    assert(!context.intelSolid && context.searchRequired, "AI错误地把无视野猎杀标记当成了可靠交战视野");
   } finally {
     Math.random = originalRandom;
   }
+}
+
+function aiShamisenHuntAttackFormationCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["A"],
+    teamLoadouts: {
+      A: { main: "shamisen", sub1: "koizumi", sub2: "yuki" },
+      B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
+    },
+  });
+  const bot = sim.botBySeat("A");
+  const team = sim.teamA;
+  const target = sim.teamB.ships.sub2;
+  const blocker = sim.teamB.ships.sub1;
+  team.shamisenHunt.targetId = target.id;
+  team.split(1);
+  team.split(2);
+
+  team.ships.main.x = 300;
+  team.ships.main.y = 720;
+  team.ships.sub1.x = 320;
+  team.ships.sub1.y = 670;
+  team.ships.sub2.x = 320;
+  team.ships.sub2.y = 770;
+  target.x = 1120;
+  target.y = 720;
+  blocker.x = 690;
+  blocker.y = 720;
+  for (const ship of team.getAllShips()) {
+    ship.route = null;
+    ship.command = { x: ship.x, y: ship.y };
+  }
+
+  team.visibleEnemyIds = new Set([blocker.id]);
+  bot.rememberContact(blocker, "visible");
+  bot.refreshIntel();
+  const focus = bot.selectEnemyFocus(team.ships.main);
+  const context = bot.buildTacticalContext(team.ships.main, focus);
+  bot.issueMovement(context);
+
+  const plan = bot.lastTacticalPlan.shamisenHuntPlan;
+  assert(focus?.id === target.id, "三味线AI没有把猎杀目标保持为战略焦点");
+  assert(plan?.kind === "attack" && plan.blockerId === blocker.id, "三味线AI没有识别猎杀目标前方的可见防线");
+  assert(team.ships.main.route.p2.x < blocker.x, "三味线AI寻找猎杀目标时直接越过防线深追");
+  const endpoints = team.getAllShips().map((ship) => ship.route?.p2).filter(Boolean);
+  const endpointSpread = Math.max(...endpoints.flatMap((left) => endpoints.map(
+    (right) => Math.hypot(left.x - right.x, left.y - right.y),
+  )));
+  assert(endpointSpread < 330, "三味线AI突破防线时舰队阵型过度散开");
+
+  team.ships.sub1.x = 1010;
+  team.ships.sub1.y = 720;
+  for (const ship of team.getAllShips()) {
+    ship.route = null;
+    ship.command = { x: ship.x, y: ship.y };
+  }
+  team.visibleEnemyIds = new Set();
+  bot.enemyIntel.entities.delete(blocker.id);
+  bot.refreshIntel();
+  const stretchedFocus = bot.selectEnemyFocus(team.ships.main);
+  const stretchedContext = bot.buildTacticalContext(team.ships.main, stretchedFocus);
+  bot.issueMovement(stretchedContext);
+
+  assert(stretchedContext.shamisenHunt.attack.overcommitRisk, "三味线AI没有识别领先舰被猎杀目标拉开的风险");
+  assert(team.ships.sub1.route.p2.x < team.ships.sub1.x - 120, "三味线AI没有把过深的追击舰收回整体阵线");
+}
+
+function aiShamisenHuntDefenseFormationCheck() {
+  const sim = new MatchSimulation({
+    mode: "pvp",
+    worldSize: 1440,
+    aiSeats: ["B"],
+    teamLoadouts: {
+      A: { main: "shamisen", sub1: "koizumi", sub2: "yuki" },
+      B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
+    },
+  });
+  const bot = sim.botBySeat("B");
+  const team = sim.teamB;
+  const enemyMain = sim.teamA.ships.main;
+  const hunted = team.ships.sub2;
+  sim.teamA.shamisenHunt.targetId = hunted.id;
+  sim.elapsed = 8.2;
+  team.match.elapsed = sim.elapsed;
+
+  enemyMain.x = 470;
+  enemyMain.y = 720;
+  team.ships.main.x = 980;
+  team.ships.main.y = 720;
+  team.ships.sub1.x = 990;
+  team.ships.sub1.y = 670;
+  hunted.x = 990;
+  hunted.y = 770;
+  bot.rememberContact(enemyMain, "visible");
+  const focus = bot.selectEnemyFocus(team.ships.main);
+  const context = bot.buildTacticalContext(team.ships.main, focus);
+  bot.evaluateSplit(sim.elapsed, context);
+  assert(team.splitLevel === 2, "敌方三味线出现后AI没有及时释放舰船组织防线");
+  for (const ship of team.getAllShips()) {
+    ship.route = null;
+    ship.command = { x: ship.x, y: ship.y };
+  }
+  bot.issueMovement(context);
+
+  const plan = bot.lastTacticalPlan.shamisenHuntPlan;
+  const huntedEnd = hunted.route.p2;
+  const mainEnd = team.ships.main.route.p2;
+  const huntedEnemyDistance = Math.hypot(huntedEnd.x - enemyMain.x, huntedEnd.y - enemyMain.y);
+  const screenEnemyDistance = Math.hypot(mainEnd.x - enemyMain.x, mainEnd.y - enemyMain.y);
+  assert(context.shamisenHunt.defense.huntedShipKey === "sub2", "AI防守层没有识别己方被猎杀舰");
+  assert(plan?.kind === "defense", "AI面对三味线时没有建立猎杀防御阵型");
+  assert(plan.roles.sub2 === "hunt-evade" && plan.roles.main === "hunt-screen", "AI没有分配被猎杀舰游走与主力掩护职责");
+  assert(huntedEnemyDistance > screenEnemyDistance + 120, "被猎杀舰没有保持在掩护战线之外");
+  assert(Math.hypot(huntedEnd.x - hunted.x, huntedEnd.y - hunted.y) > 150, "被猎杀舰没有持续进行战线外游走机动");
 }
 
 function aiEdgeRecoveryCheck() {
@@ -1747,6 +1865,8 @@ export function runAiSuite() {
   dualAiSeatCheck();
   aiDebugSnapshotCheck();
   aiShamisenHuntIntelCheck();
+  aiShamisenHuntAttackFormationCheck();
+  aiShamisenHuntDefenseFormationCheck();
   aiProbePressureCheck();
   aiSplitInitiativeCheck();
   aiYukiVisionLeadCheck();
