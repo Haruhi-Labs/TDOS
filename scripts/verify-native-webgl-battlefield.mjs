@@ -22,10 +22,16 @@ try {
   await page.waitForFunction(() => globalThis.__HARUHI_FIXTURE_READY__ === true);
 
   const report = await page.evaluate(async () => {
-    const [{ createNativeBattleRenderer }, { createNativeBattleVisualFixture }, { drawBattleWorld }] = await Promise.all([
+    const [
+      { createNativeBattleRenderer },
+      { createNativeBattleVisualFixture },
+      { drawBattleWorld },
+      { radarAngleAt },
+    ] = await Promise.all([
       import("/src/battle/native-webgl-renderer.js"),
       import("/src/battle/native-webgl-visual-fixture.js"),
       import("/src/battle/render.js"),
+      import("/src/battle/render/radar.js"),
     ]);
     const width = 720;
     const height = 720;
@@ -133,6 +139,22 @@ try {
       return result;
     }
 
+    function renderStatsWithoutRadar(mode) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const renderer = createNativeBattleRenderer(canvas, { forceMode: mode });
+      const fixture = createNativeBattleVisualFixture();
+      fixture.frame.radar = null;
+      renderer.beginFrame();
+      renderer.ctx.setTransform(width / 1440, 0, 0, height / 1440, 0, 0);
+      drawBattleWorld(renderer.ctx, fixture.frame);
+      renderer.present();
+      const stats = renderer.getStats();
+      renderer.destroy();
+      return stats;
+    }
+
     const canvas2d = renderOnce("canvas2d");
     const webgl2 = renderOnce("webgl2");
     const webgl1 = renderOnce("webgl1");
@@ -145,6 +167,8 @@ try {
       webgl2: benchmark("webgl2"),
       webgl1: benchmark("webgl1"),
     };
+    const radarSample = { angle: 1, sampledAt: 10, angularVelocity: -2 };
+    const radarSubframeAngles = [9.9, 9.91, 9.92].map((elapsed) => radarAngleAt(radarSample, elapsed));
     return {
       renderers: {
         canvas2d: { mode: canvas2d.mode, marker: canvas2d.marker },
@@ -153,6 +177,10 @@ try {
       },
       comparisons,
       benchmark: benchmarkResults,
+      radar: {
+        subframeAngles: radarSubframeAngles,
+        webgl2TrianglesWithoutRadar: renderStatsWithoutRadar("webgl2").triangles,
+      },
     };
   });
 
@@ -176,6 +204,15 @@ try {
   );
   assert.ok(report.renderers.webgl2.stats.triangles < 6500, "WebGL2 基准场景生成了过多三角形");
   assert.ok(report.renderers.webgl2.stats.drawCalls < 90, "WebGL2 基准场景产生了过多绘制调用");
+  assert.ok(
+    report.radar.subframeAngles[0] > report.radar.subframeAngles[1]
+      && report.radar.subframeAngles[1] > report.radar.subframeAngles[2],
+    "雷达扫线仍被离散权威帧锁住，没有按显示子帧连续旋转",
+  );
+  assert.ok(
+    report.renderers.webgl2.stats.triangles - report.radar.webgl2TrianglesWithoutRadar < 800,
+    "雷达扫线退化为逐虚线 CPU 三角化",
+  );
   assert.ok(report.benchmark.webgl2.stats.drawCalls < 90, "WebGL2 弹幕批处理退化为逐弹绘制调用");
   assert.equal(report.benchmark.webgl2.stats.textureUploads, 0, "WebGL2 预热后仍在逐帧上传纹理");
   assert.equal(report.benchmark.webgl1.stats.textureUploads, 0, "WebGL1 预热后仍在逐帧上传纹理");

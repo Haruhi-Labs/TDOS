@@ -4,10 +4,12 @@ import { characterShortName } from "../../i18n.js";
 const TAU = Math.PI * 2;
 const LOGICAL = DEFAULT_WORLD_SIZE;
 
-function radarAngleAt(radar, elapsed) {
+export function radarAngleAt(radar, elapsed) {
   const sampledAt = Number(radar?.sampledAt) || 0;
   const angularVelocity = Number(radar?.angularVelocity) || 0;
-  return (Number(radar?.angle) || 0) + angularVelocity * Math.max(0, (Number(elapsed) || 0) - sampledAt);
+  // 显示状态通常落后于最新权威采样一小段时间。这里必须允许负时间差，才能把
+  // 权威角度反推到当前显示时刻；若截成 0，扫线就会退化为 30Hz 逻辑帧或 15Hz 快照帧。
+  return (Number(radar?.angle) || 0) + angularVelocity * ((Number(elapsed) || 0) - sampledAt);
 }
 
 function rayToRectEdge(x, y, angle, left, top, right, bottom) {
@@ -175,10 +177,6 @@ export function drawYukiRadar(ctx, frame) {
   ctx.clip();
   ctx.globalCompositeOperation = "screen";
 
-  const rayGradient = ctx.createLinearGradient(source.x, source.y, edge.x, edge.y);
-  rayGradient.addColorStop(0, "rgba(220, 255, 248, 0.82)");
-  rayGradient.addColorStop(0.5, "rgba(126, 237, 224, 0.62)");
-  rayGradient.addColorStop(1, "rgba(61, 170, 190, 0.08)");
   const rayDx = edge.x - source.x;
   const rayDy = edge.y - source.y;
   const rayLength = Math.max(1, Math.hypot(rayDx, rayDy));
@@ -188,32 +186,41 @@ export function drawYukiRadar(ctx, frame) {
   // 资讯扫描束：不使用扇形铺色，以一条高精度亮芯、两条异步数据轨和离散校准节点
   // 构成扫描线本体，保持科技感的同时不遮盖战区信息。
   ctx.lineCap = "round";
-  ctx.strokeStyle = rayGradient;
-  ctx.globalAlpha = 0.2;
-  ctx.lineWidth = 4.2;
-  ctx.beginPath();
-  ctx.moveTo(source.x, source.y);
-  ctx.lineTo(edge.x, edge.y);
-  ctx.stroke();
-
-  ctx.globalAlpha = 0.92;
-  ctx.lineWidth = 0.82;
-  ctx.stroke();
-
-  for (const rail of [-1, 1]) {
-    const railOffset = rail * 4.3;
-    ctx.strokeStyle = rail < 0 ? "rgba(191, 255, 245, 0.72)" : "rgba(89, 214, 217, 0.62)";
-    ctx.globalAlpha = 0.46;
-    ctx.lineWidth = 0.68;
-    ctx.setLineDash(rail < 0 ? [9, 6, 2, 5] : [3, 5, 12, 7]);
-    ctx.lineDashOffset = elapsed * (rail < 0 ? -34 : 27);
+  if (ctx.nativeWebGL && typeof ctx.drawRadarSweep === "function") {
+    ctx.globalAlpha = 1;
+    ctx.drawRadarSweep(source.x, source.y, edge.x, edge.y, elapsed);
+  } else {
+    const rayGradient = ctx.createLinearGradient(source.x, source.y, edge.x, edge.y);
+    rayGradient.addColorStop(0, "rgba(220, 255, 248, 0.82)");
+    rayGradient.addColorStop(0.5, "rgba(126, 237, 224, 0.62)");
+    rayGradient.addColorStop(1, "rgba(61, 170, 190, 0.08)");
+    ctx.strokeStyle = rayGradient;
+    ctx.globalAlpha = 0.2;
+    ctx.lineWidth = 4.2;
     ctx.beginPath();
-    ctx.moveTo(source.x + normalX * railOffset, source.y + normalY * railOffset);
-    ctx.lineTo(edge.x + normalX * railOffset, edge.y + normalY * railOffset);
+    ctx.moveTo(source.x, source.y);
+    ctx.lineTo(edge.x, edge.y);
     ctx.stroke();
+
+    ctx.globalAlpha = 0.92;
+    ctx.lineWidth = 0.82;
+    ctx.stroke();
+
+    for (const rail of [-1, 1]) {
+      const railOffset = rail * 4.3;
+      ctx.strokeStyle = rail < 0 ? "rgba(191, 255, 245, 0.72)" : "rgba(89, 214, 217, 0.62)";
+      ctx.globalAlpha = 0.46;
+      ctx.lineWidth = 0.68;
+      ctx.setLineDash(rail < 0 ? [9, 6, 2, 5] : [3, 5, 12, 7]);
+      ctx.lineDashOffset = elapsed * (rail < 0 ? -34 : 27);
+      ctx.beginPath();
+      ctx.moveTo(source.x + normalX * railOffset, source.y + normalY * railOffset);
+      ctx.lineTo(edge.x + normalX * railOffset, edge.y + normalY * railOffset);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.lineDashOffset = 0;
   }
-  ctx.setLineDash([]);
-  ctx.lineDashOffset = 0;
 
   ctx.strokeStyle = "#b9f8ef";
   ctx.fillStyle = "#d9fff8";

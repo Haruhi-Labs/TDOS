@@ -14,7 +14,7 @@ import {
   multiplyMatrix,
   transformPoint,
 } from "./matrix.js";
-import { appendColorCommand, appendTextureCommand } from "./driver.js";
+import { appendColorCommand, appendRadarCommand, appendTextureCommand } from "./driver.js";
 import { NativeTextCache } from "./text-cache.js";
 import { drawNativeProjectileBatch } from "./projectile-batch.js";
 
@@ -433,6 +433,36 @@ export class NativeBattleContext {
 
   drawProjectileBatch(projectiles, ownSeat) {
     drawNativeProjectileBatch(this, projectiles, ownSeat);
+  }
+
+  drawRadarSweep(sourceX, sourceY, edgeX, edgeY, elapsed = 0) {
+    const source = this.point(sourceX, sourceY);
+    const edge = this.point(edgeX, edgeY);
+    const dx = edge.x - source.x;
+    const dy = edge.y - source.y;
+    const screenLength = Math.max(1e-6, Math.hypot(dx, dy));
+    const logicalLength = Math.max(1e-6, Math.hypot(edgeX - sourceX, edgeY - sourceY));
+    const nx = -dy / screenLength;
+    const ny = dx / screenLength;
+    const halfWidth = 7.2 * matrixScale(this.state.transform);
+    const corners = [
+      { x: source.x - nx * halfWidth, y: source.y - ny * halfWidth, along: 0, across: -7.2 },
+      { x: source.x + nx * halfWidth, y: source.y + ny * halfWidth, along: 0, across: 7.2 },
+      { x: edge.x + nx * halfWidth, y: edge.y + ny * halfWidth, along: logicalLength, across: 7.2 },
+      { x: edge.x - nx * halfWidth, y: edge.y - ny * halfWidth, along: logicalLength, across: -7.2 },
+    ];
+    const vertices = [];
+    for (const index of [0, 1, 2, 0, 2, 3]) {
+      const point = corners[index];
+      vertices.push(point.x, point.y, point.along, point.across);
+    }
+    appendRadarCommand(this.commands, vertices, {
+      blend: this.state.globalCompositeOperation,
+      clip: this.state.clip,
+      length: logicalLength,
+      phase: elapsed,
+      alpha: this.state.globalAlpha,
+    });
   }
 
   shadowTriangles(triangles) {
