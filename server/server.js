@@ -30,7 +30,10 @@ import {
   PVP_COUNTDOWN_MS,
   STATS_DATA_DIR,
   STATS_HASH_SALT,
+  GAME_AUTH_ISSUERS,
+  GAME_AUTH_PUBLIC_KEY,
 } from "./config.js";
+import { createGameIdentityVerifier } from "./game-identity.js";
 import { createInputQueue } from "./input-queue.js";
 import { createMatchRuntime } from "./match-runtime.js";
 import {
@@ -52,6 +55,14 @@ const statisticsStore = createStatisticsStore({
   hashSalt: STATS_HASH_SALT,
 });
 await statisticsStore.ready();
+
+const gameIdentityVerifier = createGameIdentityVerifier({
+  publicKey: GAME_AUTH_PUBLIC_KEY,
+  issuers: GAME_AUTH_ISSUERS,
+});
+if (!gameIdentityVerifier.enabled) {
+  console.warn("统一身份验签未启用：未配置合法的 GAME_AUTH_PUBLIC_KEY，游客模式不受影响");
+}
 
 const players = new Map();
 const rooms = new Map();
@@ -366,6 +377,7 @@ wss.on("connection", (ws) => {
     rulesetVersion: "",
     rulesetCompatible: true,
     statisticsProfile: null,
+    identity: null,
   };
   resetSnapshotStream(player);
 
@@ -422,8 +434,35 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (type === "authenticate") {
+      if (player.roomId || player.identity) {
+        sendToPlayer(player, {
+          type: "identity_error",
+          code: "identity_already_set",
+        });
+        return;
+      }
+      const result = gameIdentityVerifier.verifyAndConsume(data.ticket);
+      if (!result.ok) {
+        sendToPlayer(player, {
+          type: "identity_error",
+          code: result.reason,
+        });
+        return;
+      }
+      player.identity = result.identity;
+      player.name = result.identity.nickname;
+      sendToPlayer(player, {
+        type: "identity_authenticated",
+        user: result.identity,
+      });
+      broadcastLobby();
+      return;
+    }
+
     if (type === "set_name") {
-      const name = String(data.name || "").trim().slice(0, 16);
+      if (player.identity) return;
+      const name = Array.from(String(data.name || "").trim()).slice(0, 32).join("");
       if (!name) {
         return;
       }
@@ -454,7 +493,7 @@ wss.on("connection", (ws) => {
       const profile = data.profile && typeof data.profile === "object" ? data.profile : {};
       player.statisticsProfile = {
         clientId: String(profile.clientId || "").trim().slice(0, 160),
-        nickname: String(profile.nickname || "").trim().slice(0, 16),
+        nickname: Array.from(String(profile.nickname || "").trim()).slice(0, 32).join(""),
         faction: profile.faction === "red" ? "red" : profile.faction === "blue" ? "blue" : "",
         locale: ["zh", "ja", "en"].includes(profile.locale) ? profile.locale : "",
       };

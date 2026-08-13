@@ -38,3 +38,10 @@ export const HEARTBEAT_INTERVAL_MS = envInteger("HEARTBEAT_INTERVAL_MS", 30_000,
 export const NETWORK_METRICS_INTERVAL_MS = envInteger("NETWORK_METRICS_INTERVAL_MS", 60_000, 1000, 600_000);
 export const STATS_DATA_DIR = process.env.STATS_DATA_DIR || resolve(process.cwd(), "data/statistics");
 export const STATS_HASH_SALT = process.env.STATS_HASH_SALT || "";
+export const GAME_AUTH_PUBLIC_KEY = String(process.env.GAME_AUTH_PUBLIC_KEY || "").trim();
+export const GAME_AUTH_ISSUERS = String(
+  process.env.GAME_AUTH_ISSUERS || "https://haruyuki.cn",
+)
+  .split(",")
+  .map((value) => value.trim().replace(/\/+$/, ""))
+  .filter(Boolean);

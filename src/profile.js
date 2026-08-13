@@ -23,7 +23,7 @@ const LEGACY_ONLINE_LOADOUT_KEY = "haruhi-online-loadout-v2";
 const LEGACY_NICKNAME_COOKIE = "haruhi_online_nickname";
 
 export const FACTIONS = ["blue", "red"];
-const NICKNAME_MAX = 16;
+const NICKNAME_MAX = 32;
 
 function createClientId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -66,10 +66,11 @@ function readLegacyCookie(key) {
 }
 
 export function sanitizeNickname(name) {
-  return String(name || "")
+  return Array.from(String(name || "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, NICKNAME_MAX);
+    .trim())
+    .slice(0, NICKNAME_MAX)
+    .join("");
 }
 
 export function sanitizeFaction(faction) {

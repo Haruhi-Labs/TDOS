@@ -20,6 +20,8 @@ import * as menu from "./menu.js";
 import * as profileView from "./profile-view.js";
 import * as guide from "./guide.js";
 import * as credits from "./credits.js";
+import * as authCallback from "./auth-callback.js";
+import { refreshGameIdentity } from "./identity.js";
 
 initI18n();
 installInteractionFeedback();
@@ -33,6 +35,7 @@ const routes = {
   "/changelog": () => import("./changelog.js"),
   "/statistics": () => import("./statistics.js"),
   "/credits": credits,
+  "/auth/callback": authCallback,
   "/play": () => import("./solo.js"),
   "/play/tutorial": () => import("./solo.js"),
   "/online": () => import("./online.js"),
@@ -52,4 +55,6 @@ window.addEventListener("haruhi:locale-change", () => {
   router.refresh();
 });
 
+// 身份探测不参与首屏门槛；失败时状态层会静默落回游客身份。
+void refreshGameIdentity();
 router.start();

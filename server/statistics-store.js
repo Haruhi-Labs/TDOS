@@ -105,7 +105,7 @@ function normalizePlayer(value, salt) {
     || anonymizeStatisticsPlayerId(source.clientId || source.connectionId, salt);
   return {
     idHash,
-    nickname: safeString(source.nickname, 16),
+    nickname: Array.from(safeString(source.nickname, 64)).slice(0, 32).join(""),
     faction: source.faction === "red" ? "red" : source.faction === "blue" ? "blue" : "",
     locale: ["zh", "ja", "en"].includes(source.locale) ? source.locale : "",
   };

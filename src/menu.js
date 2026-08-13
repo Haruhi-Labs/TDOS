@@ -14,7 +14,7 @@ import { CURRENT_VERSION_LABEL } from "./changelog/meta.js";
 const ITEMS = [
   { href: "/play", no: "I", label: "单人游戏", sub: "选择战役，指挥舰队迎击 AI" },
   { href: "/online", no: "II", label: "在线对战", sub: "大厅匹配，与真人同步交战" },
-  { href: "/profile", no: "III", label: "指挥官档案", sub: "呼号与阵营" },
+  { href: "/profile", no: "III", label: "指挥官档案", sub: "呼号、阵营与统一身份" },
   { href: "/guide", no: "IV", label: "玩法说明", sub: "操作与机制速览" },
   { href: "/credits", no: "V", label: "制作人员", sub: "画师 · 设计开发 · 出品" },
 ];

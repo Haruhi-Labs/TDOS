@@ -7,10 +7,12 @@
 | 环境 | 地址 | PM2 进程 | 用途 |
 | --- | --- | --- | --- |
 | 正式站前端 | `https://star.haruyuki.cn/` | `haruhi-star-web` | 对外稳定版本 |
-| 测试站前端 | `https://haruyuki.cn/test-game/` | `haruhi-web` | 验证候选静态构建 |
-| 共享联机服务 | 测试站同源 `/test-game/ws/` | `haruhi-ws` | WebSocket 权威模拟 |
+| 测试站前端 | `https://test.haruyuki.cn/game/` | `haruhi-web` | 使用测试身份库验证候选构建 |
+| 联机服务 | 正式 `/ws/`、测试 `/game/ws/` | `haruhi-ws` | WebSocket 权威模拟与可选身份验签 |
 
 胜率统计与联机服务共用 WebSocket 入口，但不共用实时快照流。生产环境必须把 `STATS_DATA_DIR` 指向发布目录之外的持久目录（当前约定为 `/root/haruhi-game-data/statistics`），以免不可变版本切换时丢失历史数据。可选的 `STATS_HASH_SALT` 只用于增强匿名标识隔离，变更后会产生新的玩家匿名身份分段，不应随普通发布频繁更换。
+
+统一身份测试不得继续放在正式主站的 `/test-game/`：同主机路径会接触正式主站会话和身份库。测试站应使用 `test.haruyuki.cn/game/`、测试 Rust 实例及独立 `core.db`。游戏 WebSocket 只配置 JWKS 中的 Ed25519 公钥 `GAME_AUTH_PUBLIC_KEY`，正式 issuer 为 `https://haruyuki.cn`，测试 issuer 为 `https://test.haruyuki.cn`；不得复制主站 JWT 密钥或票据私钥。未配置公钥时服务端只关闭身份验签，游客游玩仍正常。
 
 正式站前端、测试站前端和 WebSocket 是三个独立进程。只发布测试站时不得重启正式站或 `haruhi-ws`。前端改动可以只切换测试站静态目录；服务端改动即使已经进入仓库，也要等到明确安排的 WebSocket 发布窗口才会生效。
 
@@ -20,11 +22,11 @@
 2. 推送已提交且工作区干净的目标提交。
 3. 服务端从该精确提交创建新的不可变发布目录，不在正在运行的目录内执行覆盖式更新。
 4. 在发布目录内使用 `npm ci`，再次运行 `npm run test:all` 和 `npm run build`。
-5. 测试站构建使用 `/test-game/` 基路径；通过 `WEB_ROOT` 把 `haruhi-web` 切到新产物，再只重启这一进程。
+5. 测试站构建使用 `/game/` 基路径；通过 `WEB_ROOT` 把 `haruhi-web` 切到新产物，再只重启这一进程。
 6. 验证入口 HTML、带哈希静态资源和深链均返回成功，并核对正式站、测试站、WebSocket 三个进程的 PID、重启次数和静态根目录。
 7. 含统计服务改动时，额外验证持久目录可写、`get_winrate_stats` 只返回公开阵容字段，并确认新对局只追加一条当月 JSONL；不得把统计目录放进发布目录或静态站点根目录。
 
-`npm run build` 默认生成测试站 `/test-game/` 基路径产物。正式站根路径产物必须显式使用 `VITE_BASE=/ npm run build`，避免资源地址或 History 路由落入错误前缀。
+`npm run build` 默认生成测试站 `/game/` 基路径产物。正式站根路径产物必须显式使用 `VITE_BASE=/ npm run build`，避免资源地址或 History 路由落入错误前缀。
 
 `serve.cjs` 提供 SPA fallback：无扩展名的前端路由回退到 `index.html`，带哈希的 `/assets/` 资源使用长期不可变缓存，其余内容使用 `no-cache`。
 

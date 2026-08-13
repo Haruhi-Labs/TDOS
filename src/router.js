@@ -7,14 +7,14 @@ import { t } from "./i18n.js";
 // · 切换路由时先加载新模块，代码就绪后再卸载上一个（停 rAF、断 socket、移除监听）并挂载，
 //   既避免多个游戏循环/网络连接泄漏并存，也不在懒加载期间露出空白帧。
 // · 拦截站内 <a href="/..."> 点击走 pushState；支持浏览器前进/后退。
-// · base 感知：线上挂在 /test-game/ 子路径下时，内部一律用「应用路径」
+// · base 感知：测试站挂在 /game/ 子路径下时，内部一律用「应用路径」
 //   (/、/play …)，与 location.pathname 间靠 toAppPath/toUrlPath 剥离/拼接
 //   base，保证导航、刷新、前进后退都不会逃出子路径。本地 dev base 为 /。
 // ═══════════════════════════════════════════════════════════════
 
-// 部署 base（Vite 注入）：本地 dev 为 "/"，线上构建为 "/test-game/"。
-const RAW_BASE = import.meta.env.BASE_URL || "/"; // "/" 或 "/test-game/"
-const BASE = RAW_BASE.replace(/\/+$/, ""); // "" 或 "/test-game"
+// 部署 base（Vite 注入）：本地 dev 为 "/"，测试构建默认为 "/game/"。
+const RAW_BASE = import.meta.env.BASE_URL || "/"; // "/" 或 "/game/"
+const BASE = RAW_BASE.replace(/\/+$/, ""); // "" 或 "/game"
 
 // location.pathname → 应用路径（剥掉 base 前缀）
 function toAppPath(pathname) {
@@ -28,8 +28,8 @@ function toAppPath(pathname) {
 
 // 应用路径 → 完整 URL 路径（拼上 base）
 function toUrlPath(appPath) {
-  if (!appPath || appPath === "/") return RAW_BASE; // "/" 或 "/test-game/"
-  return BASE + appPath; // "/play" 或 "/test-game/play"
+  if (!appPath || appPath === "/") return RAW_BASE; // "/" 或 "/game/"
+  return BASE + appPath; // "/play" 或 "/game/play"
 }
 
 export function createRouter({ routes, outlet, notFound, onNavigate }) {

@@ -75,6 +75,10 @@ import {
 } from "./i18n.js";
 import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
 import { statisticsProfile } from "./statistics-client.js";
+import {
+  getGameIdentity,
+  requestGameIdentityTicket,
+} from "./identity.js";
 
 // 可挂载模块状态：每次 mount 重新初始化（同一时刻只挂载一个模式）
 let canvas, ctx, ui, app;
@@ -448,7 +452,7 @@ function clearMatchRuntime() {
   app.gameOverLogged = false;
 }
 
-function connectServer() {
+async function connectServer() {
   const candidates = buildServerUrlCandidates();
   if (candidates.length === 0) {
     log(t("服务器地址不能为空"));
@@ -469,6 +473,11 @@ function connectServer() {
   snapshotTransport.resetConnectionState();
   clearMatchRuntime();
   updateConnectionUi();
+
+  // 在建连前获取 60 秒票据，使 authenticate 成为该 WebSocket 的第一条客户端消息。
+  // 未登录、身份服务不可用或请求失败时返回 null，后续完全按游客协议继续。
+  const identityTicket = await requestGameIdentityTicket();
+  if (currentAttemptId !== app.connectAttemptId) return;
 
   const tryConnect = (index) => {
     if (currentAttemptId !== app.connectAttemptId) {
@@ -495,6 +504,9 @@ function connectServer() {
       updateConnectionUi();
       log(t("已连接服务器：{url}", { url }));
 
+      if (identityTicket) {
+        socketSend({ type: "authenticate", ticket: identityTicket });
+      }
       const name = profileController.setNickname(ui.playerNameInput ? ui.playerNameInput.value : "", { persist: true });
       if (name) {
         socketSend({ type: "set_name", name });
@@ -879,6 +891,20 @@ function handleServerMessage(raw) {
 
   if (type === "connected") {
     snapshotTransport.handleConnected(message);
+    return;
+  }
+
+  if (type === "identity_authenticated") {
+    const nickname = Array.from(
+      String(message.user?.nickname || getGameIdentity().user?.nickname || ""),
+    ).slice(0, 32).join("");
+    if (nickname) profileController.setNickname(nickname, { persist: false });
+    log(t("统一身份已验证：{name}", { name: nickname || "-" }));
+    return;
+  }
+
+  if (type === "identity_error") {
+    log(t("统一身份验证未完成，已继续使用游客身份"));
     return;
   }
 
@@ -2096,7 +2122,7 @@ function onlineTemplate() {
               <div id="onlineNicknameValue" class="compact-meta">${t("昵称：-")}</div>
               <div class="zone-pick">
                 <label for="playerNameInput">${t("昵称")}</label>
-                <input id="playerNameInput" maxlength="16" type="text" placeholder="${t("输入昵称")}" />
+                <input id="playerNameInput" maxlength="32" type="text" placeholder="${t("输入昵称")}" />
               </div>
               <button id="applyNameBtn">${t("保存昵称")}</button>
 

@@ -24,7 +24,7 @@ const forced = buildServerUrlCandidates({
     host: "haruyuki.cn",
     hostname: "haruyuki.cn",
   },
-  baseUrl: "/test-game/",
+  baseUrl: "/game/",
 });
 assert.deepEqual(forced, ["wss://debug.example/socket"]);
 
@@ -32,24 +32,24 @@ const production = buildServerUrlCandidates({
   locationObject: {
     search: "",
     protocol: "https:",
-    host: "haruyuki.cn",
-    hostname: "haruyuki.cn",
+    host: "test.haruyuki.cn",
+    hostname: "test.haruyuki.cn",
   },
-  baseUrl: "/test-game/",
+  baseUrl: "/game/",
 });
 assert.deepEqual(production, [
-  "wss://haruyuki.cn/test-game/ws/",
-  "wss://haruyuki.cn:21246/",
+  "wss://test.haruyuki.cn/game/ws/",
+  "wss://test.haruyuki.cn:21246/",
 ]);
 assert.equal(
   defaultServerUrl({
     locationObject: {
       search: "",
       protocol: "https:",
-      host: "haruyuki.cn",
-      hostname: "haruyuki.cn",
+      host: "test.haruyuki.cn",
+      hostname: "test.haruyuki.cn",
     },
-    baseUrl: "/test-game/",
+    baseUrl: "/game/",
   }),
   production[0],
 );

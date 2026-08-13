@@ -3,7 +3,7 @@
 > 浏览器端的即时舰队对战游戏 —— 取材自谷川流《凉宫春日》系列中 SOS 团自制的同名游戏《射手座之日》。
 > 强调「看得见才能打」的情报博弈与「集中 / 分散」的编队取舍,而非数值碾压。
 
-**▶ 正式站:<https://star.haruyuki.cn>**　·　**测试站:<https://haruyuki.cn/test-game/>**　·　公测版 v0.2
+**▶ 正式站:<https://star.haruyuki.cn>**　·　**测试站:<https://test.haruyuki.cn/game/>**　·　公测版 v0.2
 
 ---
 
@@ -15,6 +15,7 @@
 
 - **单人 vs AI**:四档难度(简单 / 普通 / 困难 / 极限)。难度同时调整敌方数值、AI 反应速度与战术风格;极限难度的 AI 会智能集火残血。AI 会依据公开视野、雷达误差接触与历史动向组织搜索，长门旗舰可编组战斗僚机执行前沿任务，三味线旗舰则会组织猎杀突破或针对性护卫撤游。AI 通过大量对抗模拟逐项调校。
 - **在线对战与观战**:基于 WebSocket 的实时 PvP，支持公开房、私人房、AI 训练房和对战观战；多人开战前有三秒倒计时。
+- **可选统一身份**:游客无需登录即可完整游玩；登录后联机服务以主站签名票据确认账号昵称和头像，本地编队、阵营与设置仍留在游戏档案中。
 - **公开胜率统计**:首页底部可进入单人/多人阵容榜，按出场场次或胜率排序；对局档案与匿名玩家汇总仅在结算时异步写入，不进入实时快照链路。
 - **8 名角色**:凉宫春日、阿虚、长门有希、古泉一树、朝比奈1096、朝仓凉子、鹤屋、三味线——每名角色在「主舰位」与「副舰位」拥有不同的主动或被动技能。
 - **机制深度**:
@@ -57,7 +58,7 @@ npm run test:core    # 仅运行规则、AI 与教程校验
 npm run test:ai:simulation # 16 局固定种子双 AI 模拟对战
 ```
 
-开发服务器使用根路径；`npm run build` 默认按测试站 `/test-game/` 基路径构建。正式站根路径构建使用 `VITE_BASE=/ npm run build`，其他子路径使用 `VITE_BASE=/子路径/ npm run build`。
+开发服务器使用根路径；`npm run build` 默认按隔离测试站 `/game/` 基路径构建。正式站根路径构建使用 `VITE_BASE=/ npm run build`，其他子路径使用 `VITE_BASE=/子路径/ npm run build`。本地统一身份联调还需同时启动主站 news 前端（5204）与 Rust 后端（17777）。
 网络容量压测独立运行 `npm run test:network:load`，不包含在日常 `test:all` 中。
 
 ## 技术架构
@@ -67,6 +68,7 @@ npm run test:ai:simulation # 16 局固定种子双 AI 模拟对战
 - **统一动作、时钟与显示插值**:`shared/protocol/match-actions.js` 定义单人/多人共用动作，`src/battle/action-transport.js` 只区分本地或远程传输；单人和服务端共用固定 30Hz 逻辑时钟，单人逻辑帧与多人 15Hz 快照都通过 `src/battle/state-interpolation.js` 生成平滑显示状态，且从不写回权威模拟。
 - **规则版本保护**:`shared/protocol/ruleset-version.js` 在客户端与服务端之间协商规则版本。显式版本冲突会阻止进入对局；未声明版本的旧端暂时走兼容模式。
 - **联机服务端**:`server/server.js`(基于 `ws`)只负责编排连接和消息；房间注册、生命周期、输入队列、比赛循环与快照流已拆到 `server/` 下的独立模块。
+- **可选身份链路**:`src/identity.js` 使用 Authorization Code + PKCE 建立游戏站独立 HttpOnly 会话；`server/game-identity.js` 只用 Ed25519 公钥校验 60 秒联机票据并防止 `jti` 重放。认证失败自动保留游客协议，当前不绑定排行榜、成就或统计。
 - **统计归档**:`server/statistics-store.js` 以按月 JSONL 追加日志作为事实来源，在内存中缓存公开阵容聚合；`shared/game/match-telemetry.js` 只维护常数级计数器，且统计字段不会进入 `serializeState()` 或网络快照。
 - **渲染**:战场由原生 WebGL2 直接绘制，使用批量弹体、GPU 三角形与有界字形/立绘纹理缓存；不支持 WebGL2 的设备使用同源 WebGL1 后端，仅在 WebGL 完全不可用时保留 Canvas 2D 可用性兜底。菜单与普通页面仍按各自现有 DOM/Canvas 实现。
 

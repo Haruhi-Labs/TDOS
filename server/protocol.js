@@ -1,4 +1,5 @@
 export const CONTROL_MESSAGE_TYPES = new Set([
+  "authenticate",
   "set_name",
   "set_loadout",
   "list_rooms",

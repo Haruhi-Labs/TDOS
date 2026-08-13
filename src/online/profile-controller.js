@@ -11,15 +11,17 @@ import {
   setNickname as setProfileNickname,
 } from "../profile.js";
 import { slotLabel as localizedSlotLabel, t } from "../i18n.js";
+import { getGameIdentity } from "../identity.js";
 
 const NICKNAME_COOKIE_KEY = "haruhi_online_nickname";
 const NICKNAME_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 function sanitizeNickname(name) {
-  return String(name || "")
+  return Array.from(String(name || "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 16);
+    .trim())
+    .slice(0, 32)
+    .join("");
 }
 
 function readCookie(key) {
@@ -118,10 +120,13 @@ export function createOnlineProfileController({ ui, getPlayerLoadout }) {
 
   function setNickname(name, options = {}) {
     const { persist = true } = options;
-    const safeName = sanitizeNickname(name);
+    const accountNickname = getGameIdentity().user?.nickname;
+    const safeName = sanitizeNickname(accountNickname || name);
     if (ui.playerNameInput) ui.playerNameInput.value = safeName;
+    if (ui.playerNameInput) ui.playerNameInput.disabled = Boolean(accountNickname);
+    if (ui.applyNameBtn) ui.applyNameBtn.disabled = Boolean(accountNickname);
     updateNicknameDisplay(safeName);
-    if (persist && safeName) {
+    if (persist && safeName && !accountNickname) {
       setProfileNickname(safeName);
       writeCookie(NICKNAME_COOKIE_KEY, safeName, NICKNAME_COOKIE_MAX_AGE);
     }
@@ -129,7 +134,9 @@ export function createOnlineProfileController({ ui, getPlayerLoadout }) {
   }
 
   function initializeNickname() {
-    const savedName = sanitizeNickname(getProfileNickname() || readCookie(NICKNAME_COOKIE_KEY));
+    const savedName = sanitizeNickname(
+      getGameIdentity().user?.nickname || getProfileNickname() || readCookie(NICKNAME_COOKIE_KEY),
+    );
     const fallbackName = t("玩家{num}", { num: Math.floor(Math.random() * 900 + 100) });
     return setNickname(savedName || fallbackName, { persist: true });
   }
