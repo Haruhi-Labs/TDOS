@@ -292,8 +292,10 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     tab.className = "cs-tab";
     tab.dataset.char = charId;
     tab.innerHTML = `
-      <span class="cs-tab-no">No.${pad2(idx + 1)}</span>
-      <span class="cs-tab-name">${def.shortName}</span>
+      <span class="cs-tab-surface">
+        <span class="cs-tab-no">No.${pad2(idx + 1)}</span>
+        <span class="cs-tab-name">${def.shortName}</span>
+      </span>
     `;
     tab.addEventListener("click", () => switchTo(charId));
     tabsEl.appendChild(tab);

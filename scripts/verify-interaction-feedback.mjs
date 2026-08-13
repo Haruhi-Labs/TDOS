@@ -183,6 +183,47 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
   );
 
   await normalDifficultyItem.click();
+  if (!isMobile) {
+    const characterTab = page.locator(".cs-tab:not(.current)").first();
+    const characterTabSurface = characterTab.locator(".cs-tab-surface");
+    await characterTab.waitFor({ state: "visible" });
+    const hitBoxBefore = await characterTab.boundingBox();
+    const surfaceBoxBefore = await characterTabSurface.boundingBox();
+    assert.ok(hitBoxBefore && surfaceBoxBefore, `${name}角色书签应当可见`);
+
+    await page.mouse.move(
+      hitBoxBefore.x + hitBoxBefore.width / 2,
+      hitBoxBefore.y + hitBoxBefore.height / 2,
+    );
+    await waitForMenuVisualSettle(characterTab);
+    const hitBoxHovered = await characterTab.boundingBox();
+    const surfaceBoxHovered = await characterTabSurface.boundingBox();
+    assert.ok(hitBoxHovered && surfaceBoxHovered, `${name}角色书签悬停时应当可见`);
+    assert.deepEqual(hitBoxHovered, hitBoxBefore, `${name}角色书签悬停不得移动命中区域`);
+    assert.ok(
+      surfaceBoxHovered.y < surfaceBoxBefore.y - 3.5,
+      `${name}角色书签仍应保留向上浮起的视觉反馈`,
+    );
+
+    // 原实现会把按钮本体向上移动；指针留在初始底边时会反复进出命中盒。
+    await page.mouse.move(
+      hitBoxBefore.x + hitBoxBefore.width / 2,
+      hitBoxBefore.y + hitBoxBefore.height - 1,
+    );
+    for (let sample = 0; sample < 12; sample += 1) {
+      await page.waitForTimeout(20);
+      assert.equal(
+        await characterTab.evaluate((element) => element.matches(":hover")),
+        true,
+        `${name}角色书签底边悬停状态发生抖动`,
+      );
+      assert.deepEqual(
+        await characterTab.boundingBox(),
+        hitBoxBefore,
+        `${name}角色书签底边悬停期间命中区域发生变化`,
+      );
+    }
+  }
   const pageArrow = page.locator(isMobile ? ".csm-next" : ".cs-nav-next");
   await pageArrow.waitFor({ state: "visible" });
   const arrowBoxBefore = await pageArrow.boundingBox();
