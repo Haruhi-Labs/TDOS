@@ -231,6 +231,7 @@ try {
         hiddenMarkerCount: hiddenHuntMarkers.length,
         hiddenMarkerTargetId: hiddenHuntMarkers[0]?.target?.id || null,
         enemyPerspectiveMarkerCount: shamisenHuntMarkersForFrame(enemyPerspectiveFrame).length,
+        enemyPerspectiveMarkerTargetId: shamisenHuntMarkersForFrame(enemyPerspectiveFrame)[0]?.target?.id || null,
         webgl2Stats: renderHuntEffectStats("webgl2"),
         webgl1Stats: renderHuntEffectStats("webgl1"),
       },
@@ -255,7 +256,12 @@ try {
   assert.equal(report.hunt.webgl1Stats.huntShaderEffects, 0, "WebGL1 回退错误调用了 WebGL2 猎杀着色器");
   assert.equal(report.hunt.hiddenMarkerCount, 1, "三味线一方在无真实视野时看不到猎杀标记");
   assert.ok(Number.isFinite(report.hunt.hiddenMarkerTargetId), "迷雾猎杀标记没有跟随权威目标");
-  assert.equal(report.hunt.enemyPerspectiveMarkerCount, 0, "非三味线一方错误看到了对手的私有猎杀标记");
+  assert.equal(report.hunt.enemyPerspectiveMarkerCount, 1, "被猎杀方看不到落在己方舰船上的猫爪印记");
+  assert.equal(
+    report.hunt.enemyPerspectiveMarkerTargetId,
+    report.hunt.hiddenMarkerTargetId,
+    "猎杀方与被猎杀方看到的标记没有指向同一艘权威目标舰",
+  );
   assert.ok(
     report.comparisons.canvasParity.meanAbsoluteError < 6,
     `原生 WebGL 与既有 Canvas 视觉偏差过大：MAE ${report.comparisons.canvasParity.meanAbsoluteError.toFixed(3)}`,

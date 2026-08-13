@@ -1183,7 +1183,7 @@ export function drawBattleWorld(ctx, frame) {
     drawShip(ctx, ship, enemyColor, ship.key === enemySelectedKey, ship.attached, true, spectating);
   }
 
-  // 猎杀方始终能看见目标标记；目标未进入真实视野时这里只画标记，不会补画舰体或名字。
+  // 猎杀方与被猎杀方都能看见目标标记；迷雾中只画标记，不会补画敌方舰体或名字。
   drawShamisenHuntMarkers(ctx, frame);
 
   for (const scout of ownTeam?.scouts || []) {

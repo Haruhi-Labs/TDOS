@@ -18,14 +18,15 @@ function shipById(state, id) {
   return null;
 }
 
-// 普通玩家只接收自己三味线旗舰的标记表现；观战视角会同时展示双方标记。
-// 这里不读取 visibleEnemyIds，确保迷雾中仍保留“标记”，但调用方仍按真实视野决定是否绘制舰体。
+// 普通玩家同时看到己方施加的猎杀标记和敌方落在己方舰船上的标记；观战视角同样展示双方。
+// 这里只读取双方已经公开的标记目标，不读取 visibleEnemyIds：猎杀方在迷雾中仍能追踪标记，
+// 被猎杀方也能识别己方哪艘舰被标记，但双方舰体和名字仍由真实视野规则决定是否绘制。
 export function shamisenHuntMarkersForFrame(frame) {
   const state = frame?.state;
   if (!state?.teams) return [];
   const hunterTeams = frame.spectating
     ? [state.teams.A, state.teams.B]
-    : [frame.ownTeam];
+    : [frame.ownTeam, frame.enemyTeam];
   const markers = [];
   for (const hunter of hunterTeams) {
     const targetId = hunter?.shamisenHunt?.targetId;

@@ -178,7 +178,7 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "hunt_decree", name: "猫爪印记", type: "passive",
       damageMultiplier: 2,
-      description: "开局标记一名猎杀目标；全舰队可持续追踪但不会获得真实视野。目标进入真实视野后会被优先锁定，己方子弹与攻击命中特效对其造成双倍伤害；技能、状态效果及碰撞伤害不受加成。击杀后自动标记下一名敌人。",
+      description: "开局标记一名猎杀目标，双方均能看见标记；己方可持续追踪但不会获得真实视野。目标进入真实视野后会被优先锁定，己方子弹与攻击命中特效对其造成双倍伤害；技能、状态效果及碰撞伤害不受加成。击杀后自动标记下一名敌人。",
     },
     subSkill: {
       id: "cat_paw_barrage", name: "猫爪乱舞", type: "active", cooldown: 22,
