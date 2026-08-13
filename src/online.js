@@ -103,6 +103,7 @@ function addWin(type, handler) {
 function cacheDom() {
   canvas = document.getElementById("gameCanvas");
   battleRenderer = createNativeBattleRenderer(canvas);
+  canvas = battleRenderer.canvas;
   ctx = battleRenderer.ctx;
   ui = {
   serverTargetValue: document.getElementById("serverTargetValue"),
@@ -1249,6 +1250,14 @@ function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
 
 function renderFrame() {
   if (!running) return;
+  try {
+    renderBattleFrame();
+  } catch (error) {
+    if (!battleRenderer?.recoverFromFailure(error)) throw error;
+  }
+}
+
+function renderBattleFrame() {
   battleRenderer.beginFrame();
   const state = stateSync.getRenderState();
   app.lastRenderState = state;

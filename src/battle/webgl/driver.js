@@ -325,11 +325,13 @@ export function appendHuntKillCommand(commands, vertices, options) {
   });
 }
 
-export function acquireBattleGl(canvas, { preferWebGL1 = false } = {}) {
+export function acquireBattleGl(canvas, { preferWebGL1 = false, mode = "auto" } = {}) {
   let gl = null;
-  if (!preferWebGL1) {
+  const requestedMode = preferWebGL1 ? "webgl1" : mode;
+  if (requestedMode !== "webgl1") {
     gl = canvas.getContext("webgl2", CONTEXT_ATTRIBUTES);
     if (gl) return { gl, mode: "webgl2", webgl2: true };
+    if (requestedMode === "webgl2") return null;
   }
   gl = canvas.getContext("webgl", CONTEXT_ATTRIBUTES);
   return gl ? { gl, mode: "webgl1", webgl2: false } : null;

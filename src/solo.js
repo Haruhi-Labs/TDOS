@@ -106,6 +106,7 @@ function addWin(type, handler) {
 function cacheDom() {
   canvas = document.getElementById("gameCanvas");
   battleRenderer = createNativeBattleRenderer(canvas);
+  canvas = battleRenderer.canvas;
   ctx = battleRenderer.ctx;
   ui = {
   hullValue: document.getElementById("hullValue"),
@@ -854,6 +855,14 @@ function drawTutorialIllustration(kind) {
 }
 
 function render(state = app.state) {
+  try {
+    renderBattleState(state);
+  } catch (error) {
+    if (!battleRenderer?.recoverFromFailure(error)) throw error;
+  }
+}
+
+function renderBattleState(state = app.state) {
   if (!state) {
     return;
   }

@@ -346,6 +346,90 @@ try {
   assert.deepEqual(webgl1Errors, [], `WebGL1 实战回退出现运行错误：${webgl1Errors.join("；")}`);
   await webgl1Context.close();
 
+  // WebGL2 上下文能够创建、但着色器初始化失败时，必须换用一张干净画布降到 WebGL1。
+  const initFailureContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await initFailureContext.addInitScript(() => {
+    const original = WebGL2RenderingContext.prototype.getShaderParameter;
+    WebGL2RenderingContext.prototype.getShaderParameter = function getShaderParameter(shader, parameter) {
+      if (parameter === this.COMPILE_STATUS) return false;
+      return original.call(this, shader, parameter);
+    };
+  });
+  const initFailurePage = await initFailureContext.newPage();
+  const initFailureErrors = [];
+  initFailurePage.on("pageerror", (error) => initFailureErrors.push(error.message));
+  await initFailurePage.goto(`${baseUrl}/play/tutorial`, { waitUntil: "networkidle" });
+  await initFailurePage.locator('#gameCanvas[data-battle-renderer="webgl1-native"]').waitFor();
+  assert.deepEqual(initFailureErrors, [], `WebGL2 初始化失败时没有安全降级：${initFailureErrors.join("；")}`);
+  assert.equal(
+    await initFailurePage.evaluate(() => sessionStorage.getItem("haruhi-battle-renderer-fallback-v1")),
+    "webgl1",
+    "WebGL2 初始化失败后没有在当前标签页记住 WebGL1 回退",
+  );
+  await initFailureContext.close();
+
+  // 运行时 GPU 绘制抛错不能逃逸到页面；应自动重载并在当前标签页降到 WebGL1。
+  const renderFailureContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await renderFailureContext.addInitScript(() => {
+    WebGL2RenderingContext.prototype.drawArrays = function drawArrays(...args) {
+      throw new Error("注入的 WebGL2 绘制故障");
+    };
+  });
+  const renderFailurePage = await renderFailureContext.newPage();
+  const renderFailureErrors = [];
+  renderFailurePage.on("pageerror", (error) => renderFailureErrors.push(error.message));
+  await renderFailurePage.goto(`${baseUrl}/play/tutorial`, { waitUntil: "domcontentloaded" });
+  await renderFailurePage.locator('#gameCanvas[data-battle-renderer="webgl1-native"]').waitFor({ timeout: 10_000 });
+  assert.deepEqual(renderFailureErrors, [], `WebGL2 运行时绘制故障没有安全降级：${renderFailureErrors.join("；")}`);
+  await renderFailureContext.close();
+
+  // 永久丢失的上下文必须在恢复期限后降级，不能让战场一直停在黑屏状态。
+  const permanentLossContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await permanentLossContext.addInitScript(() => {
+    globalThis.__HARUHI_CONTEXT_LOSS_TIMEOUT_MS__ = 80;
+  });
+  const permanentLossPage = await permanentLossContext.newPage();
+  const permanentLossErrors = [];
+  permanentLossPage.on("pageerror", (error) => permanentLossErrors.push(error.message));
+  await permanentLossPage.goto(`${baseUrl}/play/tutorial`, { waitUntil: "networkidle" });
+  await permanentLossPage.locator('#gameCanvas[data-battle-renderer="webgl2-native"]').waitFor();
+  const canLoseContext = await permanentLossPage.evaluate(() => {
+    const canvas = document.querySelector("#gameCanvas");
+    const extension = canvas.getContext("webgl2")?.getExtension("WEBGL_lose_context");
+    if (!extension) return false;
+    extension.loseContext();
+    return true;
+  });
+  if (canLoseContext) {
+    await permanentLossPage.locator('#gameCanvas[data-battle-renderer="webgl1-native"]').waitFor({ timeout: 10_000 });
+    assert.deepEqual(permanentLossErrors, [], `WebGL2 上下文永久丢失后没有安全降级：${permanentLossErrors.join("；")}`);
+  }
+  await permanentLossContext.close();
+
+  // 两级 WebGL 都不可用时仍要有可绘制的 Canvas2D 战场，而不是只有空白画布。
+  const noWebGlContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  await noWebGlContext.addInitScript(() => {
+    const original = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function getContext(type, ...args) {
+      if (type === "webgl" || type === "webgl2") return null;
+      return original.call(this, type, ...args);
+    };
+  });
+  const noWebGlPage = await noWebGlContext.newPage();
+  const noWebGlErrors = [];
+  noWebGlPage.on("pageerror", (error) => noWebGlErrors.push(error.message));
+  await noWebGlPage.goto(`${baseUrl}/play/tutorial`, { waitUntil: "networkidle" });
+  await noWebGlPage.locator('#gameCanvas[data-battle-renderer="canvas2d"]').waitFor();
+  await noWebGlPage.waitForTimeout(200);
+  const fallbackPixel = await noWebGlPage.evaluate(() => {
+    const canvas = document.querySelector("#gameCanvas");
+    return Array.from(canvas.getContext("2d").getImageData(canvas.width / 2, canvas.height / 2, 1, 1).data);
+  });
+  assert.equal(fallbackPixel[3], 255, "Canvas2D 回退画布没有有效像素");
+  assert.ok(fallbackPixel[0] + fallbackPixel[1] + fallbackPixel[2] > 0, "Canvas2D 回退没有实际绘制战场");
+  assert.deepEqual(noWebGlErrors, [], `完全不支持 WebGL 时 Canvas2D 回退异常：${noWebGlErrors.join("；")}`);
+  await noWebGlContext.close();
+
   const onlineContext = await browser.newContext({ viewport: { width: 1280, height: 800 } });
   const onlinePage = await onlineContext.newPage();
   const onlineErrors = [];
