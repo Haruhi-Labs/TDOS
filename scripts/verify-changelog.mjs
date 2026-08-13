@@ -41,6 +41,7 @@ for (const locale of locales) {
       );
       for (const item of group.items) {
         assert.ok(item.text || (item.title && item.body), `${locale}/${release.id}/${group.id}/${item.id} 文案为空`);
+        if (item.text) assert.ok(item.title, `${locale}/${release.id}/${group.id}/${item.id} 缺少概括小标题`);
       }
     }
   }
@@ -48,6 +49,11 @@ for (const locale of locales) {
 
 assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE), "更新日志数据必须只读");
 assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE.zh[0].groups[0].items), "更新日志嵌套数据必须只读");
+assert.deepEqual(
+  CHANGELOG_BY_LOCALE.zh[0].groups.map((group) => group.id),
+  ["characters", "balance", "systems"],
+  "v0.3 分类结构异常",
+);
 const v03Items = CHANGELOG_BY_LOCALE.zh[0].groups.flatMap((group) => group.items);
 assert.deepEqual(
   v03Items.map((item) => item.id),
@@ -74,12 +80,12 @@ assert.deepEqual(
   ],
   "v0.3 中文正文没有逐字采用用户提供的文案",
 );
-for (const locale of locales) {
+for (const locale of ["ja", "en"]) {
   const localizedItems = CHANGELOG_BY_LOCALE[locale][0].groups.flatMap((group) => group.items);
-  assert.deepEqual(
-    localizedItems.map((item) => item.text),
-    v03Items.map((item) => item.text),
-    `${locale}/v0.3 出现未经用户提供的改写或翻译`,
+  assert.equal(localizedItems.length, v03Items.length, `${locale}/v0.3 翻译条目数量错误`);
+  assert.ok(
+    localizedItems.every((item, index) => item.text && item.text !== v03Items[index].text),
+    `${locale}/v0.3 缺少必要翻译`,
   );
 }
 
@@ -92,13 +98,18 @@ assert.equal(
   "新增角色「三味线」，分舰技能“猫爪乱舞”，开启后自身子弹变为猫爪，命中同一敌舰数次后引爆抓痕，造成额外伤害。主舰技能仍在设计中。",
   "v0.2 三味线错误包含尚未推出的主舰技能",
 );
-for (const locale of locales) {
-  const localizedShamisen = CHANGELOG_BY_LOCALE[locale]
-    .find((release) => release.id === "v0.2")
-    ?.groups.flatMap((group) => group.items)
-    .find((item) => item.id === "shamisen");
-  assert.equal(localizedShamisen?.text, v02Shamisen.text, `${locale}/v0.2 三味线正文出现未经提供的改写`);
-}
+const jaV02Shamisen = CHANGELOG_BY_LOCALE.ja
+  .find((release) => release.id === "v0.2")
+  ?.groups.flatMap((group) => group.items)
+  .find((item) => item.id === "shamisen");
+const enV02Shamisen = CHANGELOG_BY_LOCALE.en
+  .find((release) => release.id === "v0.2")
+  ?.groups.flatMap((group) => group.items)
+  .find((item) => item.id === "shamisen");
+assert.match(jaV02Shamisen?.text || "", /主艦技能.*設計中/, "日文 v0.2 三味线未说明主舰技能仍在设计中");
+assert.match(enV02Shamisen?.text || "", /flagship ability is still in development/i, "英文 v0.2 三味线未说明主舰技能仍在设计中");
+assert.doesNotMatch(jaV02Shamisen?.text || "", /猫の爪印/, "日文 v0.2 三味线错误提前写入猫爪印记");
+assert.doesNotMatch(enV02Shamisen?.text || "", /[“\"]Claw Mark[”\"]/i, "英文 v0.2 三味线错误提前写入猫爪印记");
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const menuSource = readFileSync(resolve(root, "src/menu.js"), "utf8");

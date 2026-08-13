@@ -29,8 +29,9 @@ function formatReleaseDate(isoDate) {
 function groupHTML(releaseId, group) {
   const headingId = `cl-group-${releaseId}-${group.id}`;
   const items = group.items.map((item) => {
+    const itemHeading = item.title ? `<h4>${escapeHTML(item.title)}</h4>` : "";
     const content = item.text
-      ? `<p class="cl-item-verbatim">${escapeHTML(item.text)}</p>`
+      ? `${itemHeading}<p class="cl-item-verbatim">${escapeHTML(item.text)}</p>`
       : `<h4>${escapeHTML(item.title)}</h4><p>${escapeHTML(item.body)}</p>`;
     return `
       <li class="cl-item" data-change-id="${escapeHTML(item.id)}">

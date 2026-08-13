@@ -1,5 +1,6 @@
 // 更新日志内容与展示层分离：新增版本时按相同 id 同步补齐 zh / ja / en，页面无需改动。
-// 只有用户明确要求时才可新增日志；用户提供的正文必须逐字录入，不得润色、概括、补写或自行翻译。
+// 只有用户明确要求时才可新增日志；用户提供的中文正文必须逐字录入，不得润色、概括或补写。
+// 允许整理分类、小标题及必要的等义翻译，但翻译不得增删信息或引入尚未发布的内容。
 
 function deepFreeze(value) {
   if (!value || typeof value !== "object" || Object.isFrozen(value)) return value;
@@ -17,51 +18,74 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
       title: "公测版 v0.3",
       groups: [
         {
-          id: "changes",
-          title: "",
+          id: "characters",
+          title: "角色与技能",
           items: [
             {
               id: "haruhi-flagship",
+              title: "重做「凉宫春日」主舰技能",
               text: "重做角色「凉宫春日」的主舰技能“我在这里”，开启后向所有敌人昭示己方舰队位置，给予己方舰队整体数值提升，并从宇宙人、未来人、异世界人、超能力者中随机找到一位，给予常驻的正面增强。",
             },
             {
               id: "koizumi-sub",
+              title: "重做「古泉一树」分舰技能",
               text: "重做角色「古泉一树」的分舰技能“超能力粒子”，开启后使古泉化作一颗速度和机动大幅增强的光球，无法射击也不会受到伤害，碰撞敌方可造成击退以及5秒钟的沉默，技能结束后回归战场中央。",
             },
             {
               id: "koizumi-flagship",
+              title: "重做「古泉一树」主舰技能",
               text: "重做角色「古泉一树」的主舰技能“超能力屏障”，被动在自己的视野边界创造屏障，可拦截屏障外射来的子弹或光线，但会被舰体冲击类技能打破。",
             },
             {
               id: "shamisen-flagship",
+              title: "新增「三味线」主舰技能",
               text: "新增角色「三味线」的主舰技能“猫爪印记”，开局时随机标记出一位敌人，己方舰队对其造成的子弹伤害翻倍，击破标记目标时将转移标记至敌方另一位随机角色。",
             },
             {
               id: "haruhi-sub",
+              title: "重做「凉宫春日」分舰技能",
               text: "重做角色「凉宫春日」的分舰技能“勇者之力”，短暂蓄力后向附近释放冲击，对被冲击到的敌人先后造成眩晕与减速，在整个负面效果持续期间为敌方施加易伤。",
             },
+          ],
+        },
+        {
+          id: "balance",
+          title: "平衡性与 AI",
+          items: [
             {
               id: "yuki-flagship",
+              title: "加强「长门有希」主舰技能",
               text: "将「长门有希」主舰每次释放的战斗僚机改为两艘，并大幅增加其雷达扫描速度。",
             },
             {
               id: "future1096-sub",
+              title: "调整「朝比奈实玖瑠」分舰技能",
               text: "将「朝比奈实玖瑠」的分舰技能命中多个敌人时造成的伤害适当下调。",
             },
             {
               id: "asakura-sub",
+              title: "加强「朝仓凉子」分舰技能",
               text: "将「朝仓凉子」的分舰技能的伤害与范围适当上调。",
             },
             {
               id: "character-ai",
+              title: "优化角色 AI",
               text: "优化了AI对于一些角色的操控和应对。",
             },
+          ],
+        },
+        {
+          id: "systems",
+          title: "系统与性能",
+          items: [
             {
               id: "winrate-statistics",
+              title: "接入阵容胜率统计系统",
               text: "接入阵容胜率统计系统。",
             },
             {
               id: "webgl2",
+              title: "首选 WebGL2 渲染路径",
               text: "将首选渲染路径切换至WebGL2以提升性能。",
             },
           ],
@@ -80,6 +104,7 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
           items: [
             {
               id: "shamisen",
+              title: "新增角色「三味线」",
               text: "新增角色「三味线」，分舰技能“猫爪乱舞”，开启后自身子弹变为猫爪，命中同一敌舰数次后引爆抓痕，造成额外伤害。主舰技能仍在设计中。",
             },
             {
@@ -152,52 +177,75 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
       title: "公開テスト版 v0.3",
       groups: [
         {
-          id: "changes",
-          title: "",
+          id: "characters",
+          title: "キャラクターと技能",
           items: [
             {
               id: "haruhi-flagship",
-              text: "重做角色「凉宫春日」的主舰技能“我在这里”，开启后向所有敌人昭示己方舰队位置，给予己方舰队整体数值提升，并从宇宙人、未来人、异世界人、超能力者中随机找到一位，给予常驻的正面增强。",
+              title: "「涼宮ハルヒ」の主艦技能を刷新",
+              text: "「私はここにいる！」を発動すると、味方艦隊の位置をすべての敵へ知らせ、味方艦隊全体の能力値を強化します。さらに宇宙人・未来人・異世界人・超能力者の中から1人をランダムに見つけ、永続的な強化を与えます。",
             },
             {
               id: "koizumi-sub",
-              text: "重做角色「古泉一树」的分舰技能“超能力粒子”，开启后使古泉化作一颗速度和机动大幅增强的光球，无法射击也不会受到伤害，碰撞敌方可造成击退以及5秒钟的沉默，技能结束后回归战场中央。",
+              title: "「古泉一樹」の分艦技能を刷新",
+              text: "「超能力粒子」を発動すると、古泉は速度と機動性が大幅に高まった光球へ変化し、射撃不能となりダメージも受けません。敵との接触でノックバックと5秒間の沈黙を与え、終了後は戦場中央へ帰還します。",
             },
             {
               id: "koizumi-flagship",
-              text: "重做角色「古泉一树」的主舰技能“超能力屏障”，被动在自己的视野边界创造屏障，可拦截屏障外射来的子弹或光线，但会被舰体冲击类技能打破。",
+              title: "「古泉一樹」の主艦技能を刷新",
+              text: "「超能力バリア」は自身の視界境界に障壁を常時展開し、外側から飛来する弾丸やビームを遮断します。ただし、艦体による突撃系技能を受けると破壊されます。",
             },
             {
               id: "shamisen-flagship",
-              text: "新增角色「三味线」的主舰技能“猫爪印记”，开局时随机标记出一位敌人，己方舰队对其造成的子弹伤害翻倍，击破标记目标时将转移标记至敌方另一位随机角色。",
+              title: "「シャミセン」の主艦技能を追加",
+              text: "「猫の爪印」は開幕時に敵1人をランダムに標識し、その対象へ味方艦隊が与える弾丸ダメージを2倍にします。標識対象を撃破すると、別の敵キャラクターへランダムに標識が移ります。",
             },
             {
               id: "haruhi-sub",
-              text: "重做角色「凉宫春日」的分舰技能“勇者之力”，短暂蓄力后向附近释放冲击，对被冲击到的敌人先后造成眩晕与减速，在整个负面效果持续期间为敌方施加易伤。",
+              title: "「涼宮ハルヒ」の分艦技能を刷新",
+              text: "「勇者の力」は短いチャージ後に周囲へ衝撃を放ち、命中した敵へ順にスタンと減速を与えます。弱体効果が続く間は、対象の被ダメージも増加します。",
             },
+          ],
+        },
+        {
+          id: "balance",
+          title: "バランスと AI",
+          items: [
             {
               id: "yuki-flagship",
-              text: "将「长门有希」主舰每次释放的战斗僚机改为两艘，并大幅增加其雷达扫描速度。",
+              title: "「長門有希」の主艦技能を強化",
+              text: "「長門有希」主艦が一度に発進させる戦闘僚機を2機へ変更し、レーダーの走査速度を大幅に引き上げました。",
             },
             {
               id: "future1096-sub",
-              text: "将「朝比奈实玖瑠」的分舰技能命中多个敌人时造成的伤害适当下调。",
+              title: "「朝比奈みくる」の分艦技能を調整",
+              text: "「朝比奈みくる」の分艦技能が複数の敵へ命中した際のダメージを適度に引き下げました。",
             },
             {
               id: "asakura-sub",
-              text: "将「朝仓凉子」的分舰技能的伤害与范围适当上调。",
+              title: "「朝倉涼子」の分艦技能を強化",
+              text: "「朝倉涼子」の分艦技能のダメージと効果範囲を適度に引き上げました。",
             },
             {
               id: "character-ai",
-              text: "优化了AI对于一些角色的操控和应对。",
+              title: "キャラクター AI を改善",
+              text: "一部キャラクターに対するAIの操作と対処を改善しました。",
             },
+          ],
+        },
+        {
+          id: "systems",
+          title: "システムと性能",
+          items: [
             {
               id: "winrate-statistics",
-              text: "接入阵容胜率统计系统。",
+              title: "編成勝率統計システムを追加",
+              text: "編成勝率統計システムを導入しました。",
             },
             {
               id: "webgl2",
-              text: "将首选渲染路径切换至WebGL2以提升性能。",
+              title: "WebGL2 を優先描画経路に変更",
+              text: "性能向上のため、優先描画経路をWebGL2へ切り替えました。",
             },
           ],
         },
@@ -215,7 +263,8 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
           items: [
             {
               id: "shamisen",
-              text: "新增角色「三味线」，分舰技能“猫爪乱舞”，开启后自身子弹变为猫爪，命中同一敌舰数次后引爆抓痕，造成额外伤害。主舰技能仍在设计中。",
+              title: "新キャラクター「シャミセン」",
+              text: "分艦技能「猫爪乱舞」を追加。発動中は自身の弾丸が猫の爪となり、同じ敵艦へ数回命中すると爪痕が炸裂して追加ダメージを与えます。主艦技能は引き続き設計中です。",
             },
             {
               id: "yuki-flagship",
@@ -287,52 +336,75 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
       title: "Public Beta v0.3",
       groups: [
         {
-          id: "changes",
-          title: "",
+          id: "characters",
+          title: "Characters & Abilities",
           items: [
             {
               id: "haruhi-flagship",
-              text: "重做角色「凉宫春日」的主舰技能“我在这里”，开启后向所有敌人昭示己方舰队位置，给予己方舰队整体数值提升，并从宇宙人、未来人、异世界人、超能力者中随机找到一位，给予常驻的正面增强。",
+              title: "Haruhi Suzumiya Flagship Rework",
+              text: "Activating “I'm Here!” reveals the allied fleet's position to every enemy, grants broad stat bonuses to the allied fleet, and randomly finds an Alien, Time Traveler, Otherworlder, or Esper to provide a permanent positive enhancement.",
             },
             {
               id: "koizumi-sub",
-              text: "重做角色「古泉一树」的分舰技能“超能力粒子”，开启后使古泉化作一颗速度和机动大幅增强的光球，无法射击也不会受到伤害，碰撞敌方可造成击退以及5秒钟的沉默，技能结束后回归战场中央。",
+              title: "Itsuki Koizumi Sub-ship Rework",
+              text: "Activating “Esper Particles” transforms Koizumi into a dramatically faster and more agile orb that cannot fire or take damage. Colliding with an enemy knocks it back and silences it for 5 seconds. When the ability ends, Koizumi returns to the battlefield center.",
             },
             {
               id: "koizumi-flagship",
-              text: "重做角色「古泉一树」的主舰技能“超能力屏障”，被动在自己的视野边界创造屏障，可拦截屏障外射来的子弹或光线，但会被舰体冲击类技能打破。",
+              title: "Itsuki Koizumi Flagship Rework",
+              text: "“Esper Barrier” passively creates a barrier along Koizumi's vision boundary. It intercepts bullets and beams fired from outside, but ship-impact abilities can break it.",
             },
             {
               id: "shamisen-flagship",
-              text: "新增角色「三味线」的主舰技能“猫爪印记”，开局时随机标记出一位敌人，己方舰队对其造成的子弹伤害翻倍，击破标记目标时将转移标记至敌方另一位随机角色。",
+              title: "New Shamisen Flagship Ability",
+              text: "“Claw Mark” randomly marks one enemy at the start of battle, doubling projectile damage dealt to that target by the allied fleet. Defeating the marked target transfers the mark to another random enemy character.",
             },
             {
               id: "haruhi-sub",
-              text: "重做角色「凉宫春日」的分舰技能“勇者之力”，短暂蓄力后向附近释放冲击，对被冲击到的敌人先后造成眩晕与减速，在整个负面效果持续期间为敌方施加易伤。",
+              title: "Haruhi Suzumiya Sub-ship Rework",
+              text: "After a short charge, “Hero Power” releases a nearby shockwave that first stuns and then slows affected enemies. Targets also take increased damage for the full duration of the debuff.",
             },
+          ],
+        },
+        {
+          id: "balance",
+          title: "Balance & AI",
+          items: [
             {
               id: "yuki-flagship",
-              text: "将「长门有希」主舰每次释放的战斗僚机改为两艘，并大幅增加其雷达扫描速度。",
+              title: "Yuki Nagato Flagship Buff",
+              text: "Yuki Nagato's flagship now deploys two combat wingmen per launch, and its radar scans substantially faster.",
             },
             {
               id: "future1096-sub",
-              text: "将「朝比奈实玖瑠」的分舰技能命中多个敌人时造成的伤害适当下调。",
+              title: "Mikuru Asahina Sub-ship Adjustment",
+              text: "Moderately reduced the damage of Mikuru Asahina's sub-ship ability when it hits multiple enemies.",
             },
             {
               id: "asakura-sub",
-              text: "将「朝仓凉子」的分舰技能的伤害与范围适当上调。",
+              title: "Ryoko Asakura Sub-ship Buff",
+              text: "Moderately increased the damage and range of Ryoko Asakura's sub-ship ability.",
             },
             {
               id: "character-ai",
-              text: "优化了AI对于一些角色的操控和应对。",
+              title: "Improved Character AI",
+              text: "Improved how AI controls and counters several characters.",
             },
+          ],
+        },
+        {
+          id: "systems",
+          title: "Systems & Performance",
+          items: [
             {
               id: "winrate-statistics",
-              text: "接入阵容胜率统计系统。",
+              title: "Lineup Win-rate Statistics",
+              text: "Added a lineup win-rate statistics system.",
             },
             {
               id: "webgl2",
-              text: "将首选渲染路径切换至WebGL2以提升性能。",
+              title: "WebGL2 Is Now the Preferred Renderer",
+              text: "Switched the preferred rendering path to WebGL2 for improved performance.",
             },
           ],
         },
@@ -350,7 +422,8 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
           items: [
             {
               id: "shamisen",
-              text: "新增角色「三味线」，分舰技能“猫爪乱舞”，开启后自身子弹变为猫爪，命中同一敌舰数次后引爆抓痕，造成额外伤害。主舰技能仍在设计中。",
+              title: "New Character: Shamisen",
+              text: "Adds the sub-ship ability “Claw Barrage.” While active, Shamisen's bullets become cat paws; hitting the same enemy ship several times detonates the claw marks for bonus damage. The flagship ability is still in development.",
             },
             {
               id: "yuki-flagship",
