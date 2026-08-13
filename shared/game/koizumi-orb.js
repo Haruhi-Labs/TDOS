@@ -125,7 +125,7 @@ export function activateKoizumiOrb(ship, duration = 8) {
   ship.effects.brakeUntil = 0;
   ship.collisionSlowUntil = 0;
   ship.team.match.spawnBurst(ship.x, ship.y, "#ff405f", 14);
-  ship.team.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "超能力", {}, "#ff8da1");
+  ship.team.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "超能力粒子", {}, "#ff8da1");
   return true;
 }
 

@@ -47,11 +47,11 @@ export const CHARACTER_DEFS = {
       damage: 23, fireRate: 0.5, radius: 9 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "closed_space_barrier", name: "闭锁空间", type: "passive",
+      id: "closed_space_barrier", name: "超能力屏障", type: "passive",
       description: "被动在主舰视野边界维持红色能量圈，吸收从圈外进入的子弹并截断射线。刀锋女王、古泉光球与异世界人冲撞可令能量圈失效5秒。",
     },
     subSkill: {
-      id: "esper", name: "超能力", type: "active", cooldown: 15, cost: 50,
+      id: "esper", name: "超能力粒子", type: "active", cooldown: 15, cost: 50,
       duration: 8, silenceDuration: 5, target: "none",
       description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害。结束后保持光球形态自动归航战场中央。",
     },

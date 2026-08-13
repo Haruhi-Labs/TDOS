@@ -753,6 +753,8 @@ function koizumiFlagshipBarrierCheck() {
   main.route = null;
 
   const initialBarrier = teamA.serialize().koizumiBarrier;
+  assert(CHARACTER_DEFS.koizumi.flagshipSkill.name === "超能力屏障", "古泉旗舰技能名称未更新");
+  assert(CHARACTER_DEFS.koizumi.subSkill.name === "超能力粒子", "古泉分舰技能名称未更新");
   assert(CHARACTER_DEFS.koizumi.flagshipSkill.type === "passive", "古泉旗舰技能没有改为被动技能");
   assert(!teamA.castFlagshipSkill(), "古泉被动旗舰技能仍可主动释放");
   assert(initialBarrier?.active, "古泉主舰没有自动生成能量圈");

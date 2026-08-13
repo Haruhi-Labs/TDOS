@@ -613,6 +613,8 @@ export const EN_MESSAGES = {
     "免疫": "Immune",
     "尾击": "Rear Hit",
     "超能力": "Esper",
+    "超能力粒子": "Esper Particles",
+    "超能力粒子·归航": "Esper Particles · Returning",
     "暴击": "Crit",
     "再起动": "Reboot",
     "闪现": "Blink",

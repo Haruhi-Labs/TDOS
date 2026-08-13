@@ -2125,7 +2125,7 @@ class Team {
       list.push("猫爪乱舞");
     }
     if (ship.isKoizumiOrbActive()) {
-      list.push(ship.koizumiOrb.phase === "returning" ? "超能力·归航" : "超能力");
+      list.push(ship.koizumiOrb.phase === "returning" ? "超能力粒子·归航" : "超能力粒子");
     }
     if (ship.isSilenced()) {
       list.push("沉默");
