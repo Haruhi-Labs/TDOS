@@ -1449,7 +1449,7 @@ function haruhiHeroPowerCheck() {
   const effect = sim.haruhiHeroPowerEffects[0];
   assert(effect?.phase === "shock", "勇者之力蓄力完成后没有进入冲击阶段");
   assert(enemyMain.speed === 0 && enemyNearSub.speed === 0, "勇者之力没有令范围内敌舰瞬间失速");
-  assert(!enemyMain.canControl() && !enemyNearSub.canControl(), "勇者之力命中后1秒内仍可控制敌舰");
+  assert(!enemyMain.canControl() && !enemyNearSub.canControl(), "勇者之力命中后2秒内仍可控制敌舰");
   assert(enemyOutside.canControl(), "勇者之力错误控制了范围外敌舰");
   assert(
     !sim.applyActionForSeat("B", { type: "set_throttle", shipKey: "main", throttle: 1.4 }),
@@ -1460,6 +1460,16 @@ function haruhiHeroPowerCheck() {
   sim.projectiles = [];
   enemyMain.tryAttack(sim, teamA);
   assert(sim.projectiles.length === 0, "勇者之力硬控期间敌舰仍可射击");
+  assert(
+    Math.abs(enemyMain.damageTakenMultiplier() - 1.2) < 1e-9,
+    "勇者之力命中后没有立即施加20%易伤",
+  );
+  const hpBeforeAmplifiedDamage = enemyMain.hp;
+  enemyMain.takeDamage(10, haruhi, sim, false);
+  assert(
+    Math.abs(hpBeforeAmplifiedDamage - enemyMain.hp - 12) < 1e-9,
+    "勇者之力的20%易伤没有进入最终承伤结算",
+  );
 
   for (const aircraft of allAircraft) {
     const shouldSurvive = aircraft === ownOutsideScout || aircraft === enemyOutsideScout;
@@ -1480,17 +1490,23 @@ function haruhiHeroPowerCheck() {
   );
 
   const shockAt = enemyMain.heroPowerShock.hitAt;
-  runSteps(sim, Math.max(0, shockAt + 1.05 - sim.elapsed));
-  assert(enemyMain.canControl(), "勇者之力命中1秒后仍未恢复控制");
+  runSteps(sim, Math.max(0, shockAt + 1.95 - sim.elapsed));
+  assert(!enemyMain.canControl(), "勇者之力未满2秒便提前恢复控制");
+  assert(Math.abs(enemyMain.damageTakenMultiplier() - 1.2) < 1e-9, "勇者之力硬控末段易伤提前消失");
+  runSteps(sim, 0.1);
+  assert(enemyMain.canControl(), "勇者之力命中2秒后仍未恢复控制");
   const baseSpeed = teamB.fleetSpeedForShip(enemyMain);
   assert(enemyMain.effectiveSpeed() < baseSpeed * 0.05, "勇者之力控制结束时航速没有从接近0开始恢复");
-  runSteps(sim, 1.95);
+  runSteps(sim, 1.45);
   assert(
     Math.abs(enemyMain.effectiveSpeed() / baseSpeed - 0.5) < 0.03,
-    "勇者之力后续4秒的航速恢复不是线性进行",
+    "勇者之力后续3秒的航速恢复不是线性进行",
   );
-  runSteps(sim, 2.05);
-  assert(Math.abs(enemyMain.effectiveSpeed() / baseSpeed - 1) < 1e-9, "勇者之力4秒后航速没有恢复到100%");
+  assert(Math.abs(enemyMain.damageTakenMultiplier() - 1.2) < 1e-9, "勇者之力减速阶段易伤提前消失");
+  runSteps(sim, 1.55);
+  assert(Math.abs(enemyMain.effectiveSpeed() / baseSpeed - 1) < 1e-9, "勇者之力3秒减速后航速没有恢复到100%");
+  runSteps(sim, 0.1);
+  assert(Math.abs(enemyMain.damageTakenMultiplier() - 1) < 1e-9, "勇者之力5秒结束后仍残留易伤");
   const snapshot = sim.serializeState();
   assert(Array.isArray(snapshot.haruhiHeroPowerEffects), "勇者之力事件没有进入共享战斗快照");
   assert(

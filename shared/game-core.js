@@ -119,6 +119,7 @@ import {
 import {
   createHaruhiHeroPowerEvent,
   createHaruhiHeroPowerShockState,
+  haruhiHeroPowerDamageTakenMultiplier,
   haruhiHeroPowerSpeedFactor,
   isHaruhiHeroPowerControlLocked,
   serializeHaruhiHeroPowerEvent,
@@ -752,6 +753,7 @@ class Ship {
     }
     value *= this.team.future1096DamageTakenMultiplier();
     value *= haruhiDamageTakenMultiplier(this.team);
+    value *= haruhiHeroPowerDamageTakenMultiplier(this);
     return value;
   }
 

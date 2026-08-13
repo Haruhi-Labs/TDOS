@@ -1,8 +1,9 @@
 import { clamp, distance } from "./math.js";
 
 export const HARUHI_HERO_POWER_CHARGE_SECONDS = 0.8;
-export const HARUHI_HERO_POWER_LOCK_SECONDS = 1;
-export const HARUHI_HERO_POWER_RECOVERY_SECONDS = 4;
+export const HARUHI_HERO_POWER_LOCK_SECONDS = 2;
+export const HARUHI_HERO_POWER_RECOVERY_SECONDS = 3;
+export const HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER = 1.2;
 export const HARUHI_HERO_POWER_VISUAL_SECONDS = 1.15;
 export const HARUHI_HERO_POWER_ZONE_RADIUS_RATIO = 0.5;
 
@@ -30,6 +31,15 @@ export function haruhiHeroPowerSpeedFactor(ship, now = ship?.team?.match?.elapse
   return clamp((now - shock.lockUntil) / recoveryDuration, 0, 1);
 }
 
+export function haruhiHeroPowerDamageTakenMultiplier(
+  ship,
+  now = ship?.team?.match?.elapsed || 0,
+) {
+  return Number(ship?.heroPowerShock?.recoveryUntil) > now
+    ? HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER
+    : 1;
+}
+
 export function applyHaruhiHeroPowerShock(ship, now, options = {}) {
   if (!ship?.alive) {
     return false;
@@ -55,6 +65,7 @@ export function serializeHaruhiHeroPowerShock(ship) {
     lockRemaining: active ? Math.max(0, shock.lockUntil - now) : 0,
     recoveryRemaining: active ? Math.max(0, shock.recoveryUntil - now) : 0,
     speedFactor: active ? haruhiHeroPowerSpeedFactor(ship, now) : 1,
+    damageTakenMultiplier: active ? HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER : 1,
   };
 }
 

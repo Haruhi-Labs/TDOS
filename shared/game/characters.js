@@ -30,9 +30,9 @@ export const CHARACTER_DEFS = {
     },
     subSkill: {
       id: "hero_power", name: "勇者之力", type: "active", cooldown: 10, cost: 60,
-      chargeDuration: 0.8, radiusZoneRatio: 0.5, lockDuration: 1, recoveryDuration: 4,
+      chargeDuration: 0.8, radiusZoneRatio: 0.5, lockDuration: 2, recoveryDuration: 3,
       target: "none",
-      description: "短暂蓄力后冲击周围半个战区：敌舰立即失速，1秒内无法控制和射击，随后4秒逐渐恢复航速；同时击毁范围内不分敌我的所有侦察机与僚机。",
+      description: "短暂蓄力后冲击周围半个战区：敌舰立即失速并在2秒内无法控制和射击，随后3秒逐渐恢复航速；5秒减益期间受到的伤害提高20%。同时击毁范围内不分敌我的所有侦察机与僚机。",
     },
   },
   koizumi: {
