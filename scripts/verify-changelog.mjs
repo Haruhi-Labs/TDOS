@@ -15,8 +15,8 @@ const referenceIds = CHANGELOG_BY_LOCALE.zh.map((release) => release.id);
 assert.ok(referenceIds.includes(CURRENT_RELEASE_ID), "当前版本必须存在于更新日志中");
 assert.equal(CHANGELOG_BY_LOCALE.zh[0].id, CURRENT_RELEASE_ID, "当前版本必须位于更新日志首位");
 assert.equal(CHANGELOG_BY_LOCALE.zh[0].title, CURRENT_VERSION_LABEL, "首页版本号与中文日志标题未同步");
-assert.equal(EN_MESSAGES[CURRENT_VERSION_LABEL], "Public beta v0.2", "英文首页版本号未同步");
-assert.equal(JA_MESSAGES[CURRENT_VERSION_LABEL], "公開テスト版 v0.2", "日文首页版本号未同步");
+assert.equal(EN_MESSAGES[CURRENT_VERSION_LABEL], "Public beta v0.3", "英文首页版本号未同步");
+assert.equal(JA_MESSAGES[CURRENT_VERSION_LABEL], "公開テスト版 v0.3", "日文首页版本号未同步");
 
 for (const locale of locales) {
   const releases = CHANGELOG_BY_LOCALE[locale];
@@ -48,6 +48,14 @@ for (const locale of locales) {
 
 assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE), "更新日志数据必须只读");
 assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE.zh[0].groups[0].items), "更新日志嵌套数据必须只读");
+assert.deepEqual(
+  CHANGELOG_BY_LOCALE.zh[0].groups.flatMap((group) => group.items.map((item) => item.id)),
+  [
+    "haruhi-flagship", "koizumi-sub", "koizumi-flagship", "shamisen-flagship", "haruhi-sub",
+    "yuki-flagship", "future1096-sub", "asakura-sub", "character-ai", "winrate-statistics", "webgl2",
+  ],
+  "v0.3 更新项目不完整或顺序异常",
+);
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const menuSource = readFileSync(resolve(root, "src/menu.js"), "utf8");

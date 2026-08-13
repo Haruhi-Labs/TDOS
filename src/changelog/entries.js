@@ -10,6 +10,87 @@ function deepFreeze(value) {
 export const CHANGELOG_BY_LOCALE = deepFreeze({
   zh: [
     {
+      id: "v0.3",
+      version: "v0.3",
+      date: "2026-08-13",
+      title: "公测版 v0.3",
+      groups: [
+        {
+          id: "characters",
+          title: "角色与技能",
+          items: [
+            {
+              id: "haruhi-flagship",
+              title: "重做「凉宫春日」主舰技能",
+              body: "“我在这里！”开启后会向所有敌人昭示己方舰队位置，给予己方舰队整体数值提升，并从宇宙人、未来人、异世界人、超能力者中随机找到一位，为全舰队提供常驻的正面增强。",
+            },
+            {
+              id: "koizumi-sub",
+              title: "重做「古泉一树」分舰技能",
+              body: "“超能力粒子”开启后使古泉化作速度和机动大幅增强的光球，无法射击且不会受到伤害；碰撞敌舰可将其击退并沉默5秒。技能结束后，古泉会以光球形态回归战场中央。",
+            },
+            {
+              id: "koizumi-flagship",
+              title: "重做「古泉一树」主舰技能",
+              body: "“超能力屏障”会被动在自身视野边界创造屏障，拦截从屏障外射来的子弹或光线，但会被舰体冲击类技能打破。",
+            },
+            {
+              id: "shamisen-flagship",
+              title: "新增「三味线」主舰技能",
+              body: "“猫爪印记”会在开局时随机标记一名敌人，己方舰队对其造成的子弹伤害翻倍；击破标记目标后，标记会转移至另一名随机敌方角色。",
+            },
+            {
+              id: "haruhi-sub",
+              title: "重做「凉宫春日」分舰技能",
+              body: "“勇者之力”会在短暂蓄力后向附近释放冲击，对被波及的敌人先后造成眩晕与减速，并在整个负面效果持续期间施加易伤。",
+            },
+          ],
+        },
+        {
+          id: "balance",
+          title: "平衡性与 AI",
+          items: [
+            {
+              id: "yuki-flagship",
+              title: "加强「长门有希」主舰技能",
+              body: "主舰每次释放的战斗僚机增加至两艘，并大幅提高“资讯统合雷达”的扫描速度。",
+            },
+            {
+              id: "future1096-sub",
+              title: "调整「朝比奈实玖瑠」分舰技能",
+              body: "适当下调“1096光线”同时命中多个敌人时造成的伤害。",
+            },
+            {
+              id: "asakura-sub",
+              title: "加强「朝仓凉子」分舰技能",
+              body: "适当提高“刀锋女王”的伤害与作用范围。",
+            },
+            {
+              id: "character-ai",
+              title: "优化角色 AI",
+              body: "优化了 AI 对部分角色的操控和针对性应对策略。",
+            },
+          ],
+        },
+        {
+          id: "systems",
+          title: "系统与性能",
+          items: [
+            {
+              id: "winrate-statistics",
+              title: "接入阵容胜率统计系统",
+              body: "新增单人游戏与多人游戏的阵容出场场次、胜率统计及榜单展示。",
+            },
+            {
+              id: "webgl2",
+              title: "首选 WebGL2 渲染路径",
+              body: "将战场的首选渲染路径切换至 WebGL2，以提升渲染性能。",
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: "v0.2",
       version: "v0.2",
       date: "2026-08-08",
@@ -88,6 +169,87 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
   ],
   ja: [
     {
+      id: "v0.3",
+      version: "v0.3",
+      date: "2026-08-13",
+      title: "公開テスト版 v0.3",
+      groups: [
+        {
+          id: "characters",
+          title: "キャラクターと技能",
+          items: [
+            {
+              id: "haruhi-flagship",
+              title: "「涼宮ハルヒ」の主艦技能を刷新",
+              body: "「私はここにいる！」を発動すると、味方艦隊の位置をすべての敵へ知らせる代わりに、味方艦隊全体の能力を強化します。さらに宇宙人・未来人・異世界人・超能力者の中から1人をランダムに見つけ、艦隊へ永続的な強化を与えます。",
+            },
+            {
+              id: "koizumi-sub",
+              title: "「古泉一樹」の分艦技能を刷新",
+              body: "「超能力粒子」を発動すると、古泉は速度と機動性が大幅に高まった光球へ変化し、射撃不能になる代わりにダメージを受けません。敵艦との接触でノックバックと5秒間の沈黙を与え、終了後は光球のまま戦場中央へ帰還します。",
+            },
+            {
+              id: "koizumi-flagship",
+              title: "「古泉一樹」の主艦技能を刷新",
+              body: "「超能力バリア」は自身の視界境界に障壁を常時展開し、外側から飛来する弾丸やビームを遮断します。ただし、艦体による突撃系技能を受けると破壊されます。",
+            },
+            {
+              id: "shamisen-flagship",
+              title: "「シャミセン」の主艦技能を追加",
+              body: "「猫の爪印」は開幕時に敵1人をランダムに標識し、その対象へ味方艦隊が与える弾丸ダメージを2倍にします。標識対象を撃破すると、別の敵へランダムに標識が移ります。",
+            },
+            {
+              id: "haruhi-sub",
+              title: "「涼宮ハルヒ」の分艦技能を刷新",
+              body: "「勇者の力」は短いチャージ後に周囲へ衝撃波を放ち、命中した敵へ順にスタンと減速を与えます。弱体効果が続く間は、対象が受けるダメージも増加します。",
+            },
+          ],
+        },
+        {
+          id: "balance",
+          title: "バランスと AI",
+          items: [
+            {
+              id: "yuki-flagship",
+              title: "「長門有希」の主艦技能を強化",
+              body: "主艦時に一度の発進で展開する戦闘僚機を2機へ増やし、「情報統合レーダー」の走査速度を大幅に引き上げました。",
+            },
+            {
+              id: "future1096-sub",
+              title: "「朝比奈みくる」の分艦技能を調整",
+              body: "「1096ビーム」が複数の敵へ同時命中した際のダメージを適度に引き下げました。",
+            },
+            {
+              id: "asakura-sub",
+              title: "「朝倉涼子」の分艦技能を強化",
+              body: "「ブレードクイーン」のダメージと効果範囲を適度に引き上げました。",
+            },
+            {
+              id: "character-ai",
+              title: "キャラクター AI を改善",
+              body: "一部キャラクターに対する AI の操作と対処戦略を改善しました。",
+            },
+          ],
+        },
+        {
+          id: "systems",
+          title: "システムと性能",
+          items: [
+            {
+              id: "winrate-statistics",
+              title: "編成勝率統計システムを追加",
+              body: "シングルプレイとマルチプレイの編成別出撃数・勝率を集計し、ランキングで確認できるようになりました。",
+            },
+            {
+              id: "webgl2",
+              title: "WebGL2 を優先描画経路に変更",
+              body: "戦場の優先描画経路を WebGL2 へ切り替え、描画性能を向上させました。",
+            },
+          ],
+        },
+      ],
+    },
+    {
       id: "v0.2",
       version: "v0.2",
       date: "2026-08-08",
@@ -165,6 +327,87 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
     },
   ],
   en: [
+    {
+      id: "v0.3",
+      version: "v0.3",
+      date: "2026-08-13",
+      title: "Public Beta v0.3",
+      groups: [
+        {
+          id: "characters",
+          title: "Characters & Abilities",
+          items: [
+            {
+              id: "haruhi-flagship",
+              title: "Haruhi Suzumiya Flagship Rework",
+              body: "Activating “I'm Here!” reveals the allied fleet's position to every enemy while granting broad stat bonuses to the fleet. Haruhi also randomly finds an Alien, Time Traveler, Otherworlder, or Esper, providing a permanent positive enhancement.",
+            },
+            {
+              id: "koizumi-sub",
+              title: "Itsuki Koizumi Sub-ship Rework",
+              body: "Activating “Esper Particles” transforms Koizumi into a dramatically faster and more agile orb. He cannot fire but takes no damage; colliding with an enemy knocks it back and silences it for 5 seconds. When the skill ends, the orb returns to the battlefield center.",
+            },
+            {
+              id: "koizumi-flagship",
+              title: "Itsuki Koizumi Flagship Rework",
+              body: "“Esper Barrier” passively creates a barrier along Koizumi's vision boundary. It intercepts bullets and beams fired from outside, but ship-impact abilities can break it.",
+            },
+            {
+              id: "shamisen-flagship",
+              title: "New Shamisen Flagship Ability",
+              body: "“Claw Mark” randomly marks one enemy at the start of battle, doubling projectile damage dealt to that target by the allied fleet. Defeating the marked target transfers the mark to another random enemy character.",
+            },
+            {
+              id: "haruhi-sub",
+              title: "Haruhi Suzumiya Sub-ship Rework",
+              body: "After a short charge, “Hero Power” releases a nearby shockwave that first stuns and then slows affected enemies. Targets also take increased damage for the full duration of the debuff.",
+            },
+          ],
+        },
+        {
+          id: "balance",
+          title: "Balance & AI",
+          items: [
+            {
+              id: "yuki-flagship",
+              title: "Yuki Nagato Flagship Buff",
+              body: "Flagship launches now deploy two combat wingmen at a time, and Data Integration Radar scans substantially faster.",
+            },
+            {
+              id: "future1096-sub",
+              title: "Mikuru Asahina Sub-ship Adjustment",
+              body: "Reduced the damage dealt by 1096 Beam when it hits multiple enemies at once.",
+            },
+            {
+              id: "asakura-sub",
+              title: "Ryoko Asakura Sub-ship Buff",
+              body: "Moderately increased Blade Queen's damage and effect radius.",
+            },
+            {
+              id: "character-ai",
+              title: "Improved Character AI",
+              body: "Improved how AI controls and counters several character-specific abilities.",
+            },
+          ],
+        },
+        {
+          id: "systems",
+          title: "Systems & Performance",
+          items: [
+            {
+              id: "winrate-statistics",
+              title: "Lineup Win-rate Statistics",
+              body: "Added lineup pick counts, win-rate tracking, and leaderboard views for both single-player and multiplayer battles.",
+            },
+            {
+              id: "webgl2",
+              title: "WebGL2 Is Now the Preferred Renderer",
+              body: "The battlefield now prefers the WebGL2 rendering path for improved rendering performance.",
+            },
+          ],
+        },
+      ],
+    },
     {
       id: "v0.2",
       version: "v0.2",

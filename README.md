@@ -3,7 +3,7 @@
 > 浏览器端的即时舰队对战游戏 —— 取材自谷川流《凉宫春日》系列中 SOS 团自制的同名游戏《射手座之日》。
 > 强调「看得见才能打」的情报博弈与「集中 / 分散」的编队取舍,而非数值碾压。
 
-**▶ 正式站:<https://star.haruyuki.cn>**　·　**测试站:<https://test.haruyuki.cn/game/>**　·　公测版 v0.2
+**▶ 正式站:<https://star.haruyuki.cn>**　·　**测试站:<https://test.haruyuki.cn/game/>**　·　公测版 v0.3
 
 ---
 
