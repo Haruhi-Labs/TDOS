@@ -11,7 +11,8 @@ import { DAMAGE_KIND } from "./damage.js";
 
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_HIT_INTERVAL = 1;
-const BLADE_QUEEN_HIT_FRACTION = 0.15;
+export const BLADE_QUEEN_DAMAGE_RATIO = 0.18;
+export const BLADE_QUEEN_RANGE_MULTIPLIER = 1.25;
 const HARUHI_BOW_CONTACT_TOLERANCE = 5;
 const HARUHI_BOW_ARC_COS = Math.cos(Math.PI / 4);
 const HARUHI_RAM_MINIMUM_GEAR = 2;
@@ -163,12 +164,13 @@ export function resolveBladeQueenContacts(match) {
       const hitLog = ship._bladeHitAt || (ship._bladeHitAt = new Map());
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive) continue;
-        if (distance(ship.x, ship.y, target.x, target.y) > ship.radius + target.radius + 4) continue;
+        const hitRadius = (ship.radius + 4) * BLADE_QUEEN_RANGE_MULTIPLIER + target.radius;
+        if (distance(ship.x, ship.y, target.x, target.y) > hitRadius) continue;
         const lastHitAt = hitLog.get(target.id);
         if (lastHitAt !== undefined && match.elapsed - lastHitAt < BLADE_QUEEN_HIT_INTERVAL) continue;
         hitLog.set(target.id, match.elapsed);
         target.takeDamage(
-          target.maxHp * BLADE_QUEEN_HIT_FRACTION,
+          target.maxHp * BLADE_QUEEN_DAMAGE_RATIO,
           ship,
           match,
           { kind: DAMAGE_KIND.SKILL },

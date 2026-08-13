@@ -14,6 +14,10 @@ import {
   throttleGearForValue,
 } from "../../shared/game-core.js";
 import {
+  BLADE_QUEEN_DAMAGE_RATIO,
+  BLADE_QUEEN_RANGE_MULTIPLIER,
+} from "../../shared/game/collision-system.js";
+import {
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
   HARUHI_SUPPORTS,
@@ -1886,11 +1890,16 @@ function asakuraBladeQueenCheck() {
     },
   });
   const teamA = sim.teamA;
+  const teamB = sim.teamB;
   const sub1 = teamA.ships.sub1;
-  const enemyMain = sim.teamB.ships.main;
+  const enemyMain = teamB.ships.main;
   const baseSpeed = sub1.baseSpeed();
 
   teamA.split(1);
+  teamB.split(1);
+  teamB.split(2);
+  sim.combatEnabled.A = false;
+  sim.combatEnabled.B = false;
   sub1.energy = sub1.maxEnergy;
   sub1.x = 720;
   sub1.y = 720;
@@ -1898,24 +1907,41 @@ function asakuraBladeQueenCheck() {
   sub1.command.y = sub1.y;
   sub1.route = null;
   sub1.cooldown = 999;
-  enemyMain.x = sub1.x + sub1.radius + enemyMain.radius;
+  const originalEffectRadius = sub1.radius + 4;
+  const originalHitRadius = originalEffectRadius + enemyMain.radius;
+  const expandedHitRadius = originalEffectRadius * BLADE_QUEEN_RANGE_MULTIPLIER + enemyMain.radius;
+  enemyMain.x = sub1.x + (originalHitRadius + expandedHitRadius) / 2;
   enemyMain.y = 720;
   enemyMain.command.x = enemyMain.x;
   enemyMain.command.y = enemyMain.y;
   enemyMain.route = null;
   enemyMain.cooldown = 999;
+  for (const enemy of [teamB.ships.sub1, teamB.ships.sub2]) {
+    enemy.x = 1200;
+    enemy.y = enemy.key === "sub1" ? 260 : 1080;
+    enemy.command = { x: enemy.x, y: enemy.y };
+    enemy.route = null;
+    enemy.cooldown = 999;
+  }
 
-  // 敌方未分离(3 艘同队),受到的伤害有 30% 平摊给同队其它船,故按「敌方编队总血量损失」判定
-  // 才稳健(技能总伤害不变、只是被重新分配)。否则接触主舰只承担 70%,会假性低于阈值。
-  const enemyFleetHp = () => sim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
-  const beforeFleetHp = enemyFleetHp();
   const castOk = teamA.castSubSkill("sub1");
   assert(castOk, "朝仓分舰技能释放失败");
   assert(sub1.baseSpeed() > baseSpeed * 1.3, "朝仓分舰技能未显著提升速度");
+  assert(BLADE_QUEEN_DAMAGE_RATIO === 0.18, "刀锋女王伤害比例未调整为18%最大生命值");
+  assert(BLADE_QUEEN_RANGE_MULTIPLIER === 1.25, "刀锋女王作用范围未扩大25%");
 
-  runSteps(sim, 1);
+  const hpBeforeHit = enemyMain.hp;
+  sim.resolveBladeQueenContacts();
+  assert(
+    Math.abs(hpBeforeHit - enemyMain.hp - enemyMain.maxHp * 0.18) < 1e-9,
+    "刀锋女王未在扩大后的范围内造成18%最大生命值伤害",
+  );
 
-  assert(beforeFleetHp - enemyFleetHp() > enemyMain.maxHp * 0.015, "朝仓分舰技能未对接触敌舰造成持续伤害");
+  sim.elapsed += 1.01;
+  enemyMain.x = sub1.x + expandedHitRadius + 0.01;
+  const hpBeforeMiss = enemyMain.hp;
+  sim.resolveBladeQueenContacts();
+  assert(enemyMain.hp === hpBeforeMiss, "刀锋女王在扩大后的作用范围外仍错误命中敌舰");
 }
 
 function shamisenCatPawCheck() {

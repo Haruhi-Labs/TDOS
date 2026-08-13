@@ -7,7 +7,13 @@
 //  - 表现基准以单人版为权威;要给战场加视觉效果,只改这里,两种模式天然同步。
 //  - solo.js / online.js 内不允许再出现与本文件同名的绘制函数(scripts/check-battle-drift.mjs 把关)。
 
-import { DEFAULT_WORLD_SIZE, FIRE_ARC_BANDS, clamp, quadraticPoint } from "../../shared/game-core.js";
+import {
+  DEFAULT_WORLD_SIZE,
+  FIRE_ARC_BANDS,
+  clamp,
+  quadraticPoint,
+} from "../../shared/game-core.js";
+import { BLADE_QUEEN_RANGE_MULTIPLIER } from "../../shared/game/collision-system.js";
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
 import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";
@@ -270,7 +276,7 @@ export function drawBladeQueenAura(ctx, ship) {
   const now = performance.now();
   const spin = now * 0.0065;
   const pulse = 0.6 + Math.sin(now * 0.012 + (ship.id || 0)) * 0.4;
-  const r = ship.radius + 7 + pulse * 3;
+  const r = (ship.radius + 7 + pulse * 3) * BLADE_QUEEN_RANGE_MULTIPLIER;
   ctx.save();
   ctx.translate(ship.x, ship.y);
   ctx.rotate(spin);

@@ -161,7 +161,7 @@ export const CHARACTER_DEFS = {
     subSkill: {
       id: "blade_queen", name: "刀锋女王", type: "active", cooldown: 20,
       cost: 52, duration: 10, target: "none",
-      description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；接触敌舰瞬间造成其最大生命值15%的伤害，此后每持续重叠1秒再造成一次。",
+      description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；刀锋作用半径扩大25%，接触敌舰瞬间造成其最大生命值18%的伤害，此后每持续重叠1秒再造成一次。",
     },
   },
   shamisen: {
