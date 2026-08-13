@@ -61,9 +61,11 @@ assert.equal(
   "过期票据必须拒绝",
 );
 const tampered = issueTicket({ jti: "tampered" });
-const replacement = tampered.endsWith("A") ? "B" : "A";
+const tamperedSegments = tampered.split(".");
+const replacement = tamperedSegments[2].startsWith("A") ? "B" : "A";
+tamperedSegments[2] = `${replacement}${tamperedSegments[2].slice(1)}`;
 assert.equal(
-  verifier().verifyAndConsume(`${tampered.slice(0, -1)}${replacement}`).ok,
+  verifier().verifyAndConsume(tamperedSegments.join(".")).ok,
   false,
   "篡改签名必须拒绝",
 );
