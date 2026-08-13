@@ -605,6 +605,8 @@ export const EN_MESSAGES = {
     "再起动": "Reboot",
     "闪现": "Blink",
     "沉默": "Silenced",
+    "震慑": "Stunned",
+    "勇者震慑": "Heroic Shock",
     "归航": "Returning",
     "主舰接管": "Main Takes Over",
     "加速": "Speed Up",

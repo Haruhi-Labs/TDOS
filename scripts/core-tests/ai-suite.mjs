@@ -568,18 +568,18 @@ function aiAsakuraVisionWaveDecisionCheck() {
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
 
-  enemyMain.effects.critUntil = sim.elapsed + 0.1;
+  enemyMain.effects.reliableUntil = sim.elapsed + 0.1;
   assert(
     !bot.shouldCastFlagshipSkill(context.focus, context),
     "朝仓 AI 仍会为来不及净化的即将到期增益浪费技能",
   );
 
-  enemyMain.effects.critUntil = sim.elapsed + 5;
+  enemyMain.effects.reliableUntil = sim.elapsed + 5;
   bot.flagshipTimer = 0;
   bot.tryFlagshipSkill(context);
   assert(aiTeam.hasActiveVisionWaveSkill(), "朝仓 AI 未对可及时净化的可见增益释放视野波");
   runSteps(sim, 0.8);
-  assert(!enemyMain.hasEffect("critUntil"), "朝仓 AI 释放的视野波未在扫到时净化敌方增益");
+  assert(!enemyMain.hasEffect("reliableUntil"), "朝仓 AI 释放的视野波未在扫到时净化敌方增益");
 }
 
 function aiVisionWaveBuffCounterplayCheck() {
@@ -1075,7 +1075,7 @@ function aiHighEnergySkillAggressionCheck() {
   bot.trySubSkill("sub1", context);
 
   assert(aiTeam.effects.sponsorUntil > sim.elapsed, "AI高能接敌时未积极释放旗舰技能");
-  assert(aiTeam.ships.sub1.hasEffect("critUntil"), "AI高能接敌时未积极释放分舰技能");
+  assert(sim.haruhiHeroPowerEffects.some((effect) => effect.casterShipId === aiTeam.ships.sub1.id), "AI高能接敌时未积极释放分舰技能");
 }
 
 function aiHaruhiFlagshipAggressionCheck() {

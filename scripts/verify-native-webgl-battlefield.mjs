@@ -63,6 +63,8 @@ try {
       const fixture = createNativeBattleVisualFixture();
       // 基础像素一致性不包含 WebGL2 专属着色器；专属效果在下方单独验证调用路径。
       fixture.state.shamisenHuntKillEffects = [];
+      fixture.state.haruhiHeroPowerEffects = [];
+      fixture.state.teams.B.ships.sub1.heroPowerShock = { active: false };
       drawBattleWorld(renderer.ctx, fixture.frame);
       renderer.present();
       const pixels = readPixels(canvas, renderer.mode);
@@ -174,6 +176,22 @@ try {
       return stats;
     }
 
+    function renderHeroPowerStats(mode) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const renderer = createNativeBattleRenderer(canvas, { forceMode: mode });
+      const fixture = createNativeBattleVisualFixture();
+      fixture.state.shamisenHuntKillEffects = [];
+      renderer.beginFrame();
+      renderer.ctx.setTransform(width / 1440, 0, 0, height / 1440, 0, 0);
+      drawBattleWorld(renderer.ctx, fixture.frame);
+      renderer.present();
+      const stats = renderer.getStats();
+      renderer.destroy();
+      return stats;
+    }
+
     const canvas2d = renderOnce("canvas2d");
     const webgl2 = renderOnce("webgl2");
     const webgl1 = renderOnce("webgl1");
@@ -216,6 +234,10 @@ try {
         webgl2Stats: renderHuntEffectStats("webgl2"),
         webgl1Stats: renderHuntEffectStats("webgl1"),
       },
+      heroPower: {
+        webgl2Stats: renderHeroPowerStats("webgl2"),
+        webgl1Stats: renderHeroPowerStats("webgl1"),
+      },
     };
   });
 
@@ -244,6 +266,12 @@ try {
   );
   assert.ok(report.renderers.webgl2.stats.triangles < 6500, "WebGL2 基准场景生成了过多三角形");
   assert.ok(report.renderers.webgl2.stats.drawCalls < 90, "WebGL2 基准场景产生了过多绘制调用");
+  assert.ok(
+    report.heroPower.webgl2Stats.triangles - report.renderers.webgl2.stats.triangles < 900,
+    `勇者之力战场特效生成了过多额外三角形：${report.heroPower.webgl2Stats.triangles - report.renderers.webgl2.stats.triangles}`,
+  );
+  assert.ok(report.heroPower.webgl2Stats.drawCalls < 110, `勇者之力战场特效产生了过多绘制调用：${report.heroPower.webgl2Stats.drawCalls}`);
+  assert.ok(report.heroPower.webgl1Stats.drawCalls < 110, `勇者之力 WebGL1 回退产生了过多绘制调用：${report.heroPower.webgl1Stats.drawCalls}`);
   assert.ok(
     report.radar.subframeAngles[0] > report.radar.subframeAngles[1]
       && report.radar.subframeAngles[1] > report.radar.subframeAngles[2],

@@ -5,6 +5,7 @@ import {
   quadraticPoint,
   shortestAngleDelta,
 } from "./math.js";
+import { haruhiHeroPowerSpeedFactor } from "./haruhi-hero-power.js";
 
 const ORB_BASE_CRUISE_SPEED = 164;
 const ORB_SPEED_MULTIPLIER = 4.45;
@@ -191,6 +192,7 @@ export function updateKoizumiOrb(ship, dt) {
 
   const turnLoad = clamp(Math.abs(state.angularVelocity) / Math.max(0.01, maximumTurnRate), 0, 1);
   let targetSpeed = state.cruiseSpeed * (1 - (1 - ORB_MIN_TURN_SPEED_RATIO) * turnLoad);
+  targetSpeed *= haruhiHeroPowerSpeedFactor(ship, now);
   if (returning && centerDistance < 230) {
     // 末段仍显著快于普通舰，但收一点速度，避免围绕中心形成不自然的无限小圆。
     targetSpeed *= clamp(0.58 + centerDistance / 520, 0.58, 1);

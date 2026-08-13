@@ -26,6 +26,10 @@ import {
   drawShamisenHuntMarkers,
   drawShamisenHuntMarkersMinimap,
 } from "./render/shamisen-hunt.js";
+import {
+  drawHaruhiHeroPowerEffects,
+  drawHaruhiHeroPowerShockIndicator,
+} from "./render/haruhi-hero-power.js";
 
 export { drawYukiRadar, drawYukiRadarMinimap };
 
@@ -515,6 +519,7 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
   ctx.fillRect(barLeft, ship.y - ship.radius - 4, barWidth * energyRatio, 3);
   drawClawMarkCounter(ctx, ship);
   drawSilenceIndicator(ctx, ship);
+  drawHaruhiHeroPowerShockIndicator(ctx, ship);
 
   // 名牌:己方「已出列/独立」舰船常驻显示(附着编队内的副舰不显示,避免挤成一团);
   // 敌方默认隐藏名字,仅当其角色名已永久确认(视野内施放技能或被长门雷达扫中)时才显示。
@@ -1065,6 +1070,27 @@ export function drawBattleWorld(ctx, frame) {
     Number(state.world?.size) || LOGICAL,
   );
   drawYukiRadar(ctx, frame);
+
+  const ownObserverUnits = [
+    ...teamAllShips(ownTeam),
+    ...(ownTeam?.scouts || []),
+    ...(ownTeam?.wingmen || []),
+  ].filter((unit) => unit?.alive);
+  drawHaruhiHeroPowerEffects(
+    ctx,
+    state.haruhiHeroPowerEffects,
+    (effect) => {
+      if (spectating || effect.teamSeat === ownSeat || enemyVisible(effect.casterShipId)) {
+        return true;
+      }
+      if (effect.phase === "charge") {
+        return false;
+      }
+      return ownObserverUnits.some((unit) => (
+        Math.hypot(unit.x - effect.x, unit.y - effect.y) <= effect.radius + (unit.radius || 0)
+      ));
+    },
+  );
 
   drawKoizumiBarrier(ctx, ownTeam, elapsed);
   const enemyBarrierMainId = enemyTeam?.ships?.main?.id;

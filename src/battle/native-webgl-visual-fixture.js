@@ -79,6 +79,13 @@ export function createNativeBattleVisualFixture() {
     y: 420,
     angle: Math.PI - 0.45,
     silenced: true,
+    heroPowerShock: {
+      active: true,
+      controlLocked: false,
+      lockRemaining: 0,
+      recoveryRemaining: 2.6,
+      speedFactor: 0.35,
+    },
     nameRevealed: true,
   });
   setShip(teamB.ships.sub2, {
@@ -150,6 +157,20 @@ export function createNativeBattleVisualFixture() {
     projectile(113, "B", 860, 570, 420, 620),
   ];
   state.bursts = [{ id: 121, x: 760, y: 570, radius: 16, life: 0.24, color: "#ffdb9b" }];
+  state.haruhiHeroPowerEffects = [{
+    id: 124,
+    teamSeat: "A",
+    casterShipId: teamA.ships.sub2.id,
+    phase: "shock",
+    x: 760,
+    y: 1010,
+    radius: 240,
+    progress: 0.42,
+    life: 0.67,
+    maxLife: 1.15,
+    hitShipIds: [teamB.ships.sub1.id],
+    destroyedAircraftIds: [],
+  }];
   state.shamisenHuntKillEffects = [{
     id: 126,
     hunterSeat: "A",

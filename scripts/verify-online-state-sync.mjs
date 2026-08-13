@@ -45,6 +45,7 @@ function battleState(elapsed = 0) {
     winnerSeat: null,
     projectiles: [],
     bursts: [],
+    haruhiHeroPowerEffects: [],
     shamisenHuntKillEffects: [],
     koizumiBarrierImpacts: [],
     floatingTexts: [],
@@ -121,6 +122,12 @@ previousState.koizumiBarrierImpacts = [{ id: 200, x: 20, y: 30, radius: 150, lif
 nextState.koizumiBarrierImpacts = [{ id: 200, x: 20, y: 30, radius: 150, life: 0.4 }];
 previousState.shamisenHuntKillEffects = [{ id: 201, x: 40, y: 50, radius: 16, life: 1.4, maxLife: 1.65 }];
 nextState.shamisenHuntKillEffects = [{ id: 201, x: 40, y: 50, radius: 16, life: 1, maxLife: 1.65 }];
+previousState.haruhiHeroPowerEffects = [{
+  id: 202, phase: "charge", x: 20, y: 40, radius: 16, progress: 0.2, life: 0.64, maxLife: 0.8,
+}];
+nextState.haruhiHeroPowerEffects = [{
+  id: 202, phase: "charge", x: 40, y: 60, radius: 16, progress: 0.6, life: 0.32, maxLife: 0.8,
+}];
 const interpolated = sync.interpolateSnapshotState(
   { tick: 0, state: previousState },
   { tick: 30, state: nextState },
@@ -141,6 +148,11 @@ assert(
 assert(
   Math.abs(interpolated.shamisenHuntKillEffects[0].life - 1.2) < 1e-9,
   "三味线猎杀击杀特效寿命未平滑插值",
+);
+assert.equal(interpolated.haruhiHeroPowerEffects[0].x, 30, "勇者之力蓄力中心未平滑跟随施法舰");
+assert(
+  Math.abs(interpolated.haruhiHeroPowerEffects[0].progress - 0.4) < 1e-9,
+  "勇者之力同阶段动画进度未平滑插值",
 );
 assert(
   interpolated.teams.A.haruhiFlagship.esperOrb.angle > 6.1,
@@ -201,13 +213,18 @@ const extrapolationSource = battleState(2);
 extrapolationSource.teams.A.ships.main.x = 95;
 extrapolationSource.teams.A.ships.main.speed = 100;
 extrapolationSource.shamisenHuntKillEffects = [{ id: 202, x: 50, y: 50, radius: 16, life: 1, maxLife: 1.65 }];
+extrapolationSource.haruhiHeroPowerEffects = [{
+  id: 203, phase: "shock", x: 50, y: 50, radius: 24, progress: 0.2, life: 0.92, maxLife: 1.15,
+}];
 const extrapolated = sync.extrapolateState(extrapolationSource, 1);
 assert.equal(extrapolated.elapsed, 2.18, "外推时长未按上限截断");
 assert.equal(extrapolated.teams.A.ships.main.x, 98, "舰船外推未遵守地图边界");
 assert(Math.abs(extrapolated.shamisenHuntKillEffects[0].life - 0.82) < 1e-9, "猎杀击杀特效外推期间发生冻结");
+assert(Math.abs(extrapolated.haruhiHeroPowerEffects[0].life - 0.74) < 1e-9, "勇者之力冲击波外推期间发生冻结");
+assert(extrapolated.haruhiHeroPowerEffects[0].progress > 0.35, "勇者之力冲击波外推期间进度没有继续推进");
 
 app.snapshots = [{ tick: 0, state: battleState(0), serverTimeMs: 1000, receivedAtMs: 1000 }];
 now = 1000;
 assert(sync.getRenderState()?.teams?.A?.ships?.main, "单快照无法生成显示状态");
 
-console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈/猎杀特效插值、额外舰船、弹体与边界外推均保持一致。");
+console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈/猎杀与勇者之力特效插值、额外舰船、弹体与边界外推均保持一致。");

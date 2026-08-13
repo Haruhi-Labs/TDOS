@@ -2342,7 +2342,9 @@ export class BotController {
       this.koizumiOrbSteerTimer = 0;
     }
     this.subTimers[shipKey] = ok
-      ? (context?.skillAggression > 1 ? randomInRange(12, 18) : randomInRange(15, 22))
+      ? ship.characterId === "haruhi"
+        ? Math.max(0.15, Number(this.team.cooldowns[shipKey]) || 0)
+        : (context?.skillAggression > 1 ? randomInRange(12, 18) : randomInRange(15, 22))
       : context?.conserveEnergy
         ? randomInRange(4.6, 7.8)
         : context?.skillAggression > 1
@@ -3065,7 +3067,7 @@ export class BotController {
   }
 
   shouldDelaySubBuff(ship, meta) {
-    if (!ship || !["haruhi", "koizumi", "kyon", "asakura", "shamisen"].includes(ship.characterId)) {
+    if (!ship || !["koizumi", "kyon", "asakura", "shamisen"].includes(ship.characterId)) {
       return false;
     }
     const usefulDuration = meta?.duration || 6;
@@ -3133,7 +3135,6 @@ export class BotController {
         for (const ship of visibleShips) {
           visibleBuffRemaining = Math.max(
             visibleBuffRemaining,
-            Number(ship.effects.critUntil || 0) - now,
             Number(ship.effects.reliableUntil || 0) - now,
             Number(ship.effects.bladeQueenUntil || 0) - now,
             ship.effects.nextShotDamageMultiplier > 1 ? 6 : 0,
@@ -3179,14 +3180,31 @@ export class BotController {
       : dist;
     const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, 4);
     if (ship.characterId === "haruhi") {
-      if (blockedByBarrier) {
-        return false;
-      }
-      return Boolean(
+      const shockRadius = this.team.match.worldSize / 6;
+      const visibleEnemyShips = this.enemy.getAllShips().filter((enemyShip) => (
+        enemyShip.alive
+        && this.team.visibleEnemyIds.has(enemyShip.id)
+        && distance(ship.x, ship.y, enemyShip.x, enemyShip.y) <= shockRadius + enemyShip.radius
+      ));
+      const visibleEnemyAircraft = [...this.enemy.scouts, ...this.enemy.wingmen].filter((aircraft) => (
+        aircraft.alive
+        && this.team.visibleEnemyIds.has(aircraft.id)
+        && distance(ship.x, ship.y, aircraft.x, aircraft.y) <= shockRadius + aircraft.radius
+      ));
+      const ownAircraftAtRisk = [...this.team.scouts, ...this.team.wingmen].filter((aircraft) => (
+        aircraft.alive
+        && distance(ship.x, ship.y, aircraft.x, aircraft.y) <= shockRadius + aircraft.radius
+      )).length;
+      const focusWillStayInRange = Boolean(
         estimate
-        && (estimate.visible || estimate.age <= 2.5)
-        && dist <= ship.effectiveRange() * 1.35
-        && (((context?.skillAggression) || 0) > 0.16 || this.energyProfile(ship).high),
+        && estimate.source !== "spawn"
+        && (estimate.visible || estimate.age <= 1.2)
+        && dist <= shockRadius * 0.9,
+      );
+      const worthwhileAircraftPurge = visibleEnemyAircraft.length >= Math.max(2, ownAircraftAtRisk + 1);
+      return Boolean(
+        (focusWillStayInRange || visibleEnemyShips.length >= 2 || worthwhileAircraftPurge)
+        && (((context?.skillAggression) || 0) > 0.12 || this.energyProfile(ship).high),
       );
     }
     if (ship.characterId === "koizumi") {

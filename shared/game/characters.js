@@ -29,9 +29,10 @@ export const CHARACTER_DEFS = {
       description: "广播己方位置，16秒内令敌方持续获得对全舰队的真实视野，同时全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害。每次使用随机解锁一种常驻支援。",
     },
     subSkill: {
-      id: "god_says_win", name: "神说会赢的", type: "active", cooldown: 20, cost: 60,
-      duration: 8, target: "none",
-      description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。",
+      id: "hero_power", name: "勇者之力", type: "active", cooldown: 10, cost: 60,
+      chargeDuration: 0.8, radiusZoneRatio: 0.5, lockDuration: 1, recoveryDuration: 4,
+      target: "none",
+      description: "短暂蓄力后冲击周围半个战区：敌舰立即失速，1秒内无法控制和射击，随后4秒逐渐恢复航速；同时击毁范围内不分敌我的所有侦察机与僚机。",
     },
   },
   koizumi: {

@@ -117,6 +117,15 @@ import {
   updateHaruhiFlagship,
 } from "./game/haruhi-flagship.js";
 import {
+  createHaruhiHeroPowerEvent,
+  createHaruhiHeroPowerShockState,
+  haruhiHeroPowerSpeedFactor,
+  isHaruhiHeroPowerControlLocked,
+  serializeHaruhiHeroPowerEvent,
+  serializeHaruhiHeroPowerShock,
+  updateHaruhiHeroPowerEvent,
+} from "./game/haruhi-hero-power.js";
+import {
   SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
   createShamisenHuntState,
   ensureShamisenHuntTarget,
@@ -532,6 +541,7 @@ class Ship {
     this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
     this.forcedKnockback = null;
     this.koizumiOrb = null;
+    this.heroPowerShock = createHaruhiHeroPowerShockState();
 
     this.cooldown = randomInRange(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
@@ -539,7 +549,6 @@ class Ship {
     this.nameRevealed = false;
 
     this.effects = {
-      critUntil: 0,
       reliableUntil: 0,
       bladeQueenUntil: 0,
       catPawUntil: 0,
@@ -578,6 +587,9 @@ class Ship {
 
   canControl() {
     if (!this.alive || this.isAuxiliary) {
+      return false;
+    }
+    if (isHaruhiHeroPowerControlLocked(this)) {
       return false;
     }
     if (isKoizumiOrbReturning(this)) {
@@ -676,7 +688,7 @@ class Ship {
   }
 
   effectiveSpeed() {
-    return this.team.fleetSpeedForShip(this);
+    return this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
   }
 
   // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
@@ -764,7 +776,6 @@ class Ship {
       delete this.activeSkillEffectStartedTicks[effectKey];
     };
 
-    clearTimedEffect("critUntil");
     clearTimedEffect("reliableUntil");
     clearTimedEffect("bladeQueenUntil");
     clearTimedEffect("catPawUntil");
@@ -1050,6 +1061,11 @@ class Ship {
       return;
     }
 
+    if (isHaruhiHeroPowerControlLocked(this)) {
+      this.speed = 0;
+      return;
+    }
+
     if (updateKoizumiOrb(this, dt)) {
       return;
     }
@@ -1198,7 +1214,12 @@ class Ship {
   }
 
   tryAttack(match, enemyTeam) {
-    if (!this.alive || this.cooldown > 0 || this.isKoizumiOrbActive()) {
+    if (
+      !this.alive
+      || this.cooldown > 0
+      || this.isKoizumiOrbActive()
+      || isHaruhiHeroPowerControlLocked(this)
+    ) {
       return;
     }
     const target = this.team.pickTargetFor(this, enemyTeam);
@@ -1222,11 +1243,6 @@ class Ship {
       match.spawnFloatingTextKey(this.x + 12, this.y - 12, "超能力", {}, "#9be0ff");
       this.effects.nextShotDamageMultiplier = 1;
       delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
-    }
-
-    if (this.hasEffect("critUntil") && Math.random() < 0.5) {
-      damage *= 3;
-      match.spawnFloatingTextKey(this.x + 12, this.y - 12, "暴击", {}, "#ffdd73");
     }
 
     const catPawMeta = this.characterId === "shamisen" && this.hasEffect("catPawUntil")
@@ -1338,6 +1354,7 @@ class Ship {
       catPawVolley: this.hasEffect("catPawUntil"),
       silenced: this.isSilenced(),
       silenceRemaining: Math.max(0, (this.effects.silencedUntil || 0) - this.team.match.elapsed),
+      heroPowerShock: serializeHaruhiHeroPowerShock(this),
       koizumiOrb: serializeKoizumiOrb(this),
       knockedBack: Boolean(this.forcedKnockback),
       haruhiImpactReady: this.key === "main" && haruhiOtherworlderReady(this.team),
@@ -2093,9 +2110,6 @@ class Team {
 
   listShipBuffs(ship) {
     const list = [];
-    if (ship.hasEffect("critUntil")) {
-      list.push("神说会赢的");
-    }
     if (ship.effects.nextShotDamageMultiplier > 1) {
       list.push("超能力");
     }
@@ -2113,6 +2127,9 @@ class Team {
     }
     if (ship.isSilenced()) {
       list.push("沉默");
+    }
+    if (ship.heroPowerShock?.recoveryUntil > this.match.elapsed) {
+      list.push("勇者震慑");
     }
     if (ship.isEmergencyBraking()) {
       list.push("急刹");
@@ -2290,6 +2307,13 @@ class Team {
 
   split(level) {
     this.resolvePostCasualtyState();
+    const releasedShip = level === 1 ? this.ships.sub1 : level === 2 ? this.ships.sub2 : null;
+    if (
+      isHaruhiHeroPowerControlLocked(this.ships.main)
+      || isHaruhiHeroPowerControlLocked(releasedShip)
+    ) {
+      return false;
+    }
     if (level === 1 && this.splitLevel === 0 && this.ships.sub1.alive) {
       this.splitLevel = 1;
       this.ships.sub1.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y + 100, 1, false);
@@ -2356,6 +2380,9 @@ class Team {
         beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
         beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
         beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
+        if (isHaruhiHeroPowerControlLocked(ship)) {
+          continue;
+        }
       }
       beam.life -= dt;
     }
@@ -2407,9 +2434,12 @@ class Team {
     // 侦察机从「指定舰船」处发出(默认主舰)——前出的分离舰可更快把侦察部署到位。
     // 能量从该舰所属能量池扣除(分离后副舰用自己的池)。
     const requested = options.fromShipKey ? this.ships[options.fromShipKey] : null;
+    if (requested && isHaruhiHeroPowerControlLocked(requested)) {
+      return false;
+    }
     const source = (requested && requested.alive ? requested : null)
       || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
-    if (!source) {
+    if (!source || isHaruhiHeroPowerControlLocked(source)) {
       return false;
     }
     if (!this.spendEnergyForShip(source.key || "main", cost)) {
@@ -2523,7 +2553,7 @@ class Team {
     if (!meta || meta.type !== "active") {
       return false;
     }
-    if (!this.ships.main.alive) {
+    if (!this.ships.main.alive || !this.ships.main.canControl()) {
       return false;
     }
     if (this.ships.main.isSilenced()) {
@@ -2607,7 +2637,7 @@ class Team {
 
   castSubSkill(shipKey, options = {}) {
     const ship = this.ships[shipKey];
-    if (!ship || !ship.alive || ship.isAttached()) {
+    if (!ship || !ship.alive || ship.isAttached() || !ship.canControl()) {
       return false;
     }
     if (ship.isSilenced() || ship.isKoizumiOrbActive()) {
@@ -2629,7 +2659,13 @@ class Team {
 
     let ok = false;
     if (ship.characterId === "haruhi") {
-      this.setShipEffect(ship, "critUntil", meta.duration || 8);
+      this.match.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
+        id: nextEntityId(),
+        ship,
+        now: this.match.elapsed,
+        worldSize: this.match.worldSize,
+        meta,
+      }));
       ok = true;
     } else if (ship.characterId === "koizumi") {
       ok = activateKoizumiOrb(ship, meta.duration || 8);
@@ -2851,7 +2887,7 @@ class Team {
     computeTeamVisibility(this, enemyTeam);
   }
 
-  // 某攻击者当前可开火的候选目标:已过滤"可见(或春日盲射)+ 进射程",并带上距离与射界密度。
+  // 某攻击者当前可开火的候选目标:已过滤"真实可见 + 进射程",并带上距离与射界密度。
   // 取最近/锁血/集火分配都基于这同一份候选,确保 AI 与玩家走完全一致的命中判定口径。
   fireCandidates(attacker, enemyTeam) {
     return teamFireCandidates(this, attacker, enemyTeam);
@@ -2978,6 +3014,7 @@ export class MatchSimulation {
 
     this.projectiles = [];
     this.bursts = [];
+    this.haruhiHeroPowerEffects = [];
     this.shamisenHuntKillEffects = [];
     this.koizumiBarrierImpacts = [];
     this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
@@ -3318,6 +3355,13 @@ export class MatchSimulation {
     this.floatingTexts = this.floatingTexts.filter((label) => label.life > 0);
   }
 
+  updateHaruhiHeroPowers() {
+    for (const effect of this.haruhiHeroPowerEffects) {
+      effect.alive = updateHaruhiHeroPowerEvent(this, effect);
+    }
+    this.haruhiHeroPowerEffects = this.haruhiHeroPowerEffects.filter((effect) => effect.alive);
+  }
+
   resolveVisionWavePurges() {
     // 先同时采集双方命中，再执行净化，避免A席先结算并清掉B方视野波后，
     // B方同一逻辑帧已经扫到的目标因座位顺序而失效。
@@ -3357,6 +3401,8 @@ export class MatchSimulation {
 
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
+    // 在开火前结算冲击：同一逻辑帧被震慑的舰船不会再补射一发。
+    this.updateHaruhiHeroPowers();
 
     this.resolveKoizumiBarrierRamContacts();
     this.resolveKoizumiOrbContacts();
@@ -3397,6 +3443,7 @@ export class MatchSimulation {
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
+      haruhiHeroPowerEffects: this.haruhiHeroPowerEffects.map(serializeHaruhiHeroPowerEvent),
       shamisenHuntKillEffects: this.shamisenHuntKillEffects.map((effect) => ({ ...effect })),
       koizumiBarrierImpacts: this.koizumiBarrierImpacts.map((impact) => ({ ...impact })),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),

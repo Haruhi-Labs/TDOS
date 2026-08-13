@@ -6,7 +6,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "团长型火力旗舰",
       flavor: "可靠的领导者与突击手",
       flagshipSkill: { name: "我在这里！", description: "广播己方位置，16秒内令敌方持续获得对全舰队的真实视野，同时全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害。每次使用随机解锁一种常驻支援。" },
-      subSkill: { name: "神说会赢的", description: "8秒内自身攻击50%概率暴击，造成3倍伤害，并可盲射射界与射程内最近敌人。" },
+      subSkill: { name: "勇者之力", description: "短暂蓄力后冲击周围半个战区：敌舰立即失速，1秒内无法控制和射击，随后4秒逐渐恢复航速；同时击毁范围内不分敌我的所有侦察机与僚机。" },
     },
     koizumi: {
       name: "古泉一树",
@@ -72,7 +72,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "団長型火力旗艦",
       flavor: "頼れる指揮官であり突撃手",
       flagshipSkill: { name: "私はここにいる！", description: "味方の位置を放送し、16秒間は敵に全艦隊の実視界を与える。同時に全艦隊の速度・機動・射程・視界・ダメージ・連射を15%強化し、被ダメージを15%軽減。使用ごとに恒久支援を1つ解放する。" },
-      subSkill: { name: "神様が勝つと言っている", description: "8秒間、自身の攻撃が50%でクリティカルになり、3倍ダメージを与える。射界と射程内の最寄り敵へ盲射できる。" },
+      subSkill: { name: "勇者の力", description: "短いチャージ後、周囲半戦区へ衝撃波を放つ。敵艦は即座に停止し、1秒間は操作・射撃不能、その後4秒かけて速度を回復する。範囲内の所属を問わず、すべての偵察機と僚機を撃破する。" },
     },
     koizumi: {
       name: "古泉一樹",
@@ -138,7 +138,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "Firepower Flagship Commander",
       flavor: "A reliable leader and shock attacker",
       flagshipSkill: { name: "I'm Here!", description: "Broadcasts the allied fleet's position. For 16 seconds, enemies gain true vision of the entire fleet while it gains +15% speed, handling, range, vision, damage and fire rate with 15% damage reduction. Each use unlocks one permanent support." },
-      subSkill: { name: "God Says We Win", description: "For 8 seconds, attacks have a 50% critical chance for triple damage and can blind-fire at the nearest enemy within firing arc and range." },
+      subSkill: { name: "Hero's Power", description: "After a brief charge, shocks enemies within half a sector. They stop instantly, cannot act or fire for 1 second, then regain speed over 4 seconds. All scouts and wingmen in range are destroyed regardless of allegiance." },
     },
     koizumi: {
       name: "Itsuki Koizumi",

@@ -1352,61 +1352,154 @@ function kyonUniformFireRateCheck() {
   }
 }
 
-function haruhiBlindfireCheck() {
+function haruhiHeroPowerCheck() {
+  const originalRandom = Math.random;
+  let randomState = 0x4845524f;
+  Math.random = () => {
+    randomState = Math.imul(randomState ^ (randomState >>> 15), 1 | randomState);
+    randomState ^= randomState + Math.imul(randomState ^ (randomState >>> 7), 61 | randomState);
+    return ((randomState ^ (randomState >>> 14)) >>> 0) / 4294967296;
+  };
+  try {
   const sim = new MatchSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
       A: {
-        main: "kyon",
+        main: "yuki",
         sub1: "haruhi",
-        sub2: "yuki",
+        sub2: "kyon",
       },
       B: {
-        main: "future1096",
+        main: "yuki",
         sub1: "koizumi",
         sub2: "tsuruya",
       },
     },
   });
   const teamA = sim.teamA;
-  const sub1 = teamA.ships.sub1;
-  const main = teamA.ships.main;
+  const teamB = sim.teamB;
+  const haruhi = teamA.ships.sub1;
   const enemyMain = sim.teamB.ships.main;
+  const enemyNearSub = teamB.ships.sub1;
+  const enemyOutside = teamB.ships.sub2;
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
+  teamA.splitLevel = 2;
+  teamB.splitLevel = 2;
 
-  teamA.split(1);
-  sub1.x = 720;
-  sub1.y = 720;
-  sub1.angle = 0;
-  sub1.command.x = sub1.x;
-  sub1.command.y = sub1.y;
-  sub1.route = null;
-  main.x = 260;
-  main.y = 240;
-  main.command.x = main.x;
-  main.command.y = main.y;
-  main.route = null;
+  const park = (ship, x, y) => {
+    ship.x = x;
+    ship.y = y;
+    ship.command = { x, y };
+    ship.route = null;
+    ship.speed = 0;
+  };
+  park(haruhi, 720, 720);
+  park(enemyMain, 850, 720);
+  park(enemyNearSub, 920, 720);
+  park(enemyOutside, 1080, 720);
 
-  enemyMain.x = 1090;
-  enemyMain.y = 720;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
-  enemyMain.route = null;
+  assert(teamA.launchScout(5), "勇者之力测试未能生成己方长门战斗侦察机");
+  teamA.cooldowns.scout = 0;
+  assert(teamA.launchScout(5), "勇者之力测试未能生成己方远端对照侦察机");
+  assert(teamB.launchScout(5), "勇者之力测试未能生成敌方长门战斗侦察机");
+  teamB.cooldowns.scout = 0;
+  assert(teamB.launchScout(5), "勇者之力测试未能生成敌方远端对照侦察机");
+  assert(teamA.launchWingman(5), "勇者之力测试未能生成己方僚机");
+  assert(teamB.launchWingman(5), "勇者之力测试未能生成敌方僚机");
 
-  sim.teamA.computeVisibility(sim.teamB);
-  assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "春日盲射测试布置错误，敌方本应处于视野外");
-
-  sub1.cooldown = 0;
-  sim.projectiles = [];
-  sub1.tryAttack(sim, sim.teamB);
-  assert(sim.projectiles.length === 0, "春日未开技能时不应攻击视野外目标");
+  const allAircraft = [
+    ...teamA.scouts,
+    ...teamA.wingmen,
+    ...teamB.scouts,
+    ...teamB.wingmen,
+  ];
+  for (const [index, aircraft] of allAircraft.entries()) {
+    const angle = (index / allAircraft.length) * Math.PI * 2;
+    aircraft.x = 720 + Math.cos(angle) * 92;
+    aircraft.y = 720 + Math.sin(angle) * 92;
+    aircraft.command = { x: aircraft.x, y: aircraft.y };
+    aircraft.speed = 0;
+  }
+  const ownOutsideScout = teamA.scouts.at(-1);
+  const enemyOutsideScout = teamB.scouts.at(-1);
+  ownOutsideScout.x = 1100;
+  ownOutsideScout.y = 1080;
+  ownOutsideScout.command = { x: ownOutsideScout.x, y: ownOutsideScout.y };
+  enemyOutsideScout.x = 1160;
+  enemyOutsideScout.y = 1080;
+  enemyOutsideScout.command = { x: enemyOutsideScout.x, y: enemyOutsideScout.y };
 
   const castOk = teamA.castSubSkill("sub1");
-  assert(castOk, "春日分舰技能释放失败");
-  sub1.cooldown = 0;
+  assert(castOk, "春日‘勇者之力’释放失败");
+  assert(teamA.cooldowns.sub1 === 10, "春日‘勇者之力’冷却不是10秒");
+  assert(sim.haruhiHeroPowerEffects.length === 1, "勇者之力没有创建权威蓄力事件");
+  assert(sim.haruhiHeroPowerEffects[0].phase === "charge", "勇者之力没有从蓄力阶段开始");
+  assert(
+    Math.abs(sim.haruhiHeroPowerEffects[0].radius - 240) < 1e-9,
+    "勇者之力半径不是半个战区宽度",
+  );
+
+  runSteps(sim, 0.7);
+  assert(enemyMain.canControl(), "勇者之力在蓄力完成前提前控制敌舰");
+  assert(allAircraft.every((aircraft) => aircraft.alive), "勇者之力在蓄力完成前提前击毁侦察机");
+
+  runSteps(sim, 0.15);
+  const effect = sim.haruhiHeroPowerEffects[0];
+  assert(effect?.phase === "shock", "勇者之力蓄力完成后没有进入冲击阶段");
+  assert(enemyMain.speed === 0 && enemyNearSub.speed === 0, "勇者之力没有令范围内敌舰瞬间失速");
+  assert(!enemyMain.canControl() && !enemyNearSub.canControl(), "勇者之力命中后1秒内仍可控制敌舰");
+  assert(enemyOutside.canControl(), "勇者之力错误控制了范围外敌舰");
+  assert(
+    !sim.applyActionForSeat("B", { type: "set_throttle", shipKey: "main", throttle: 1.4 }),
+    "勇者之力硬控期间仍可接受玩家操舰输入",
+  );
+  enemyMain.cooldown = 0;
+  teamB.visibleEnemyIds.add(haruhi.id);
   sim.projectiles = [];
-  sub1.tryAttack(sim, sim.teamB);
-  assert(sim.projectiles.length === 1, "春日分舰技能未允许对视野外最近敌人进行盲射");
+  enemyMain.tryAttack(sim, teamA);
+  assert(sim.projectiles.length === 0, "勇者之力硬控期间敌舰仍可射击");
+
+  for (const aircraft of allAircraft) {
+    const shouldSurvive = aircraft === ownOutsideScout || aircraft === enemyOutsideScout;
+    assert(
+      aircraft.alive === shouldSurvive,
+      shouldSurvive ? "勇者之力错误击毁了范围外侦察机" : "勇者之力没有击毁范围内的某类侦察机或僚机",
+    );
+  }
+  assert(
+    ["A", "B"].every((seat) => ["scout", "wingman"].every((kind) => (
+      allAircraft.some((aircraft) => (
+        aircraft.team.seat === seat
+        && aircraft.kind === kind
+        && effect.destroyedAircraftIds.includes(aircraft.id)
+      ))
+    ))),
+    "勇者之力的权威事件没有记录不分敌我的全类型空中单位击毁结果",
+  );
+
+  const shockAt = enemyMain.heroPowerShock.hitAt;
+  runSteps(sim, Math.max(0, shockAt + 1.05 - sim.elapsed));
+  assert(enemyMain.canControl(), "勇者之力命中1秒后仍未恢复控制");
+  const baseSpeed = teamB.fleetSpeedForShip(enemyMain);
+  assert(enemyMain.effectiveSpeed() < baseSpeed * 0.05, "勇者之力控制结束时航速没有从接近0开始恢复");
+  runSteps(sim, 1.95);
+  assert(
+    Math.abs(enemyMain.effectiveSpeed() / baseSpeed - 0.5) < 0.03,
+    "勇者之力后续4秒的航速恢复不是线性进行",
+  );
+  runSteps(sim, 2.05);
+  assert(Math.abs(enemyMain.effectiveSpeed() / baseSpeed - 1) < 1e-9, "勇者之力4秒后航速没有恢复到100%");
+  const snapshot = sim.serializeState();
+  assert(Array.isArray(snapshot.haruhiHeroPowerEffects), "勇者之力事件没有进入共享战斗快照");
+  assert(
+    Math.abs(snapshot.teams.B.ships.main.heroPowerShock.speedFactor - 1) < 1e-9,
+    "勇者之力恢复状态序列化错误",
+  );
+  } finally {
+    Math.random = originalRandom;
+  }
 }
 
 function haruhiFlagshipReworkCheck() {
@@ -1617,7 +1710,7 @@ function asakuraFlagshipCheck() {
       },
       B: {
         main: "tsuruya",
-        sub1: "haruhi",
+        sub1: "kyon",
         sub2: "koizumi",
       },
     },
@@ -1657,7 +1750,7 @@ function asakuraFlagshipCheck() {
   sim.teamA.computeVisibility(sim.teamB);
 
   assert(teamB.effects.sponsorUntil > sim.elapsed, "朝仓旗舰技能仍在施放瞬间净化敌方团队增益");
-  assert(enemySub1.hasEffect("critUntil"), "朝仓旗舰技能仍在施放瞬间净化敌方舰船增益");
+  assert(enemySub1.hasEffect("reliableUntil"), "朝仓旗舰技能仍在施放瞬间净化敌方舰船增益");
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰技能仍在施放瞬间全图揭示敌方");
 
   const firstWave = teamA.visionWaveSkill.waves[0];
@@ -1673,10 +1766,10 @@ function asakuraFlagshipCheck() {
   assert(seenByFirstWave, "朝仓视野波扫过敌舰时未获得真实视野");
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "朝仓视野波离开后仍持续保留敌舰视野");
   assert(teamB.effects.sponsorUntil <= sim.elapsed, "朝仓视野波扫到敌舰后未清除团队主动增益");
-  assert(enemySub1.hasEffect("critUntil"), "尚未被视野波扫到的敌舰被提前净化");
+  assert(enemySub1.hasEffect("reliableUntil"), "尚未被视野波扫到的敌舰被提前净化");
 
   runSteps(sim, 0.7);
-  assert(!enemySub1.hasEffect("critUntil"), "敌舰被视野波扫到后未清除自身主动增益");
+  assert(!enemySub1.hasEffect("reliableUntil"), "敌舰被视野波扫到后未清除自身主动增益");
   assert(sim.floatingTexts.some((item) => item.textKey === "净化"), "视野波净化生效时未显示反馈");
 
   runSteps(sim, 4.2);
@@ -2026,7 +2119,7 @@ export function runRulesSuite() {
   tsuruyaFlagshipActiveCheck();
   fireArcDensityCheck();
   kyonUniformFireRateCheck();
-  haruhiBlindfireCheck();
+  haruhiHeroPowerCheck();
   haruhiFlagshipReworkCheck();
   asakuraFlagshipCheck();
   asakuraSimultaneousSkillPurgeCheck();

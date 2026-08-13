@@ -204,6 +204,26 @@ function interpolateVisualList(previousList, currentList, ratio) {
   });
 }
 
+function interpolateHaruhiHeroPowerList(previousList, currentList, ratio) {
+  const previousItems = Array.isArray(previousList) ? previousList : [];
+  const currentItems = Array.isArray(currentList) ? currentList : [];
+  const previousById = new Map(previousItems.map((item) => [item.id, item]));
+  return currentItems.map((current) => {
+    const previous = previousById.get(current.id);
+    if (!previous || previous.phase !== current.phase) {
+      // 蓄力→释放是一次离散事件；跨阶段插值会把进度从接近1拉回中间值，表现为冲击波倒退。
+      return current;
+    }
+    return {
+      ...current,
+      x: lerp(previous.x, current.x, ratio),
+      y: lerp(previous.y, current.y, ratio),
+      progress: lerp(Number(previous.progress) || 0, Number(current.progress) || 0, ratio),
+      life: lerp(Number(previous.life) || 0, Number(current.life) || 0, ratio),
+    };
+  });
+}
+
 function interpolateTeam(previous, current, ratio) {
   if (!previous || !current) {
     return current || previous || null;
@@ -292,6 +312,11 @@ export function interpolateBattleState(previousState, currentState, ratio, { spa
       safeSpanSeconds,
     ),
     bursts: interpolateVisualList(previousState.bursts, currentState.bursts, safeRatio),
+    haruhiHeroPowerEffects: interpolateHaruhiHeroPowerList(
+      previousState.haruhiHeroPowerEffects,
+      currentState.haruhiHeroPowerEffects,
+      safeRatio,
+    ),
     shamisenHuntKillEffects: interpolateVisualList(
       previousState.shamisenHuntKillEffects,
       currentState.shamisenHuntKillEffects,
