@@ -3953,6 +3953,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   line-height: 1.68;
   color: var(--text-soft);
 }
+.cl-item .cl-item-verbatim { color: var(--text-primary); }
 
 .cl-mobile-body { gap: 14px; }
 .cl-mobile-body .cl-releases { padding-bottom: 12px; }

@@ -28,15 +28,23 @@ function formatReleaseDate(isoDate) {
 
 function groupHTML(releaseId, group) {
   const headingId = `cl-group-${releaseId}-${group.id}`;
-  const items = group.items.map((item) => `
-    <li class="cl-item" data-change-id="${escapeHTML(item.id)}">
-      <h4>${escapeHTML(item.title)}</h4>
-      <p>${escapeHTML(item.body)}</p>
-    </li>
-  `).join("");
+  const items = group.items.map((item) => {
+    const content = item.text
+      ? `<p class="cl-item-verbatim">${escapeHTML(item.text)}</p>`
+      : `<h4>${escapeHTML(item.title)}</h4><p>${escapeHTML(item.body)}</p>`;
+    return `
+      <li class="cl-item" data-change-id="${escapeHTML(item.id)}">
+        ${content}
+      </li>
+    `;
+  }).join("");
+  const heading = group.title
+    ? `<h3 id="${escapeHTML(headingId)}">${escapeHTML(group.title)}</h3>`
+    : "";
+  const labelledBy = group.title ? ` aria-labelledby="${escapeHTML(headingId)}"` : "";
   return `
-    <section class="cl-group" aria-labelledby="${escapeHTML(headingId)}">
-      <h3 id="${escapeHTML(headingId)}">${escapeHTML(group.title)}</h3>
+    <section class="cl-group${group.title ? "" : " cl-group-plain"}"${labelledBy}>
+      ${heading}
       <ul class="cl-items">${items}</ul>
     </section>
   `;
