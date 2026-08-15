@@ -16,8 +16,10 @@ import {
 import {
   BLADE_QUEEN_DAMAGE_RATIO,
   BLADE_QUEEN_RANGE_MULTIPLIER,
+  HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
 } from "../../shared/game/collision-system.js";
 import {
+  HARUHI_ESPER_ORBIT_SPEED,
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
   HARUHI_SUPPORTS,
@@ -1593,6 +1595,7 @@ function haruhiFlagshipReworkCheck() {
     HARUHI_SUPPORTS.every((id) => teamA.haruhiFlagship.supporters.has(id)),
     "春日常驻支援集合不完整",
   );
+  assert(Math.abs(HARUHI_ESPER_ORBIT_SPEED - 1.44) < 1e-9, "超能力者光球公转速度没有提升为原来的两倍");
 
   runSteps(sim, 6.05);
   assert(teamA.scouts.length === 1, "宇宙人没有每6秒释放一架战斗僚机");
@@ -1686,20 +1689,45 @@ function haruhiFlagshipReworkCheck() {
   haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
   haruhi.throttle = throttleForGear(2);
   haruhi.command = { x: 1000, y: haruhi.y };
-  target.x = haruhi.x + haruhi.radius + target.radius - 1;
-  target.y = haruhi.y;
+  target.x = haruhi.x + haruhi.radius * 3.2;
+  target.y = haruhi.y + haruhi.radius * 1.05;
   target.command = { x: target.x, y: target.y };
   const hpBeforeImpact = target.hp;
   const impactStartX = target.x;
+  const impactStartY = target.y;
+  const impactDistance = Math.hypot(target.x - haruhi.x, target.y - haruhi.y);
+  assert(
+    impactDistance > haruhi.radius + target.radius + 10
+      && impactDistance < haruhi.radius * HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
+    "异世界人扩大气场测试没有把目标放在舰体碰撞外、气场碰撞内",
+  );
   sim.update(TICK_DT);
-  assert(target.forcedKnockback, "异世界人碰撞没有进入强制击退状态");
+  assert(target.forcedKnockback, "异世界人扩大后的前方气场没有触发强制击退");
+  const knockbackDeltaX = target.forcedKnockback.toX - target.forcedKnockback.fromX;
+  const knockbackDeltaY = target.forcedKnockback.toY - target.forcedKnockback.fromY;
+  const knockbackLength = Math.hypot(knockbackDeltaX, knockbackDeltaY);
+  const actualContactDistance = Math.hypot(
+    target.forcedKnockback.fromX - haruhi.x,
+    target.forcedKnockback.fromY - haruhi.y,
+  );
+  const expectedImpactDirection = {
+    x: (target.forcedKnockback.fromX - haruhi.x) / actualContactDistance,
+    y: (target.forcedKnockback.fromY - haruhi.y) / actualContactDistance,
+  };
+  assert(
+    Math.abs(knockbackDeltaX / knockbackLength - expectedImpactDirection.x) < 1e-6
+      && Math.abs(knockbackDeltaY / knockbackLength - expectedImpactDirection.y) < 1e-6,
+    "异世界人气场没有按实际碰撞角方向击退",
+  );
   assert(
     Math.abs(hpBeforeImpact - target.hp - target.maxHp * HARUHI_OTHERWORLDER_DAMAGE_RATIO) < 1e-6,
     "异世界人碰撞伤害不符合15%最大生命口径",
   );
   assert(!teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人碰撞后没有进入8秒冷却");
   runSteps(sim, HARUHI_OTHERWORLDER_KNOCKBACK_DURATION * 0.5);
-  assert(target.x > impactStartX + haruhi.effectiveVision() * 0.45, "异世界人击退距离明显不足一个视野");
+  const projectedKnockback = (target.x - impactStartX) * expectedImpactDirection.x
+    + (target.y - impactStartY) * expectedImpactDirection.y;
+  assert(projectedKnockback > haruhi.effectiveVision() * 0.45, "异世界人击退距离明显不足一个视野");
   runSteps(sim, HARUHI_OTHERWORLDER_KNOCKBACK_DURATION * 0.6);
   assert(!target.forcedKnockback, "异世界人击退完成后仍在锁定敌方控制");
   assert(target.speed < 2, "异世界人击退完成后敌舰没有从接近零速重新加速");

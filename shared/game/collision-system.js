@@ -17,6 +17,10 @@ const HARUHI_BOW_CONTACT_TOLERANCE = 5;
 const HARUHI_BOW_ARC_COS = Math.cos(Math.PI / 4);
 const HARUHI_RAM_MINIMUM_GEAR = 2;
 const HARUHI_RAM_SPEED_TOLERANCE = 0.5;
+export const HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER = 5;
+export const HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER = 1.45;
+export const HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER = 2.25;
+const HARUHI_OTHERWORLDER_AURA_MIN_FORWARD_RADIUS_MULTIPLIER = 0.5;
 export const COLLISION_SLOW_DURATION = 3;
 export const COLLISION_SLOW_FLOOR = 0.5;
 const COLLISION_RELEASE_MARGIN = 30;
@@ -63,15 +67,19 @@ export function resolveShipCollisions(match) {
   match._contactPairs = contacts;
 }
 
-function applyForcedKnockback(match, source, contactTarget) {
+function applyForcedKnockback(match, source, contactTarget, contact = null) {
   const targetTeam = contactTarget.team;
   const fleetKey = targetTeam.fleetKeyForShip(contactTarget);
   const fleet = targetTeam.fleetMembersByKey(fleetKey);
   const deltaX = contactTarget.x - source.x;
   const deltaY = contactTarget.y - source.y;
   const length = Math.hypot(deltaX, deltaY);
-  const directionX = length > 1e-6 ? deltaX / length : Math.cos(source.angle);
-  const directionY = length > 1e-6 ? deltaY / length : Math.sin(source.angle);
+  const directionX = Number.isFinite(contact?.directionX)
+    ? contact.directionX
+    : length > 1e-6 ? deltaX / length : Math.cos(source.angle);
+  const directionY = Number.isFinite(contact?.directionY)
+    ? contact.directionY
+    : length > 1e-6 ? deltaY / length : Math.sin(source.angle);
   const knockbackDistance = Math.max(1, source.effectiveVision());
   const startedAt = match.elapsed;
   const endsAt = startedAt + HARUHI_OTHERWORLDER_KNOCKBACK_DURATION;
@@ -117,15 +125,54 @@ export function haruhiRamApproachEligible(source, targetX, targetY) {
   return facingDot >= HARUHI_BOW_ARC_COS;
 }
 
-function haruhiBowTouchesTarget(source, target) {
+export function haruhiOtherworlderAuraForwardReach(source) {
+  return Math.max(1, Number(source?.radius) || 0) * HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER;
+}
+
+function haruhiOtherworlderAuraHalfWidth(source, localX) {
+  const radius = Math.max(1, Number(source?.radius) || 0);
+  const forwardReach = haruhiOtherworlderAuraForwardReach(source);
+  const rearReach = radius * HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER;
+  const progress = Math.max(0, Math.min(1, (localX + rearReach) / (forwardReach + rearReach)));
+  const curve = Math.pow(Math.max(0, Math.sin(progress * Math.PI)), 0.72);
+  return radius * HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER * curve;
+}
+
+export function haruhiOtherworlderAuraContact(source, target) {
   if (!haruhiRamApproachEligible(source, target.x, target.y)) {
-    return false;
+    return null;
   }
   const forwardX = Math.cos(source.angle);
   const forwardY = Math.sin(source.angle);
-  const bowX = source.x + forwardX * source.radius;
-  const bowY = source.y + forwardY * source.radius;
-  return distance(bowX, bowY, target.x, target.y) <= target.radius + HARUHI_BOW_CONTACT_TOLERANCE;
+  const sideX = -forwardY;
+  const sideY = forwardX;
+  const deltaX = target.x - source.x;
+  const deltaY = target.y - source.y;
+  const localX = deltaX * forwardX + deltaY * forwardY;
+  const localY = deltaX * sideX + deltaY * sideY;
+  const radius = Math.max(1, Number(source.radius) || 0);
+  const targetRadius = Math.max(0, Number(target.radius) || 0) + HARUHI_BOW_CONTACT_TOLERANCE;
+  const minimumForward = radius * HARUHI_OTHERWORLDER_AURA_MIN_FORWARD_RADIUS_MULTIPLIER;
+  const forwardReach = haruhiOtherworlderAuraForwardReach(source);
+  if (localX < minimumForward || localX > forwardReach + targetRadius) {
+    return null;
+  }
+  const widthSampleX = Math.min(forwardReach, Math.max(minimumForward, localX));
+  if (Math.abs(localY) > haruhiOtherworlderAuraHalfWidth(source, widthSampleX) + targetRadius) {
+    return null;
+  }
+  const contactLength = Math.hypot(deltaX, deltaY);
+  const directionX = contactLength > 1e-6 ? deltaX / contactLength : forwardX;
+  const directionY = contactLength > 1e-6 ? deltaY / contactLength : forwardY;
+  return {
+    x: source.x + directionX * Math.max(0, contactLength - targetRadius),
+    y: source.y + directionY * Math.max(0, contactLength - targetRadius),
+    angle: Math.atan2(directionY, directionX),
+    directionX,
+    directionY,
+    localX,
+    localY,
+  };
 }
 
 export function resolveHaruhiOtherworlderContacts(match) {
@@ -133,13 +180,16 @@ export function resolveHaruhiOtherworlderContacts(match) {
   for (const [team, enemyTeam] of pairs) {
     const source = team.ships.main;
     if (!source?.alive || !haruhiOtherworlderReady(team)) continue;
-    const target = enemyTeam.getAllShips().find(
-      (enemy) => enemy.alive
-        && !enemy.forcedKnockback
-        && haruhiBowTouchesTarget(source, enemy),
-    );
-    if (!target || !triggerHaruhiOtherworlder(team)) continue;
-    applyForcedKnockback(match, source, target);
+    let hit = null;
+    for (const target of enemyTeam.getAllShips()) {
+      if (!target.alive || target.forcedKnockback) continue;
+      const contact = haruhiOtherworlderAuraContact(source, target);
+      if (contact && (!hit || contact.localX < hit.contact.localX)) {
+        hit = { target, contact };
+      }
+    }
+    if (!hit || !triggerHaruhiOtherworlder(team)) continue;
+    applyForcedKnockback(match, source, hit.target, hit.contact);
   }
 }
 

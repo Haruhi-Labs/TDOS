@@ -1,6 +1,9 @@
 import { clamp } from "./math.js";
 import { isKoizumiOrbActive } from "./koizumi-orb.js";
-import { haruhiRamApproachEligible } from "./collision-system.js";
+import {
+  haruhiOtherworlderAuraForwardReach,
+  haruhiRamApproachEligible,
+} from "./collision-system.js";
 import {
   haruhiOtherworlderReady,
   triggerHaruhiOtherworlder,
@@ -125,7 +128,7 @@ function fixedCircleImpact(startX, startY, endX, endY, geometry, extraRadius = 0
   };
 }
 
-function movingCircleImpact(source, main, geometry, { bow = false, extraRadius = 0 } = {}) {
+function movingCircleImpact(source, main, geometry, { bow = false, bowOffset = null, extraRadius = 0 } = {}) {
   const sourcePreviousX = Number.isFinite(source.previousX) ? source.previousX : source.x;
   const sourcePreviousY = Number.isFinite(source.previousY) ? source.previousY : source.y;
   const sourcePreviousAngle = Number.isFinite(source.previousAngle) ? source.previousAngle : source.angle;
@@ -136,10 +139,13 @@ function movingCircleImpact(source, main, geometry, { bow = false, extraRadius =
   const previousForwardY = Math.sin(sourcePreviousAngle);
   const currentForwardX = Math.cos(source.angle);
   const currentForwardY = Math.sin(source.angle);
-  const startX = sourcePreviousX + (bow ? previousForwardX * source.radius : 0);
-  const startY = sourcePreviousY + (bow ? previousForwardY * source.radius : 0);
-  const endX = source.x + (bow ? currentForwardX * source.radius : 0);
-  const endY = source.y + (bow ? currentForwardY * source.radius : 0);
+  const safeBowOffset = bow
+    ? Math.max(0, Number.isFinite(bowOffset) ? bowOffset : source.radius)
+    : 0;
+  const startX = sourcePreviousX + previousForwardX * safeBowOffset;
+  const startY = sourcePreviousY + previousForwardY * safeBowOffset;
+  const endX = source.x + currentForwardX * safeBowOffset;
+  const endY = source.y + currentForwardY * safeBowOffset;
 
   // 把移动的护盾圆心转换到相对坐标系，避免旗舰移动时漏掉高速穿越。
   const relativeStartX = startX - mainPreviousX;
@@ -147,7 +153,7 @@ function movingCircleImpact(source, main, geometry, { bow = false, extraRadius =
   const relativeEndX = endX - main.x;
   const relativeEndY = endY - main.y;
   const collisionRadius = geometry.radius + Math.max(0, Number(extraRadius) || 0);
-  const t = segmentCircleEntry(
+  let t = segmentCircleEntry(
     relativeStartX,
     relativeStartY,
     relativeEndX,
@@ -156,6 +162,16 @@ function movingCircleImpact(source, main, geometry, { bow = false, extraRadius =
     0,
     collisionRadius,
   );
+  if (
+    t === null
+    && bow
+    && Math.hypot(source.x - main.x, source.y - main.y) > geometry.radius
+    && Math.hypot(relativeEndX, relativeEndY) <= collisionRadius
+  ) {
+    // 新解锁或高速转向时，扩大后的舰首气场可能在单帧开始前就已覆盖屏障。
+    // 仅允许舰体圆心仍在圈外时补记接触，避免圈内春日转向后从内部反向破盾。
+    t = 1;
+  }
   if (t === null) {
     return null;
   }
@@ -243,6 +259,7 @@ function haruhiCanRamBarrier(source, attackerTeam, defendingMain, geometry) {
   }
   return movingCircleImpact(source, defendingMain, geometry, {
     bow: true,
+    bowOffset: haruhiOtherworlderAuraForwardReach(source),
     extraRadius: HARUHI_BARRIER_CONTACT_TOLERANCE,
   });
 }

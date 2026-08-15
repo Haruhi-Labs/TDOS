@@ -13,7 +13,12 @@ import {
   clamp,
   quadraticPoint,
 } from "../../shared/game-core.js";
-import { BLADE_QUEEN_RANGE_MULTIPLIER } from "../../shared/game/collision-system.js";
+import {
+  BLADE_QUEEN_RANGE_MULTIPLIER,
+  HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
+  HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER,
+  HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER,
+} from "../../shared/game/collision-system.js";
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
 import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";
@@ -299,18 +304,49 @@ export function drawBladeQueenAura(ctx, ship) {
   ctx.restore();
 }
 
-// 异世界人支援可触发时，春日舰体只泛一层克制的微光；碰撞冷却期间完全熄灭。
+// 异世界人支援可触发时，以舰首为尖端展开约五个舰体面积的弧形气场；冷却期间完全熄灭。
 function drawHaruhiImpactReadyAura(ctx, ship) {
   const now = performance.now();
   const pulse = 0.5 + Math.sin(now * 0.0045 + (ship.id || 0)) * 0.5;
+  const radius = Math.max(7, Number(ship.radius) || 9);
+  const forward = radius * HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER;
+  const rear = radius * HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER;
+  const halfWidth = radius * HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER;
   ctx.save();
-  ctx.globalAlpha = 0.13 + pulse * 0.12;
-  ctx.fillStyle = "#ffd89a";
+  ctx.translate(ship.x, ship.y);
+  ctx.rotate(ship.angle);
+  const gradient = ctx.createLinearGradient(-rear, 0, forward, 0);
+  gradient.addColorStop(0, "rgba(255,128,93,0)");
+  gradient.addColorStop(0.22, "rgba(255,94,82,0.28)");
+  gradient.addColorStop(0.7, "rgba(255,198,128,0.18)");
+  gradient.addColorStop(1, "rgba(255,244,214,0.68)");
+  ctx.globalAlpha = 0.64 + pulse * 0.2;
+  ctx.fillStyle = gradient;
+  ctx.strokeStyle = "#ff9b75";
+  ctx.lineWidth = 1.1;
   ctx.shadowColor = "#ffbe63";
-  ctx.shadowBlur = 14 + pulse * 7;
+  ctx.shadowBlur = 10 + pulse * 7;
   ctx.beginPath();
-  ctx.arc(ship.x, ship.y, ship.radius + 5 + pulse * 2, 0, TAU);
+  ctx.moveTo(forward, 0);
+  ctx.quadraticCurveTo(radius * 3.15, -radius * 0.55, radius * 1.05, -halfWidth);
+  ctx.quadraticCurveTo(-radius * 0.48, -halfWidth * 0.94, -rear, 0);
+  ctx.quadraticCurveTo(-radius * 0.48, halfWidth * 0.94, radius * 1.05, halfWidth);
+  ctx.quadraticCurveTo(radius * 3.15, radius * 0.55, forward, 0);
+  ctx.closePath();
   ctx.fill();
+  ctx.globalAlpha = 0.38 + pulse * 0.22;
+  ctx.stroke();
+
+  // 两道向舰尾回卷的流线表现气场受高速前进拉伸，尖端始终与真实判定方向一致。
+  ctx.globalAlpha = 0.3 + pulse * 0.25;
+  ctx.strokeStyle = "#ffe1ba";
+  ctx.lineWidth = 0.8;
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(forward * 0.91, 0);
+    ctx.quadraticCurveTo(radius * 2.3, side * radius * 0.8, -rear * 0.55, side * halfWidth * 0.48);
+    ctx.stroke();
+  }
   ctx.restore();
 }
 
