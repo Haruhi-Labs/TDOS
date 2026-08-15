@@ -404,7 +404,7 @@ export function drawShipNameLabel(ctx, ship, accent) {
   ctx.restore();
 }
 
-// 猫爪命中计数：五个极简抓痕槽位直接贴在舰体状态条上方，敌我双方使用同一快照字段。
+// 猫爪命中计数：抓痕槽位直接贴在舰体状态条上方，敌我双方使用同一快照字段。
 // 每个槽位由三道短抓痕构成，点亮数量就是当前连击层数，不依赖文字与本地化。
 function drawClawMarkCounter(ctx, ship) {
   const marks = ship?.clawMarks;
@@ -412,7 +412,7 @@ function drawClawMarkCounter(ctx, ship) {
   if (!ship?.alive || stacks <= 0) {
     return;
   }
-  const required = clamp(Math.round(Number(marks.required) || 5), 1, 5);
+  const required = clamp(Math.round(Number(marks.required) || 4), 1, 5);
   const color = marks.color || "#ffd0e4";
   const slotWidth = 5.2;
   const totalWidth = required * slotWidth;

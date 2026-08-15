@@ -93,7 +93,7 @@ export function createNativeBattleVisualFixture() {
     y: 410,
     angle: Math.PI,
     nameRevealed: true,
-    clawMarks: { stacks: 4, required: 5, color: "#ffd0e4" },
+    clawMarks: { stacks: 3, required: 4, color: "#ffd0e4" },
   });
   teamA.shamisenHunt = {
     targetId: teamB.ships.sub2.id,

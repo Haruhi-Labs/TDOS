@@ -1981,14 +1981,21 @@ function shamisenCatPawCheck() {
   }
   teamA.visibleEnemyIds = new Set([target.id]);
 
+  const baseFireRate = shamisen.effectiveFireRate();
   const cast = teamA.castSubSkill("sub1");
   assert(cast, "三味线分舰技能释放失败");
   assert(shamisen.hasEffect("catPawUntil"), "三味线分舰技能没有进入猫爪弹状态");
   assert(teamA.cooldowns.sub1 === CHARACTER_DEFS.shamisen.subSkill.cooldown, "三味线技能冷却未引用角色定义");
+  assert(
+    Math.abs(shamisen.effectiveFireRate() / baseFireRate - 1.15) < 1e-9,
+    "三味线分舰技能未使射速提升15%",
+  );
 
   const hpBefore = target.hp;
   const shotDamage = shamisen.effectiveDamage();
-  for (let hit = 1; hit <= 5; hit += 1) {
+  const triggerHits = CHARACTER_DEFS.shamisen.subSkill.triggerHits;
+  assert(triggerHits === 4, "三味线抓痕引爆次数不是4次");
+  for (let hit = 1; hit <= triggerHits; hit += 1) {
     shamisen.cooldown = 0;
     sim.projectiles = [];
     shamisen.tryAttack(sim, teamB);
@@ -2002,15 +2009,15 @@ function shamisenCatPawCheck() {
     projectile.resolveImpact(sim);
     projectile.alive = false;
 
-    if (hit < 5) {
+    if (hit < triggerHits) {
       assert(target.clawMarks.stacks === hit, `第${hit}次命中后的抓痕层数异常`);
       assert(target.serialize().clawMarks.stacks === hit, "抓痕层数未进入权威快照");
     }
   }
 
-  const expectedLoss = shotDamage * 5 + CHARACTER_DEFS.shamisen.subSkill.burstDamage;
-  assert(Math.abs((hpBefore - target.hp) - expectedLoss) < 1e-7, "三味线五层抓痕没有结算预期爆发伤害");
-  assert(target.clawMarks.stacks === 0, "三味线五层爆发后没有清空抓痕计数");
+  const expectedLoss = shotDamage * triggerHits + CHARACTER_DEFS.shamisen.subSkill.burstDamage;
+  assert(Math.abs((hpBefore - target.hp) - expectedLoss) < 1e-7, "三味线四层抓痕没有结算预期爆发伤害");
+  assert(target.clawMarks.stacks === 0, "三味线四层爆发后没有清空抓痕计数");
 
   shamisen.cooldown = 0;
   sim.projectiles = [];
@@ -2026,6 +2033,7 @@ function shamisenCatPawCheck() {
   sim.tick += 1;
   teamA.clearActiveSkillBuffsForShip(shamisen);
   assert(!shamisen.hasEffect("catPawUntil"), "朝仓净化逻辑无法移除三味线猫爪弹增益");
+  assert(Math.abs(shamisen.effectiveFireRate() - baseFireRate) < 1e-9, "三味线技能结束后射速增益没有移除");
 }
 
 function shamisenFlagshipHuntCheck() {

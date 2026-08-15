@@ -1,4 +1,4 @@
-export const RULESET_VERSION = "ruleset-20260813-05";
+export const RULESET_VERSION = "ruleset-20260815-01";
 
 export function evaluateRulesetCompatibility(remoteVersion, localVersion = RULESET_VERSION) {
   const local = String(localVersion || "").trim();

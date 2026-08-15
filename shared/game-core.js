@@ -561,7 +561,7 @@ class Ship {
     this.clawMarks = {
       sourceSeat: null,
       stacks: 0,
-      required: 5,
+      required: 4,
       expiresAt: 0,
       color: "#ffc0bd",
     };
@@ -739,6 +739,9 @@ class Ship {
 
   effectiveFireRate() {
     let value = this.statWithBuffs("fireRate", this.base.fireRate);
+    if (this.characterId === "shamisen" && this.hasEffect("catPawUntil")) {
+      value *= Math.max(0.01, Number(this.character.subSkill.fireRateMultiplier) || 1);
+    }
     // 分离/单飞(本船所在编队仅 1 艘):开火频率加成
     if (this.team.fleetMemberCountForShip(this) <= 1) {
       value *= SOLO_FIRE_RATE_BONUS;
@@ -1016,7 +1019,7 @@ class Ship {
       marks.stacks = 0;
     }
     marks.sourceSeat = sourceSeat;
-    marks.required = Math.max(1, Math.round(Number(claw.triggerHits) || 5));
+    marks.required = Math.max(1, Math.round(Number(claw.triggerHits) || 4));
     marks.stacks += 1;
     marks.expiresAt = this.team.match.elapsed + Math.max(0.5, Number(claw.markDuration) || 8);
     marks.color = claw.color || marks.color;
@@ -1265,7 +1268,7 @@ class Ship {
         visualKind: catPawMeta ? "cat_paw" : "shell",
         claw: catPawMeta
           ? {
-              triggerHits: catPawMeta.triggerHits || 5,
+              triggerHits: catPawMeta.triggerHits || 4,
               burstDamage: catPawMeta.burstDamage || 0,
               markDuration: catPawMeta.markDuration || 8,
             }

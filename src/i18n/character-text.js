@@ -62,7 +62,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "连击型灵巧舰",
       flavor: "会说话的三花猫，悄无声息地留下抓痕",
       flagshipSkill: { name: "猫爪印记", description: "开局标记一名猎杀目标，双方均能看见标记；己方可持续追踪但不会获得真实视野。目标进入真实视野后会被优先锁定，己方子弹与攻击命中特效对其造成双倍伤害；技能、状态效果及碰撞伤害不受加成。击杀后自动标记下一名敌人。" },
-      subSkill: { name: "猫爪乱舞", description: "12秒内自身子弹变为猫爪。命中同一敌舰5次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。" },
+      subSkill: { name: "猫爪乱舞", description: "12秒内射速提升15%，自身子弹变为猫爪。命中同一敌舰4次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。" },
     },
   },
   ja: {
@@ -128,7 +128,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "連撃型機動艦",
       flavor: "言葉を話す三毛猫、音もなく爪痕を残す",
       flagshipSkill: { name: "猫の爪印", description: "開幕時に敵1隻を指定し、その印は両陣営に見える。味方は実視界を得ずに標識だけを追跡でき、対象が実視界に入ると優先ロックする。味方の弾丸と命中時の攻撃効果は2倍ダメージ。技能・状態効果・衝突ダメージは増幅されない。撃破後は次の敵を自動指定する。" },
-      subSkill: { name: "猫爪乱舞", description: "12秒間、自身の弾が猫の足跡弾になる。同じ敵艦に5回命中すると爪痕が爆発し、追加で80ダメージ。爪痕は8秒間更新されないと消える。" },
+      subSkill: { name: "猫爪乱舞", description: "12秒間、射撃速度が15%上昇し、自身の弾が猫の足跡弾になる。同じ敵艦に4回命中すると爪痕が爆発し、追加で80ダメージ。爪痕は8秒間更新されないと消える。" },
     },
   },
   en: {
@@ -194,7 +194,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "Agile Combo Ship",
       flavor: "A talking calico cat that leaves claw marks without a sound",
       flagshipSkill: { name: "Claw Mark", description: "Marks one enemy at battle start, with the mark visible to both sides but without granting true vision. Once revealed, it is prioritized and allied projectiles plus on-hit attack effects deal double damage. Skills, status effects, and collision damage are not amplified. A new target is marked after each kill." },
-      subSkill: { name: "Claw Barrage", description: "For 12 seconds, shots become cat paws. Hitting the same enemy ship 5 times detonates the marks for 80 bonus damage. Marks fade if not refreshed for 8 seconds." },
+      subSkill: { name: "Claw Barrage", description: "For 12 seconds, fire rate increases by 15% and shots become cat paws. Hitting the same enemy ship 4 times detonates the marks for 80 bonus damage. Marks fade if not refreshed for 8 seconds." },
     },
   },
 });

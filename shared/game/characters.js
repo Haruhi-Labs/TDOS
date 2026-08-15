@@ -182,9 +182,9 @@ export const CHARACTER_DEFS = {
     },
     subSkill: {
       id: "cat_paw_barrage", name: "猫爪乱舞", type: "active", cooldown: 22,
-      cost: 52, duration: 12, target: "none", triggerHits: 5,
+      cost: 52, duration: 12, target: "none", fireRateMultiplier: 1.15, triggerHits: 4,
       burstDamage: 80, markDuration: 8,
-      description: "12秒内自身子弹变为猫爪。命中同一敌舰5次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。",
+      description: "12秒内射速提升15%，自身子弹变为猫爪。命中同一敌舰4次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。",
     },
   },
 };
