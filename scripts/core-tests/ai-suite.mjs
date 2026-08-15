@@ -1306,6 +1306,7 @@ function aiKoizumiBarrierBreachCheck() {
   assert(asakura.hasEffect("bladeQueenUntil"), "AI没有为破盾主动开启刀锋女王");
   bot.issueMovement(context);
   assert(bot.lastTacticalPlan.detachedPlan.roles.sub1 === "breach", "朝仓分舰没有进入专门破盾角色");
+  assert(asakura.throttle === throttleForGear(4), "刀锋女王生效期间AI没有使用四档加速争取最高伤害");
   assert(
     Math.hypot(asakura.route.p2.x - defendingMain.x, asakura.route.p2.y - defendingMain.y) < 8,
     "朝仓破盾路线没有径直瞄准古泉能量圈圆心",
@@ -1313,13 +1314,17 @@ function aiKoizumiBarrierBreachCheck() {
 
   // 本测试验证的是破盾决策与执行，持续提供等价于可见状态的旗舰接触，避免反应延迟
   // 把手工挪动前的出生点轨迹掺入预判而令测试结果依赖随机改航时机。
+  let sawBladeQueenImpact = false;
   for (let tick = 0; tick < Math.ceil(4.8 / TICK_DT); tick += 1) {
     bot.rememberContact(defendingMain, "visible");
     sim.update(TICK_DT);
+    sawBladeQueenImpact ||= sim.koizumiBarrierImpacts.some(
+      (impact) => impact.kind === "ram" && impact.ramKind === "blade_queen",
+    );
   }
   assert(!sim.teamA.serialize().koizumiBarrier.active, "朝仓破盾AI没有在技能窗口内实际撞破闭锁空间");
   assert(
-    sim.koizumiBarrierImpacts.some((impact) => impact.kind === "ram" && impact.ramKind === "blade_queen"),
+    sawBladeQueenImpact,
     "朝仓破盾AI没有产生真实的刀锋女王破盾事件",
   );
 }

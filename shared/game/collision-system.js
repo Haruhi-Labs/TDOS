@@ -11,7 +11,11 @@ import { DAMAGE_KIND } from "./damage.js";
 
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_HIT_INTERVAL = 1;
-export const BLADE_QUEEN_DAMAGE_RATIO = 0.18;
+export const BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR = Object.freeze({
+  2: 0.05,
+  3: 0.13,
+  4: 0.2,
+});
 export const BLADE_QUEEN_RANGE_MULTIPLIER = 1.25;
 const HARUHI_BOW_CONTACT_TOLERANCE = 5;
 const HARUHI_BOW_ARC_COS = Math.cos(Math.PI / 4);
@@ -206,6 +210,28 @@ export function resolveScoutClashes(match) {
   }
 }
 
+export function bladeQueenDamageRatioForSpeed(ship) {
+  const fullSpeed = Math.max(0.01, Number(ship?.effectiveSpeed?.()) || 0);
+  const actualSpeed = Math.max(0, Number(ship?.speed) || 0);
+  const gear2Speed = fullSpeed * throttleForGear(2);
+  const gear3Speed = fullSpeed * throttleForGear(3);
+  const gear4Speed = fullSpeed * throttleForGear(4);
+  if (actualSpeed <= gear2Speed) {
+    return BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[2];
+  }
+  if (actualSpeed <= gear3Speed) {
+    const progress = (actualSpeed - gear2Speed) / Math.max(0.01, gear3Speed - gear2Speed);
+    return BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[2]
+      + (BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[3] - BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[2]) * progress;
+  }
+  if (actualSpeed <= gear4Speed) {
+    const progress = (actualSpeed - gear3Speed) / Math.max(0.01, gear4Speed - gear3Speed);
+    return BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[3]
+      + (BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[4] - BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[3]) * progress;
+  }
+  return BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[4];
+}
+
 export function resolveBladeQueenContacts(match) {
   const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
   for (const [team, enemyTeam] of pairs) {
@@ -219,8 +245,9 @@ export function resolveBladeQueenContacts(match) {
         const lastHitAt = hitLog.get(target.id);
         if (lastHitAt !== undefined && match.elapsed - lastHitAt < BLADE_QUEEN_HIT_INTERVAL) continue;
         hitLog.set(target.id, match.elapsed);
+        const damageRatio = bladeQueenDamageRatioForSpeed(ship);
         target.takeDamage(
-          target.maxHp * BLADE_QUEEN_DAMAGE_RATIO,
+          target.maxHp * damageRatio,
           ship,
           match,
           { kind: DAMAGE_KIND.SKILL },

@@ -1374,13 +1374,18 @@ export class BotController {
 
   energyThrottleGearCap(shipOrKey) {
     const profile = this.energyProfile(shipOrKey);
+    const ship = typeof shipOrKey === "string" ? this.team.ships[shipOrKey] : shipOrKey;
     if (profile.ratio <= AI_ENERGY_GEAR_POLICY.criticalRatio) {
       return 1;
+    }
+    // 刀锋女王的伤害由实际航速决定。技能期间优先完成四档加速，但仍在危险能量线前降档，
+    // 避免为了短时伤害把舰船推进能量彻底耗空。
+    if (ship?.hasEffect?.("bladeQueenUntil")) {
+      return 4;
     }
     if (profile.ratio <= AI_ENERGY_GEAR_POLICY.lowRatio) {
       return 2;
     }
-    const ship = typeof shipOrKey === "string" ? this.team.ships[shipOrKey] : shipOrKey;
     const currentGear = throttleGearForValue(ship?.throttle);
     const overdriveThreshold = currentGear === 4
       ? AI_ENERGY_GEAR_POLICY.overdriveStopRatio
@@ -3765,7 +3770,12 @@ export class BotController {
       const band = shamisenHuntPlan.throttles.main;
       mainThrottle = throttleBand(band.min, band.max);
     }
-    if (
+    const attachedBladeQueenActive = this.team.fleetMembersForShip(main).some(
+      (ship) => ship.alive && ship.hasEffect?.("bladeQueenUntil"),
+    );
+    if (attachedBladeQueenActive) {
+      mainThrottle = throttleForGear(4);
+    } else if (
       tactical.barrierTactics?.incoming
       || (tactical.barrierTactics?.own && !tactical.barrierTactics.own.active)
       || (
@@ -3877,7 +3887,9 @@ export class BotController {
         ship,
         directive.target.x,
         directive.target.y,
-        throttleBand(throttleRange.min, throttleRange.max),
+        ship.hasEffect?.("bladeQueenUntil")
+          ? throttleForGear(4)
+          : throttleBand(throttleRange.min, throttleRange.max),
         this.safeRoutePadding(role === "rear" || role === "escape" ? 14 : 8),
       );
       if (issued) {

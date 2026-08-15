@@ -14,7 +14,7 @@ import {
   throttleGearForValue,
 } from "../../shared/game-core.js";
 import {
-  BLADE_QUEEN_DAMAGE_RATIO,
+  BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR,
   BLADE_QUEEN_RANGE_MULTIPLIER,
   HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
 } from "../../shared/game/collision-system.js";
@@ -1957,15 +1957,33 @@ function asakuraBladeQueenCheck() {
   const castOk = teamA.castSubSkill("sub1");
   assert(castOk, "朝仓分舰技能释放失败");
   assert(sub1.baseSpeed() > baseSpeed * 1.3, "朝仓分舰技能未显著提升速度");
-  assert(BLADE_QUEEN_DAMAGE_RATIO === 0.18, "刀锋女王伤害比例未调整为18%最大生命值");
+  assert(
+    BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[2] === 0.05
+      && BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[3] === 0.13
+      && BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[4] === 0.2,
+    "刀锋女王档位伤害锚点不符合5%/13%/20%规则",
+  );
   assert(BLADE_QUEEN_RANGE_MULTIPLIER === 1.25, "刀锋女王作用范围未扩大25%");
 
-  const hpBeforeHit = enemyMain.hp;
-  sim.resolveBladeQueenContacts();
-  assert(
-    Math.abs(hpBeforeHit - enemyMain.hp - enemyMain.maxHp * 0.18) < 1e-9,
-    "刀锋女王未在扩大后的范围内造成18%最大生命值伤害",
-  );
+  const fullSpeed = sub1.effectiveSpeed();
+  const damageScenarios = [
+    { speed: 0, ratio: 0.05, label: "低于二档" },
+    { speed: fullSpeed * throttleForGear(2), ratio: 0.05, label: "二档" },
+    { speed: fullSpeed * (throttleForGear(2) + throttleForGear(3)) * 0.5, ratio: 0.09, label: "二至三档中间速度" },
+    { speed: fullSpeed * throttleForGear(3), ratio: 0.13, label: "三档" },
+    { speed: fullSpeed * (throttleForGear(3) + throttleForGear(4)) * 0.5, ratio: 0.165, label: "三至四档中间速度" },
+    { speed: fullSpeed * throttleForGear(4), ratio: 0.2, label: "四档" },
+  ];
+  for (const [index, scenario] of damageScenarios.entries()) {
+    if (index > 0) sim.elapsed += 1.01;
+    sub1.speed = scenario.speed;
+    enemyMain.hp = enemyMain.maxHp;
+    sim.resolveBladeQueenContacts();
+    assert(
+      Math.abs(enemyMain.maxHp - enemyMain.hp - enemyMain.maxHp * scenario.ratio) < 1e-7,
+      `刀锋女王${scenario.label}伤害没有按实际速度正确结算`,
+    );
+  }
 
   sim.elapsed += 1.01;
   enemyMain.x = sub1.x + expandedHitRadius + 0.01;
