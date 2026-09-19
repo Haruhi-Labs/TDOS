@@ -3,25 +3,25 @@
   "assets": [
     {
       "id": "shamisen_portrait_blue",
-      "source_path": "assets/generated-art/raw/shamisen_blue.key.png",
-      "raw_path": "assets/generated-art/raw/shamisen_blue.key.png",
+      "source_path": "assets/generated-art/raw/shamisen_blue.source.png",
+      "raw_path": "assets/generated-art/raw/shamisen_blue.source.png",
       "target_path": "public/assets/portraits/blue/shamisen.webp",
       "commands": [
-        "node scripts/artasset.mjs process assets/generated-art/raw/shamisen_blue.key.png public/assets/portraits/blue/shamisen.webp --remove-bg-color '#ff00ff' --bg-threshold 110 --remove-key-spill 2 --size 1200x1600 --fit contain --format webp --webp-quality 92"
+        "node scripts/artasset.mjs process assets/generated-art/raw/shamisen_blue.source.png public/assets/portraits/blue/shamisen.webp --trim-alpha --size 1200x1600 --fit contain --format webp --webp-quality 92"
       ],
       "status": "accepted",
-      "notes": "深海军蓝披肩版本；透明边缘已在实际界面同系深色底上合成检查。"
+      "notes": "用户提供的蓝方定稿；仅裁除透明空白并保留完整可见构图，已在角色选择页深色底上合成检查。"
     },
     {
       "id": "shamisen_portrait_red",
-      "source_path": "assets/generated-art/raw/shamisen_red.key.png",
-      "raw_path": "assets/generated-art/raw/shamisen_red.key.png",
+      "source_path": "assets/generated-art/raw/shamisen_red.source.png",
+      "raw_path": "assets/generated-art/raw/shamisen_red.source.png",
       "target_path": "public/assets/portraits/red/shamisen.webp",
       "commands": [
-        "node scripts/artasset.mjs process assets/generated-art/raw/shamisen_red.key.png public/assets/portraits/red/shamisen.webp --remove-bg-color '#ff00ff' --bg-threshold 110 --remove-key-spill 2 --size 1200x1600 --fit contain --format webp --webp-quality 92"
+        "node scripts/artasset.mjs process assets/generated-art/raw/shamisen_red.source.png public/assets/portraits/red/shamisen.webp --trim-alpha --size 1200x1600 --fit contain --format webp --webp-quality 92"
       ],
       "status": "accepted",
-      "notes": "朱红披肩版本；角色姿态、毛色与构图同蓝方保持一致。"
+      "notes": "用户提供的红方定稿；仅裁除透明空白并保留完整可见构图，角色姿态、毛色与蓝方保持一致。"
     }
   ]
 }
