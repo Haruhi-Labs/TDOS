@@ -799,6 +799,23 @@ class Ship {
     return cleared;
   }
 
+  clearNegativeEffects() {
+    const now = this.team.match.elapsed;
+    const cleared = this.isSilenced()
+      || this.heroPowerShock.recoveryUntil > now
+      || this.collisionSlowUntil > now
+      || Boolean(this.forcedKnockback)
+      || this.activeClawMarks().stacks > 0;
+    this.effects.silencedUntil = 0;
+    this.heroPowerShock = createHaruhiHeroPowerShockState();
+    this.collisionSlowUntil = 0;
+    this.forcedKnockback = null;
+    this.clawMarks.sourceSeat = null;
+    this.clawMarks.stacks = 0;
+    this.clawMarks.expiresAt = 0;
+    return cleared;
+  }
+
   routeAnchorShip() {
     if (this.route && this.route.anchorToMain) {
       const main = this.team.ships.main;
@@ -3376,6 +3393,19 @@ export class MatchSimulation {
     const targetsFromB = this.teamA.getAllShips().filter(
       (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamB, ship),
     );
+
+    const alliesFromA = this.teamA.getAllShips().filter(
+      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamA, ship),
+    );
+    const alliesFromB = this.teamB.getAllShips().filter(
+      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamB, ship),
+    );
+
+    for (const ship of [...alliesFromA, ...alliesFromB]) {
+      if (ship.clearNegativeEffects()) {
+        this.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, "#9eefff");
+      }
+    }
 
     const applyPurges = (targetTeam, targets) => {
       for (const ship of targets) {

@@ -1830,6 +1830,48 @@ function asakuraFlagshipCheck() {
   assert(teamA.visionWaveSkill.waves.length === 0, "朝仓旗舰技能结束后仍残留过期视野波");
 }
 
+function asakuraAllyCleanseCheck() {
+  for (const seat of ["A", "B"]) {
+    const sim = new MatchSimulation({
+      mode: "pvp",
+      teamLoadouts: {
+        A: { main: "asakura", sub1: "kyon", sub2: "yuki" },
+        B: { main: "asakura", sub1: "kyon", sub2: "yuki" },
+      },
+    });
+    const team = sim.teamBySeat(seat);
+    team.split(1);
+    team.split(2);
+    const source = team.ships.main;
+    const ally = team.ships.sub1;
+    const distant = team.ships.sub2;
+    source.x = 400;
+    source.y = ally.y = distant.y = 720;
+    ally.x = 700;
+    distant.x = 1300;
+    for (const ship of [source, ally, distant]) {
+      ship.effects.silencedUntil = 10;
+      ship.heroPowerShock = { hitAt: 0, lockUntil: 2, recoveryUntil: 5 };
+      ship.collisionSlowUntil = 5;
+      ship.clawMarks = { sourceSeat: seat === "A" ? "B" : "A", stacks: 3, expiresAt: 8 };
+      ship.effects.reliableUntil = 10;
+      ship.effects.brakeUntil = 3;
+      ship.effects.brakeCooldownUntil = 12;
+    }
+    // 沉默期间不能主动施法，此处只激活波纹以验证已经发出的波的驱散行为。
+    source.effects.silencedUntil = 0;
+    source.heroPowerShock = { hitAt: 0, lockUntil: 0, recoveryUntil: 0 };
+    assert(team.castFlagshipSkill(), "朝仓友军驱散测试未能发射视野波");
+    sim.elapsed = 0.5;
+    sim.resolveVisionWavePurges();
+    assert(!ally.isSilenced() && ally.heroPowerShock.recoveryUntil === 0, "波带没有驱散友军沉默、震慑、减速与易伤");
+    assert(ally.collisionSlowUntil === 0 && ally.clawMarks.stacks === 0, "波带没有驱散碰撞减速与猫爪印记");
+    assert(distant.isSilenced() && distant.clawMarks.stacks === 3, "尚未被波带扫到的友军被提前驱散");
+    assert(ally.hasEffect("reliableUntil") && ally.hasEffect("brakeUntil") && ally.effects.brakeCooldownUntil === 12, "驱散误清除了正面增益或主动急刹状态");
+    assert(sim.floatingTexts.some((item) => item.textKey === "净化"), "友军驱散没有显示反馈");
+  }
+}
+
 function asakuraSimultaneousSkillPurgeCheck() {
   const bladeSim = new MatchSimulation({
     mode: "pvp",
@@ -2220,6 +2262,7 @@ export function runRulesSuite() {
   haruhiHeroPowerCheck();
   haruhiFlagshipReworkCheck();
   asakuraFlagshipCheck();
+  asakuraAllyCleanseCheck();
   asakuraSimultaneousSkillPurgeCheck();
   asakuraBladeQueenCheck();
   shamisenFlagshipHuntCheck();

@@ -156,7 +156,7 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "no_escape", name: "资讯压制", type: "active", cooldown: 24,
       cost: 64, duration: 6, pulseInterval: 1, target: "none",
-      description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益。敌方也能看见视野波。",
+      description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益，友军被扫到时驱散其负面状态。敌方也能看见视野波。",
     },
     subSkill: {
       id: "blade_queen", name: "刀锋女王", type: "active", cooldown: 20,
