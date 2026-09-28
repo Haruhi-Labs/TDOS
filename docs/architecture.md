@@ -157,24 +157,8 @@
 | 版本号与公共更新日志 | `src/changelog/meta.js`、`entries.js` | `src/changelog.js`、`src/menu.js`、`scripts/verify-changelog.mjs` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
 
-## 改动前后的最低验证
+## 验证入口
 
-1. 运行 `npm run check:modules`，避免边界回退和循环依赖。
-2. 运行 `npm run test:api`，避免稳定入口在拆分中意外丢失导出。
-3. 新增或修改动作时运行 `npm run test:actions`。
-4. 改动权威规则并递增规则版本时运行 `npm run test:ruleset`。
-5. 规则或 AI 改动运行 `npm run test:core`。
-6. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
-7. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
-8. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
-9. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
-10. 战场视觉或渲染后端改动运行 `npm run test:ui:webgl`，核对 WebGL2/WebGL1 一致性、Canvas 视觉基准、弹幕压力性能和逐帧纹理上传守卫。
-11. 统计采集、聚合或榜单页面改动运行 `npm run test:statistics` 与 `npm run test:ui:statistics`，并确认 `test:network:guards` 的公开字段隔离仍通过。
+按改动选择的测试矩阵、完整候选门禁和证据限制统一维护在[测试与验收](testing.md)。架构描述不要求纯文档或局部文案修改运行全部游戏检查。
 
-`npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
-
-核心测试已按领域拆到 `scripts/core-tests/`。推进、技能和战斗规则可单独运行
-`npm run test:core:rules`，AI 可运行 `npm run test:core:ai`，教程可运行
-`npm run test:core:tutorial`；`npm run test:core` 仍按原顺序聚合全部领域。
-
-`npm run test:network:load` 是独立容量压测，不包含在 `test:all` 中。涉及快照频率、拥塞降档、连接或房间容量时，应在隔离环境另行运行，避免把压测流量施加到正式服务。
+模块依赖由 `check:modules` 检查已声明的边界；战场表现副本由 `check:static` 中的漂移守卫检查。它们是有限的静态检查，不能证明所有运行时依赖、显示隔离或游戏语义正确；对应行为仍需领域测试和实际场景验收。

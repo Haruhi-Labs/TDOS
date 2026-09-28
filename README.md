@@ -45,21 +45,25 @@
 
 ## 本地开发
 
-需要 Node.js 20+。
+需要 Node.js `^20.19.0 || >=22.12.0`（与锁文件中的 Vite 要求一致）。
 
 ```bash
-npm install
+npm ci
 npm run dev          # 开发服务器(Vite)
 npm run build        # 生产构建 → dist/
 npm run preview      # 预览生产构建
 npm run start:server # 启动联机 WebSocket 服务端
-npm run test:all     # 发布前完整自动化校验
+npm run test:logic   # 无浏览器的领域与契约测试
+npm run test:browser # Chromium 界面与 WebGL 测试
+npm run test:all     # 发布候选完整回归；构建另行执行
 npm run test:core    # 仅运行规则、AI 与教程校验
 npm run test:ai:simulation # 16 局固定种子双 AI 模拟对战
 ```
 
 开发服务器使用根路径；`npm run build` 默认按隔离测试站 `/game/` 基路径构建。正式站根路径构建使用 `VITE_BASE=/ npm run build`，其他子路径使用 `VITE_BASE=/子路径/ npm run build`。本地统一身份联调还需同时启动主站 news 前端（5204）与 Rust 后端（17777）。
 网络容量压测独立运行 `npm run test:network:load`，不包含在日常 `test:all` 中。
+
+开发环境与交付方式见[开发约定](docs/development.md)，按改动选测试及浏览器安装要求见[测试与验收](docs/testing.md)。纯文档修改不默认运行完整游戏回归。
 
 ## 技术架构
 
@@ -99,7 +103,8 @@ shared/
   protocol/           标准战斗动作与规则版本协商
 server/               房间、输入队列、权威循环、协议、快照流与对局统计归档
 scripts/              核心、联机、网络与模块边界校验
-docs/                 架构边界与发布运维约定
+AGENTS.md             项目底线与按需文档入口
+docs/                 开发、架构、测试与发布运维约定
 ```
 
 ## 制作人员
