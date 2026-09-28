@@ -2175,12 +2175,12 @@ function shamisenFlagshipHuntCheck() {
 
     const targetHpBefore = target.hp;
     target.takeDamage(25, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
-    assert(Math.abs(target.hp - (targetHpBefore - 50)) < 1e-9, "猎杀目标没有受到子弹双倍伤害");
+    assert(Math.abs(target.hp - (targetHpBefore - 37.5)) < 1e-9, "猎杀目标没有受到子弹1.5倍伤害");
     const attackEffectHpBefore = target.hp;
     target.takeDamage(25, hunter, sim, { kind: DAMAGE_KIND.ATTACK_EFFECT });
     assert(
-      Math.abs(target.hp - (attackEffectHpBefore - 50)) < 1e-9,
-      "猎杀目标没有受到攻击命中特效的双倍伤害",
+      Math.abs(target.hp - (attackEffectHpBefore - 37.5)) < 1e-9,
+      "猎杀目标没有受到攻击命中特效的1.5倍伤害",
     );
     for (const [kind, label] of [
       [DAMAGE_KIND.SKILL, "伤害技能"],
@@ -2196,9 +2196,9 @@ function shamisenFlagshipHuntCheck() {
     assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猫爪印记错误放大了非目标伤害");
 
     teamA.visibleEnemyIds = new Set();
-    target.hp = 30;
+    target.hp = 29;
     target.takeDamage(20, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
-    assert(!target.alive, "猎杀目标在致命双倍伤害后仍存活");
+    assert(!target.alive, "猎杀目标在致命1.5倍伤害后仍存活");
     assert(sim.shamisenHuntKillEffects.length === 1, "猎杀目标被击毁时没有生成专属击杀特效状态");
     assert(sim.shamisenHuntKillEffects[0].targetId === target.id, "猎杀击杀特效没有绑定被击毁目标");
     assert(
@@ -2207,6 +2207,7 @@ function shamisenFlagshipHuntCheck() {
       "猎杀目标被击毁后没有自动轮换到下一艘存活敌舰",
     );
     const snapshot = sim.serializeState();
+    assert(snapshot.teams.A.shamisenHunt.damageMultiplier === 1.5, "猎杀倍率未同步至权威快照");
     assert(snapshot.teams.A.shamisenHunt.targetId === teamA.shamisenHunt.targetId, "猎杀目标没有进入权威快照");
     assert(snapshot.shamisenHuntKillEffects.length === 1, "猎杀击杀特效没有进入权威快照");
     assert(!snapshot.teams.A.visibleEnemyIds.includes(teamA.shamisenHunt.targetId), "新猎杀标记错误授予了真实视野");
@@ -2230,7 +2231,7 @@ function shamisenFlagshipHuntCheck() {
       { kind: DAMAGE_KIND.PROJECTILE },
     );
     const fleetHpAfter = formationSim.teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
-    assert(Math.abs(fleetHpBefore - fleetHpAfter - 50) < 1e-9, "猎杀双倍伤害在编队分摊时发生了重复倍率");
+    assert(Math.abs(fleetHpBefore - fleetHpAfter - 37.5) < 1e-9, "猎杀1.5倍伤害在编队分摊时发生了重复倍率");
   } finally {
     Math.random = originalRandom;
   }
