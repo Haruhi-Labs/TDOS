@@ -238,7 +238,7 @@ const YUKI_COMBAT_SCOUT_STATS = Object.freeze({
   damage: 16,
   fireRate: CHARACTER_DEFS.yuki.stats.fireRate,
 });
-const YUKI_COMBAT_SCOUT_LAUNCH_COUNT = 2;
+const YUKI_COMBAT_SCOUT_LAUNCH_COUNT = 1;
 
 const TEAM_COLORS = {
   A: "#65d9ff",

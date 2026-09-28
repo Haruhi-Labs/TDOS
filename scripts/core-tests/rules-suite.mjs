@@ -313,8 +313,8 @@ function yukiFlagshipCombatScoutCheck() {
   const yukiTeam = yukiSim.teamA;
   const yukiStats = CHARACTER_DEFS.yuki.stats;
   assert(yukiTeam.launchScout(5, { fromShipKey: "sub1" }), "长门旗舰队伍未能从副舰释放侦察机");
-  assert(yukiTeam.scouts.length === 2, "长门旗舰每次没有同时释放两架战斗僚机");
-  const [combatScout, escortScout] = yukiTeam.scouts;
+  assert(yukiTeam.scouts.length === 1, "长门旗舰每次没有释放一架战斗僚机");
+  const [combatScout] = yukiTeam.scouts;
   for (const scout of yukiTeam.scouts) {
     assert(scout.combatCapable, "长门旗舰未将己方侦察机强化为战斗僚机");
     assert(scout.vision === yukiStats.vision, "长门战斗僚机视野未提升到普通舰船级别");
@@ -326,8 +326,8 @@ function yukiFlagshipCombatScoutCheck() {
     );
   }
   assert(
-    Math.hypot(combatScout.x - escortScout.x, combatScout.y - escortScout.y) > 0,
-    "长门同时释放的两架战斗僚机完全重叠",
+    combatScout.x === yukiTeam.ships.sub1.x && combatScout.y === yukiTeam.ships.sub1.y,
+    "长门战斗僚机没有从指定舰船位置发射",
   );
 
   const enemyMain = yukiSim.teamB.ships.main;
@@ -342,10 +342,10 @@ function yukiFlagshipCombatScoutCheck() {
   yukiTeam.visibleEnemyIds.add(enemyMain.id);
   yukiSim.projectiles = [];
   yukiTeam.stepCombat(yukiSim.teamB);
-  assert(yukiSim.projectiles.length === 2, "两架长门战斗僚机未通过权威战斗循环同时开火");
+  assert(yukiSim.projectiles.length === 1, "长门战斗僚机未通过权威战斗循环开火");
   assert(
-    new Set(yukiSim.projectiles.map((projectile) => projectile.sourceId)).size === 2,
-    "两架长门战斗僚机的弹丸来源标记错误",
+    new Set(yukiSim.projectiles.map((projectile) => projectile.sourceId)).size === 1,
+    "长门战斗僚机的弹丸来源标记错误",
   );
   assert(yukiSim.projectiles.every((projectile) => projectile.damage === 16), "长门战斗僚机弹丸伤害不是16");
   for (const scout of yukiTeam.scouts) {
@@ -355,7 +355,7 @@ function yukiFlagshipCombatScoutCheck() {
     );
   }
   yukiTeam.stepCombat(yukiSim.teamB);
-  assert(yukiSim.projectiles.length === 2, "长门战斗僚机无视攻击冷却连续开火");
+  assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
 
   for (const scout of yukiTeam.scouts) scout.cooldown = 0;
   enemyMain.x = combatScout.x + combatScout.vision + 10;
