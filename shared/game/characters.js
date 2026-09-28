@@ -52,8 +52,8 @@ export const CHARACTER_DEFS = {
     },
     subSkill: {
       id: "esper", name: "超能力粒子", type: "active", cooldown: 15, cost: 50,
-      duration: 8, silenceDuration: 5, target: "none",
-      description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害。结束后保持光球形态自动归航战场中央。",
+      duration: 8, silenceDuration: 5, stunDuration: 1, target: "none",
+      description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。结束后保持光球形态自动归航战场中央。",
     },
   },
   yuki: {

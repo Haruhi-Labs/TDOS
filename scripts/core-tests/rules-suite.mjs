@@ -26,6 +26,7 @@ import {
   haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
 import { KOIZUMI_BARRIER_DISABLE_SECONDS } from "../../shared/game/koizumi-barrier.js";
+import { updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
 import { DAMAGE_KIND } from "../../shared/game/damage.js";
 import { assert, runSteps } from "./helpers.mjs";
 
@@ -956,6 +957,82 @@ function koizumiFlagshipBarrierCheck() {
   normalSim.resolveKoizumiBarrierRamContacts();
   assert(normalSim.teamA.serialize().koizumiBarrier.active, "普通舰船接触错误击破了古泉能量圈");
   assert(normalSim.koizumiBarrierImpacts.length === 0, "普通舰船接触错误生成了破盾动画");
+}
+
+function koizumiImpactWaveCheck() {
+  for (const seat of ["A", "B"]) {
+    const sim = new MatchSimulation({
+      mode: "pvp",
+      worldSize: 1440,
+      teamLoadouts: {
+        A: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
+        B: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
+      },
+    });
+    const team = sim.teamBySeat(seat);
+    const enemy = sim.enemyTeamBySeat(seat);
+    for (const fleet of [team, enemy]) {
+      fleet.split(1);
+      fleet.split(2);
+    }
+    const orb = team.ships.sub1;
+    orb.energy = orb.maxEnergy;
+    assert(team.castSubSkill("sub1"), "古泉撞击波测试未能开启光球");
+    const target = enemy.ships.main;
+    const near = enemy.ships.sub1;
+    const far = enemy.ships.sub2;
+    target.x = 400;
+    target.y = near.y = far.y = 720;
+    near.x = 700;
+    far.x = 1200;
+    orb.x = 410;
+    orb.y = 720;
+    orb.koizumiOrb.previousX = 350;
+    orb.koizumiOrb.previousY = 720;
+    const hpBefore = enemy.getAllShips().map((ship) => ship.hp);
+    sim.resolveKoizumiOrbContacts();
+    assert(team.koizumiImpactWaves.length === 1, "一次光球撞击未生成一圈能量波");
+    sim.resolveKoizumiOrbContacts();
+    assert(team.koizumiImpactWaves.length === 1, "命中保护期重复生成了撞击波");
+    const wave = team.koizumiImpactWaves[0];
+    assert(wave.x === 400 && wave.y === 720 && wave.speed === 480, "撞击波的原点或传播速度错误");
+    updateKoizumiImpactWaves(sim);
+    assert(target.effects.stunnedUntil === 1 && !near.isControlLocked(), "撞击波没有从碰撞位置开始传播");
+    sim.elapsed = 0.5;
+    updateKoizumiImpactWaves(sim);
+    assert(near.effects.stunnedUntil === 1.5 && !far.isControlLocked(), "撞击波提前眩晕远处敌舰或漏掉波带内敌舰");
+    const stunUntil = near.effects.stunnedUntil;
+    sim.elapsed = 0.6;
+    updateKoizumiImpactWaves(sim);
+    assert(near.effects.stunnedUntil === stunUntil, "同一圈宽波带每帧续期了眩晕");
+    assert(!orb.hasEffect("stunnedUntil"), "撞击波误伤了友军");
+    assert(!enemy.castSubSkill("sub1"), "眩晕中的敌舰仍可施法");
+    assert(!enemy.launchScout(5, { fromShipKey: "sub1" }), "眩晕中的敌舰仍可发射侦察机");
+    assert(!near.canControl(), "眩晕中的敌舰仍可控制");
+    near.cooldown = 0;
+    near.speed = 40;
+    const position = { x: near.x, y: near.y };
+    near.update(TICK_DT);
+    assert(near.speed === 0 && near.x === position.x && near.y === position.y, "眩晕期间敌舰仍可航行");
+    enemy.visibleEnemyIds.add(orb.id);
+    near.tryAttack(sim, team);
+    assert(sim.projectiles.length === 0, "眩晕中的敌舰仍可开火");
+    const snapshot = JSON.parse(JSON.stringify(sim.serializeState()));
+    assert(snapshot.teams[seat].koizumiImpactWaves.length === 1, "撞击波没有进入单人、联机及观战共享快照");
+    const enemySeat = seat === "A" ? "B" : "A";
+    assert(Math.abs(snapshot.teams[enemySeat].ships.sub1.stunRemaining - 0.9) < 1e-9, "眩晕剩余时间未同步至快照");
+    assert(team.visionWaveSkill.waves.length === 0, "古泉撞击波错误获得了朝仓的视野和涤除效果");
+    assert(enemy.getAllShips().every((ship, index) => ship.hp === hpBefore[index]), "古泉撞击波错误造成了伤害");
+    sim.elapsed = 1.5;
+    assert(near.canControl() && !near.hasEffect("stunnedUntil"), "敌舰没有在1秒眩晕后恢复控制");
+    sim.elapsed = 1.7;
+    updateKoizumiImpactWaves(sim);
+    assert(far.hasEffect("stunnedUntil"), "扩散到远处的撞击波未令敌舰眩晕");
+    assert(far.clearNegativeEffects() && !far.isControlLocked(), "朝仓友军净化不能驱散新增的古泉眩晕");
+    sim.elapsed = wave.expiresAt;
+    updateKoizumiImpactWaves(sim);
+    assert(team.koizumiImpactWaves.length === 0, "过期撞击波未被回收");
+  }
 }
 
 function koizumiOrbRamCheck() {
@@ -2255,6 +2332,7 @@ export function runRulesSuite() {
   yukiPassiveCheck();
   koizumiFlagshipBarrierCheck();
   koizumiOrbRamCheck();
+  koizumiImpactWaveCheck();
   beamSkillCheck();
   beamHitCountDamageCheck();
   tsuruyaFlagshipActiveCheck();

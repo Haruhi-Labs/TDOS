@@ -5,6 +5,7 @@ import {
   quadraticPoint,
   shortestAngleDelta,
 } from "./math.js";
+import { createExpandingWave, expandingWaveCoversEntity } from "./vision-wave.js";
 import { haruhiHeroPowerSpeedFactor } from "./haruhi-hero-power.js";
 
 const ORB_BASE_CRUISE_SPEED = 164;
@@ -310,7 +311,7 @@ export function resolveKoizumiOrbContacts(match) {
   for (const [team, enemyTeam] of pairs) {
     for (const source of team.getAllShips()) {
       const state = source.koizumiOrb;
-      if (!source.alive || !state) continue;
+      if (!source.alive || !state || source.isControlLocked()) continue;
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive) continue;
         const startX = Number.isFinite(state.previousX) ? state.previousX : source.x;
@@ -329,6 +330,9 @@ export function resolveKoizumiOrbContacts(match) {
         if (lastHitAt !== undefined && match.elapsed - lastHitAt < ORB_HIT_REARM_SECONDS) continue;
         state.hitAt.set(target.id, match.elapsed);
         const direction = sweptCollisionDirection(source, target, startX, startY, probe, collisionRadius);
+        const wave = createExpandingWave(team, { id: source.id, x: target.x, y: target.y }, ++team.koizumiImpactWaveSequence);
+        wave.hitShipIds = new Set();
+        team.koizumiImpactWaves.push(wave);
         applyCollisionKnockback(match, source, target, direction);
         target.effects.silencedUntil = Math.max(
           Number(target.effects.silencedUntil) || 0,
@@ -339,6 +343,28 @@ export function resolveKoizumiOrbContacts(match) {
       }
     }
   }
+}
+
+export function updateKoizumiImpactWaves(match) {
+  for (const team of [match.teamA, match.teamB]) {
+    team.koizumiImpactWaves = team.koizumiImpactWaves.filter((wave) => wave.expiresAt > match.elapsed);
+    const enemyTeam = match.enemyTeamBySeat(team.seat);
+    for (const wave of team.koizumiImpactWaves) {
+      for (const target of enemyTeam.getAllShips()) {
+        if (!target.alive || wave.hitShipIds.has(target.id)) continue;
+        if (!expandingWaveCoversEntity(wave, target, match.elapsed)) continue;
+        // 一圈波对每艘敌舰只施加一次，避免宽波带每帧续期眩晕。
+        wave.hitShipIds.add(target.id);
+        target.effects.stunnedUntil = Math.max(target.effects.stunnedUntil || 0, match.elapsed + 1);
+        target.speed = 0;
+        match.spawnFloatingTextKey(target.x + 10, target.y - 14, "眩晕", {}, "#ff9bad");
+      }
+    }
+  }
+}
+
+export function serializeKoizumiImpactWaves(team) {
+  return team.koizumiImpactWaves.map(({ hitShipIds, sourceShipId, edgeRadius, maxRadius, ...wave }) => ({ ...wave, kind: "koizumi" }));
 }
 
 export function serializeKoizumiOrb(ship) {

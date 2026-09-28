@@ -95,6 +95,16 @@ export function createNativeBattleVisualFixture() {
     nameRevealed: true,
     clawMarks: { stacks: 3, required: 4, color: "#ffd0e4" },
   });
+  teamA.koizumiImpactWaves = [{
+    id: 1,
+    kind: "koizumi",
+    x: 720,
+    y: 720,
+    emittedAt: VISUAL_FIXTURE_TIME - 0.7,
+    speed: 480,
+    width: 158.4,
+    expiresAt: VISUAL_FIXTURE_TIME + 2,
+  }];
   teamA.shamisenHunt = {
     targetId: teamB.ships.sub2.id,
     sequence: 2,

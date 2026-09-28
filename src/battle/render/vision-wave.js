@@ -2,7 +2,8 @@ import { DEFAULT_WORLD_SIZE, clamp } from "../../../shared/game-core.js";
 
 const TAU = Math.PI * 2;
 
-function wavePalette(team) {
+function wavePalette(team, wave) {
+  if (wave?.kind === "koizumi") return { band: "#ff526f" };
   return team?.seat === "B"
     ? { band: "#ff6f9f" }
     : { band: "#5ec8ff" };
@@ -31,15 +32,15 @@ function traceCircle(ctx, wave, radius) {
 function drawWave(ctx, team, wave, elapsed) {
   const frame = waveFrame(wave, elapsed);
   if (!frame || frame.radius <= 1 || frame.alpha <= 0) return;
-  const palette = wavePalette(team);
+  const palette = wavePalette(team, wave);
   const phase = frame.age * 5.4 + (Number(wave.id) || 0) * 1.37;
   const breath = 0.5 + Math.sin(phase) * 0.5;
 
   ctx.save();
   ctx.globalCompositeOperation = "screen";
 
-  // 标准圆形的宽波带直接对应真实视野范围；仅以透明度呼吸表现水波，不叠加中心描边。
-  ctx.globalAlpha = frame.alpha * (0.052 + breath * 0.018);
+  // 共用圆形波带表现：朝仓显示视野覆盖，古泉用更醒目的红色显示眩晕波。
+  ctx.globalAlpha = frame.alpha * (wave.kind === "koizumi" ? 0.16 + breath * 0.05 : 0.052 + breath * 0.018);
   ctx.strokeStyle = palette.band;
   ctx.lineWidth = frame.width;
   traceCircle(ctx, wave, frame.radius);
@@ -55,7 +56,7 @@ export function drawAsakuraVisionWaves(ctx, teams, elapsed, worldSize = DEFAULT_
   ctx.rect(0, 0, worldSize, worldSize);
   ctx.clip();
   for (const team of activeTeams) {
-    for (const wave of team.visionWaves || []) {
+    for (const wave of [...(team.visionWaves || []), ...(team.koizumiImpactWaves || [])]) {
       drawWave(ctx, team, wave, elapsed);
     }
   }
@@ -80,8 +81,8 @@ export function drawAsakuraVisionWavesMinimap(
   ctx.clip();
   ctx.globalCompositeOperation = "screen";
   for (const team of activeTeams) {
-    const palette = wavePalette(team);
-    for (const wave of team.visionWaves || []) {
+    for (const wave of [...(team.visionWaves || []), ...(team.koizumiImpactWaves || [])]) {
+      const palette = wavePalette(team, wave);
       const frame = waveFrame(wave, elapsed);
       if (!frame || frame.radius <= 1 || frame.alpha <= 0) continue;
       const x = rect.x + wave.x * scaleX;

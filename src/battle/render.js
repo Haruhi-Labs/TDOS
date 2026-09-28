@@ -1085,6 +1085,7 @@ export function drawPauseOverlay(ctx) {
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
 //   radar              己方长门旗舰的私有雷达状态；对手与观战帧必须为空
 //   visionWaves        位于各队序列化状态中；所有视角都绘制双方，但只有施放方获得波带视野
+//   koizumiImpactWaves 位于各队序列化状态中；所有视角都绘制撞击能量波，不提供视野
 //   koizumiBarrier     位于各队序列化状态中；敌方本体不可见时，仅显示落入己方真实视野的圆弧
 //   mobileMode         移动端:不画航线曲度旋钮
 //   stars / destructionEffects / selectedZoneId / pendingSubSkillAim / pointer

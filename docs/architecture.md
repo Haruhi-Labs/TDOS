@@ -59,7 +59,8 @@
 - `shared/game/bot-character-strategy.js`：角色针对性战术层，负责公开技能状态快照、威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
 - `shared/game/bot-shamisen-strategy.js`：三味线“猫爪印记”的攻守编队层，负责无视野追踪、分阶段突破、防线识别、追击收束，以及被猎杀舰的战线外撤游与护卫屏障；猎杀标记不会在此被提升为真实视野。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
-- `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、环带覆盖判定、失效清理与公共状态序列化。
+- `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。
+- `shared/game/koizumi-orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。
 - `shared/game/koizumi-barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
 - `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
 - `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法。
@@ -79,7 +80,7 @@
 - `src/battle/webgl/text-cache.js`：有界字形纹理缓存，避免战斗文字逐帧上传。
 - `src/battle/state-interpolation.js`：单人逻辑帧与联机快照共用的纯显示插值，统一处理舰船、侦察机、僚机、弹体、光束和视觉效果。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
-- `src/battle/render/vision-wave.js`：朝仓视野波在主战场与小地图上的轻量波带表现；双方都能看到波纹，但只有施放方获得波带覆盖区域的真实视野。
+- `src/battle/render/vision-wave.js`：朝仓视野波与古泉撞击能量波在主战场和小地图上的共用波带表现；双方都能看到波纹，只有朝仓视野波提供真实视野。
 - `src/battle/render/koizumi-barrier.js`：古泉能量圈、局部受击弧光与三类冲撞对应的破盾动画。
 - `src/solo.js`、`src/online.js`：只编排各模式生命周期、输入和数据来源，不复制公共战场表现。
 

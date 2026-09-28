@@ -93,6 +93,8 @@ import {
   isKoizumiOrbReturning,
   resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts,
   serializeKoizumiOrb,
+  serializeKoizumiImpactWaves,
+  updateKoizumiImpactWaves,
   updateKoizumiOrb,
 } from "./game/koizumi-orb.js";
 import {
@@ -556,6 +558,7 @@ class Ship {
       brakeUntil: 0,
       brakeCooldownUntil: 0,
       silencedUntil: 0,
+      stunnedUntil: 0,
       nextShotDamageMultiplier: 1,
     };
     this.clawMarks = {
@@ -590,7 +593,7 @@ class Ship {
     if (!this.alive || this.isAuxiliary) {
       return false;
     }
-    if (isHaruhiHeroPowerControlLocked(this)) {
+    if (this.isControlLocked()) {
       return false;
     }
     if (isKoizumiOrbReturning(this)) {
@@ -614,6 +617,10 @@ class Ship {
 
   isEmergencyBraking() {
     return this.hasEffect("brakeUntil");
+  }
+
+  isControlLocked() {
+    return this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this);
   }
 
   isSilenced() {
@@ -802,11 +809,13 @@ class Ship {
   clearNegativeEffects() {
     const now = this.team.match.elapsed;
     const cleared = this.isSilenced()
+      || this.hasEffect("stunnedUntil")
       || this.heroPowerShock.recoveryUntil > now
       || this.collisionSlowUntil > now
       || Boolean(this.forcedKnockback)
       || this.activeClawMarks().stacks > 0;
     this.effects.silencedUntil = 0;
+    this.effects.stunnedUntil = 0;
     this.heroPowerShock = createHaruhiHeroPowerShockState();
     this.collisionSlowUntil = 0;
     this.forcedKnockback = null;
@@ -1083,7 +1092,7 @@ class Ship {
       return;
     }
 
-    if (isHaruhiHeroPowerControlLocked(this)) {
+    if (this.isControlLocked()) {
       this.speed = 0;
       return;
     }
@@ -1240,7 +1249,7 @@ class Ship {
       !this.alive
       || this.cooldown > 0
       || this.isKoizumiOrbActive()
-      || isHaruhiHeroPowerControlLocked(this)
+      || this.isControlLocked()
     ) {
       return;
     }
@@ -1375,6 +1384,7 @@ class Ship {
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       catPawVolley: this.hasEffect("catPawUntil"),
       silenced: this.isSilenced(),
+      stunRemaining: Math.max(0, (this.effects.stunnedUntil || 0) - this.team.match.elapsed),
       silenceRemaining: Math.max(0, (this.effects.silencedUntil || 0) - this.team.match.elapsed),
       heroPowerShock: serializeHaruhiHeroPowerShock(this),
       koizumiOrb: serializeKoizumiOrb(this),
@@ -1831,6 +1841,8 @@ class Team {
       contacts: new Map(),
     };
     this.visionWaveSkill = createVisionWaveSkillState();
+    this.koizumiImpactWaves = [];
+    this.koizumiImpactWaveSequence = 0;
 
     this.scouts = [];
     this.wingmen = [];
@@ -2147,6 +2159,9 @@ class Team {
     if (ship.isKoizumiOrbActive()) {
       list.push(ship.koizumiOrb.phase === "returning" ? "超能力粒子·归航" : "超能力粒子");
     }
+    if (ship.hasEffect("stunnedUntil")) {
+      list.push("眩晕");
+    }
     if (ship.isSilenced()) {
       list.push("沉默");
     }
@@ -2331,8 +2346,8 @@ class Team {
     this.resolvePostCasualtyState();
     const releasedShip = level === 1 ? this.ships.sub1 : level === 2 ? this.ships.sub2 : null;
     if (
-      isHaruhiHeroPowerControlLocked(this.ships.main)
-      || isHaruhiHeroPowerControlLocked(releasedShip)
+      this.ships.main.isControlLocked()
+      || releasedShip?.isControlLocked()
     ) {
       return false;
     }
@@ -2402,7 +2417,7 @@ class Team {
         beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
         beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
         beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
-        if (isHaruhiHeroPowerControlLocked(ship)) {
+        if (ship.isControlLocked()) {
           continue;
         }
       }
@@ -2456,12 +2471,12 @@ class Team {
     // 侦察机从「指定舰船」处发出(默认主舰)——前出的分离舰可更快把侦察部署到位。
     // 能量从该舰所属能量池扣除(分离后副舰用自己的池)。
     const requested = options.fromShipKey ? this.ships[options.fromShipKey] : null;
-    if (requested && isHaruhiHeroPowerControlLocked(requested)) {
+    if (requested && requested.isControlLocked()) {
       return false;
     }
     const source = (requested && requested.alive ? requested : null)
       || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
-    if (!source || isHaruhiHeroPowerControlLocked(source)) {
+    if (!source || source.isControlLocked()) {
       return false;
     }
     if (!this.spendEnergyForShip(source.key || "main", cost)) {
@@ -2962,6 +2977,7 @@ class Team {
       },
       visibleEnemyIds: Array.from(this.visibleEnemyIds),
       visionWaves: this.serializeVisionWaves(),
+      koizumiImpactWaves: serializeKoizumiImpactWaves(this),
       ships: {
         main: this.ships.main.serialize(),
         sub1: this.ships.sub1.serialize(),
@@ -3441,6 +3457,7 @@ export class MatchSimulation {
 
     this.resolveKoizumiBarrierRamContacts();
     this.resolveKoizumiOrbContacts();
+    updateKoizumiImpactWaves(this);
     this.resolveHaruhiOtherworlderContacts();
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();

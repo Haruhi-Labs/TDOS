@@ -620,6 +620,7 @@ export const EN_MESSAGES = {
     "再起动": "Reboot",
     "闪现": "Blink",
     "沉默": "Silenced",
+    "眩晕": "Stunned",
     "震慑": "Stunned",
     "勇者震慑": "Heroic Shock",
     "归航": "Returning",
