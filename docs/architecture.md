@@ -103,11 +103,14 @@
 - `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算、结算后 10 秒强制回收房间和追帧保护。
 - `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
 - `server/statistics-records.js`：把服务端权威对局或客户端单人结算归一为同一份对局档案，负责匿名玩家字段与终局摘要组装。
-- `server/statistics-store.js`：按月追加 JSONL、对局 ID 去重、私有玩家聚合和公开阵容榜缓存。磁盘写入只在结算发生，服务端比赛循环不等待写盘。
-- `src/statistics-client.js`：单人结算的一次性上报与榜单页的一次性查询；独立短连接不会加入房间或订阅快照。
-- `src/statistics.js`：仅展示单人/多人阵容的出场场次与胜率，客户端排序不重复请求服务端。
+- `server/statistics-store.js`：按月追加 JSONL、对局 ID 去重、私有玩家聚合和按公开版本划分的阵容榜缓存。磁盘写入只在结算发生，服务端比赛循环不等待写盘。
+- `src/statistics-client.js`：单人结算的一次性上报与榜单页按所选版本查询；独立短连接不会加入房间或订阅快照。
+- `src/statistics.js`：仅展示单人/多人阵容的出场场次与胜率，客户端排序不重复请求服务端，切换版本按需读取并缓存。
 
 ### 统计数据边界
+
+- `shared/release.json` 是公开版本来源，与规则兼容版本、构建 SHA 分离；热更新保留公开版本。多人结算取服务端版本，单人上报保留客户端版本。未知新版本上报被拒绝，缺少版本的旧记录进入独立历史桶。
+- 存储 schema 2 增加 `gameVersion` 与 `buildId`，原 JSONL 不覆盖；启动时兼容没有这些字段的旧数据。查询默认当前版本，可选择历史版本；任何版本为空时返回空榜单，绝不回落到全量数据。
 
 - 多人对局由服务端权威结算直接归档；单人对局在浏览器结算后上报，并明确记录为未验证来源。
 - 原始客户端标识在落盘前做 SHA-256 截断哈希；不持久化 IP、完整 User-Agent 等直接网络身份信息。
@@ -157,24 +160,8 @@
 | 版本号与公共更新日志 | `src/changelog/meta.js`、`entries.js` | `src/changelog.js`、`src/menu.js`、`scripts/verify-changelog.mjs` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
 
-## 改动前后的最低验证
+## 验证入口
 
-1. 运行 `npm run check:modules`，避免边界回退和循环依赖。
-2. 运行 `npm run test:api`，避免稳定入口在拆分中意外丢失导出。
-3. 新增或修改动作时运行 `npm run test:actions`。
-4. 改动权威规则并递增规则版本时运行 `npm run test:ruleset`。
-5. 规则或 AI 改动运行 `npm run test:core`。
-6. 涉及动作、时钟或服务端执行链时运行 `npm run test:authority`，验证相同动作回放逐 tick 一致。
-7. 联机显示改动运行 `npm run test:online:state` 与 `npm run test:online:components`。
-8. 协议、服务端或快照改动运行 `npm run test:network`、`npm run test:server:rooms`、`npm run test:server:runtime` 与 `npm run test:network:guards`。
-9. 所有改动最终运行 `npm run build`，并对受影响的路由做浏览器回归。
-10. 战场视觉或渲染后端改动运行 `npm run test:ui:webgl`，核对 WebGL2/WebGL1 一致性、Canvas 视觉基准、弹幕压力性能和逐帧纹理上传守卫。
-11. 统计采集、聚合或榜单页面改动运行 `npm run test:statistics` 与 `npm run test:ui:statistics`，并确认 `test:network:guards` 的公开字段隔离仍通过。
+按改动选择的测试矩阵、完整候选门禁和证据限制统一维护在[测试与验收](testing.md)。架构描述不要求纯文档或局部文案修改运行全部游戏检查。
 
-`npm run test:all` 汇总了以上自动化检查；发布前优先执行它。
-
-核心测试已按领域拆到 `scripts/core-tests/`。推进、技能和战斗规则可单独运行
-`npm run test:core:rules`，AI 可运行 `npm run test:core:ai`，教程可运行
-`npm run test:core:tutorial`；`npm run test:core` 仍按原顺序聚合全部领域。
-
-`npm run test:network:load` 是独立容量压测，不包含在 `test:all` 中。涉及快照频率、拥塞降档、连接或房间容量时，应在隔离环境另行运行，避免把压测流量施加到正式服务。
+模块依赖由 `check:modules` 检查已声明的边界；战场表现副本由 `check:static` 中的漂移守卫检查。它们是有限的静态检查，不能证明所有运行时依赖、显示隔离或游戏语义正确；对应行为仍需领域测试和实际场景验收。

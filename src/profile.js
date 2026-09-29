@@ -1,3 +1,4 @@
+import { gameStorageKey, IS_TEST_BUILD } from "./deployment.js";
 // ═══════════════════════════════════════════════════════════════
 // 统一玩家档案（Player Profile）
 // 单一事实来源：昵称 + 出战编队 + 阵营，全部模式共享。
@@ -15,7 +16,7 @@ import {
   normalizeLoadout,
 } from "../shared/game-core.js";
 
-const PROFILE_KEY = "haruhi-profile-v1";
+const PROFILE_KEY = gameStorageKey("haruhi-profile-v1");
 
 // 旧版存储键，仅用于一次性迁移
 const LEGACY_SOLO_LOADOUT_KEY = "haruhi-player-loadout-v2";
@@ -101,7 +102,7 @@ function normalizeProfile(raw) {
 // 从旧版割裂存储拼出一份初始 profile（仅在没有新键时调用一次）
 function migrateFromLegacy() {
   const profile = defaultProfile();
-  if (!hasStorage()) return profile;
+  if (!hasStorage() || IS_TEST_BUILD) return profile;
 
   // 编队：优先单机存档，其次在线存档
   const soloRaw = safeParse(window.localStorage.getItem(LEGACY_SOLO_LOADOUT_KEY));
@@ -200,7 +201,7 @@ export function setFaction(faction) {
 }
 
 // ── 单人 AI 难度(独立存储,默认普通)──
-const DIFFICULTY_KEY = "haruhi-ai-difficulty-v1";
+const DIFFICULTY_KEY = gameStorageKey("haruhi-ai-difficulty-v1");
 export const AI_DIFFICULTIES = ["easy", "normal", "hard", "master"];
 const DEFAULT_DIFFICULTY = "normal";
 

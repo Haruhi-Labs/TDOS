@@ -222,3 +222,8 @@ throttleCommands.reconcile({ ackSeq: 13, ships: { sub1: { throttle: 1 } }, nowMs
 assert.equal(throttleCommands.valueFor("sub1", 1), 1, "未生效的换挡意图超时后仍覆盖权威状态");
 
 console.log("联机组件校验通过：连接目标、时钟校准、快照差量、换挡确认与队列维护保持一致。");
+
+assert.deepEqual(buildServerUrlCandidates({
+  locationObject: { host: "haruyuki.cn", hostname: "haruyuki.cn", protocol: "https:", search: "?ws=wss://star.haruyuki.cn/ws/" },
+  baseUrl: "/test-game/",
+}), ["wss://haruyuki.cn/test-game/ws/"], "测试服不得回落或被查询参数改向正式联机服务");

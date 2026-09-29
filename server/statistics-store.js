@@ -1,3 +1,4 @@
+import { GAME_VERSION, PUBLISHED_GAME_VERSIONS, UNVERSIONED_GAME_VERSION, normalizeGameVersion } from "../shared/game-version.js";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { appendFile, mkdir, readdir } from "node:fs/promises";
@@ -5,7 +6,7 @@ import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { CHARACTER_ORDER } from "../shared/game-core.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const PUBLIC_MODES = new Set(["solo", "multiplayer"]);
 const VALID_SEATS = new Set(["A", "B"]);
 const MAX_SOLO_REPORTS_PER_DAY = 240;
@@ -175,14 +176,11 @@ export function createStatisticsStore({
 
   const seenMatchIds = new Set();
   const pendingMatchIds = new Set();
-  const leaderboards = {
-    solo: new Map(),
-    multiplayer: new Map(),
-  };
+  const leaderboards = new Map();
   const players = new Map();
   const dailySoloReports = new Map();
   let totalRecords = 0;
-  let publicCache = null;
+  const publicCache = new Map();
   let writeChain = Promise.resolve();
   let readyPromise = null;
 
@@ -192,16 +190,18 @@ export function createStatisticsStore({
     totalRecords += 1;
 
     const publicMode = PUBLIC_MODES.has(record.mode) ? record.mode : null;
+    const versionBoards = leaderboards.get(record.gameVersion) || { solo: new Map(), multiplayer: new Map() };
+    leaderboards.set(record.gameVersion, versionBoards);
     for (const participant of record.participants) {
       if (publicMode && !participant.isBot && (record.mode !== "solo" || participant.seat === "A")) {
         const key = lineupKey(participant.loadout);
-        const row = leaderboards[publicMode].get(key) || publicAggregateRow(participant.loadout);
+        const row = versionBoards[publicMode].get(key) || publicAggregateRow(participant.loadout);
         row.games += 1;
         row.wins += participant.outcome === "win" ? 1 : 0;
         row.losses += participant.outcome === "loss" ? 1 : 0;
         row.draws += participant.outcome === "draw" ? 1 : 0;
         row.lastPlayedAt = Math.max(row.lastPlayedAt, record.finishedAt);
-        leaderboards[publicMode].set(key, row);
+        versionBoards[publicMode].set(key, row);
       }
 
       const playerId = participant.player.idHash;
@@ -231,7 +231,7 @@ export function createStatisticsStore({
       if (participant.player.locale) playerRow.locales[participant.player.locale] = (playerRow.locales[participant.player.locale] || 0) + 1;
       players.set(playerId, playerRow);
     }
-    publicCache = null;
+    publicCache.clear();
     return true;
   }
 
@@ -254,6 +254,8 @@ export function createStatisticsStore({
       mode,
       source: safeString(source.source, 32),
       verified: Boolean(source.verified && trusted),
+      gameVersion: normalizeGameVersion(source.gameVersion),
+      buildId: safeString(source.buildId, 80),
       rulesetVersion: safeString(source.rulesetVersion, 80),
       networkBuild: safeString(source.networkBuild, 80),
       campaign: safeString(source.campaign, 40),
@@ -296,6 +298,10 @@ export function createStatisticsStore({
     await ready();
     const normalized = normalizeRecord(input, options);
     if (!normalized) return { accepted: false, reason: "invalid" };
+    // 旧客户端无版本的记录进入独立历史桶；不允许客户端创造任意版本榜单。
+    if (!options.trusted && !PUBLISHED_GAME_VERSIONS.includes(normalized.gameVersion) && normalized.gameVersion !== UNVERSIONED_GAME_VERSION) {
+      return { accepted: false, reason: "version_mismatch" };
+    }
     if (seenMatchIds.has(normalized.id) || pendingMatchIds.has(normalized.id)) {
       return { accepted: false, reason: "duplicate" };
     }
@@ -334,11 +340,13 @@ export function createStatisticsStore({
     }
   }
 
-  function publicLeaderboard() {
-    if (publicCache) return publicCache;
+  function publicLeaderboard(requestedVersion = GAME_VERSION) {
+    const gameVersion = normalizeGameVersion(requestedVersion);
+    if (publicCache.has(gameVersion)) return publicCache.get(gameVersion);
+    const versionBoards = leaderboards.get(gameVersion) || { solo: new Map(), multiplayer: new Map() };
     const modes = {};
     for (const mode of PUBLIC_MODES) {
-      const rows = [...leaderboards[mode].values()]
+      const rows = [...versionBoards[mode].values()]
         .sort((a, b) => b.games - a.games || b.wins / b.games - a.wins / a.games || b.lastPlayedAt - a.lastPlayedAt)
         .map(publicRow);
       modes[mode] = {
@@ -348,12 +356,16 @@ export function createStatisticsStore({
         lineups: rows,
       };
     }
-    publicCache = {
+    const response = {
+      gameVersion,
+      currentVersion: GAME_VERSION,
+      versions: [...new Set([GAME_VERSION, ...leaderboards.keys()])].sort((a, b) => a === GAME_VERSION ? -1 : b === GAME_VERSION ? 1 : b.localeCompare(a, undefined, { numeric: true })),
       schemaVersion: SCHEMA_VERSION,
       generatedAt: now(),
       modes,
     };
-    return publicCache;
+    if (gameVersion === GAME_VERSION || leaderboards.has(gameVersion)) publicCache.set(gameVersion, response);
+    return response;
   }
 
   function ready() {
@@ -380,8 +392,8 @@ export function createStatisticsStore({
         totalRecords,
         uniqueMatches: seenMatchIds.size,
         trackedPlayers: players.size,
-        soloLineups: leaderboards.solo.size,
-        multiplayerLineups: leaderboards.multiplayer.size,
+        soloLineups: [...leaderboards.values()].reduce((sum, boards) => sum + boards.solo.size, 0),
+        multiplayerLineups: [...leaderboards.values()].reduce((sum, boards) => sum + boards.multiplayer.size, 0),
       };
     },
   };

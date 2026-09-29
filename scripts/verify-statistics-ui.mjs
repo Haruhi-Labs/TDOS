@@ -1,3 +1,4 @@
+import { GAME_VERSION } from "../shared/game-version.js";
 import assert from "node:assert/strict";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -7,7 +8,9 @@ import { WebSocketServer } from "ws";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const fixture = {
-  schemaVersion: 1,
+  schemaVersion: 2,
+  gameVersion: GAME_VERSION,
+  versions: [GAME_VERSION, "v0.2", "unversioned"],
   generatedAt: Date.now(),
   modes: {
     solo: {
@@ -35,7 +38,10 @@ wss.on("connection", (socket) => {
     const message = JSON.parse(String(raw));
     messages.push(message.type);
     if (message.type === "get_winrate_stats") {
-      socket.send(JSON.stringify({ type: "winrate_stats", stats: fixture }));
+      socket.send(JSON.stringify({ type: "winrate_stats", stats: message.gameVersion === GAME_VERSION ? fixture : {
+        ...fixture, gameVersion: message.gameVersion,
+        modes: { solo: { matches: 0, lineups: [] }, multiplayer: { matches: 0, lineups: [] } },
+      } }));
     }
   });
 });
@@ -65,12 +71,19 @@ try {
   assert.match(await page.locator(".stats-row").first().innerText(), /春日/, "默认应按出场场次降序");
   assert.match(await page.locator("#statsMeta").innerText(), /40/, "未显示单人已完成对局数");
 
-  await page.locator(".stats-sort").selectOption("winRate");
+  await page.locator(".stats-sort:not(.stats-version)").selectOption("winRate");
   assert.match(await page.locator(".stats-row").first().innerText(), /三味线/, "胜率排序没有即时生效");
   await page.locator('[data-stats-mode="multiplayer"]').click();
   assert.equal(await page.locator(".stats-row").count(), 1, "多人榜单切换错误");
   assert.match(await page.locator("#statsMeta").innerText(), /12/, "未显示多人已完成对局数");
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, "桌面统计页出现横向溢出");
+  assert.equal(await page.locator(".stats-version").inputValue(), GAME_VERSION);
+  await page.locator(".stats-version").selectOption("v0.2");
+  await page.getByText("暂无已完成对局", { exact: true }).waitFor();
+  assert.equal(await page.locator(".stats-row").count(), 0, "空历史版本不能显示当前榜单");
+  await page.locator(".stats-version").selectOption(GAME_VERSION);
+  await page.locator(".stats-row").first().waitFor();
+  assert.equal(await page.locator(".stats-row").count(), 1, "切回版本应恢复缓存并保持模式");
   await desktop.close();
 
   const mobile = await browser.newContext({
@@ -88,8 +101,8 @@ try {
   await mobile.close();
 
   await new Promise((resolveWait) => setTimeout(resolveWait, 200));
-  assert.equal(messages.filter((type) => type === "get_winrate_stats").length, 2, "每次打开榜单只能请求一次统计数据");
-  assert.equal(messages.filter((type) => type === "set_statistics_profile").length, 2, "榜单请求应携带匿名档案但不得周期上报");
+  assert.equal(messages.filter((type) => type === "get_winrate_stats").length, 3, "每个所选版本只请求一次，排序和缓存切换不重发");
+  assert.equal(messages.filter((type) => type === "set_statistics_profile").length, 3, "榜单请求应携带匿名档案但不得周期上报");
 
   console.log("胜率统计界面校验通过：首页小入口、双榜切换、两种排序、桌面与极小屏布局及单次请求均正常。");
 } finally {

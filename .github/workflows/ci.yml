@@ -1,0 +1,75 @@
+name: 项目校验
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+  push:
+    branches: [dev, main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  verify:
+    name: 完整候选校验
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 校验提交格式与 PR 标题
+        run: npm run check:commits -- --event "$GITHUB_EVENT_PATH"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: 校验 main 晋级来源与类型
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          case "$GITHUB_HEAD_REF" in release/*|hotfix/*) ;; *) echo 'main 只接受经过评估的晋级候选'; exit 1;; esac
+          git fetch origin dev
+          node scripts/release/promotion.mjs check "$BASE_SHA" "$HEAD_SHA"
+      - run: npm run test:all
+      - name: 验证正式基路径
+        run: VITE_BASE=/ VITE_DEPLOY_CHANNEL=production npm run build
+      - name: 验证测试基路径
+        run: VITE_BASE=/test-game/ VITE_DEPLOY_CHANNEL=staging npm run build
+  staging:
+    name: 部署 dev 到测试服
+    needs: verify
+    if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://haruyuki.cn/test-game/
+    concurrency:
+      group: deploy-staging
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 跳过已被更新 dev 取代的提交
+        run: |
+          test "$(git ls-remote origin refs/heads/dev | cut -f1)" = "$GITHUB_SHA" || { echo 'dev 已前进，停止旧候选部署'; exit 1; }
+      - run: npm ci
+      - run: node scripts/release/package.mjs staging
+      - name: 部署独立测试实例
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: bash scripts/release/upload.sh staging "$GITHUB_SHA" full
+      - name: 核对公开测试入口
+        run: node scripts/release/verify-deployment.mjs https://haruyuki.cn/test-game/ wss://haruyuki.cn/test-game/ws/ "$GITHUB_SHA" full

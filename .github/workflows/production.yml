@@ -1,0 +1,73 @@
+name: 正式发布（明确指令）
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: 已评估并合入 main 的完整提交号
+        required: true
+        type: string
+      kind:
+        description: 发版或热更新
+        required: true
+        type: choice
+        options: [release, hotfix]
+      instruction:
+        description: 明确发布指令与评估记录链接
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    name: 审批并发布 main
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: https://star.haruyuki.cn/play
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: 锁定精确提交和发布类型
+        id: candidate
+        env:
+          COMMIT: ${{ inputs.commit }}
+          KIND: ${{ inputs.kind }}
+          INSTRUCTION: ${{ inputs.instruction }}
+        run: |
+          [[ "$COMMIT" =~ ^[a-f0-9]{40}$ ]] && test "$COMMIT" = "$(git rev-parse HEAD)"
+          test -n "$INSTRUCTION"
+          git fetch origin dev
+          BASE=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/promotion.json")).baseMain')
+          node scripts/release/promotion.mjs check "$BASE" HEAD "$KIND"
+          SCOPE=$(node -p 'JSON.parse(require("node:fs").readFileSync("deploy/promotion.json")).scope')
+          echo "scope=$SCOPE" >> "$GITHUB_OUTPUT"
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:all
+      - run: node scripts/release/package.mjs production
+      - name: 只部署已审批的提交与范围
+        env:
+          COMMIT: ${{ inputs.commit }}
+          SCOPE: ${{ steps.candidate.outputs.scope }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$COMMIT"
+          bash scripts/release/upload.sh production "$COMMIT" "$SCOPE"
+      - name: 核对正式入口与联机服务
+        env:
+          COMMIT: ${{ inputs.commit }}
+          SCOPE: ${{ steps.candidate.outputs.scope }}
+        run: node scripts/release/verify-deployment.mjs https://star.haruyuki.cn/ wss://star.haruyuki.cn/ws/ "$COMMIT" "$SCOPE"
