@@ -1,3 +1,4 @@
+import { GAME_VERSION } from "../shared/game-version.js";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { getLocale } from "./i18n.js";
 import { buildServerUrlCandidates } from "./online/connection-target.js";
@@ -93,9 +94,9 @@ function performStatisticsRequest(message, expectedType) {
   });
 }
 
-export async function requestWinrateStatistics() {
+export async function requestWinrateStatistics(gameVersion = GAME_VERSION) {
   const response = await performStatisticsRequest(
-    { type: "get_winrate_stats" },
+    { type: "get_winrate_stats", gameVersion },
     "winrate_stats",
   );
   return response.stats;
@@ -107,6 +108,8 @@ export async function reportSoloMatchStatistics({ eventId, startedAt, difficulty
     eventId,
     startedAt,
     difficulty,
+    gameVersion: GAME_VERSION,
+    buildId: import.meta.env.VITE_BUILD_ID || "local",
     rulesetVersion: RULESET_VERSION,
     profile: statisticsProfile(),
     environment: statisticsEnvironment(renderer),

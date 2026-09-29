@@ -1,0 +1,50 @@
+import assert from "node:assert/strict";
+import { validatePromotion } from "./release/promotion.mjs";
+import release from "../shared/release.json" with { type: "json" };
+import { GAME_VERSION } from "../shared/game-version.js";
+const plan = { kind: "hotfix", baseMain: "a".repeat(40), sourceDev: "b".repeat(40), commits: ["c".repeat(40)], scope: "full", evaluation: "隔离环境完成双端评估" };
+assert.equal(release.version, GAME_VERSION);
+validatePromotion(plan, release, release);
+assert.throws(() => validatePromotion(plan, release, { version: "v99.0" }), /热更新/);
+assert.throws(() => validatePromotion({ ...plan, kind: "release" }, release, release), /递增/);
+validatePromotion({ ...plan, kind: "release" }, release, { version: "v99.0", labels: { zh: "版本 v99.0", en: "v99.0", ja: "v99.0" } });
+assert.throws(() => validatePromotion({ ...plan, evaluation: "" }, release, release), /评估/);
+assert.throws(() => validatePromotion({ ...plan, commits: [plan.commits[0], plan.commits[0]] }, release, release), /不重复/);
+assert.throws(() => validatePromotion({ ...plan, scope: "all" }, release, release), /部署范围/);
+console.log("晋级契约校验通过：热更新保留版本、发版递增、来源清单、评估依据与部署范围。");
+
+// 临时仓库验证真实择取链，确保未选择的 dev 改动不会混入候选。
+const { mkdtempSync, mkdirSync, writeFileSync, rmSync } = await import('node:fs');
+const { tmpdir } = await import('node:os');
+const { join } = await import('node:path');
+const { git, checkPromotion } = await import('./release/promotion.mjs');
+const previousCwd = process.cwd();
+const directory = mkdtempSync(join(tmpdir(), 'tdos-promotion-'));
+try {
+  process.chdir(directory);
+  git('init', '-b', 'main');
+  git('config', 'user.name', '流程测试'); git('config', 'user.email', 'release-test@example.invalid');
+  mkdirSync('shared'); mkdirSync('deploy');
+  writeFileSync('shared/release.json', JSON.stringify(release));
+  writeFileSync('game.txt', '基线\n');
+  git('add', '.'); git('commit', '-m', '基线');
+  const base = git('rev-parse', 'HEAD');
+  git('switch', '-c', 'dev');
+  writeFileSync('game.txt', '修复\n');
+  git('add', '.'); git('commit', '-m', '选择的修复');
+  const selected = git('rev-parse', 'HEAD');
+  writeFileSync('unselected.txt', '尚未评估的功能\n');
+  git('add', '.'); git('commit', '-m', '不选择的功能');
+  const sourceDev = git('rev-parse', 'HEAD');
+  git('update-ref', 'refs/remotes/origin/dev', sourceDev);
+  git('switch', '-c', 'hotfix/test', base);
+  git('cherry-pick', '-x', selected);
+  writeFileSync('deploy/promotion.json', JSON.stringify({ ...plan, baseMain: base, sourceDev, commits: [selected] }));
+  git('add', '.'); git('commit', '-m', '记录评估与选择来源');
+  assert.equal(checkPromotion(base).commits[0], selected);
+  assert.throws(() => git('show', 'HEAD:unselected.txt'), /./, '未选择的功能不应存在于候选');
+  writeFileSync('extra.txt', '未经 dev 评估的改动\n');
+  git('add', '.'); git('commit', '-m', '额外改动');
+  assert.throws(() => checkPromotion(base), /额外改动/);
+  console.log('真实 Git 晋级校验通过：选择性择取、来源追踪及额外改动拒绝。');
+} finally { process.chdir(previousCwd); rmSync(directory, { recursive: true, force: true }); }

@@ -40,9 +40,12 @@
     "check:modules": "node scripts/check-module-boundaries.mjs",
     "test:all": "npm run check:static && npm run test:logic && npm run test:ai:simulation && npm run test:browser && npm run test:integration",
     "check:static": "npm run check:modules && node scripts/check-battle-drift.mjs",
-    "test:logic": "npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:koizumi && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:statistics && npm run test:identity",
-    "test:browser": "npm run test:ui:changelog && npm run test:ui:statistics && npm run test:ui:identity && npm run test:ui:interaction && npm run test:ui:webgl",
-    "test:integration": "npm run test:network:guards"
+    "test:logic": "npm run test:release && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:ui:koizumi && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:statistics && npm run test:identity",
+    "test:browser": "npm run test:ui:changelog && npm run test:ui:statistics && npm run test:ui:identity && npm run test:ui:interaction && npm run test:ui:webgl && npm run test:ui:staging",
+    "test:integration": "npm run test:network:guards",
+    "test:release": "node scripts/verify-release.mjs",
+    "release:prepare": "node scripts/release/promotion.mjs prepare",
+    "test:ui:staging": "node scripts/verify-staging-ui.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

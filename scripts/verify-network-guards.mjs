@@ -1,3 +1,4 @@
+import { GAME_VERSION } from "../shared/game-version.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import WebSocket from "ws";
@@ -314,6 +315,7 @@ async function statisticsPrivacyCheck() {
   client.send({
     type: "report_solo_match",
     eventId: "guard-solo-1",
+    gameVersion: GAME_VERSION,
     difficulty: "normal",
     rulesetVersion: RULESET_VERSION,
     profile: { clientId: "private-raw-client-id", nickname: "隐私测试", faction: "blue", locale: "zh" },
@@ -331,6 +333,7 @@ async function statisticsPrivacyCheck() {
   assert.equal(report.accepted, true, "合法单人结算没有被统计服务接收");
   client.send({ type: "get_winrate_stats" });
   const response = await client.waitFor((message) => message.type === "winrate_stats");
+  assert.equal(response.stats.gameVersion, GAME_VERSION);
   assert.deepEqual(Object.keys(response.stats.modes).sort(), ["multiplayer", "solo"], "公开统计应只分单人与多人榜单");
   assert.equal(response.stats.modes.solo.matches, 1, "单人结算上报没有进入公开聚合");
   assert.equal(JSON.stringify(response).includes("trackedPlayers"), false, "公开统计响应不得包含玩家聚合信息");

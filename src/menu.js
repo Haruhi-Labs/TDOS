@@ -1,3 +1,4 @@
+import { IS_TEST_BUILD } from "./deployment.js";
 // ═══════════════════════════════════════════════════════════════
 // 主菜单 / 标题画面（路由 /）
 // 左：标题 + 竖排菜单；右：七人群像（前后拥簇，随阵营着色）；底：动态星尘背景。
@@ -42,7 +43,7 @@ function statisticsLinkHTML() {
 
 // 页脚版本号也是更新日志入口；比新增独立图标更符合用户查阅版本内容的习惯。
 function versionLinkHTML() {
-  return `<a class="ts-ver ts-ver-link" href="/changelog">${t(CURRENT_VERSION_LABEL)}</a>`;
+  return `<a class="ts-ver ts-ver-link" href="/changelog">${t(CURRENT_VERSION_LABEL)}${IS_TEST_BUILD ? ` · ${t("测试服")}` : ""}</a>`;
 }
 
 // 右上角语言切换:地球图标 + 原生语言下拉(隐藏「语言」字样,图标表意),与左上角印章标题对称

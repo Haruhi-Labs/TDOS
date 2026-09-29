@@ -1,0 +1,5 @@
+# 发布与验证入口由项目维护者审核；团队建立后可替换为组织团队。
+/.github/ @Haruhiyuki
+/scripts/release/ @Haruhiyuki
+/deploy/ @Haruhiyuki
+/shared/release.json @Haruhiyuki

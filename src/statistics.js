@@ -1,9 +1,14 @@
+import { GAME_VERSION, UNVERSIONED_GAME_VERSION, normalizeGameVersion } from "../shared/game-version.js";
 import { characterShortName, t } from "./i18n.js";
 import { isMobile } from "./mobile.js";
 import { startStarfield } from "./starfield.js";
 import { requestWinrateStatistics } from "./statistics-client.js";
 
 const state = {
+  version: GAME_VERSION,
+  versions: [GAME_VERSION],
+  requestId: 0,
+  cache: new Map(),
   mode: "solo",
   sort: "games",
   stats: null,
@@ -18,6 +23,10 @@ function modeControlsHTML() {
         <button type="button" class="stats-tab active" data-stats-mode="solo" role="tab" aria-selected="true">${t("单人游戏")}</button>
         <button type="button" class="stats-tab" data-stats-mode="multiplayer" role="tab" aria-selected="false">${t("多人游戏")}</button>
       </div>
+      <label class="stats-sort-label">
+        <span>${t("游戏版本")}</span>
+        <select class="stats-sort stats-version" aria-label="${t("游戏版本")}"></select>
+      </label>
       <label class="stats-sort-label">
         <span>${t("排序")}</span>
         <select class="stats-sort" aria-label="${t("排序方式")}">
@@ -109,8 +118,19 @@ function render(root) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
   }
-  const select = root.querySelector(".stats-sort");
+  const select = root.querySelector(".stats-sort:not(.stats-version)");
   if (select) select.value = state.sort;
+
+  const versionSelect = root.querySelector(".stats-version");
+  if (versionSelect) {
+    versionSelect.replaceChildren(...state.versions.map((version) => {
+      const option = document.createElement("option");
+      option.value = version;
+      option.textContent = version === UNVERSIONED_GAME_VERSION ? t("历史数据（未标记版本）") : version;
+      return option;
+    }));
+    versionSelect.value = state.version;
+  }
 
   if (state.loading) {
     meta.textContent = "";
@@ -132,20 +152,33 @@ function render(root) {
 }
 
 async function load(root) {
+  const requestId = ++state.requestId;
+  const version = state.version;
   state.loading = true;
   state.error = false;
   render(root);
   try {
-    state.stats = await requestWinrateStatistics();
+    const stats = state.cache.get(version) || await requestWinrateStatistics(version);
+    if (requestId !== state.requestId) return;
+    if (stats?.schemaVersion !== 2 || stats.gameVersion !== version) throw new Error("统计服务不支持所选版本");
+    state.cache.set(version, stats);
+    state.stats = stats;
+    state.versions = [...new Set([GAME_VERSION, version, ...(stats.versions || [])])]
+      .filter((value) => value === UNVERSIONED_GAME_VERSION || normalizeGameVersion(value) === value);
   } catch (_error) {
-    state.error = true;
+    if (requestId === state.requestId) state.error = true;
   } finally {
-    state.loading = false;
-    render(root);
+    if (requestId === state.requestId) {
+      state.loading = false;
+      render(root);
+    }
   }
 }
 
 export function mount(root) {
+  state.version = GAME_VERSION;
+  state.versions = [GAME_VERSION];
+  state.cache = new Map();
   state.mode = "solo";
   state.sort = "games";
   state.stats = null;
@@ -164,11 +197,15 @@ export function mount(root) {
     }
     if (event.target.closest(".stats-retry")) load(root);
   }, { signal: ac.signal });
-  root.querySelector(".stats-sort")?.addEventListener("change", (event) => {
+  root.querySelector(".stats-sort:not(.stats-version)")?.addEventListener("change", (event) => {
     state.sort = event.target.value === "winRate" ? "winRate" : "games";
     render(root);
   }, { signal: ac.signal });
 
+  root.querySelector(".stats-version")?.addEventListener("change", (event) => {
+    state.version = event.target.value;
+    void load(root);
+  }, { signal: ac.signal });
   void load(root);
-  return () => ac.abort();
+  return () => { state.requestId += 1; ac.abort(); };
 }
