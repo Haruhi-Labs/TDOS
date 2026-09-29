@@ -4,6 +4,8 @@
 
 开发人员从 `dev` 创建功能分支，提交 PR 到 `dev`。通过检查与评审后 squash 合并，让一个开发 PR 对应一个可择取提交。`dev` 的每次合并通过完整校验后自动部署测试服。
 
+提交、PR 标题和最终 squash / merge 消息均遵循[提交规范](development.md#提交规范)。普通 PR 保持单一工作项；晋级 PR 可组合多个已评估工作项。合并者需将 GitHub 默认的英文 merge 标题改成规范中文消息，例如 `chore(release): 合并已评估的热更新候选`；格式不符会阻断推送后的候选校验与测试服部署。
+
 `main` 是正式候选线。只有经过评估、获得明确合并指令的 `release/*` 或 `hotfix/*` PR 才进入 `main`；保留候选中的择取提交，使用 **merge commit**，不要 squash 或 rebase 晋级 PR，否则会丢失 `-x` 来源凭证。合入 `main` 不自动部署正式服；维护者再执行“正式发布（明确指令）”工作流，填写完整 main SHA、类型和发布指令，由 production 环境审批。
 
 | 类型 | 公开版本 | 游戏内日志 | 胜率统计 | 构建与规则版本 |
@@ -25,6 +27,8 @@ npm run release:prepare -- hotfix hotfix/fix-input full '测试服评估记录�
 脚本要求工作区干净，拉取 main/dev，执行 `cherry-pick -x` 并生成 `deploy/promotion.json`。清单记录类型、main 基线、dev 快照、选择的提交、范围和评估依据。遇到冲突保留现场；先检查是否遗漏依赖，必要时回到 dev 修正并重新评估。不要随意在候选中加入尚未通过 dev 的业务代码。
 
 清单完成后提交、运行相关测试与完整候选门禁，创建目标为 main 的 PR。可以先用 `git cherry origin/main origin/dev` 排除已晋级的等价补丁。候选检查比较来源补丁与实际候选，允许额外提交晋级清单及发版元数据；冲突解决改变了业务补丁时，应先把修正进入 dev 并重新择取。
+
+清单提交可用 `chore(release): 记录热更新择取来源与评估`。择取后的原规范标题保持不变；旧格式来源需要编辑新提交标题时，必须保留 `(cherry picked from commit ...)`，不得改写来源分支历史。
 
 main 前进后重新基于最新 main 准备候选并更新评估。发布后把 main 的发版元数据通过同步 PR 合回 dev；同步 PR 使用 merge commit 保留历史，不再次择取已发布补丁。所有后续业务 PR 仍 squash 合并。
 
