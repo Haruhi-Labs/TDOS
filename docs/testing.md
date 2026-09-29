@@ -25,6 +25,7 @@
 | 改动 | 相关检查 | 额外验收 |
 | --- | --- | --- |
 | 纯开发文档 | `git diff --check`，核对本地链接、路径、npm 命令 | 不要求游戏构建或浏览器；修改测试编排需展开核对成员并实际运行 |
+| 提交规范或 CI 门禁 | `test:commits`、`check:commits -- --range <基线> HEAD`；工作流改动检查 YAML/Actions 语法 | 验证拒绝不合规标题、中间提交及合并消息；格式校验不能证明工作项划分正确 |
 | 模块拆分、导入或稳定导出 | `check:static`、`test:api`、受影响模块测试、构建 | 跨页面生命周期改动检查挂载与卸载 |
 | 规则、角色数值、AI、教程 | 对应 `test:core:rules` / `test:core:ai` / `test:core:tutorial`；权威行为加 `test:authority`、`test:ruleset`，AI 加 `test:ai:simulation`；构建 | 规则语义变化更新版本；检查受影响技能和模式，模拟统计不替代平衡判断 |
 | 动作、固定时钟、服务端执行链 | `test:actions`、`test:authority`、`test:server:runtime`，协议变化加 `test:ruleset`、`test:network:guards`；构建 | 真实多客户端输入、倒计时、结算及退出 |

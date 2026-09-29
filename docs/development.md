@@ -40,6 +40,55 @@
 - 提交前检查差异和 `git diff --check`，只暂存本工作项文件；一个提交保持一个可解释、可验证的目的，不混入已有无关改动。
 - 交付以实际结果收尾：变化是什么，哪些检查通过/失败/未运行，限制在哪里。通过相关检查后无需无依据地重复全量测试；出现新改动或新风险时再补验证。
 
+## 提交规范
+
+所有新提交采用约定式格式，作用域必填：
+
+```text
+type(scope): 中文正文
+```
+
+这里的“正文”指冒号后的简短中文说明，写清本项工作的行为变化。类型和作用域均使用英文小写，冒号后一个空格；说明可以包含 API、文件名等技术标识，但不能只有英文。可选的详细消息与标题空一行，使用中文解释动机、兼容性或验证结果；工具生成的来源 trailer 保留原样。
+
+| 类型 | 用途 |
+| --- | --- |
+| `feat` / `fix` | 新功能 / 缺陷修复 |
+| `docs` / `style` | 文档 / 不改变行为的代码格式调整 |
+| `refactor` / `perf` | 重构 / 性能改进 |
+| `test` / `build` / `ci` | 测试 / 构建和依赖 / 自动化流程 |
+| `chore` / `revert` | 其他维护 / 撤回已有改动 |
+
+作用域描述受影响模块，例如 `statistics`、`server`、`battle`、`ui`、`release`、`docs`、`commits`；可以用 `-` 或 `/` 细分，例如 `server/rooms`。使用小写字母开头，后续仅用小写字母、数字和分隔符。破坏性变化可写 `feat(protocol)!: 调整联机动作协议`，并在详情中说明迁移；这个标记不代替游戏版本和规则版本管理。
+
+```text
+feat(statistics): 按游戏版本展示胜率
+fix(server): 修复断线重连后的席位恢复
+docs(release): 补充热更新评估要求
+ci(commits): 校验提交格式和 PR 标题
+```
+
+每项工作干净提交：
+
+1. 开始前用 `git status` 和差异确认已有改动的归属，保留其他工作。
+2. 一个提交只包含一个可解释、可验证的工作项；该工作必需的实现、测试和文档一起提交。独立修复或无关格式整理拆开，不使用“顺手修改”扩大提交。
+3. 运行对应检查后，用明确路径 `git add <路径>`；文件中混有其他改动时用 `git add -p`，逐块核对，不用无差别暂存。
+4. 提交前检查 `git diff --cached` 和 `git diff --cached --check`；提交后检查 `git show --stat HEAD` 与 `git status`，确认工作完整、暂存区无遗留。原本存在的其他改动可继续保留，不要求为了清空工作区而提交或删除它们。
+
+PR 标题也使用同一格式。一个开发 PR 对应一个可择取工作项；squash 时以规范 PR 标题作为最终标题，删除默认拼接的零散提交列表，保留有用的中文说明。晋级或同步 PR 使用 merge commit 时，将自动生成的英文标题改成例如 `chore(release): 合并已评估的热更新候选`。自动 revert、fixup、squash、合并分支产生的消息也必须整理后才能通过检查；保留 `cherry-pick -x` 的来源记录。
+
+CI 校验 PR 标题及目标分支以外的全部新增提交，包含 merge commit；dev/main 推送校验本次新增范围，创建新分支时校验分支顶端。修改 PR 标题也会重新触发检查。检查只证明格式和中文字符存在；提交是否单一、说明是否准确、验证是否充分由差异评审确认。
+
+可选择启用仓库自带的本地 `commit-msg` 钩子，提前获得相同反馈（如果已有个人 hooks，先将检查命令整合到原钩子，不覆盖原配置）：
+
+```bash
+git config core.hooksPath .githooks
+# 不启用钩子时，仍可手动校验消息文件或候选范围：
+npm run check:commits -- --file "$(git rev-parse --git-path COMMIT_EDITMSG)"
+npm run check:commits -- --range origin/dev HEAD
+```
+
+规范从本次改动起生效，不重写已共享历史。初始化 PR 中已经推送的 `8eb073c`、`aba0fd0`、`a218bf0` 三个提交按精确 SHA 一次性兼容；没有分支名、作者或消息模式豁免。重新择取旧提交会产生新 SHA，应编辑为新格式并保留来源 trailer。
+
 ## 文档与约束如何维护
 
 此次整理参考 OpenAI 的 [Rethinking skills and prompts for GPT-6 Astra](https://developers.openai.com/blog/rethinking-skills-and-prompts-for-gpt-6-astra)。采用按需提供上下文、明确结果和行动边界的思路。下面的文件分工与测试选择是本项目结合代码作出的设计，不是文章规定的通用流程。
