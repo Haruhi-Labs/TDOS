@@ -1,4 +1,9 @@
 export const EN_MESSAGES = {
+  "测试服": "Test server",
+  "测试服使用游客身份": "The test server uses guest identities",
+  "游戏版本": "Game version",
+  "历史数据（未标记版本）": "Historical data (unversioned)",
+
     "射手座之日": "The Day of Sagittarius",
     "载入中…": "Loading...",
     "页面加载失败": "Page failed to load",

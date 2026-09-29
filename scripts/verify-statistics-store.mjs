@@ -1,5 +1,7 @@
+import { GAME_VERSION } from "../shared/game-version.js";
+import { buildServerMatchStatisticsRecord, buildSoloStatisticsRecord } from "../server/statistics-records.js";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { appendFile, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createStatisticsStore } from "../server/statistics-store.js";
@@ -33,6 +35,8 @@ function record(id, mode, winnerSeat, participants) {
     mode,
     source: mode === "solo" ? "client_solo" : "server",
     verified: mode === "multiplayer",
+    gameVersion: GAME_VERSION,
+    buildId: "test-build",
     rulesetVersion: "test-ruleset",
     startedAt: time - 90_000,
     finishedAt: time,
@@ -96,6 +100,47 @@ try {
   await restored.ready();
   assert.deepEqual(restored.publicLeaderboard().modes, publicStats.modes, "重启后榜单应从追加日志完整恢复");
   assert.equal(restored.diagnostics().trackedPlayers, 3, "私有玩家聚合应覆盖单人与多人玩家");
+
+  const historical = { ...record("history:1", "multiplayer", "A", [
+    participant("A", "player-a", lineupA), participant("B", "player-b", lineupB),
+  ]), gameVersion: "v0.2" };
+  await store.record(historical, { trusted: true });
+  const legacy = { ...historical, id: "legacy:1" };
+  delete legacy.gameVersion;
+  await store.record(legacy, { trusted: true });
+  assert.equal(store.publicLeaderboard().modes.multiplayer.matches, 1, "历史记录不应污染当前版本");
+  assert.equal(store.publicLeaderboard("v0.2").modes.multiplayer.lineups.find(row => row.lineup.main === "haruhi").winRate, 100);
+  assert.equal(store.publicLeaderboard("unversioned").modes.multiplayer.matches, 1, "旧日志应进入未标记版本桶");
+  assert.equal(store.publicLeaderboard("v99.0").modes.multiplayer.matches, 0, "空版本不得回退到全量数据");
+  const spoofed = { ...record("solo:spoof", "solo", "A", [participant("A", "solo-player", lineupA)]), gameVersion: "v99.0" };
+  assert.equal((await store.record(spoofed)).reason, "version_mismatch", "不能由客户端创造未知版本");
+  const hotfix = { ...historical, id: "hotfix:1", gameVersion: GAME_VERSION, buildId: "hotfix-other-sha" };
+  await store.record(hotfix, { trusted: true });
+  assert.equal(store.publicLeaderboard().modes.multiplayer.matches, 2, "热更新应归入同一公开版本");
+  const reloaded = createStatisticsStore({ dataDir, now: () => time });
+  await reloaded.ready();
+  for (const version of [GAME_VERSION, "v0.2", "unversioned"]) {
+    assert.deepEqual(reloaded.publicLeaderboard(version).modes, store.publicLeaderboard(version).modes, "重启后版本分桶不一致");
+  }
+  assert.deepEqual(new Set(reloaded.publicLeaderboard().versions), new Set([GAME_VERSION, "v0.2", "unversioned"]));
+  const authoritative = buildServerMatchStatisticsRecord({
+    room: { id: "record-test", mode: "pvp", match: simulation, seats: { A: "a", B: "b" }, createdAt: time },
+    getPlayerById: () => ({ gameVersion: "v99.0" }),
+  });
+  assert.equal(authoritative.gameVersion, GAME_VERSION, "多人版本必须来自服务端");
+  assert.equal(buildSoloStatisticsRecord({ gameVersion: "v0.2" }, {}).gameVersion, "v0.2", "单人不得被重标为服务端版本");
+  assert.equal(buildSoloStatisticsRecord({}, {}).gameVersion, undefined, "旧端缺失版本不得被猜测填充");
+  const oldClient = { ...spoofed, id: "solo:old-client", gameVersion: "v0.2" };
+  assert.equal((await store.record(oldClient)).accepted, true, "已发布旧版客户端仍应归入原版本");
+  await store.flush();
+  const schema1 = { ...legacy, id: "schema1:raw", schemaVersion: 1 };
+  const logPath = join(dataDir, "matches-2026-08.jsonl");
+  await appendFile(logPath, JSON.stringify(schema1) + "\n");
+  const beforeRestore = await readFile(logPath, "utf8");
+  const migrated = createStatisticsStore({ dataDir, now: () => time });
+  await migrated.ready();
+  assert.equal(migrated.publicLeaderboard("unversioned").modes.multiplayer.matches, 2);
+  assert.equal(await readFile(logPath, "utf8"), beforeRestore, "加载旧日志不得覆盖原始数据");
 
   console.log("胜率统计存储校验通过：去重、匿名化、持久化恢复、单人/多人聚合与公开字段隔离均正常。");
 } finally {

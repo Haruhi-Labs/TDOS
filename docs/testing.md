@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | `npm run check:static` | 相对导入、已声明的依赖边界、循环依赖、单人/联机绘制副本守卫 | 不证明运行时行为或完整架构正确 |
 | `npm run test:logic` | 规则/AI/教程、协议、权威回放、插值、房间/运行时模块、统计存储、票据验签和表现辅助函数 | 不运行浏览器或真实远程服务 |
-| `npm run test:browser` | Chromium 中的更新日志、统计、身份、交互和 WebGL 场景 | 不证明真实账号登录、物理移动设备或生产可用 |
+| `npm run test:browser` | Chromium 中的更新日志、统计、身份、交互、WebGL 和测试服隔离场景 | 不证明真实账号登录、物理移动设备或生产可用 |
 | `npm run test:integration` | 本地真实 WebSocket 服务的协议、容量门禁、版本和公开字段隔离 | 不证明生产容量或部署成功 |
 | `npm run test:ai:simulation` | 16 局固定种子的 AI 对抗回归 | 不证明所有阵容平衡 |
 | `npm run test:all` | 以上各层的完整回归 | 不包含生产构建、独立容量压测或人工验收 |
@@ -34,7 +34,8 @@
 | 普通页面、移动交互 | 对应 `test:ui:interaction` / `test:mobile:scout` / `test:ui:cooldown`；构建 | 受影响桌面/窄屏路径；无现成测试时直接验证实际页面 |
 | 更新日志或多语言内容 | `test:changelog`、`test:ui:changelog`；构建 | 非日志页面翻译另查实际页面，日志测试不覆盖全部词典 |
 | 身份链路 | `test:identity`、`test:ui:identity`，服务端接入变化加 `test:network:guards`；构建 | 修改 SSO 流程时使用隔离身份环境走真实登录及游客降级 |
-| 统计采集、存储或榜单 | `test:statistics`、`test:network:guards`，页面变化加 `test:ui:statistics`；构建 | 去重、重启恢复、公开字段及一次性上报 |
+| 统计采集、存储或榜单 | `test:statistics`、`test:network:guards`，页面变化加 `test:ui:statistics`；构建 | 去重、跨版本隔离、热更新同桶、旧记录恢复、公开字段及一次性上报 |
+| 发布流程与版本 | `test:release`、`test:changelog`；涉及测试隔离加 `test:ui:staging`、`test:online:components` | 检查择取来源、额外改动拒绝、发版/热更新差异；CI 与服务器配置需另行实际验证 |
 | 发布候选 | `test:all`、目标基路径构建、受影响页面回归 | [运维门禁](operations.md)及上线后实测 |
 
 表中缩写均使用 `npm run <命令>`。日常通过针对性验证即可交付；共享入口大改、影响范围无法可靠界定时扩大到 `test:all`。

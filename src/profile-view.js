@@ -1,3 +1,4 @@
+import { IS_TEST_BUILD } from "./deployment.js";
 // ═══════════════════════════════════════════════════════════════
 // 指挥官档案（路由 /profile）
 // 只管身份：呼号 + 默认阵营。出战编队在进入对战时（选角页）挑选并自动记忆，
@@ -16,6 +17,7 @@ import {
 } from "./identity.js";
 
 function accountPanel(identity) {
+  if (IS_TEST_BUILD) return `<section class="pv-identity"><p>${t("测试服使用游客身份")}</p></section>`;
   const user = identity.user;
   if (!user) {
     return `
