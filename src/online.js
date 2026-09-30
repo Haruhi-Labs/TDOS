@@ -815,7 +815,7 @@ function updateBattleStatus(state) {
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
   refreshSkillButtons(own);
-  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey });
+  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey, portraitColor: getFaction() });
   syncMobileHud(ui, own, {
     visible: app.mobileMode && Boolean(app.room && app.room.status === "running") && !app.spectating,
     selected: selectedShip,
@@ -1844,6 +1844,8 @@ function bindUiEvents() {
       return;
     }
     const active = document.activeElement;
+    // 聚焦操作控件时保留原生激活与焦点移动，避免 Enter 下航线或空格暂停抢走交互。
+    if (active?.closest("button, a, summary") && ["Enter", "Space", "Tab"].includes(event.code)) return;
     if (
       active &&
       (active.tagName === "INPUT" ||
