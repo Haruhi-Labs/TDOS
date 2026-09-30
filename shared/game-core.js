@@ -53,6 +53,7 @@ import {
 } from "./game/math.js";
 import { BotController } from "./game/bot-controller.js";
 import { applyMatchAction } from "./game/action-dispatcher.js";
+import { serializeShipStatusEffects, statusEffectNames } from "./game/status-effects.js";
 import {
   COLLISION_SLOW_DURATION,
   COLLISION_SLOW_FLOOR,
@@ -108,7 +109,6 @@ import {
   updateKoizumiBarrierRecovery,
 } from "./game/koizumi-barrier.js";
 import {
-  HARUHI_SUPPORT_LABELS,
   activateHaruhiFlagship,
   createHaruhiFlagshipState,
   haruhiBoostActive,
@@ -1343,6 +1343,7 @@ class Ship {
 
   serialize() {
     const fleetEnergy = this.team.fleetEnergyForShip(this);
+    const statusEffects = serializeShipStatusEffects(this);
     return {
       id: this.id,
       key: this.key,
@@ -1388,7 +1389,8 @@ class Ship {
         };
       })(),
       nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
-      buffs: this.team.listShipBuffs(this),
+      buffs: statusEffectNames(statusEffects),
+      statusEffects,
       route: this.route
         ? {
             anchorToMain: this.route.anchorToMain,
@@ -2130,49 +2132,7 @@ class Team {
   }
 
   listShipBuffs(ship) {
-    const list = [];
-    if (ship.effects.nextShotDamageMultiplier > 1) {
-      list.push("超能力");
-    }
-    if (ship.hasEffect("reliableUntil")) {
-      list.push("靠谱的普通人");
-    }
-    if (ship.hasEffect("bladeQueenUntil")) {
-      list.push("刀锋女王");
-    }
-    if (ship.hasEffect("catPawUntil")) {
-      list.push("猫爪乱舞");
-    }
-    if (ship.isKoizumiOrbActive()) {
-      list.push(ship.koizumiOrb.phase === "returning" ? "超能力粒子·归航" : "超能力粒子");
-    }
-    if (ship.hasEffect("stunnedUntil")) {
-      list.push("眩晕");
-    }
-    if (ship.isSilenced()) {
-      list.push("沉默");
-    }
-    if (ship.heroPowerShock?.recoveryUntil > this.match.elapsed) {
-      list.push("勇者震慑");
-    }
-    if (this.hasActiveSponsor()) {
-      list.push("神秘赞助人");
-    }
-    if (this.hasActiveVisionWaveSkill()) {
-      list.push(CHARACTER_DEFS.asakura.flagshipSkill.name);
-    }
-    if (this.mainCharacterId() === "future1096" && this.future1096Form) {
-      list.push(`${this.future1096Form}形态`);
-    }
-    if (haruhiBoostActive(this)) {
-      list.push("我在这里！");
-    }
-    if (this.mainCharacterId() === "haruhi") {
-      for (const supportId of this.haruhiFlagship.supporters) {
-        list.push(HARUHI_SUPPORT_LABELS[supportId]);
-      }
-    }
-    return list;
+    return statusEffectNames(serializeShipStatusEffects(ship));
   }
 
   areSkillsDisabled() {

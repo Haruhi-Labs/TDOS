@@ -14,14 +14,14 @@ const LOGICAL = DEFAULT_WORLD_SIZE;
 
 function fleetRowHTML(slotKey, label) {
   return `
-            <button type="button" class="fleet-row" data-ship="${slotKey}">
+            <div class="fleet-card"><button type="button" class="fleet-row" data-ship="${slotKey}">
               <span class="command-portrait"><img alt="" draggable="false"></span>
               <span class="command-fleet-content"><span class="fleet-row-head"><span class="fleet-name">${label}</span><span class="fleet-state"></span></span>
               <span class="fleet-gauges">
                 <span class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></span>
                 <span class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></span>
               </span></span><kbd aria-hidden="true">${{ main: 1, sub1: 2, sub2: 3 }[slotKey]}</kbd>
-            </button>`;
+            </button><div class="status-effects" hidden></div></div>`;
 }
 
 function throttleGearButtonsHTML(buttonClass = "") {

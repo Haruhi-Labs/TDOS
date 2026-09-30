@@ -88,6 +88,8 @@
 
 ### 战斗界面
 
+角色卡状态由共享状态目录、权威序列化与通用 UI 组件组成，旧 `buffs` 名称也从结构化状态生成，不再维护另一套名称判断。单人、联机与观战共用正负图标、时间环、叠层和顶层说明，显示插值不写回规则。新增状态入口与当前正负状态列表见[角色卡状态](status-effects.md)。
+
 - `src/battle/camera.js`、`input.js`、`throttle.js`、`hud.js`、`template.js`：分别负责相机、命中与航线输入、推进控件、战斗 HUD 和公共 DOM 骨架。
 - `src/battle/render.js`：单人、联机和观战共用的战场绘制语义入口；只描述绘制顺序和视觉参数，不管理 GPU 生命周期。
 - `src/battle/native-webgl-renderer.js`：生产战场渲染后端入口，优先创建原生 WebGL2，失败时使用同一套几何与批处理实现回退到原生 WebGL1；只有两者都不可用才启用 Canvas 2D 可用性兜底。禁止把完整 2D 战场逐帧上传为纹理。

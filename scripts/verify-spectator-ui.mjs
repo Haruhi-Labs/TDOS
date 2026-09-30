@@ -146,8 +146,17 @@ try {
   await page.waitForFunction(() => document.querySelector('.spectator-team[data-seat="B"] .spectator-skill-state')?.textContent === "被动");
   host.send({ type: "input", seq: 1, action: matchActions.castFlagshipSkill(), clientTime: Date.now() });
   await page.waitForFunction(() => document.querySelector('.spectator-team[data-seat="A"] .spectator-skill')?.dataset.tone === "cooldown");
+  const formBuff = page.locator('.spectator-team[data-seat="A"] .spectator-ship[data-slot="main"] [data-effect="form_a_boost"]');
+  const formDebuff = page.locator('.spectator-team[data-seat="A"] .spectator-ship[data-slot="main"] [data-effect="form_a_vulnerable"]');
+  await formBuff.waitFor();
+  assert.equal(await formBuff.getAttribute("data-tone"), "positive", "真实联机形态强化应显示绿框");
+  assert.equal(await formDebuff.getAttribute("data-tone"), "negative", "真实联机形态易伤应同时显示红框");
+  await formDebuff.hover();
+  await page.locator(".status-effect-tooltip:visible").waitFor();
+  assert.equal(await page.locator(".status-effect-tooltip p").textContent(), "全队受到伤害翻倍。");
+  await page.keyboard.press("Escape");
 
-  const tooltip = page.getByRole("tooltip");
+  const tooltip = page.locator(".spectator-skill-tooltip");
   const descriptions = await page.evaluate(async () => {
     const { skillText } = await import("/src/i18n.js");
     return ["future1096", "haruhi", "koizumi", "yuki", "kyon", "shamisen"].map((id, index) => skillText(id, index % 3 === 0 ? "flagship" : "sub", "description"));
@@ -292,6 +301,9 @@ try {
   await page.locator('.fleet-row[data-ship="sub1"]').click();
   await page.waitForFunction(() => document.querySelector('.fleet-row[data-ship="sub1"]').getAttribute("aria-pressed") === "true");
   assert.ok(outgoing.some((message) => message.type === "select_ship" && message.shipKey === "sub1"), "新版舰况入口应发送联机切舰指令");
+  await page.locator("#flagshipBtn").click();
+  await page.locator('.fleet-card [data-effect="haruhi_boost"]').first().waitFor();
+  await page.locator('.fleet-card [data-effect="broadcast"]').first().waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator("#mobileBattleHud").waitFor({ state: "visible" });
   assert.equal(await page.locator('.mobile-ship-btn[data-ship="sub1"]').getAttribute("aria-pressed"), "true", "移动端应沿用联机当前选舰");
