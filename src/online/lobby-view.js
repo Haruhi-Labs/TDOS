@@ -73,10 +73,22 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
       title.className = "room-item-title";
       title.textContent = `${room.mode === "ai" ? t("AI房") : t("玩家对战房")} · ${room.roomId}`;
 
+      const versus = document.createElement("div");
+      versus.className = "room-item-versus";
+      if (room.combatants?.length) {
+        for (const seat of ["A", "B"]) {
+          const player = room.combatants.find((row) => row.seat === seat);
+          const name = document.createElement("span");
+          name.className = `room-combatant room-combatant-${seat.toLowerCase()}`;
+          name.textContent = `${seat}  ${localizedServerName(player?.name, player?.isBot)}`;
+          versus.append(name);
+        }
+      }
+
       const meta = document.createElement("div");
       meta.className = "room-item-meta";
       meta.textContent =
-        t("房主：{host} | 人数：{count}/{capacity} | 状态：{status}", {
+        t(room.combatants?.length ? "人数：{count}/{capacity} | 状态：{status}" : "房主：{host} | 人数：{count}/{capacity} | 状态：{status}", {
           host: room.hostName === "未知" ? t("未知") : room.hostName,
           count: room.count,
           capacity: room.capacity,
@@ -101,7 +113,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
       const actions = document.createElement("div");
       actions.className = "room-item-actions";
       actions.append(joinButton, spectateButton);
-      item.append(title, meta, actions);
+      item.append(title, versus, meta, actions);
       ui.roomList.append(item);
     }
   }
