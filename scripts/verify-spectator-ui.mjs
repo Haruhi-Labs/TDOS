@@ -64,16 +64,36 @@ async function assertLayout(page, width, height) {
       const rect = document.querySelector(selector).getBoundingClientRect();
       return { x: rect.x, y: rect.y, width: rect.width, height: rect.height, right: rect.right, bottom: rect.bottom };
     };
-    return { a: bounds('.spectator-team[data-seat="A"]'), b: bounds('.spectator-team[data-seat="B"]'), map: bounds("#gameCanvas"), scrollWidth: document.documentElement.scrollWidth };
+    return {
+      a: bounds('.spectator-team[data-seat="A"]'), b: bounds('.spectator-team[data-seat="B"]'),
+      map: bounds("#gameCanvas"), mapSpace: bounds(".game-wrap"), toolbar: bounds(".spectator-toolbar"),
+      scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight,
+      mobile: matchMedia("(max-width: 980px), (pointer: coarse)").matches,
+      panels: [...document.querySelectorAll(".spectator-team")].map((panel) => ({ overflow: panel.scrollHeight - panel.clientHeight })),
+      namesFit: [...document.querySelectorAll(".spectator-identity h3")].every((name) => name.scrollWidth <= name.clientWidth + 1),
+      content: [...document.querySelectorAll(".spectator-ship, .spectator-skill-name, .spectator-gauge")].map((node) => {
+        const rect = node.getBoundingClientRect();
+        return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom };
+      }),
+    };
   });
   assert.ok(boxes.scrollWidth <= width, `${width}×${height} 不应横向溢出`);
   assert.ok(Math.abs(boxes.map.width - boxes.map.height) < 2, "观战地图必须保持正方形");
-  if (width <= 640 || (width <= 760 && height > width)) {
+  if (width <= 760 && height > width) {
     assert.ok(boxes.map.bottom <= boxes.a.y + 1 && boxes.map.bottom <= boxes.b.y + 1, "竖屏双方舰队应并排位于地图下方");
-    assert.ok(boxes.map.width >= Math.min(width - 24, height * .55), "竖屏地图应保留足够的可读尺寸");
+    assert.ok(boxes.map.width >= Math.min(width - 20, height * .36), "一屏六舰布局仍须保留可读的竖屏地图");
   } else {
     assert.ok(boxes.a.right <= boxes.map.x && boxes.map.right <= boxes.b.x, "双方展板应夹住中央地图");
     assert.ok(boxes.map.width >= 240, "横屏地图不应被展板挤成细缝");
+  }
+  if (boxes.mobile) {
+    assert.ok(boxes.scrollHeight <= height + 1, `${width}×${height} 观战内容必须一屏显示，不应出现页面滚动`);
+    for (const box of [boxes.toolbar, boxes.a, boxes.b, ...boxes.content]) {
+      assert.ok(box.x >= 0 && box.y >= 0 && box.right <= width + 1 && box.bottom <= height + 1, `${width}×${height} 双方完整舰况和技能按钮不可被裁剪`);
+    }
+    assert.ok(boxes.panels.every((panel) => panel.overflow <= 1), "移动端双方展板不可依靠内部滚动隐藏舰船");
+    assert.ok(boxes.namesFit, `${width}×${height} 六舰角色名应完整可读`);
+    assert.ok(boxes.map.width >= Math.min(boxes.mapSpace.width, boxes.mapSpace.height) - 2, "地图须利用舰况之外的可用空间");
   }
   for (const side of ["A", "B"]) {
     assert.equal(await page.locator(`.spectator-team[data-seat="${side}"] .spectator-ship`).count(), 3, "双方均须保留完整三舰阵容");
@@ -218,7 +238,7 @@ try {
     };
   });
   assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "修复3.0秒", zeroGauge: "0%", charges: "护盾 7/15", playerCharges: "旗舰技能：超能力屏障（护盾 7/15）", playerRepair: "旗舰技能：超能力屏障（修复3.0秒）" });
-  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [320, 568], [844, 390]]) {
+  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [390, 540], [320, 568], [320, 480], [844, 390], [640, 360], [568, 320]]) {
     await assertLayout(page, width, height);
     for (const side of ["A", "B"]) {
       await page.locator(`.spectator-team[data-seat="${side}"] .spectator-skill-name`).last().click();
@@ -233,6 +253,30 @@ try {
       await tooltip.waitFor({ state: "hidden" });
     }
   }
+  // 粗指针也使用紧凑布局，平板横屏不能仅凭宽度退回桌面展板。
+  const touchContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, locale: "zh-CN" });
+  await touchContext.route("**/api/**", (route) => route.fulfill({ contentType: "application/json", body: JSON.stringify({ user: null }) }));
+  const touchPage = await touchContext.newPage();
+  touchPage.on("pageerror", (error) => errors.push(error.message));
+  const touchOutgoing = [];
+  touchPage.on("websocket", (socket) => socket.on("framesent", ({ payload }) => touchOutgoing.push(JSON.parse(String(payload)))));
+  await touchPage.goto(`${vite.resolvedUrls.local[0]}online?ws=${encodeURIComponent(wsUrl)}`, { waitUntil: "networkidle" });
+  await touchPage.getByRole("button", { name: "观战", exact: true }).tap();
+  await touchPage.waitForFunction(() => document.querySelector('.spectator-team[data-seat="B"] .spectator-skill-state')?.textContent === "被动");
+  for (const [width, height] of [[390, 844], [844, 390], [1280, 800]]) {
+    await assertLayout(touchPage, width, height);
+    await touchPage.locator('.spectator-team[data-seat="B"] .spectator-skill-name').last().tap();
+    const touchTooltip = touchPage.locator(".spectator-skill-tooltip");
+    await touchTooltip.waitFor({ state: "visible" });
+    const box = await touchTooltip.boundingBox();
+    assert.ok(box.x >= 0 && box.y >= 0 && box.x + box.width <= width + 1 && box.y + box.height <= height + 1, "触屏技能说明必须留在一屏内");
+    await touchPage.locator(".spectator-toolbar time").tap();
+    await touchTooltip.waitFor({ state: "hidden" });
+  }
+  await touchPage.locator(".spectator-exit").tap();
+  await touchPage.locator("#lobbyView").waitFor({ state: "visible" });
+  assert.equal(touchOutgoing.some((message) => message.type === "input" || message.type === "select_ship"), false, "触屏观战只能阅读，不能发送战斗指令");
+  await touchContext.close();
   const sampleZoom = () => page.evaluate(async () => {
     const values = [];
     for (let frame = 0; frame < 35; frame += 1) {
@@ -313,7 +357,7 @@ try {
     await page.close();
     await video.saveAs(join(videoDir, "spectator-camera.webm"));
   }
-  console.log("观战界面检查通过：本地真实三客户端、首帧双方阵容、技能状态、五种视口、平滑滚轮、拖拽取消、缩放退出和玩家模式恢复。");
+  console.log("观战界面检查通过：本地真实多客户端、首帧双方阵容、技能状态、九种视口、手机/平板一屏六舰与触屏说明、平滑镜头、退出和玩家模式恢复。");
 } finally {
   await browser?.close();
   for (const client of clients) client.terminate();
