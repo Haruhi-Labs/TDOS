@@ -6,7 +6,6 @@ import {
   DEFAULT_AI_LOADOUT,
   DEFAULT_TEAM_LOADOUT,
   randomAiLoadout,
-  EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
   TICK_DT,
   clamp,
@@ -125,7 +124,6 @@ function cacheDom() {
   shipSwitchButtons: Array.from(document.querySelectorAll("#shipQuickSwitch .ship-switch-btn")),
   scoutBtn: document.getElementById("scoutBtn"),
   autoScoutBtn: document.getElementById("autoScoutBtn"),
-  brakeBtn: document.getElementById("brakeBtn"),
   flagshipBtn: document.getElementById("flagshipBtn"),
   subSkillBtn: document.getElementById("subSkillBtn"),
   playerMainRole: document.getElementById("playerMainRole"),
@@ -158,7 +156,6 @@ function cacheDom() {
   mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
   mobileScoutBtn: document.getElementById("mobileScoutBtn"),
   mobileAutoScoutBtn: document.getElementById("mobileAutoScoutBtn"),
-  mobileBrakeBtn: document.getElementById("mobileBrakeBtn"),
   mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
   mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
   mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
@@ -552,19 +549,6 @@ function toggleAutoScout() {
   return ok;
 }
 
-function useEmergencyBrake() {
-  const ship = selectedShipState();
-  if (!ship || !ship.alive || !ship.canControl) {
-    return false;
-  }
-  const ok = applyAction(matchActions.emergencyBrake(ship.key));
-  if (ok) {
-    log(t("{ship} 执行急刹", { ship: shipDisplayName(ship) }));
-    updateUi();
-  }
-  return ok;
-}
-
 function handleMinimapTap(screenPos, { allowZoneLog = true } = {}) {
   if (!app.mobileMode) {
     return false;
@@ -617,7 +601,7 @@ function applyTutorialUiGates() {
   const allow = (key) => tutorial.allowsControl(key);
   forceTutorialControl([...ui.powerGearButtons, ...ui.mobileThrottleButtons], false);
   forceTutorialControl([ui.zoomOutBtn, ui.zoomInBtn, ui.mobileZoomOutBtn, ui.mobileZoomInBtn], false);
-  forceTutorialControl([ui.autoScoutBtn, ui.mobileAutoScoutBtn, ui.brakeBtn, ui.mobileBrakeBtn], false);
+  forceTutorialControl([ui.autoScoutBtn, ui.mobileAutoScoutBtn], false);
   forceTutorialControl([ui.mobileCenterBtn, ui.applyLoadoutBtn], false);
   forceTutorialControl([ui.scoutBtn, ui.mobileScoutBtn], allow("scout"));
   forceTutorialControl([ui.splitOneBtn, ui.mobileSplitOneBtn], allow("split1"));
@@ -654,7 +638,7 @@ function updateUi() {
     const minRadius = Math.round(selectedSim.routeConstraintProfile().minTurnRadius);
     ui.selectedValue.textContent = `${shipCharacterName(selectedState)} | ${throttleLabelForValue(selectedState.throttle)} | ${t("能量")} ${Math.round(
       Number(selectedState.fleetEnergy) || 0,
-    )}/${Math.round(Number(selectedState.fleetMaxEnergy) || 1)} | ${t("最小半径")}${minRadius}${selectedState.braking ? ` | ${t("急刹中")}` : ""}`;
+    )}/${Math.round(Number(selectedState.fleetMaxEnergy) || 1)} | ${t("最小半径")}${minRadius}`;
   } else {
     ui.selectedValue.textContent = t("无");
   }
@@ -1135,8 +1119,6 @@ function bindUiEvents() {
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScout);
   bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScout);
-  bindPressButton(ui.brakeBtn, useEmergencyBrake);
-  bindPressButton(ui.mobileBrakeBtn, useEmergencyBrake);
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkill);
   bindPressButton(ui.mobileFlagshipBtn, useFlagshipSkill);
@@ -1421,13 +1403,6 @@ function bindUiEvents() {
     if (event.code === "KeyZ") {
       event.preventDefault();
       toggleAutoScout();
-      return;
-    }
-
-    // B — emergency brake
-    if (event.code === "KeyB") {
-      event.preventDefault();
-      useEmergencyBrake();
       return;
     }
 

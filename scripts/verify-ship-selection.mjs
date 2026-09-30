@@ -21,7 +21,6 @@ for (const key of ["main", "sub1"]) {
     matchActions.setThrottle({ shipKey: key, throttle: 1.4 }),
     matchActions.setRoute({ shipKey: key, endX: 600, endY: 700 }),
     matchActions.clearRoute({ shipKey: key }),
-    matchActions.emergencyBrake(key),
     matchActions.launchScout({ shipKey: key, zoneId: 5 }),
     key === "main" ? matchActions.castFlagshipSkill() : matchActions.castSubSkill({ shipKey: key, targetX: 600, targetY: 700 }),
   ]) assert.equal(simulation.applyActionForSeat("A", action), false, "眩晕时战斗操作必须无效");
@@ -113,6 +112,15 @@ try {
     for (const key of ["main", "sub1"]) {
       const select = page.locator(mobile ? `.mobile-ship-btn[data-ship="${key}"]` : `.fleet-row[data-ship="${key}"]`);
       await select.click();
+      const beforeRemovedKey = mode === "solo"
+        ? await page.evaluate(() => JSON.stringify(window.selectionFixture.app.sim.serializeState()))
+        : outgoing.filter((message) => message.type === "input").length;
+      await page.keyboard.press("b");
+      if (mode === "solo") {
+        assert.equal(await page.evaluate(() => JSON.stringify(window.selectionFixture.app.sim.serializeState())), beforeRemovedKey, "可控舰按 B 键不能扣能量、减速或写入急刹状态");
+      } else {
+        assert.equal(outgoing.filter((message) => message.type === "input").length, beforeRemovedKey, "可控舰按 B 键不能发送旧急刹动作");
+      }
       for (const status of ["stun", "shock"]) {
         await publish(key, status);
         const otherKey = key === "main" ? "sub2" : "main";
@@ -123,7 +131,6 @@ try {
         assert.equal(await select.getAttribute("aria-pressed"), "true", `${mode} ${key} ${status} 不可自动转移选舰`);
         assert.equal(await select.isDisabled(), false, "短时禁控舰仍可被明确选择");
         assert.equal(await page.evaluate(() => window.selectionFixture.app.selectedShipKey), key);
-        assert.equal(await page.locator(mobile ? "#mobileBrakeBtn" : "#brakeBtn").isDisabled(), true);
         assert.equal(await page.locator(mobile ? "#mobileScoutBtn" : "#scoutBtn").isDisabled(), true);
         assert.equal(await page.locator(mobile ? key === "main" ? "#mobileFlagshipBtn" : "#mobileSubSkillBtn" : key === "main" ? "#flagshipBtn" : "#subSkillBtn").isDisabled(), true);
         const gears = page.locator(mobile ? ".mobile-throttle-btn" : "#powerGearControl button");
@@ -133,6 +140,7 @@ try {
         await page.keyboard.press("Enter");
         await page.keyboard.press("x");
         await page.keyboard.press("b");
+        assert.equal(await page.locator("#brakeBtn, #mobileBrakeBtn").count(), 0, "双端操作台不能保留急刹入口");
         await page.keyboard.press(key === "main" ? "c" : "v");
         assert.equal(await page.evaluate(() => window.selectionFixture.app.pendingSubSkillAim), null, "禁控时技能快捷键不能误进瞄准模式");
         assert.equal(await page.evaluate(() => window.selectionFixture.app.selectedShipKey), key, "无效输入不可改变选舰");

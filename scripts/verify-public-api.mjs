@@ -4,7 +4,7 @@ const contracts = new Map([
   ["../shared/game-core.js", [
     "AUTO_SCOUT_COOLDOWN_MULTIPLIER", "BotController", "CHARACTER_DEFS", "CHARACTER_ORDER",
     "DEFAULT_AI_LOADOUT", "DEFAULT_MAP_PADDING", "DEFAULT_TEAM_LOADOUT", "DEFAULT_THROTTLE_GEAR",
-    "DEFAULT_WORLD_SIZE", "EMERGENCY_BRAKE_COST", "ENERGY_GEAR_PROFILES", "FIRE_ARC_BANDS",
+    "DEFAULT_WORLD_SIZE", "ENERGY_GEAR_PROFILES", "FIRE_ARC_BANDS",
     "MANUAL_SCOUT_COOLDOWN", "MatchSimulation", "SCOUT_LAUNCH_COST", "SNAPSHOT_RATE",
     "THROTTLE_GEAR_VALUES", "TICK_DT", "TICK_RATE", "YUKI_RADAR_ROTATION_SECONDS", "__resetEntityIds",
     "buildZones", "clamp", "cloneLoadout", "distance", "energyProfileForThrottle", "energyRateForThrottle",

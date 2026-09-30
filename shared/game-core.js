@@ -17,8 +17,6 @@ import {
 } from "./game/throttle.js";
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-  EMERGENCY_BRAKE_COOLDOWN,
-  EMERGENCY_BRAKE_COST,
   FIRE_ARC_BANDS,
   MANUAL_SCOUT_COOLDOWN,
   SCOUT_LAUNCH_COST,
@@ -167,7 +165,6 @@ export {
   throttleForGear,
   throttleGearForValue,
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-  EMERGENCY_BRAKE_COST,
   FIRE_ARC_BANDS,
   MANUAL_SCOUT_COOLDOWN,
   SCOUT_LAUNCH_COST,
@@ -209,7 +206,6 @@ const FUTURE_1096_FORMS = Object.freeze({
 });
 const FUTURE_1096_BASE_FORM = Object.freeze({ damageTaken: 1, speed: 1, fireRate: 1 });
 const DEG_TO_RAD = Math.PI / 180;
-const EMERGENCY_BRAKE_DURATION = 0.82;
 
 function beamDamageRatioForHitCount(hitCount) {
   if (hitCount >= 3) return BEAM_DAMAGE_RATIOS.triple;
@@ -559,8 +555,6 @@ class Ship {
       reliableUntil: 0,
       bladeQueenUntil: 0,
       catPawUntil: 0,
-      brakeUntil: 0,
-      brakeCooldownUntil: 0,
       silencedUntil: 0,
       stunnedUntil: 0,
       nextShotDamageMultiplier: 1,
@@ -617,10 +611,6 @@ class Ship {
 
   hasEffect(effectKey) {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
-  }
-
-  isEmergencyBraking() {
-    return this.hasEffect("brakeUntil");
   }
 
   isControlLocked() {
@@ -1149,15 +1139,10 @@ class Ship {
 
     const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
-    const braking = this.isEmergencyBraking();
-    const cruiseTargetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor();
-    const targetSpeed = braking ? Math.min(cruiseTargetSpeed * 0.08, 4.2) : cruiseTargetSpeed;
+    const targetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor();
 
-    const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this) * (braking ? 4.4 : 1), 0.65, 9.6);
+    const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this), 0.65, 9.6);
     this.speed = lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
-    if (braking && this.speed < 1.2) {
-      this.speed = 0;
-    }
 
     this.x += Math.cos(this.angle) * this.speed * dt;
     this.y += Math.sin(this.angle) * this.speed * dt;
@@ -1383,8 +1368,6 @@ class Ship {
       range: this.effectiveRange(),
       attached: this.isAttached(),
       canControl: this.canControl(),
-      braking: this.isEmergencyBraking(),
-      brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       catPawVolley: this.hasEffect("catPawUntil"),
       silenced: this.isSilenced(),
@@ -2172,9 +2155,6 @@ class Team {
     if (ship.heroPowerShock?.recoveryUntil > this.match.elapsed) {
       list.push("勇者震慑");
     }
-    if (ship.isEmergencyBraking()) {
-      list.push("急刹");
-    }
     if (this.hasActiveSponsor()) {
       list.push("神秘赞助人");
     }
@@ -2504,26 +2484,6 @@ class Team {
     }
     this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
     this.match.recordAction(this.seat, options.cooldownMultiplier ? "auto_scout" : "launch_scout");
-    return true;
-  }
-
-  emergencyBrake(shipOrKey) {
-    const ship = typeof shipOrKey === "string" ? this.shipByKey(shipOrKey) : shipOrKey;
-    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached() || ship.isKoizumiOrbActive()) {
-      return false;
-    }
-    if ((ship.effects.brakeCooldownUntil || 0) > this.match.elapsed) {
-      return false;
-    }
-    if (!this.spendEnergyForShip(ship, EMERGENCY_BRAKE_COST)) {
-      return false;
-    }
-    ship.speed *= 0.34;
-    ship.effects.brakeUntil = this.match.elapsed + EMERGENCY_BRAKE_DURATION;
-    ship.effects.brakeCooldownUntil = this.match.elapsed + EMERGENCY_BRAKE_COOLDOWN;
-    this.match.spawnBurst(ship.x, ship.y, "#98e9ff", 7);
-    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "急刹", {}, "#9eefff");
-    this.match.recordAction(this.seat, "emergency_brake");
     return true;
   }
 

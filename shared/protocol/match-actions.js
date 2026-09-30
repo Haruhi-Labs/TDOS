@@ -7,7 +7,6 @@ export const MATCH_ACTION_TYPES = Object.freeze({
   SPLIT: "split",
   LAUNCH_SCOUT: "launch_scout",
   CONFIGURE_AUTO_SCOUT: "configure_auto_scout",
-  EMERGENCY_BRAKE: "emergency_brake",
   CAST_FLAGSHIP_SKILL: "cast_flagship_skill",
   CAST_SUB_SKILL: "cast_sub_skill",
 });
@@ -27,7 +26,6 @@ export const matchActions = Object.freeze({
   split: (level) => action(MATCH_ACTION_TYPES.SPLIT, { level }),
   launchScout: (payload) => action(MATCH_ACTION_TYPES.LAUNCH_SCOUT, payload),
   configureAutoScout: (payload) => action(MATCH_ACTION_TYPES.CONFIGURE_AUTO_SCOUT, payload),
-  emergencyBrake: (shipKey) => action(MATCH_ACTION_TYPES.EMERGENCY_BRAKE, { shipKey }),
   castFlagshipSkill: (zoneId) => action(MATCH_ACTION_TYPES.CAST_FLAGSHIP_SKILL, { zoneId }),
   castSubSkill: (payload) => action(MATCH_ACTION_TYPES.CAST_SUB_SKILL, payload),
 });

@@ -49,7 +49,7 @@ const ACTIONS_BY_TICK = new Map([
     ["A", matchActions.configureAutoScout({ enabled: true, zoneId: 1 })],
     ["B", matchActions.configureAutoScout({ enabled: true, zoneId: 9 })],
   ]],
-  [10, [["A", matchActions.emergencyBrake("main")]]],
+  [10, [["A", { type: "emergency_brake", shipKey: "main" }]]],
   [15, [["A", matchActions.routeControl({ shipKey: "sub1", controlX: 310, controlY: 760 })]]],
   [16, [["A", matchActions.routeEnd({ shipKey: "sub1", endX: 400, endY: 860 })]]],
   [20, [["A", matchActions.split(2)], ["B", matchActions.split(2)]]],

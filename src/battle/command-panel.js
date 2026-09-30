@@ -1,4 +1,4 @@
-import { EMERGENCY_BRAKE_COST, SCOUT_LAUNCH_COST, skillMetaForCharacter } from "../../shared/game-core.js";
+import { SCOUT_LAUNCH_COST, skillMetaForCharacter } from "../../shared/game-core.js";
 import { shipCharacterName, skillText, slotLabel, t } from "../i18n.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";
 import { isShipControlLocked } from "./ship-selection.js";
@@ -69,9 +69,6 @@ export function renderCommandPanel(ui, own, { selected, pendingSubSkillAim, fall
   const auto = Boolean(own.autoScout?.enabled);
   display(ui.autoScoutBtn, t("自动侦察"), auto ? scoutRemaining > 0 ? `${scoutRemaining.toFixed(1)}s` : Number(main?.fleetEnergy) < SCOUT_LAUNCH_COST ? t("等待能量") : t("战区{zone}", { zone: own.autoScout.zoneId }) : own.skillsDisabled ? t("已封印") : t("已关闭"), auto ? t("已开启") : "");
   ui.autoScoutBtn.setAttribute("aria-pressed", String(auto));
-  const brakeRemaining = Number(selected?.brakeCooldown) || 0;
-  const brakeState = isShipControlLocked(selected) ? t(selected.stunRemaining > 0 ? "眩晕" : "不可操控") : !selected?.alive || !selected.canControl ? t("先选择可控舰") : selected.koizumiOrb?.active ? t("光球形态") : selected.attached ? t("分离后可用") : brakeRemaining > 0 ? `${brakeRemaining.toFixed(1)}s` : Number(selected.fleetEnergy) < EMERGENCY_BRAKE_COST ? t("能量不足") : selected.braking ? t("制动中") : t("就绪");
-  display(ui.brakeBtn, t("急刹"), brakeState, t("{energy}能量", { energy: EMERGENCY_BRAKE_COST }));
   const root = ui.flagshipBtn.closest?.(".battle-shell");
   text(root?.querySelector("#commandSelectedShip"), selected ? shipCharacterName(selected) : "—");
   const hint = root?.querySelector("#commandContextHint");

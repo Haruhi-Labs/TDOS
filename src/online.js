@@ -1,7 +1,6 @@
 import {
   DEFAULT_TEAM_LOADOUT,
   DEFAULT_WORLD_SIZE,
-  EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
   clamp,
   cloneLoadout,
@@ -104,7 +103,7 @@ let spectatorCameraInput = null;
 const SHIP_CONTROL_ACTIONS = new Set([
   MATCH_ACTION_TYPES.SET_ROUTE, MATCH_ACTION_TYPES.ROUTE_CONTROL, MATCH_ACTION_TYPES.ROUTE_END,
   MATCH_ACTION_TYPES.SET_THROTTLE, MATCH_ACTION_TYPES.CLEAR_ROUTE,
-  MATCH_ACTION_TYPES.CAST_SUB_SKILL, MATCH_ACTION_TYPES.EMERGENCY_BRAKE,
+  MATCH_ACTION_TYPES.CAST_SUB_SKILL,
 ]);
 
 function addWin(type, handler) {
@@ -153,7 +152,6 @@ function cacheDom() {
   splitTwoBtn: document.getElementById("splitTwoBtn"),
   scoutBtn: document.getElementById("scoutBtn"),
   autoScoutBtn: document.getElementById("autoScoutBtn"),
-  brakeBtn: document.getElementById("brakeBtn"),
   flagshipBtn: document.getElementById("flagshipBtn"),
   subSkillBtn: document.getElementById("subSkillBtn"),
   onlineMainRole: document.getElementById("onlineMainRole"),
@@ -190,7 +188,6 @@ function cacheDom() {
   mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
   mobileScoutBtn: document.getElementById("mobileScoutBtn"),
   mobileAutoScoutBtn: document.getElementById("mobileAutoScoutBtn"),
-  mobileBrakeBtn: document.getElementById("mobileBrakeBtn"),
   mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
   mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
   mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
@@ -811,7 +808,7 @@ function updateBattleStatus(state) {
     selectedShip && selectedShip.alive
       ? `${shipCharacterName(selectedShip)} | ${t("能量")} ${Math.round(Number(selectedShip.fleetEnergy) || 0)}/${Math.round(
           Number(selectedShip.fleetMaxEnergy) || 1,
-        )}${selectedShip.braking ? ` | ${t("急刹中")}` : ""}`
+        )}`
       : t("无");
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
@@ -1216,18 +1213,6 @@ function toggleAutoScoutOnline() {
   return seq;
 }
 
-function useEmergencyBrakeOnline() {
-  const ship = getLatestOwnShip(app.selectedShipKey);
-  if (!ship || !ship.alive || !ship.canControl) {
-    return null;
-  }
-  const seq = sendAction(matchActions.emergencyBrake(ship.key));
-  if (seq !== null) {
-    log(t("{ship} 执行急刹", { ship: shipDisplayName(ship) }));
-  }
-  return seq;
-}
-
 function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
   if (!app.mobileMode || !state) {
     return false;
@@ -1624,8 +1609,6 @@ function bindUiEvents() {
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScoutOnline);
   bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScoutOnline);
-  bindPressButton(ui.brakeBtn, useEmergencyBrakeOnline);
-  bindPressButton(ui.mobileBrakeBtn, useEmergencyBrakeOnline);
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkillOnline);
   bindPressButton(ui.mobileFlagshipBtn, useFlagshipSkillOnline);
@@ -1988,15 +1971,6 @@ function bindUiEvents() {
         return;
       }
       toggleAutoScoutOnline();
-      return;
-    }
-
-    if (event.code === "KeyB") {
-      event.preventDefault();
-      if (!canControlBattle()) {
-        return;
-      }
-      useEmergencyBrakeOnline();
       return;
     }
 
