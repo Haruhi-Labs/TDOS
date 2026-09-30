@@ -2,6 +2,10 @@ export const EN_MESSAGES = {
   "测试服": "Test server",
   "测试服使用游客身份": "The test server uses guest identities",
   "游戏版本": "Game version",
+  "v0.3及之前的版本": "v0.3 and earlier",
+  "全部版本对局 {count} 场": "All versions: {count} matches",
+  "当前版本对局 {count} 场": "Current version: {count} matches",
+  "所选版本对局 {count} 场": "Selected version: {count} matches",
   "历史数据（未标记版本）": "Historical data (unversioned)",
 
     "射手座之日": "The Day of Sagittarius",
