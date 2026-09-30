@@ -653,13 +653,13 @@ class Ship {
 
     if (this.hasEffect("bladeQueenUntil")) {
       if (statKey === "speed") {
-        value *= 1.45;
+        value *= CHARACTER_DEFS.asakura.subSkill.speedMultiplier;
       }
       if (statKey === "accel") {
-        value *= 1.26;
+        value *= CHARACTER_DEFS.asakura.subSkill.accelerationMultiplier;
       }
       if (statKey === "turnRate") {
-        value *= 1.12;
+        value *= CHARACTER_DEFS.asakura.subSkill.turnMultiplier;
       }
     }
 
@@ -691,6 +691,24 @@ class Ship {
 
   effectiveSpeed() {
     return this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
+  }
+
+  minimumFlightSpeed() {
+    // 刀锋下限取技能强化后的满能量航速，不使用能量、震慑或碰撞减速系数。
+    if (!this.hasEffect("bladeQueenUntil")) return 0;
+    const meta = CHARACTER_DEFS.asakura.subSkill;
+    // 舰队防御形态等属性减速也不能压低角色自身的刀锋巡航下限。
+    return Math.max(this.base.speed * meta.speedMultiplier, this.baseSpeed()) * throttleForGear(meta.minimumGear);
+  }
+
+  applyControlSpeedLimit() {
+    const minimumSpeed = this.minimumFlightSpeed();
+    this.speed = minimumSpeed > 0 ? Math.max(this.speed, minimumSpeed) : 0;
+  }
+
+  advanceFlight(dt) {
+    this.x = this.team.match.clampX(this.x + Math.cos(this.angle) * this.speed * dt, 8);
+    this.y = this.team.match.clampY(this.y + Math.sin(this.angle) * this.speed * dt, 8);
   }
 
   // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
@@ -1087,7 +1105,9 @@ class Ship {
     }
 
     if (this.isControlLocked()) {
-      this.speed = 0;
+      this.applyControlSpeedLimit();
+      // 禁控仍拒绝输入和自动转向，刀锋只保留当前朝向上的飞行。
+      if (this.minimumFlightSpeed() > 0) this.advanceFlight(dt);
       return;
     }
 
@@ -1139,20 +1159,18 @@ class Ship {
 
     const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
-    const targetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor();
+    const minimumSpeed = this.minimumFlightSpeed();
+    const targetSpeed = Math.max(minimumSpeed, dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor());
 
     const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this), 0.65, 9.6);
-    this.speed = lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
+    this.speed = Math.max(minimumSpeed, lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1)));
 
-    this.x += Math.cos(this.angle) * this.speed * dt;
-    this.y += Math.sin(this.angle) * this.speed * dt;
-    this.x = match.clampX(this.x, 8);
-    this.y = match.clampY(this.y, 8);
+    this.advanceFlight(dt);
 
     if (this.route) {
       const minAdvance = 5;
-      // P 档下保持当前航线进度，重新挂入前进档后可沿原航线继续航行。
-      const routeSpeed = this.throttle <= 0 ? 0 : Math.max(minAdvance, this.speed);
+      // 普通 P 档保持航线进度；刀锋强制前飞时仍推进航线。
+      const routeSpeed = this.throttle <= 0 && minimumSpeed <= 0 ? 0 : Math.max(minAdvance, this.speed);
       const headingAlign = clamp(Math.cos(deltaAbs), -1, 1);
       const alignFactor = clamp((headingAlign + 0.25) / 1.25, 0.12, 1);
       const deltaT = (routeSpeed * dt * alignFactor) / Math.max(130, this.route.length);
@@ -1166,6 +1184,11 @@ class Ship {
   updateForcedKnockback() {
     const forced = this.forcedKnockback;
     if (!forced) {
+      return false;
+    }
+    if (this.minimumFlightSpeed() > 0) {
+      // 开启刀锋后继续前飞，清理旧击退插值以免随后回跳到旧坐标。
+      this.forcedKnockback = null;
       return false;
     }
     const now = this.team.match.elapsed;
@@ -2650,6 +2673,7 @@ class Team {
       }
     } else if (ship.characterId === "asakura") {
       this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
+      ship.speed = Math.max(ship.speed, ship.minimumFlightSpeed());
       ok = true;
     } else if (ship.characterId === "shamisen") {
       this.setShipEffect(ship, "catPawUntil", meta.duration || 12);

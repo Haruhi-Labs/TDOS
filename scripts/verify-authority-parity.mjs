@@ -8,6 +8,7 @@ import {
 import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 import { createInputQueue } from "../server/input-queue.js";
+import { applyHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
 
 const LOADOUTS = {
   A: { main: "kyon", sub1: "asakura", sub2: "future1096" },
@@ -58,7 +59,13 @@ const ACTIONS_BY_TICK = new Map([
     ["B", matchActions.setRoute({ shipKey: "sub2", endX: 920, endY: 420, throttle: 1.4 })],
   ]],
   [35, [["A", matchActions.clearRoute({ shipKey: "sub1" })]]],
+  [36, [["A", matchActions.castSubSkill({ shipKey: "sub1" })]]],
+  [41, [["A", matchActions.setThrottle({ shipKey: "sub1", throttle: 0 })]]],
 ]);
+
+function applyBladeControlScenario(simulation, tick) {
+  if (tick === 40) applyHaruhiHeroPowerShock(simulation.teamA.ships.sub1, simulation.elapsed, { lockDuration: 0.2, recoveryDuration: 0.4 });
+}
 
 function createSimulation() {
   resetRandomSeed();
@@ -77,6 +84,7 @@ function replayDirect(tickCount) {
     for (const [seat, action] of ACTIONS_BY_TICK.get(tick) || []) {
       simulation.applyActionForSeat(seat, action);
     }
+    applyBladeControlScenario(simulation, tick);
     simulation.update(TICK_DT);
     states.push(JSON.stringify(simulation.serializeState()));
   }
@@ -102,6 +110,7 @@ function replayThroughServerQueue(tickCount) {
       inputQueue.queueInput(players.get(room.seats[seat]), { seq: sequences[seat], action });
     }
     inputQueue.applyQueuedInputs(room, (playerId) => players.get(playerId) || null);
+    applyBladeControlScenario(simulation, tick);
     simulation.update(TICK_DT);
     states.push(JSON.stringify(simulation.serializeState()));
   }
@@ -112,6 +121,11 @@ Math.random = deterministicRandom;
 try {
   const directStates = replayDirect(90);
   const queuedStates = replayThroughServerQueue(90);
+  const beforeShock = JSON.parse(directStates[39]).teams.A.ships.sub1;
+  const shocked = JSON.parse(directStates[40]).teams.A.ships.sub1;
+  assert.equal(shocked.bladeQueen, true, "权威回放未覆盖刀锋女王");
+  assert.equal(shocked.canControl, false, "权威回放未覆盖刀锋禁控");
+  assert.ok(Math.hypot(shocked.x - beforeShock.x, shocked.y - beforeShock.y) > 0, "权威回放中刀锋禁控后停止飞行");
   assert.equal(directStates.length, queuedStates.length);
   for (let tick = 0; tick < directStates.length; tick += 1) {
     assert.equal(

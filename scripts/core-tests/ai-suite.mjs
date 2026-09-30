@@ -1307,7 +1307,7 @@ function aiKoizumiBarrierBreachCheck() {
   assert(asakura.hasEffect("bladeQueenUntil"), "AI没有为破盾主动开启刀锋女王");
   bot.issueMovement(context);
   assert(bot.lastTacticalPlan.detachedPlan.roles.sub1 === "breach", "朝仓分舰没有进入专门破盾角色");
-  assert(asakura.throttle === throttleForGear(4), "刀锋女王生效期间AI没有使用四档加速争取最高伤害");
+  assert(asakura.throttle === throttleForGear(4), "刀锋女王生效期间AI没有使用四档快速突入破盾");
   assert(
     Math.hypot(asakura.route.p2.x - defendingMain.x, asakura.route.p2.y - defendingMain.y) < 8,
     "朝仓破盾路线没有径直瞄准古泉能量圈圆心",

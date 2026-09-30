@@ -54,7 +54,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "高速猎杀渗透舰",
       flavor: "情报与突进,一往无前的刀锋女王",
       flagshipSkill: { name: "资讯压制", overview: "发出视野波探查战场，清除敌方主动增益并驱散友方负面状态。", description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益，友军被扫到时驱散其负面状态。敌方也能看见视野波。" },
-      subSkill: { name: "刀锋女王", overview: "高速穿行敌阵，以接触造成持续伤害，航速越快伤害越高。", description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；刀锋作用半径扩大25%，接触及持续重叠时每秒按实际航速造成伤害：二档及以下为5%最大生命值、三档13%、四档20%，档位速度之间线性变化。" },
+      subSkill: { name: "刀锋女王", overview: "高速穿行敌阵，受控或减速时仍继续飞行，以接触造成持续伤害。", description: "10秒内航速×1.45（加速×1.26、转向×1.12），航速不低于技能强化后的三档满能量航速；低档、能量耗尽、减速或受控也保持飞行，受控时沿当前朝向续飞且仍不能操作。无视碰撞体积，可穿过敌舰，刀锋作用半径扩大25%；接触时造成目标最大生命值15%的伤害，持续重叠时每秒结算一次，与航速无关。" },
     },
     shamisen: {
       name: "三味线",
@@ -120,7 +120,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "高速狩猟浸透艦",
       flavor: "情報と突進で切り込むブレードクイーン",
       flagshipSkill: { name: "情報制圧", overview: "視界波で戦場を探査し、敵のアクティブ強化と味方の弱体状態を解除する。", description: "6秒間、1秒ごとに自身を中心とする視界波を放ち、波帯の実視界を得る。波に触れた敵艦のアクティブ強化を解除し、味方艦の弱体効果を解除する。敵側にも視界波は見える。" },
-      subSkill: { name: "ブレードクイーン", overview: "敵艦を高速で通り抜け、接触中に継続ダメージを与える。実際の速度が高いほど強くなる。", description: "10秒間、速度×1.45（加速×1.26・旋回×1.12）で当たり判定を無視（敵艦をすり抜け可）。ブレードの効果半径が25%拡大し、接触時および重なり続けている間は実速度に応じて毎秒ダメージを与える。2速以下は最大耐久の5%、3速は13%、4速は20%で、各速度の間は線形に変化する。" },
+      subSkill: { name: "ブレードクイーン", overview: "敵艦を高速で通り抜け、操作不能や減速中も飛行を続け、接触で継続ダメージを与える。", description: "10秒間、速度×1.45（加速×1.26・旋回×1.12）。強化後の3速・エネルギー満タン時の速度を下限とし、低速ギア、エネルギー切れ、減速、操作不能中も飛行する。操作不能中は現在の向きに進み、操作はできない。敵艦をすり抜け、刃の効果半径が25%拡大。接触時に対象の最大耐久の15%のダメージを与え、重なり続けている間は1秒ごとに判定する。ダメージは速度に依存しない。" },
     },
     shamisen: {
       name: "シャミセン",
@@ -186,7 +186,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "High-Speed Hunter Infiltrator",
       flavor: "Information and momentum, the Blade Queen pressing forward",
       flagshipSkill: { name: "Information Suppression", overview: "Send vision waves that reveal the battlefield, purge enemy active buffs, and cleanse friendly debuffs.", description: "Emits one circular vision wave per second for 6 seconds, granting true vision across each band and purging active-skill buffs from enemy ships and cleansing debuffs from allied ships it sweeps. Enemies can see the waves." },
-      subSkill: { name: "Blade Queen", overview: "Rush through enemy ships and deal continuous contact damage that increases with actual speed.", description: "For 10 seconds, speed ×1.45 (accel ×1.26, turn ×1.12) and ignores collision, phasing through enemy ships. Its effect radius is 25% larger. Contact and each second of continued overlap deal damage based on actual speed: 5% max hull at gear 2 or below, 13% at gear 3, and 20% at gear 4, with linear interpolation between gear speeds." },
+      subSkill: { name: "Blade Queen", overview: "Rush through enemy ships, keep flying through control effects and slows, and deal continuous contact damage.", description: "For 10 seconds, speed ×1.45 (accel ×1.26, turn ×1.12), with a minimum speed equal to boosted gear 3 at full energy. Keep flying even in lower gears, without energy, while slowed or under control effects. While control is locked, fly along the current heading and remain unable to act. Pass through enemy ships with a 25% larger blade radius. Contact deals 15% of the target’s max hull, repeated once per second during continued overlap, regardless of speed." },
     },
     shamisen: {
       name: "Shamisen",

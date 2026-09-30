@@ -51,7 +51,7 @@ export function applyHaruhiHeroPowerShock(ship, now, options = {}) {
     lockUntil: now + lockDuration,
     recoveryUntil: now + lockDuration + recoveryDuration,
   };
-  ship.speed = 0;
+  ship.applyControlSpeedLimit();
   return true;
 }
 

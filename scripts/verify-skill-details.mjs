@@ -30,6 +30,9 @@ for (const id of CHARACTER_ORDER) for (const mode of ["flagship", "sub"]) {
 }
 assert.equal(value("koizumi", "flagship", "拦截次数"), "15次");
 assert.equal(value("koizumi", "flagship", "修复等待"), "5秒");
+assert.equal(value("asakura", "sub", "最低航速"), "3档满能量航速（技能强化后）");
+assert.equal(value("asakura", "sub", "接触伤害"), "目标最大舰体的15%");
+assert.equal(value("asakura", "sub", "结算间隔"), "1秒");
 for (const id of ["kyon", "asakura"]) {
   const team = new MatchSimulation({ teamLoadouts: { A: { main: "yuki", sub1: id, sub2: "haruhi" } } }).teamA;
   team.splitLevel = 2;

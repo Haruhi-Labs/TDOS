@@ -291,6 +291,7 @@ function applyCollisionKnockback(match, source, contactTarget, direction) {
   const fleet = contactTarget.team.fleetMembersForShip(contactTarget);
 
   for (const ship of fleet) {
+    if (ship.minimumFlightSpeed() > 0) continue;
     const destination = actualKnockbackDistance(match, ship, direction.x, direction.y, knockbackDistance);
     ship.forcedKnockback = {
       startedAt,
@@ -355,7 +356,7 @@ export function updateKoizumiImpactWaves(match) {
         // 一圈波对每艘敌舰只施加一次，避免宽波带每帧续期眩晕。
         wave.hitShipIds.add(target.id);
         target.effects.stunnedUntil = Math.max(target.effects.stunnedUntil || 0, match.elapsed + 1);
-        target.speed = 0;
+        target.applyControlSpeedLimit();
         match.spawnFloatingTextKey(target.x + 10, target.y - 14, "眩晕", {}, "#ff9bad");
       }
     }

@@ -161,7 +161,9 @@ export const CHARACTER_DEFS = {
     subSkill: {
       id: "blade_queen", name: "刀锋女王", type: "active", cooldown: 20,
       cost: 52, duration: 10, target: "none",
-      description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；刀锋作用半径扩大25%，接触及持续重叠时每秒按实际航速造成伤害：二档及以下为5%最大生命值、三档13%、四档20%，档位速度之间线性变化。",
+      speedMultiplier: 1.45, accelerationMultiplier: 1.26, turnMultiplier: 1.12,
+      minimumGear: 3, damageRatio: 0.15, hitInterval: 1, rangeMultiplier: 1.25,
+      description: "10秒内航速×1.45（加速×1.26、转向×1.12），航速不低于技能强化后的三档满能量航速；低档、能量耗尽、减速或受控也保持飞行，受控时沿当前朝向续飞且仍不能操作。无视碰撞体积，可穿过敌舰，刀锋作用半径扩大25%；接触时造成目标最大生命值15%的伤害，持续重叠时每秒结算一次，与航速无关。",
     },
   },
   shamisen: {

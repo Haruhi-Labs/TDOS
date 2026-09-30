@@ -3,7 +3,6 @@ import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../..
 import { HARUHI_BOOST_MULTIPLIER, HARUHI_DAMAGE_TAKEN_MULTIPLIER, HARUHI_ALIEN_INTERVAL, HARUHI_TIME_TRAVELER_INTERVAL, HARUHI_TIME_TRAVELER_BEAM_GAP, HARUHI_OTHERWORLDER_COOLDOWN, HARUHI_OTHERWORLDER_DAMAGE_RATIO } from "../../shared/game/haruhi-flagship.js";
 import { HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER } from "../../shared/game/haruhi-hero-power.js";
 import { YUKI_RADAR_ROTATION_SECONDS } from "../../shared/game/combat-rules.js";
-import { BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR, BLADE_QUEEN_RANGE_MULTIPLIER } from "../../shared/game/collision-system.js";
 import { SHAMISEN_HUNT_DAMAGE_MULTIPLIER } from "../../shared/game/shamisen-hunt.js";
 import { skillText, t } from "../i18n.js";
 
@@ -147,14 +146,14 @@ export function skillDetailRows(characterId, mode) {
       row("敌方可见", t("视野波对双方可见"));
       break;
     case "blade_queen":
-      row("航速倍率", multiplier(1.45));
-      row("加速倍率", multiplier(1.26));
-      row("转向倍率", multiplier(1.12));
-      row("刀锋半径", multiplier(BLADE_QUEEN_RANGE_MULTIPLIER));
-      row("二档及以下伤害", t("每秒目标最大舰体的{value}", { value: percent(BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[2]) }));
-      row("三档伤害", t("每秒目标最大舰体的{value}", { value: percent(BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[3]) }));
-      row("四档伤害", t("每秒目标最大舰体的{value}", { value: percent(BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[4]) }));
-      row("伤害变化", t("档位之间按实际航速线性变化"));
+      row("航速倍率", multiplier(meta.speedMultiplier));
+      row("最低航速", t("{gear}档满能量航速（技能强化后）", { gear: meta.minimumGear }));
+      row("受控与减速", t("不低于最低航速，受控时沿当前朝向续飞"));
+      row("加速倍率", multiplier(meta.accelerationMultiplier));
+      row("转向倍率", multiplier(meta.turnMultiplier));
+      row("刀锋半径", multiplier(meta.rangeMultiplier));
+      row("接触伤害", t("目标最大舰体的{value}", { value: percent(meta.damageRatio) }));
+      row("结算间隔", seconds(meta.hitInterval));
       row("碰撞体积", t("忽略，可穿过敌舰"));
       break;
     case "hunt_decree":
