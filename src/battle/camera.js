@@ -3,9 +3,11 @@
 //   isMobile()          → 是否移动端战斗布局(决定基础放大与跟随策略)
 //   mobileZoomEnabled() → 移动端基础放大是否生效(在线观战要看全场,关闭)
 //   overviewWhenIdle()  → 未手动放大时是否固定全图中心(在线观战开启)
+//   directorMode()      → 观战使用独立的平滑取景状态
 //   getTrackedShip()    → 相机跟随目标(单人=本地选中舰,在线=快照中的选中舰)
 //   onZoomChanged()     → 缩放变化后的 HUD 同步(单人=updateUi,在线=updateBattleStatus)
 import { DEFAULT_WORLD_SIZE, clamp } from "../../shared/game-core.js";
+import { createDirectorCamera, DIRECTOR_ZOOM_MAX } from "./director-camera.js";
 
 const LOGICAL = DEFAULT_WORLD_SIZE;
 
@@ -23,6 +25,7 @@ export function createBattleCamera({
   isMobile,
   mobileZoomEnabled = () => true,
   overviewWhenIdle = () => false,
+  directorMode = () => false,
   getTrackedShip = () => null,
   onZoomChanged = () => {},
 }) {
@@ -30,8 +33,11 @@ export function createBattleCamera({
   let centerY = LOGICAL * 0.5;
   let zoomRatio = 1;
   let manualUntil = 0;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+  const director = createDirectorCamera({ reducedMotion: () => reducedMotion.matches });
 
-  function effectiveViewZoom(ratio = zoomRatio) {
+  function effectiveViewZoom(ratio = directorMode() ? director.zoom : zoomRatio) {
+    if (directorMode()) return clamp(ratio, CAMERA_ZOOM_MIN, DIRECTOR_ZOOM_MAX);
     const baseZoom = isMobile() && mobileZoomEnabled() ? MOBILE_ZOOM : 1;
     return baseZoom * clamp(ratio, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
   }
@@ -51,6 +57,7 @@ export function createBattleCamera({
   }
 
   function currentViewState() {
+    if (directorMode()) return director.view();
     const zoom = effectiveViewZoom();
     const centered = clampCameraCenter(centerX, centerY, zoom);
     return {
@@ -113,6 +120,7 @@ export function createBattleCamera({
   }
 
   function centerCameraOn(x, y, manual = true) {
+    if (directorMode()) { director.centerOn(x, y); return; }
     const centered = clampCameraCenter(x, y);
     centerX = centered.x;
     centerY = centered.y;
@@ -122,6 +130,11 @@ export function createBattleCamera({
   }
 
   function setCameraZoom(nextZoom, focusScreen = null) {
+    if (directorMode()) {
+      const changed = director.setZoom(nextZoom, focusScreen || undefined);
+      if (changed) onZoomChanged();
+      return changed;
+    }
     const nextRatio = clamp(nextZoom, CAMERA_ZOOM_MIN, CAMERA_ZOOM_MAX);
     if (Math.abs(nextRatio - zoomRatio) < 1e-3) {
       return false;
@@ -155,10 +168,11 @@ export function createBattleCamera({
 
   function adjustCameraZoom(direction, focusScreen = null) {
     const step = direction > 0 ? CAMERA_ZOOM_STEP : -CAMERA_ZOOM_STEP;
-    return setCameraZoom(zoomRatio + step, focusScreen);
+    return setCameraZoom((directorMode() ? director.targetZoom : zoomRatio) + step, focusScreen);
   }
 
   function updateCamera() {
+    if (directorMode()) { director.update(performance.now()); return; }
     const zoomedIn = zoomRatio > CAMERA_ZOOM_MIN + 1e-3;
     // 观战全景:未手动放大时固定看全图,不跟随任何舰
     if (overviewWhenIdle() && !zoomedIn) {
@@ -205,6 +219,7 @@ export function createBattleCamera({
   }
 
   function reset({ x, y } = {}) {
+    director.reset();
     zoomRatio = 1;
     manualUntil = 0;
     const centered = clampCameraCenter(Number.isFinite(x) ? x : LOGICAL * 0.5, Number.isFinite(y) ? y : LOGICAL * 0.5);
@@ -214,7 +229,17 @@ export function createBattleCamera({
 
   return {
     get zoom() {
-      return zoomRatio;
+      return directorMode() ? director.zoom : zoomRatio;
+    },
+    get targetZoom() { return directorMode() ? director.targetZoom : zoomRatio; },
+    get maxZoom() { return directorMode() ? DIRECTOR_ZOOM_MAX : CAMERA_ZOOM_MAX; },
+    beginPan: director.beginPan,
+    panBy: director.panBy,
+    endPan: director.endPan,
+    zoomByWheel(event) {
+      const pixels = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? canvas.getBoundingClientRect().height : 1);
+      if (!Number.isFinite(pixels) || pixels === 0) return false;
+      return setCameraZoom(director.targetZoom * Math.exp(-clamp(pixels, -240, 240) * 0.0018), screenPointFromEvent(event));
     },
     effectiveViewZoom,
     currentViewState,

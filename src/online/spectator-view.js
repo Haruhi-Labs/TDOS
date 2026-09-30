@@ -80,6 +80,18 @@ export function createSpectatorView(battleView) {
   </header>${teamHTML("A")}`);
   battleView.insertAdjacentHTML("beforeend", teamHTML("B"));
   const toolbar = battleView.querySelector(".spectator-toolbar");
+  const zoomOut = toolbar.querySelector('[data-camera="out"]');
+  const zoomIn = toolbar.querySelector('[data-camera="in"]');
+  const zoomReset = toolbar.querySelector('[data-camera="reset"]');
+  function updateCamera({ zoom = 1, targetZoom = zoom, maxZoom = 4 } = {}) {
+    battleView.classList.toggle("spectator-zoomed", zoom > 1.001);
+    const outDisabled = targetZoom <= 1.001;
+    const inDisabled = targetZoom >= maxZoom - 0.001;
+    if (zoomOut.disabled !== outDisabled) zoomOut.disabled = outDisabled;
+    if (zoomIn.disabled !== inDisabled) zoomIn.disabled = inDisabled;
+    const label = zoom <= 1.001 ? t("全图") : `${Math.round(zoom * 100)}%`;
+    if (zoomReset.textContent !== label) zoomReset.textContent = label;
+  }
   const panels = Array.from(battleView.querySelectorAll(".spectator-team")).map((panel) => ({
     panel,
     seat: panel.dataset.seat,
@@ -90,7 +102,7 @@ export function createSpectatorView(battleView) {
     })),
   }));
 
-  function update({ active, room, state, zoom = 1 }) {
+  function update({ active, room, state, zoom = 1, targetZoom = zoom }) {
     battleView.classList.toggle("spectator-shell", active);
     battleView.classList.toggle("spectator-zoomed", active && zoom > 1.001);
     battleView.querySelector(".battle-panel").hidden = active;
@@ -100,9 +112,7 @@ export function createSpectatorView(battleView) {
     toolbar.querySelector(".spectator-room-id").textContent = room?.roomId ? `#${room.roomId}` : "";
     const elapsed = Math.max(0, Math.floor(state?.elapsed || 0));
     toolbar.querySelector("time").textContent = state ? `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}` : "—";
-    toolbar.querySelector('[data-camera="out"]').disabled = zoom <= 1.001;
-    toolbar.querySelector('[data-camera="in"]').disabled = zoom >= 2.599;
-    toolbar.querySelector('[data-camera="reset"]').textContent = zoom <= 1.001 ? t("全图") : `${Math.round(zoom * 100)}%`;
+    updateCamera({ zoom, targetZoom });
     for (const { panel, seat, ships } of panels) {
       const player = room?.players?.find((row) => row.seat === seat);
       const team = state?.teams?.[seat];
@@ -140,5 +150,5 @@ export function createSpectatorView(battleView) {
       }
     }
   }
-  return { update };
+  return { update, updateCamera };
 }

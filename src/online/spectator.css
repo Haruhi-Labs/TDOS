@@ -31,6 +31,7 @@
 .spectator-toolbar time { color: var(--ivory); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .spectator-toolbar button { min-height: 36px; padding: 5px 12px; font-size: .8rem; }
 .spectator-camera-controls button { min-width: 38px; }
+.spectator-camera-controls [data-camera="reset"] { min-width: 70px; font-variant-numeric: tabular-nums; }
 .online-shell.battle-shell.spectator-shell .game-wrap {
   grid-column: 2;
   grid-row: 2;
@@ -51,7 +52,7 @@
   touch-action: pan-y;
 }
 .online-shell.battle-shell.spectator-shell.spectator-zoomed #gameCanvas { touch-action: none; cursor: grab; }
-.online-shell.battle-shell.spectator-shell.spectator-zoomed #gameCanvas:active { cursor: grabbing; }
+.online-shell.battle-shell.spectator-shell #gameCanvas.is-camera-dragging { cursor: grabbing; }
 .spectator-team {
   --seat-color: #8baeea;
   --seat-line: #44659c;
