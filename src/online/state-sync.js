@@ -1,6 +1,7 @@
 import { clamp, distance, lerp, shortestAngleDelta } from "../../shared/game/math.js";
 import {
   advanceProjectile,
+  advanceVisualEffect,
   cloneRoute,
   interpolateBattleState,
 } from "../battle/state-interpolation.js";
@@ -68,7 +69,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
       // 子弹弹道确定,外推期间继续飞;爆发/浮字寿命本地衰减,避免冻结后跳变
       projectiles: Array.isArray(state.projectiles) ? state.projectiles.map((p) => advanceProjectile(p, safeDt)) : state.projectiles,
       bursts: Array.isArray(state.bursts)
-        ? state.bursts.map((b) => ({ ...b, life: Math.max(0, (Number(b.life) || 0) - safeDt) }))
+        ? state.bursts.map((b) => advanceVisualEffect(b, safeDt))
         : state.bursts,
       haruhiHeroPowerEffects: Array.isArray(state.haruhiHeroPowerEffects)
         ? state.haruhiHeroPowerEffects.map((effect) => ({
@@ -87,12 +88,16 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
             life: Math.max(0, (Number(effect.life) || 0) - safeDt),
           }))
         : state.shamisenHuntKillEffects,
+      koizumiBarrierImpacts: Array.isArray(state.koizumiBarrierImpacts)
+        ? state.koizumiBarrierImpacts.map((effect) => advanceVisualEffect(effect, safeDt))
+        : state.koizumiBarrierImpacts,
       floatingTexts: Array.isArray(state.floatingTexts)
         ? state.floatingTexts.map((f) => ({ ...f, life: Math.max(0, (Number(f.life) || 0) - safeDt) }))
         : state.floatingTexts,
       teams: {
         A: {
           ...state.teams.A,
+          beams: (state.teams.A.beams || []).map((beam) => advanceVisualEffect(beam, safeDt)),
           ships: {
             main: extrapolateShip(state.teams.A.ships.main, safeDt),
             sub1: extrapolateShip(state.teams.A.ships.sub1, safeDt),
@@ -104,6 +109,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
         },
         B: {
           ...state.teams.B,
+          beams: (state.teams.B.beams || []).map((beam) => advanceVisualEffect(beam, safeDt)),
           ships: {
             main: extrapolateShip(state.teams.B.ships.main, safeDt),
             sub1: extrapolateShip(state.teams.B.ships.sub1, safeDt),

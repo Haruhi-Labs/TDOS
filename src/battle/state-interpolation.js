@@ -115,14 +115,43 @@ function interpolateUnitList(previousList, currentList, ratio) {
   });
 }
 
-function interpolateBeamList(previousList, currentList, ratio) {
+// 视觉对象按显示时钟自然结束，不能因为后一快照已删除就提前消失。
+// 这里只生成显示副本；消失的弹体不保留，避免命中后出现幽灵弹。
+export function advanceVisualEffect(effect, deltaSeconds) {
+  const life = Math.max(0, (Number(effect.life) || 0) - deltaSeconds);
+  return {
+    ...effect,
+    life,
+    ...(Number.isFinite(effect.progress) ? {
+      progress: clamp(effect.progress + deltaSeconds / Math.max(0.001, Number(effect.maxLife) || 1), 0, 1),
+    } : {}),
+    ...(effect.kind === "burst" ? { radius: effect.radius + 60 * deltaSeconds } : {}),
+  };
+}
+
+function retainFadingVisuals(previousItems, currentItems, elapsedSeconds) {
+  const currentIds = new Set(currentItems.map((item) => item.id));
+  // 被删除的蓄力可能已取消或进入释放阶段，不能补成仍在施法。
+  const fading = previousItems.filter((item) => item.phase !== "charge" && !currentIds.has(item.id))
+    .map((item) => advanceVisualEffect(item, elapsedSeconds))
+    .filter((item) => item.life > 0);
+  return [...currentItems, ...fading];
+}
+
+function retainExpiringWaves(previousList, currentList, elapsed) {
+  const current = currentList || [];
+  const ids = new Set(current.map((wave) => wave.id));
+  return [...current, ...(previousList || []).filter((wave) => !ids.has(wave.id) && wave.expiresAt > elapsed)];
+}
+
+function interpolateBeamList(previousList, currentList, ratio, spanSeconds) {
   const previousItems = Array.isArray(previousList) ? previousList : [];
   const currentItems = Array.isArray(currentList) ? currentList : [];
   const previousById = new Map(previousItems.map((item) => [item.id, item]));
 
-  return currentItems.map((current) => {
+  const items = currentItems.map((current) => {
     const previous = previousById.get(current.id);
-    if (!previous) {
+    if (!previous || previous.phase !== current.phase) {
       return current;
     }
     return {
@@ -142,6 +171,7 @@ function interpolateBeamList(previousList, currentList, ratio) {
         : current.maxLife,
     };
   });
+  return retainFadingVisuals(previousItems, items, spanSeconds * ratio);
 }
 
 // 子弹是恒速直线弹道；新生子弹要从当前快照位置沿弹道回退，
@@ -180,12 +210,12 @@ function interpolateProjectileList(previousList, currentList, ratio, spanSeconds
   });
 }
 
-function interpolateVisualList(previousList, currentList, ratio) {
+function interpolateVisualList(previousList, currentList, ratio, spanSeconds) {
   const previousItems = Array.isArray(previousList) ? previousList : [];
   const currentItems = Array.isArray(currentList) ? currentList : [];
   const previousById = new Map(previousItems.map((item) => [item.id, item]));
 
-  return currentItems.map((current) => {
+  const items = currentItems.map((current) => {
     const previous = previousById.get(current.id);
     if (!previous) {
       return current;
@@ -202,13 +232,14 @@ function interpolateVisualList(previousList, currentList, ratio) {
         : current.life,
     };
   });
+  return retainFadingVisuals(previousItems, items, spanSeconds * ratio);
 }
 
-function interpolateHaruhiHeroPowerList(previousList, currentList, ratio) {
+function interpolateHaruhiHeroPowerList(previousList, currentList, ratio, spanSeconds) {
   const previousItems = Array.isArray(previousList) ? previousList : [];
   const currentItems = Array.isArray(currentList) ? currentList : [];
   const previousById = new Map(previousItems.map((item) => [item.id, item]));
-  return currentItems.map((current) => {
+  const items = currentItems.map((current) => {
     const previous = previousById.get(current.id);
     if (!previous || previous.phase !== current.phase) {
       // 蓄力→释放是一次离散事件；跨阶段插值会把进度从接近1拉回中间值，表现为冲击波倒退。
@@ -222,9 +253,10 @@ function interpolateHaruhiHeroPowerList(previousList, currentList, ratio) {
       life: lerp(Number(previous.life) || 0, Number(current.life) || 0, ratio),
     };
   });
+  return retainFadingVisuals(previousItems, items, spanSeconds * ratio);
 }
 
-function interpolateTeam(previous, current, ratio) {
+function interpolateTeam(previous, current, ratio, spanSeconds, elapsed) {
   if (!previous || !current) {
     return current || previous || null;
   }
@@ -288,7 +320,9 @@ function interpolateTeam(previous, current, ratio) {
     extraShips: interpolateShipList(previous.extraShips, current.extraShips, ratio),
     scouts: interpolateUnitList(previous.scouts, current.scouts, ratio),
     wingmen: interpolateUnitList(previous.wingmen, current.wingmen, ratio),
-    beams: interpolateBeamList(previous.beams, current.beams, ratio),
+    beams: interpolateBeamList(previous.beams, current.beams, ratio, spanSeconds),
+    visionWaves: retainExpiringWaves(previous.visionWaves, current.visionWaves, elapsed),
+    koizumiImpactWaves: retainExpiringWaves(previous.koizumiImpactWaves, current.koizumiImpactWaves, elapsed),
   };
 }
 
@@ -300,9 +334,10 @@ export function interpolateBattleState(previousState, currentState, ratio, { spa
   }
   const safeRatio = clamp(Number(ratio) || 0, 0, 1);
   const safeSpanSeconds = Math.max(0, Number(spanSeconds) || 0);
+  const elapsed = lerp(previousState.elapsed, currentState.elapsed, safeRatio);
   return {
     ...currentState,
-    elapsed: lerp(previousState.elapsed, currentState.elapsed, safeRatio),
+    elapsed,
     phase: currentState.phase,
     winnerSeat: currentState.winnerSeat,
     projectiles: interpolateProjectileList(
@@ -311,26 +346,29 @@ export function interpolateBattleState(previousState, currentState, ratio, { spa
       safeRatio,
       safeSpanSeconds,
     ),
-    bursts: interpolateVisualList(previousState.bursts, currentState.bursts, safeRatio),
+    bursts: interpolateVisualList(previousState.bursts, currentState.bursts, safeRatio, safeSpanSeconds),
     haruhiHeroPowerEffects: interpolateHaruhiHeroPowerList(
       previousState.haruhiHeroPowerEffects,
       currentState.haruhiHeroPowerEffects,
       safeRatio,
+      safeSpanSeconds,
     ),
     shamisenHuntKillEffects: interpolateVisualList(
       previousState.shamisenHuntKillEffects,
       currentState.shamisenHuntKillEffects,
       safeRatio,
+      safeSpanSeconds,
     ),
     koizumiBarrierImpacts: interpolateVisualList(
       previousState.koizumiBarrierImpacts,
       currentState.koizumiBarrierImpacts,
       safeRatio,
+      safeSpanSeconds,
     ),
-    floatingTexts: interpolateVisualList(previousState.floatingTexts, currentState.floatingTexts, safeRatio),
+    floatingTexts: interpolateVisualList(previousState.floatingTexts, currentState.floatingTexts, safeRatio, safeSpanSeconds),
     teams: {
-      A: interpolateTeam(previousState.teams.A, currentState.teams.A, safeRatio),
-      B: interpolateTeam(previousState.teams.B, currentState.teams.B, safeRatio),
+      A: interpolateTeam(previousState.teams.A, currentState.teams.A, safeRatio, safeSpanSeconds, elapsed),
+      B: interpolateTeam(previousState.teams.B, currentState.teams.B, safeRatio, safeSpanSeconds, elapsed),
     },
   };
 }

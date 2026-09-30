@@ -192,6 +192,68 @@ try {
       return stats;
     }
 
+    function spectatorEffectPixels() {
+      const fixture = createNativeBattleVisualFixture();
+      for (const seat of ["A", "B"]) {
+        const team = fixture.state.teams[seat];
+        // 两边都有扫线与未选中的副舰航线，防止只补齐A视角。
+        const { contacts: _contacts, ...sweep } = fixture.frame.radar;
+        team.radarSweep = { ...sweep, sourceShipId: team.ships.main.id };
+        const ship = team.ships.sub2;
+        ship.route = { p0: { x: ship.x, y: ship.y }, p1: { x: ship.x + 40, y: ship.y + 170 }, p2: { x: ship.x - 140, y: ship.y + 180 }, t: 0.2 };
+      }
+      const variants = {
+        "A方扫线": (state) => { state.teams.A.radarSweep = null; },
+        "B方扫线": (state) => { state.teams.B.radarSweep = null; },
+        "A方非选中航线": (state) => { state.teams.A.ships.sub2.route = null; },
+        "B方非选中航线": (state) => { state.teams.B.ships.sub2.route = null; },
+        "A方激光蓄力": (state) => { state.teams.A.beams = []; },
+        "B方激光释放": (state) => { state.teams.B.beams = []; },
+        "刀锋女王光环": (state) => { state.teams.A.ships.sub2.bladeQueen = false; },
+        "古泉超能力光球": (state) => { state.teams.A.ships.sub1.koizumiOrb = null; },
+        "春日光球": (state) => { state.teams.B.haruhiFlagship.esperOrb = null; },
+        "朝仓视野波": (state) => { state.teams.A.visionWaves = []; },
+        "古泉撞击波": (state) => { state.teams.A.koizumiImpactWaves = []; },
+        "古泉次数盾": (state) => { state.teams.A.koizumiBarrier = null; },
+        "护盾受击": (state) => { state.koizumiBarrierImpacts = []; },
+        "勇者之力": (state) => { state.haruhiHeroPowerEffects = []; },
+        "猎杀击杀": (state) => { state.shamisenHuntKillEffects = []; },
+        "爆发": (state) => { state.bursts = []; },
+        "浮字": (state) => { state.floatingTexts = []; },
+        "弹体与猫爪": (state) => { state.projectiles = []; },
+      };
+      function render(mode, mutate = () => {}) {
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const renderer = createNativeBattleRenderer(canvas, { forceMode: mode });
+        const state = structuredClone(fixture.state);
+        mutate(state);
+        renderer.beginFrame();
+        renderer.ctx.setTransform(width / 1440, 0, 0, height / 1440, 0, 0);
+        drawBattleWorld(renderer.ctx, {
+          ...fixture.frame, state, ownTeam: state.teams.A, enemyTeam: state.teams.B,
+          spectating: true, radar: null, visibleEnemyIds: new Set(),
+          selectedKeyForTeam: () => "main",
+        });
+        renderer.present();
+        const pixels = readPixels(canvas, renderer.mode);
+        renderer.destroy();
+        return pixels;
+      }
+      const savedNow = performance.now;
+      // 固定动画时钟与舰船ID，像素差只能来自被关闭的效果。
+      performance.now = () => 12_400;
+      try {
+        return Object.fromEntries(["webgl2", "webgl1", "canvas2d"].map((mode) => {
+          const baseline = render(mode);
+          return [mode, Object.fromEntries(Object.entries(variants).map(([name, mutate]) => [name, comparePixels(baseline, render(mode, mutate)).changedPixelRatio]))];
+        }));
+      } finally {
+        performance.now = savedNow;
+      }
+    }
+
     const canvas2d = renderOnce("canvas2d");
     const webgl2 = renderOnce("webgl2");
     const webgl1 = renderOnce("webgl1");
@@ -223,6 +285,7 @@ try {
       },
       comparisons,
       benchmark: benchmarkResults,
+      spectatorEffects: spectatorEffectPixels(),
       radar: {
         subframeAngles: radarSubframeAngles,
         webgl2TrianglesWithoutRadar: renderStatsWithoutRadar("webgl2").triangles,
@@ -242,6 +305,11 @@ try {
     };
   });
 
+  for (const [mode, effects] of Object.entries(report.spectatorEffects)) {
+    for (const [name, pixelRatio] of Object.entries(effects)) {
+      assert.ok(pixelRatio > 0, `${mode}观战缺少可见的${name}`);
+    }
+  }
   assert.deepEqual(errors, [], `原生战场页面出现运行错误：${errors.join("；")}`);
   assert.equal(report.renderers.webgl2.mode, "webgl2", "支持 WebGL2 时没有启用 WebGL2 原生后端");
   assert.equal(report.renderers.webgl2.marker, "webgl2-native", "WebGL2 后端没有标记为原生渲染");
