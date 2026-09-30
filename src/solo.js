@@ -1579,6 +1579,7 @@ export function mount(root) {
   initApp();
   camera = createBattleCamera({
     canvas,
+    maxCanvasDimension: battleRenderer.maxCanvasDimension,
     isMobile: () => app.mobileMode,
     getTrackedShip: () => app.renderState?.teams?.A?.ships?.[app.selectedShipKey] || selectedShipState(),
     onZoomChanged: () => updateUi(),
@@ -1601,6 +1602,7 @@ export function mount(root) {
 }
 
 function unmount() {
+  camera?.destroy();
   statusEffectTooltip?.destroy();
   statusEffectTooltip = null;
   running = false;

@@ -2053,6 +2053,7 @@ export function mount(root) {
   statusEffectTooltip = createStatusEffectTooltip(ui.battleView);
   camera = createBattleCamera({
     canvas,
+    maxCanvasDimension: battleRenderer.maxCanvasDimension,
     isMobile: () => app.mobileMode,
     mobileZoomEnabled: () => !isSpectatorMode(), // 观战要纵览全场,不做移动端基础放大
     overviewWhenIdle: () => isSpectatorMode(), // 观战未手动放大时固定全图视角
@@ -2077,6 +2078,7 @@ export function mount(root) {
 }
 
 function unmount() {
+  camera?.destroy();
   statusEffectTooltip?.destroy();
   statusEffectTooltip = null;
   spectatorCameraInput?.cancel();
