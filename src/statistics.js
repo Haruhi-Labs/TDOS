@@ -1,12 +1,13 @@
-import { GAME_VERSION, UNVERSIONED_GAME_VERSION, normalizeGameVersion } from "../shared/game-version.js";
+import { LEGACY_STATISTICS_VERSION, statisticsVersionGroup, isStatisticsVersion } from "../shared/statistics-version.js";
+import { GAME_VERSION } from "../shared/game-version.js";
 import { characterShortName, t } from "./i18n.js";
 import { isMobile } from "./mobile.js";
 import { startStarfield } from "./starfield.js";
 import { requestWinrateStatistics } from "./statistics-client.js";
 
 const state = {
-  version: GAME_VERSION,
-  versions: [GAME_VERSION],
+  version: statisticsVersionGroup(GAME_VERSION),
+  versions: [statisticsVersionGroup(GAME_VERSION)],
   requestId: 0,
   cache: new Map(),
   mode: "solo",
@@ -126,7 +127,7 @@ function render(root) {
     versionSelect.replaceChildren(...state.versions.map((version) => {
       const option = document.createElement("option");
       option.value = version;
-      option.textContent = version === UNVERSIONED_GAME_VERSION ? t("历史数据（未标记版本）") : version;
+      option.textContent = version === LEGACY_STATISTICS_VERSION ? t("v0.3及之前的版本") : version;
       return option;
     }));
     versionSelect.value = state.version;
@@ -144,7 +145,18 @@ function render(root) {
   }
 
   const modeStats = state.stats?.modes?.[state.mode] || { matches: 0, lineups: [] };
-  meta.textContent = t("已完成对局 {count} 场", { count: Number(modeStats.matches || 0).toLocaleString() });
+  const labels = [
+    t("全部版本对局 {count} 场", { count: Number(modeStats.totalMatches).toLocaleString() }),
+    t("当前版本对局 {count} 场", { count: Number(modeStats.currentVersionMatches).toLocaleString() }),
+  ];
+  if (state.version !== state.stats.currentVersionGroup) {
+    labels.push(t("所选版本对局 {count} 场", { count: Number(modeStats.matches).toLocaleString() }));
+  }
+  meta.replaceChildren(...labels.map((label) => {
+    const item = document.createElement("span");
+    item.textContent = label;
+    return item;
+  }));
   const rows = sortedRows();
   board.innerHTML = rows.length > 0
     ? `<div class="stats-column-head"><span>${t("阵容")}</span><span>${t("出场")}</span><span>${t("胜率")}</span></div>${rows.map(rowHTML).join("")}`
@@ -161,10 +173,14 @@ async function load(root) {
     const stats = state.cache.get(version) || await requestWinrateStatistics(version);
     if (requestId !== state.requestId) return;
     if (stats?.schemaVersion !== 2 || stats.gameVersion !== version) throw new Error("统计服务不支持所选版本");
+    if (!stats.currentVersionGroup || ["solo", "multiplayer"].some((mode) =>
+      !Number.isInteger(stats.modes?.[mode]?.totalMatches) || !Number.isInteger(stats.modes?.[mode]?.currentVersionMatches))) {
+      throw new Error("统计服务尚未提供跨版本汇总");
+    }
     state.cache.set(version, stats);
     state.stats = stats;
-    state.versions = [...new Set([GAME_VERSION, version, ...(stats.versions || [])])]
-      .filter((value) => value === UNVERSIONED_GAME_VERSION || normalizeGameVersion(value) === value);
+    state.versions = [...new Set([stats.currentVersionGroup, version, ...(stats.versions || [])])]
+      .filter(isStatisticsVersion);
   } catch (_error) {
     if (requestId === state.requestId) state.error = true;
   } finally {
@@ -176,8 +192,8 @@ async function load(root) {
 }
 
 export function mount(root) {
-  state.version = GAME_VERSION;
-  state.versions = [GAME_VERSION];
+  state.version = statisticsVersionGroup(GAME_VERSION);
+  state.versions = [statisticsVersionGroup(GAME_VERSION)];
   state.cache = new Map();
   state.mode = "solo";
   state.sort = "games";

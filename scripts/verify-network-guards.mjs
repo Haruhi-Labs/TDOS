@@ -336,6 +336,8 @@ async function statisticsPrivacyCheck() {
   assert.equal(response.stats.gameVersion, GAME_VERSION);
   assert.deepEqual(Object.keys(response.stats.modes).sort(), ["multiplayer", "solo"], "公开统计应只分单人与多人榜单");
   assert.equal(response.stats.modes.solo.matches, 1, "单人结算上报没有进入公开聚合");
+  assert.equal(response.stats.modes.solo.totalMatches, 1, "真实协议响应应包含全部版本对局数");
+  assert.equal(response.stats.modes.solo.currentVersionMatches, 1, "真实协议响应应包含当前版本对局数");
   assert.equal(JSON.stringify(response).includes("trackedPlayers"), false, "公开统计响应不得包含玩家聚合信息");
   assert.equal(JSON.stringify(response).includes("隐私测试"), false, "公开统计响应不得包含玩家昵称");
   client.terminate();
