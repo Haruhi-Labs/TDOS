@@ -4063,7 +4063,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--text-soft);
   font: 0.75rem var(--font-cn);
 }
-.stats-meta { min-height: 1.3em; padding: 0 13px; color: var(--text-muted); font: 0.7rem var(--font-cn); letter-spacing: 0.05em; }
+.stats-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; min-height: 1.3em; padding: 0 13px; color: var(--text-muted); font: 0.7rem var(--font-cn); letter-spacing: 0.05em; }
 .stats-board { display: flex; flex-direction: column; gap: 5px; }
 .stats-column-head {
   display: grid;
