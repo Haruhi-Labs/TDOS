@@ -25,7 +25,7 @@ import {
   HARUHI_SUPPORTS,
   haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
-import { KOIZUMI_BARRIER_DISABLE_SECONDS } from "../../shared/game/koizumi-barrier.js";
+import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
 import { updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
 import { DAMAGE_KIND } from "../../shared/game/damage.js";
 import { assert, runSteps } from "./helpers.mjs";
@@ -929,6 +929,7 @@ function koizumiFlagshipBarrierCheck() {
       assert(!haruhiOtherworlderReady(attackingTeam), "异世界人撞破能量圈后没有进入原有8秒碰撞冷却");
     }
     ramSim.elapsed += KOIZUMI_BARRIER_DISABLE_SECONDS + 0.01;
+    ramSim.updateProjectiles(0);
     assert(defendingTeam.serialize().koizumiBarrier.active, `${ramKind}破盾5秒后能量圈没有自动恢复`);
   };
 
@@ -957,6 +958,128 @@ function koizumiFlagshipBarrierCheck() {
   normalSim.resolveKoizumiBarrierRamContacts();
   assert(normalSim.teamA.serialize().koizumiBarrier.active, "普通舰船接触错误击破了古泉能量圈");
   assert(normalSim.koizumiBarrierImpacts.length === 0, "普通舰船接触错误生成了破盾动画");
+}
+
+function koizumiBarrierChargesCheck() {
+  const createScenario = () => {
+    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "haruhi", sub2: "future1096" },
+    } });
+    sim.setCombatEnabled("A", false);
+    sim.setCombatEnabled("B", false);
+    const main = sim.teamA.ships.main;
+    main.x = main.previousX = 720;
+    main.y = main.previousY = 720;
+    const attacker = sim.teamB.ships.main;
+    attacker.x = main.x + main.effectiveVision() + 90;
+    attacker.y = main.y;
+    attacker.angle = Math.PI / 2;
+    sim.teamB.visibleEnemyIds = new Set([main.id]);
+    const shot = (start = main.effectiveVision() + 40, end = 0, team = sim.teamB, y = 0) => {
+      attacker.cooldown = 0;
+      const previousCount = sim.projectiles.length;
+      attacker.tryAttack(sim, sim.teamA);
+      assert(sim.projectiles.length === previousCount + 1, "次数盾测试未生成真实炮弹");
+      const projectile = sim.projectiles.at(-1);
+      projectile.x = main.x + start;
+      projectile.y = main.y + y;
+      projectile.targetX = main.x + end;
+      projectile.targetY = main.y + y;
+      projectile.speed = 1000;
+      projectile.team = team;
+      return projectile;
+    };
+    return { sim, main, attacker, shot, barrier: () => sim.teamA.serialize().koizumiBarrier };
+  };
+  const { sim, main, shot, barrier } = createScenario();
+  const hullBefore = main.hp;
+  assert(barrier().remainingHits === KOIZUMI_BARRIER_MAX_HITS, "古泉开局护盾不是15次");
+  for (let i = 0; i < 14; i += 1) shot();
+  sim.updateProjectiles(0.1);
+  assert(barrier().active && barrier().remainingHits === 1, "同一帧14颗子弹没有逐颗扣除盾次数");
+  assert(main.hp === hullBefore && sim.projectiles.length === 0, "前14颗子弹没有完整拦截");
+  shot();
+  shot();
+  sim.updateProjectiles(0.1);
+  assert(!barrier().active && barrier().remainingHits === 0, "第15颗子弹没有击破次数盾");
+  assert(sim.projectiles.length === 1, "缓存几何令破盾后同帧第16颗子弹仍被吸收");
+  assert(main.hp === hullBefore, "第15次拦截仍应保护舰体");
+  sim.updateProjectiles(0.2);
+  assert(main.hp < hullBefore, "破盾后第16颗子弹没有伤害圈内舰船");
+  assert(sim.koizumiBarrierImpacts.some((impact) => impact.kind === "break"), "次数耗尽未生成破盾反馈");
+
+  sim.elapsed = 4.9;
+  shot();
+  sim.updateProjectiles(0.1);
+  assert(Math.abs(barrier().disabledRemaining - 5) < 1e-9, "敌弹入圈没有重新开始完整5秒静默计时");
+  sim.elapsed = 5;
+  sim.updateProjectiles(0);
+  assert(!barrier().active, "原破盾5秒截止时忽略了后续敌弹穿越");
+  sim.projectiles = [];
+  sim.elapsed = 8;
+  shot(main.effectiveVision() - 30, main.effectiveVision() + 30);
+  sim.updateProjectiles(0.1);
+  assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "敌弹从圈内向外穿越没有重置修复计时");
+  sim.elapsed = 12.9;
+  shot(main.effectiveVision() - 30, main.effectiveVision() + 30, sim.teamA);
+  sim.updateProjectiles(0.1);
+  assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "己方子弹穿越错误阻止修复");
+  sim.elapsed = 12.95;
+  shot(60, 70);
+  shot(main.effectiveVision() + 30, main.effectiveVision() + 30, sim.teamB, 200);
+  sim.updateProjectiles(0.01);
+  assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "圈内飞行或圈外未相交子弹错误重置静默计时");
+  sim.projectiles = [];
+  sim.elapsed = 13;
+  assert(!barrier().active && sim.teamA.koizumiBarrier.remainingHits === 0, "几何查询或序列化提前写回护盾修复状态");
+  sim.updateProjectiles(0);
+  assert(barrier().active && barrier().remainingHits === 15, "连续5秒无敌弹穿越后未恢复完整15次");
+
+  const crossing = createScenario();
+  crossing.sim.teamA.koizumiBarrier.remainingHits = 0;
+  crossing.sim.teamA.koizumiBarrier.disabledUntil = 5;
+  crossing.sim.elapsed = 4.99;
+  crossing.shot(crossing.main.effectiveVision() + 30, -crossing.main.effectiveVision() - 30);
+  crossing.sim.updateProjectiles(1);
+  assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "单帧贯穿整个护盾圆的高速敌弹没有阻止修复");
+  crossing.sim.projectiles = [];
+  crossing.sim.elapsed = crossing.sim.teamA.koizumiBarrier.disabledUntil;
+  crossing.shot();
+  crossing.sim.updateProjectiles(0.1);
+  assert(!crossing.barrier().active, "修复截止帧仍有敌弹穿越时提前恢复了护盾");
+  crossing.sim.projectiles = [];
+  crossing.sim.elapsed += 1;
+  crossing.main.previousX = crossing.main.x;
+  crossing.main.x += 60;
+  const movingShot = crossing.shot(130, 130);
+  movingShot.speed = 0;
+  crossing.sim.updateProjectiles(0.1);
+  assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "移动护盾边界扫过敌弹没有重置计时");
+  crossing.sim.projectiles = [];
+  crossing.main.previousX = crossing.main.x;
+  crossing.sim.elapsed += 1;
+  const smallCrossing = crossing.shot();
+  const contactRadius = crossing.main.effectiveVision() + smallCrossing.radius;
+  smallCrossing.x = crossing.main.x + contactRadius + 0.1;
+  smallCrossing.targetX = crossing.main.x + contactRadius - 0.1;
+  crossing.sim.updateProjectiles(0.01);
+  assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, `贴近边界的小幅敌弹穿越被入圈容差漏计：${crossing.barrier().disabledRemaining}`);
+
+  const beams = createScenario();
+  for (let hit = 0; hit < 16; hit += 1) {
+    assert(beams.sim.teamB.queueBeamDirection(beams.attacker, -1, 0), "次数盾测试未生成射线");
+    const beam = beams.sim.teamB.beams.at(-1);
+    beam.life = 0;
+    beams.sim.teamB.resolveChargedBeams(beams.sim.teamA);
+    assert(Boolean(beam.blockedByBarrier) === (hit < 15), "光线没有遵循15次盾的拦截边界");
+    assert(beams.barrier().remainingHits === Math.max(0, 14 - hit), "一次独立光线没有只消耗一次盾");
+    beams.sim.teamB.resolveChargedBeams(beams.sim.teamA);
+    assert(beams.barrier().remainingHits === Math.max(0, 14 - hit), "已结算光线的视觉存续重复消耗了盾次数");
+  }
+  const snapshot = sim.serializeState();
+  assert(snapshot.teams.A.koizumiBarrier.maxHits === 15 && snapshot.teams.A.koizumiBarrier.remainingHits === 15,
+    "剩余次数没有进入单人、联机、观战共享快照");
 }
 
 function koizumiImpactWaveCheck() {
@@ -2331,6 +2454,7 @@ export function runRulesSuite() {
   skippedSplitLevelCheck();
   yukiPassiveCheck();
   koizumiFlagshipBarrierCheck();
+  koizumiBarrierChargesCheck();
   koizumiOrbRamCheck();
   koizumiImpactWaveCheck();
   beamSkillCheck();

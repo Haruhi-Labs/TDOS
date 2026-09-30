@@ -13,7 +13,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "古泉",
       title: "均衡型机动指挥舰",
       flavor: "能够出现在他应该出现的任何地方",
-      flagshipSkill: { name: "超能力屏障", description: "被动在主舰视野边界维持红色能量圈，吸收从圈外进入的子弹并截断射线。朝仓分舰的刀锋女王、古泉分舰的光球，以及春日获得异世界人后的冲撞可令能量圈失效5秒。" },
+      flagshipSkill: { name: "超能力屏障", description: "被动在主舰视野边界维持可受击15次的红色能量圈，吸收从圈外进入的敌方子弹并截断射线，每颗子弹或每次射线消耗1次。第15次仍会拦截，随后破盾。破盾后连续5秒没有敌方子弹穿过原护盾边界，恢复为15次；己方子弹不影响修复。朝仓分舰的刀锋女王、古泉分舰的光球，以及春日获得异世界人后的冲撞可直接击破护盾。" },
       subSkill: { name: "超能力粒子", description: "化作高速红色光球8秒，无法射击；可以被攻击但不会受到伤害。撞击会沿碰撞方向击飞敌舰并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。结束后保持光球形态自动归航战场中央。" },
     },
     yuki: {
@@ -79,7 +79,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "古泉",
       title: "均衡型機動指揮艦",
       flavor: "必要な場所に、必要な時に現れる",
-      flagshipSkill: { name: "超能力バリア", description: "旗艦の視界境界に赤いエネルギーリングを常時展開し、外側から侵入する弾丸を吸収してビームを遮断する。朝倉のブレードクイーン、古泉の光球、異世界人を得たハルヒの体当たりを受けると5秒間消失する。" },
+      flagshipSkill: { name: "超能力バリア", description: "旗艦の視界境界に15回の攻撃を防ぐ赤いリングを展開する。外側から侵入する敵弾1発、またはビーム1回の遮断につき残り回数を1消費する。15回目も防いだ後に破壊され、元の境界を敵弾が5秒間連続で横切らなければ15回分に修復する。味方の弾は修復を妨げない。朝倉のブレードクイーン、古泉の光球、異世界人を得たハルヒの体当たりは直接バリアを破壊する。" },
       subSkill: { name: "超能力粒子", description: "8秒間、高速の赤い光球となり、射撃不能。攻撃対象にはなるがダメージを受けない。接触方向へ敵艦を弾き飛ばし、ダメージなしで5秒間沈黙させる。接触時にエネルギー波を放ち、波に触れた敵艦を1秒間スタンさせる。終了後も光球のまま戦場中央へ自動帰還する。" },
     },
     yuki: {
@@ -145,7 +145,7 @@ export const CHARACTER_TEXT = Object.freeze({
       shortName: "Koizumi",
       title: "Balanced Mobile Command Ship",
       flavor: "Appears exactly where he is supposed to be",
-      flagshipSkill: { name: "Esper Barrier", description: "Passively maintains a red energy ring along the flagship's vision boundary, absorbing bullets entering from outside and stopping beams. Blade Queen, Koizumi's orb, and Haruhi's Otherworlder ram disable it for 5 seconds." },
+      flagshipSkill: { name: "Esper Barrier", description: "Maintains a red ring along the flagship's vision boundary with 15 hit charges. Each enemy bullet absorbed from outside or beam stopped consumes one charge. The 15th hit is blocked before the shield breaks. It restores all 15 charges after 5 continuous seconds without an enemy bullet crossing the former boundary; allied bullets do not delay repairs. Blade Queen, Koizumi's orb, and Haruhi's Otherworlder ram break the shield immediately." },
       subSkill: { name: "Esper Particles", description: "Becomes a high-speed red orb for 8 seconds and cannot fire. It can be targeted, but takes no damage. Contact knocks enemy ships away along the collision direction and silences them for 5 seconds without damage. Each collision emits an energy wave that stuns enemy ships it sweeps for 1 second. The orb then automatically returns to the battlefield center before reverting." },
     },
     yuki: {

@@ -48,7 +48,7 @@ export const CHARACTER_DEFS = {
     },
     flagshipSkill: {
       id: "closed_space_barrier", name: "超能力屏障", type: "passive",
-      description: "被动在主舰视野边界维持红色能量圈，吸收从圈外进入的子弹并截断射线。刀锋女王、古泉光球与异世界人冲撞可令能量圈失效5秒。",
+      description: "被动在主舰视野边界维持可受击15次的红色能量圈，吸收从圈外进入的敌方子弹并截断射线，每颗子弹或每次射线消耗1次。第15次仍会拦截，随后破盾。破盾后连续5秒没有敌方子弹穿过原护盾边界，恢复为15次；己方子弹不影响修复。刀锋女王、古泉光球与异世界人冲撞可直接击破护盾。",
     },
     subSkill: {
       id: "esper", name: "超能力粒子", type: "active", cooldown: 15, cost: 50,
