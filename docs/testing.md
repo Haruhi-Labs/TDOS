@@ -22,6 +22,8 @@
 
 `test:ui:command` 启动回环前端并夹具化身份/统计接口，验证真实单人对战的分离、切舰、换挡、键盘帮助和五种视口；另用权威快照夹具覆盖技能冷却、沉默、瞄准、被动技能及编队零能量。可设置 `COMMAND_SCREENSHOT_DIR` 保存画面，不代表联机延迟或物理触屏验收。
 
+`test:ui:skills` 是选角技能分层介绍的专项检查：简介不含数值，详细参数逐项核对技能元数据和关键运行时倍率；Chromium 覆盖八角色十六技能、桌面与触屏布局、中英日内容、键盘激活与焦点循环、遮罩/Esc 关闭、退出清理及矮屏滚动。它自建回环前端，身份和统计接口使用夹具，可设置 `SKILL_DETAILS_SCREENSHOT_DIR` 保存画面；物理触屏仍需人工验收。
+
 `test:all` 按静态、逻辑、AI 模拟、浏览器、网络集成顺序执行，首个失败即停止。后续未执行项目应明确标注；修复后先重跑失败及受影响检查，发布前补齐完整候选结果。
 
 ## 按改动选择
@@ -38,7 +40,7 @@
 | 快照、房间、网络协议 | `test:network`、`test:online:components`、`test:server:rooms`、`test:server:runtime`、`test:network:guards`；构建 | 断连、观战、乱序/恢复；容量参数变化另做隔离压测 |
 | 插值或联机显示 | `test:online:state`、`test:online:components`；构建 | 延迟下的移动、换挡与航线确认，显示不得写回模拟 |
 | 战场视觉或 WebGL | `check:static`、`test:ui:webgl`，古泉效果加 `test:ui:koizumi`；构建 | 单人/联机/观战受影响画面、WebGL1/2 及失效回退 |
-| 普通页面、移动交互 | 对应 `test:ui:interaction` / `test:ui:command` / `test:mobile:scout` / `test:ui:cooldown`；构建 | 受影响桌面/窄屏路径；无现成测试时直接验证实际页面 |
+| 普通页面、移动交互 | 对应 `test:ui:interaction` / `test:ui:command` / `test:ui:skills` / `test:mobile:scout` / `test:ui:cooldown`；构建 | 受影响桌面/窄屏路径；无现成测试时直接验证实际页面 |
 | 更新日志或多语言内容 | `test:changelog`、`test:ui:changelog`；构建 | 非日志页面翻译另查实际页面，日志测试不覆盖全部词典 |
 | 身份链路 | `test:identity`、`test:ui:identity`，服务端接入变化加 `test:network:guards`；构建 | 修改 SSO 流程时使用隔离身份环境走真实登录及游客降级 |
 | 统计采集、存储或榜单 | `test:statistics`、`test:network:guards`，页面变化加 `test:ui:statistics`；构建 | 去重、跨版本隔离、热更新同桶、旧记录恢复、公开字段及一次性上报 |

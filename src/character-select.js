@@ -1,3 +1,4 @@
+import { createSkillDetails, skillPreviewHTML } from "./character-select/skill-details.js";
 import {
   CHARACTER_ORDER,
   CHARACTER_DEFS,
@@ -150,20 +151,8 @@ function renderRightPageHTML(charId, loadout) {
       <span class="cs-page-section-title-zh">${t("特殊技能")}</span>
     </div>
     <div class="cs-page-skills">
-      <div class="cs-page-skill">
-        <div class="cs-page-skill-header">
-          <span class="cs-page-skill-type">${t("旗舰技")}</span>
-          <span class="cs-page-skill-name">${def.flagshipSkill.name}</span>
-        </div>
-        <p class="cs-page-skill-desc">${def.flagshipSkill.description}</p>
-      </div>
-      <div class="cs-page-skill">
-        <div class="cs-page-skill-header">
-          <span class="cs-page-skill-type">${t("分舰技")}</span>
-          <span class="cs-page-skill-name">${def.subSkill.name}</span>
-        </div>
-        <p class="cs-page-skill-desc">${def.subSkill.description}</p>
-      </div>
+      ${skillPreviewHTML(charId, "flagship")}
+      ${skillPreviewHTML(charId, "sub")}
     </div>
     <div class="cs-page-enlist">
       <div class="cs-enlist-prompt">${promptHTML}</div>
@@ -196,6 +185,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
 
   // ── DOM 顶层 ──
   const screen = document.createElement("div");
+  const skillDetails = createSkillDetails(screen);
   screen.className = "cs-screen";
 
   const bgCanvas = document.createElement("canvas");
@@ -700,7 +690,8 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   }
 
   function onKey(e) {
-    if (!screen.isConnected) return;
+    if (!screen.isConnected || skillDetails.isOpen()) return;
+    if (e.target.closest?.(".cs-skill-trigger") && ["Enter", " "].includes(e.key)) return;
     if (e.key === "ArrowLeft") {
       e.preventDefault();
       stepArrow(-1);
@@ -932,6 +923,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   }
 
   function hide(callback) {
+    skillDetails.close();
     document.removeEventListener("keydown", onKey);
     window.removeEventListener("resize", scheduleFit);
     if (state.flipTimer) {
@@ -979,6 +971,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   };
 
   const screen = document.createElement("div");
+  const skillDetails = createSkillDetails(screen);
   screen.className = "cs-screen csm";
   screen.innerHTML = `
     <div class="csm-top">
@@ -1262,9 +1255,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
       if (key === "turnRate" || key === "fireRate") v = Number(v).toFixed(2);
       return `<div class="csm-chip"><span>${t(label)}</span><strong>${v}</strong></div>`;
     }).join("");
-    els.skills.innerHTML = `
-      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("旗舰技")}</span><span class="csm-skill-name">${def.flagshipSkill.name}</span></div><p class="csm-skill-desc">${def.flagshipSkill.description}</p></div>
-      <div class="csm-skill"><div class="csm-skill-head"><span class="csm-skill-tag">${t("分舰技")}</span><span class="csm-skill-name">${def.subSkill.name}</span></div><p class="csm-skill-desc">${def.subSkill.description}</p></div>`;
+    els.skills.innerHTML = skillPreviewHTML(curId(), "flagship", true) + skillPreviewHTML(curId(), "sub", true);
     for (const d of els.dots.children) d.classList.toggle("active", Number(d.dataset.idx) === state.idx);
     renderCta();
   }
@@ -1332,7 +1323,8 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   function onResize() { snapToIdx(false); }
 
   function onKey(e) {
-    if (!screen.isConnected) return;
+    if (!screen.isConnected || skillDetails.isOpen()) return;
+    if (e.target.closest?.(".cs-skill-trigger") && ["Enter", " "].includes(e.key)) return;
     if (e.key === "ArrowLeft") { e.preventDefault(); go(state.idx - 1); }
     else if (e.key === "ArrowRight") { e.preventDefault(); go(state.idx + 1); }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ctaAction(); }
@@ -1372,6 +1364,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   }
 
   function hide(callback) {
+    skillDetails.close();
     document.removeEventListener("keydown", onKey);
     window.removeEventListener("resize", onResize);
     screen.classList.add("leaving");

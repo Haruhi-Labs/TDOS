@@ -1,0 +1,47 @@
+/* 简介融入书页，详细参数在独立的轻量档案浮窗中阅读。 */
+.cs-page-skills .cs-skill-trigger, .csm-skills .cs-skill-trigger {
+  display: block; width: 100%; text-align: left; color: inherit; font: inherit;
+  border: 1px solid #9d7d3f40; border-radius: 3px; padding: 10px 12px;
+  background: #ffffff12; box-shadow: none; text-shadow: none; letter-spacing: 0;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.cs-page-skills .cs-skill-trigger:hover:not(:disabled) { background: #fff5d640; border-color: #967438; box-shadow: none; color: inherit; }
+.cs-skill-trigger .cs-page-skill-header, .cs-skill-trigger .csm-skill-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 5px; }
+.cs-skill-trigger .cs-page-skill-name, .cs-skill-trigger .csm-skill-name { flex: 1; min-width: 0; }
+.cs-skill-trigger .cs-page-skill-desc, .cs-skill-trigger .csm-skill-desc { display: block; margin: 0; line-height: 1.6; }
+.cs-skill-more { flex: none; font: .64rem var(--font-cn); color: #7b6849; white-space: nowrap; }
+.cs-page-skills .cs-skill-trigger:focus-visible { outline: 2px solid #8b6c35; outline-offset: 3px; }
+.csm-skills .cs-skill-trigger { padding: 10px 11px; border-color: #aa8b544a; background: #0a142480; }
+.csm-skills .cs-skill-trigger:hover:not(:disabled) { background: #25334a; border-color: #be9b5d; box-shadow: none; color: inherit; }
+.csm-skills .cs-skill-trigger .csm-skill-tag { color: #c8ad75; }
+.csm-skills .cs-skill-more { color: #c1aa7e; }
+.csm-skills .cs-skill-trigger:focus-visible { outline: 2px solid #e6cf95; outline-offset: 3px; }
+.cs-skill-dialog {
+  width: min(480px, calc(100vw - 28px)); max-width: none; max-height: min(760px, calc(100dvh - 36px));
+  padding: 0; margin: auto; color: #352c21; background: #ede2c6;
+  border: 1px solid #a8894c; border-radius: 7px; overflow: hidden;
+  box-shadow: 0 20px 70px #02081280, inset 0 0 0 3px #faf0d559;
+  font-family: var(--font-cn);
+}
+.cs-skill-dialog[open] { display: flex; flex-direction: column; }
+.cs-skill-dialog::backdrop { background: #040a14b8; backdrop-filter: blur(5px); }
+.cs-skill-dialog-head { flex: none; display: flex; align-items: start; justify-content: space-between; gap: 16px; padding: 23px 22px 18px; border-bottom: 1px solid #96743838; }
+.cs-skill-dialog-context { margin: 0 0 7px; color: #77684f; font-size: .7rem; line-height: 1.4; }
+.cs-skill-dialog h2 { margin: 0; color: #352c21; font: 600 1.12rem/1.45 var(--font-cn); letter-spacing: .02em; text-shadow: none; text-align: left; overflow-wrap: anywhere; }
+.cs-skill-dialog .cs-skill-close { flex: none; width: 44px; height: 44px; padding: 0; margin: -9px -9px 0 0; font: 1.4rem/1 var(--font-cn); border: 0; color: #77684f; background: transparent; box-shadow: none; text-shadow: none; }
+.cs-skill-dialog .cs-skill-close:hover:not(:disabled) { color: #352c21; background: #a8894c20; box-shadow: none; }
+.cs-skill-dialog .cs-skill-close:focus-visible { outline: 2px solid #8b6c35; outline-offset: -4px; }
+.cs-skill-detail-list { margin: 0; padding: 4px 22px 14px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a8894c66 transparent; }
+.cs-skill-detail-list:focus-visible { outline: 2px solid #8b6c3570; outline-offset: -3px; }
+.cs-skill-detail-row { display: grid; grid-template-columns: minmax(100px, .9fr) minmax(0, 1.8fr); align-items: baseline; gap: 16px; padding: 11px 0; border-bottom: 1px solid #96743822; font-size: .8rem; line-height: 1.55; }
+.cs-skill-detail-row:last-child { border: 0; }
+.cs-skill-detail-row dt { color: #77684f; font-weight: 400; overflow-wrap: anywhere; }
+.cs-skill-detail-row dd { margin: 0; color: #352c21; font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .cs-skill-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 28px); }
+  .cs-skill-dialog-head { padding: 19px 18px 15px; gap: 10px; }
+  .cs-skill-dialog h2 { font-size: 1.02rem; }
+  .cs-skill-detail-list { padding: 4px 18px 12px; }
+  .cs-skill-detail-row { grid-template-columns: minmax(86px, .85fr) minmax(0, 1.5fr); gap: 12px; font-size: .76rem; padding: 10px 0; }
+}
+@media (prefers-reduced-motion: reduce) { .cs-skill-trigger { transition: none; } }
