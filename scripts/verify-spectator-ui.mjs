@@ -147,6 +147,38 @@ try {
   host.send({ type: "input", seq: 1, action: matchActions.castFlagshipSkill(), clientTime: Date.now() });
   await page.waitForFunction(() => document.querySelector('.spectator-team[data-seat="A"] .spectator-skill')?.dataset.tone === "cooldown");
 
+  const tooltip = page.getByRole("tooltip");
+  const descriptions = await page.evaluate(async () => {
+    const { skillText } = await import("/src/i18n.js");
+    return ["future1096", "haruhi", "koizumi", "yuki", "kyon", "shamisen"].map((id, index) => skillText(id, index % 3 === 0 ? "flagship" : "sub", "description"));
+  });
+  const skillNames = page.locator(".spectator-skill-name");
+  for (let index = 0; index < 6; index += 1) {
+    await skillNames.nth(index).hover();
+    await tooltip.waitFor({ state: "visible" });
+    await page.waitForFunction((description) => document.querySelector('.spectator-skill-tooltip p')?.textContent === description, descriptions[index]);
+    assert.equal(await tooltip.locator("strong").textContent(), await skillNames.nth(index).textContent(), "技能悬浮名与目标舰不一致");
+  }
+  if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "spectator-skill-tooltip.png"), fullPage: true });
+  await page.mouse.move(720, 100);
+  await tooltip.waitFor({ state: "hidden" });
+  await skillNames.first().focus();
+  await tooltip.waitFor({ state: "visible" });
+  const initialCooldown = await page.locator('.spectator-team[data-seat="A"] .spectator-skill-state').first().textContent();
+  await page.waitForFunction((value) => document.querySelector('.spectator-team[data-seat="A"] .spectator-skill-state').textContent !== value, initialCooldown);
+  assert.equal(await tooltip.isVisible(), true, "实时冷却更新关闭了正在阅读的说明");
+  assert.equal(await tooltip.locator("p").textContent(), descriptions[0], "实时冷却更新改写了技能效果");
+  await page.keyboard.press("Escape");
+  await tooltip.waitFor({ state: "hidden" });
+  await skillNames.nth(4).click();
+  await tooltip.waitFor({ state: "visible", timeout: 3000 }).catch(async (error) => {
+    if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "tooltip-click-failed.png"), fullPage: true });
+    throw error;
+  });
+  assert.equal(await tooltip.locator("p").textContent(), descriptions[4], "点击技能名未显示副舰效果");
+  await page.locator('.spectator-room-id').click();
+  await tooltip.waitFor({ state: "hidden" });
+
   // 可用态矩阵使用同一展示模块，覆盖真实对局难以稳定触发的异常与零能量边界。
   const states = await page.evaluate(async () => {
     const { spectatorSkillState, createSpectatorView } = await import("/src/online/spectator-view.js");
@@ -158,6 +190,7 @@ try {
     const view = createSpectatorView(container);
     view.update({ active: true, room: { players: [] }, state: { teams: { A: { ships: { main: { ...ship, hp: 100, maxHp: 100, fleetEnergy: 0, fleetMaxEnergy: 100, characterId: "haruhi" } } } } } });
     const zeroGauge = container.querySelector('.spectator-team[data-seat="A"] [data-gauge="energy"] strong').textContent;
+    view.destroy();
     const hud = Object.fromEntries(["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"].map((key) => [key, document.createElement("button")]));
     const koizumiTeam = { loadout: { main: "koizumi" }, ships: { main: ship }, koizumiBarrier: { active: true, remainingHits: 7, maxHits: 15 } };
     updateSkillButtons(hud, koizumiTeam);
@@ -176,7 +209,21 @@ try {
     };
   });
   assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "修复3.0秒", zeroGauge: "0%", charges: "护盾 7/15", playerCharges: "旗舰技能：超能力屏障（护盾 7/15）", playerRepair: "旗舰技能：超能力屏障（修复3.0秒）" });
-  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [320, 568], [844, 390]]) await assertLayout(page, width, height);
+  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [320, 568], [844, 390]]) {
+    await assertLayout(page, width, height);
+    for (const side of ["A", "B"]) {
+      await page.locator(`.spectator-team[data-seat="${side}"] .spectator-skill-name`).last().click();
+      await tooltip.waitFor({ state: "visible", timeout: 3000 }).catch(async (error) => {
+        if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `tooltip-failed-${width}x${height}-${side}.png`), fullPage: true });
+        throw new Error(`${width}×${height} ${side}方点击技能说明未显示`, { cause: error });
+      });
+      const bounds = await tooltip.boundingBox();
+      assert(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y + bounds.height <= height + 1, `${width}×${height}技能浮层越出视口`);
+      assert.equal(await tooltip.evaluate((element) => element.matches(":popover-open")), true, "横屏滚动展板中的技能浮层未进入顶层，可能被裁剪");
+      await page.keyboard.press("Escape");
+      await tooltip.waitFor({ state: "hidden" });
+    }
+  }
   const sampleZoom = () => page.evaluate(async () => {
     const values = [];
     for (let frame = 0; frame < 35; frame += 1) {
@@ -228,6 +275,7 @@ try {
   for (const shortcut of ["1", "Tab", "c", "v", "x", "Enter"]) await page.keyboard.press(shortcut);
   await page.locator(".spectator-exit").click();
   await page.locator("#lobbyView").waitFor({ state: "visible" });
+  assert.equal(await tooltip.isVisible(), false, "退出观战后技能说明仍留在顶层");
   assert.equal(outgoing.some((message) => message.type === "input" || message.type === "select_ship"), false, "观战缩放和退出不得发送战斗指令");
   assert.ok(outgoing.some((message) => message.type === "leave_room"), "退出观战应离开房间");
 

@@ -2109,6 +2109,7 @@ function unmount() {
   battleRenderer?.destroy();
   battleRenderer = null;
   actionTransport = null;
+  spectatorView?.destroy();
   spectatorView = null;
 }
 
