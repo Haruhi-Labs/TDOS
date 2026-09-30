@@ -24,6 +24,7 @@
     "test:camera": "node scripts/verify-director-camera.mjs",
     "test:ui:command": "node scripts/verify-command-panel.mjs",
     "test:ui:skills": "node scripts/verify-skill-details.mjs",
+    "test:ui:selection": "node scripts/verify-ship-selection.mjs",
     "test:ui:spectator": "node scripts/verify-spectator-ui.mjs",
     "test:ui:changelog": "node scripts/verify-changelog-ui.mjs",
     "test:ui:statistics": "node scripts/verify-statistics-ui.mjs",

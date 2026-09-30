@@ -58,6 +58,7 @@ import {
   prefersMobileBattleMode,
 } from "./battle/camera.js";
 import { routeHandleAtPoint, zoneFromPoint } from "./battle/input.js";
+import { isShipSelectable, resolveSelectedShipKey } from "./battle/ship-selection.js";
 import {
   localThrottleForShip,
   syncThrottleGearControls,
@@ -453,7 +454,7 @@ function setSelectedShip(shipKey) {
     return false;
   }
   const ship = own.ships[shipKey];
-  if (!ship || !ship.alive || !ship.canControl) {
+  if (!isShipSelectable(ship)) {
     return false;
   }
   if (tutorial.isActive() && !tutorial.allowsShipSelection(shipKey)) {
@@ -479,21 +480,12 @@ function syncShipSelection() {
     return;
   }
 
-  const selected = own.ships[app.selectedShipKey];
-  if (!selected || !selected.alive || !selected.canControl) {
-    const fallback = Object.keys(own.ships).find((key) => {
-      const ship = own.ships[key];
-      return ship && ship.alive && ship.canControl;
-    });
-    if (fallback) {
-      app.selectedShipKey = fallback;
-    }
-  }
+  app.selectedShipKey = resolveSelectedShipKey(own, app.selectedShipKey);
 
   for (const button of ui.shipSwitchButtons) {
     const key = button.dataset.ship;
     const ship = key ? own.ships[key] : null;
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    const enabled = isShipSelectable(ship);
     button.disabled = !enabled;
     button.classList.toggle("active", key === app.selectedShipKey);
   }
@@ -509,6 +501,7 @@ function syncPowerFromSelected() {
 
 function setThrottleGear(gear) {
   if (tutorial.isActive() && !tutorial.allowsControl("throttle")) return false;
+  if (!selectedShipSim()?.canControl()) return false;
   const throttle = throttleValueForGear(gear);
   syncThrottleGearControls(ui, throttle);
   applyAction(matchActions.setThrottle({
@@ -999,7 +992,7 @@ function useSubSkill() {
   const selected = selectedShipState();
   const own = ownTeamState();
   const meta = currentSubMeta(selected);
-  if (!selected || !meta || !own) {
+  if (!selected?.canControl || !meta || !own) {
     return;
   }
   if (meta.target === "point" || meta.target === "optional_point") {

@@ -18,6 +18,7 @@ import {
 } from "./cooldown-progress.js";
 import { mirrorCommandButton, renderCommandPanel, renderCommandShip } from "./command-panel.js";
 import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
+import { isShipControlLocked, isShipSelectable } from "./ship-selection.js";
 
 const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"];
 
@@ -82,7 +83,8 @@ function updateSkillAvailability(ui, own, opts = {}) {
   const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
 
   const scoutLocked = own.skillsDisabled;
-  ui.scoutBtn.disabled = scoutLocked || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
+  ui.scoutBtn.disabled = scoutLocked || isShipControlLocked(selected || mainShip) || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
+  for (const button of [...(ui.powerGearButtons || []), ...(ui.mobileThrottleButtons || [])]) button.disabled = !selected?.canControl;
   setCooldownButtonLabel(ui.scoutBtn, scoutLocked
     ? t("派出侦查机（已被封印）")
     : (cooldowns.scout || 0) > 0
@@ -132,6 +134,7 @@ function updateSkillAvailability(ui, own, opts = {}) {
     const disabled =
       own.skillsDisabled ||
       flagshipSilenced ||
+      isShipControlLocked(mainShip) ||
       flagshipCooldown > 0 ||
       mainEnergy < (flagMeta.cost || 0) ||
       !(mainShip && mainShip.alive);
@@ -237,7 +240,7 @@ export function syncMobileHud(ui, own, opts = {}) {
   };
   for (const button of ui.mobileShipButtons) {
     const ship = buttonStates[button.dataset.ship];
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    const enabled = isShipSelectable(ship);
     button.disabled = !enabled;
     button.classList.toggle("active", button.dataset.ship === selectedShipKey);
     button.setAttribute("aria-pressed", String(button.dataset.ship === selectedShipKey));
@@ -282,7 +285,7 @@ export function renderFleetRoster(ui, own, opts = {}) {
   }
   for (const cell of ui.fleetRows) {
     const ship = own && own.ships ? own.ships[cell.key] : null;
-    cell.row.disabled = !Boolean(ship?.alive && ship.canControl);
+    cell.row.disabled = !isShipSelectable(ship);
     cell.row.classList.toggle("active", cell.key === selectedShipKey);
     renderCommandShip(cell.row, ship, cell.key, own, opts.portraitColor);
     if (!ship) {
@@ -304,6 +307,8 @@ export function renderFleetRoster(ui, own, opts = {}) {
     let state = "";
     if (dead) {
       state = `✖ ${t("阵亡")}`;
+    } else if (isShipControlLocked(ship)) {
+      state = t(ship.stunRemaining > 0 ? "眩晕" : "不可操控");
     } else if (ship.braking) {
       state = t("急刹中");
     } else if (ship.attached) {
