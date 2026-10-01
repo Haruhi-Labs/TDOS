@@ -287,6 +287,7 @@ export const EN_MESSAGES = {
     "制作人员": "Credits",
     "画师 · 设计开发 · 出品": "Artist · design/dev · production",
     "公测版 v0.2": "Public beta v0.2",
+    "公测版 v0.4": "Public beta v0.4",
     "公测版 v0.3": "Public beta v0.3",
     "GitHub 源码仓库": "GitHub source repository",
     "源码 · AGPL v3": "Source · AGPL v3",
