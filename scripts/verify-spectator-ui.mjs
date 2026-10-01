@@ -17,6 +17,7 @@ const clients = [];
 let service, vite, browser;
 let output = "";
 const screenshotDir = process.env.SPECTATOR_SCREENSHOT_DIR;
+const videoDir = process.env.SPECTATOR_VIDEO_DIR;
 
 async function createClient(url, name, loadout) {
   const ws = new WebSocket(url);
@@ -112,7 +113,7 @@ try {
   vite = await createServer({ root: resolve(import.meta.dirname, ".."), logLevel: "silent", server: { host: "127.0.0.1", port: 0 } });
   await vite.listen();
   browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "zh-CN" });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, locale: "zh-CN", ...(videoDir ? { recordVideo: { dir: videoDir, size: { width: 1440, height: 900 } } } : {}) });
   const errors = [];
   const outgoing = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -146,6 +147,38 @@ try {
   host.send({ type: "input", seq: 1, action: matchActions.castFlagshipSkill(), clientTime: Date.now() });
   await page.waitForFunction(() => document.querySelector('.spectator-team[data-seat="A"] .spectator-skill')?.dataset.tone === "cooldown");
 
+  const tooltip = page.getByRole("tooltip");
+  const descriptions = await page.evaluate(async () => {
+    const { skillText } = await import("/src/i18n.js");
+    return ["future1096", "haruhi", "koizumi", "yuki", "kyon", "shamisen"].map((id, index) => skillText(id, index % 3 === 0 ? "flagship" : "sub", "description"));
+  });
+  const skillNames = page.locator(".spectator-skill-name");
+  for (let index = 0; index < 6; index += 1) {
+    await skillNames.nth(index).hover();
+    await tooltip.waitFor({ state: "visible" });
+    await page.waitForFunction((description) => document.querySelector('.spectator-skill-tooltip p')?.textContent === description, descriptions[index]);
+    assert.equal(await tooltip.locator("strong").textContent(), await skillNames.nth(index).textContent(), "技能悬浮名与目标舰不一致");
+  }
+  if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "spectator-skill-tooltip.png"), fullPage: true });
+  await page.mouse.move(720, 100);
+  await tooltip.waitFor({ state: "hidden" });
+  await skillNames.first().focus();
+  await tooltip.waitFor({ state: "visible" });
+  const initialCooldown = await page.locator('.spectator-team[data-seat="A"] .spectator-skill-state').first().textContent();
+  await page.waitForFunction((value) => document.querySelector('.spectator-team[data-seat="A"] .spectator-skill-state').textContent !== value, initialCooldown);
+  assert.equal(await tooltip.isVisible(), true, "实时冷却更新关闭了正在阅读的说明");
+  assert.equal(await tooltip.locator("p").textContent(), descriptions[0], "实时冷却更新改写了技能效果");
+  await page.keyboard.press("Escape");
+  await tooltip.waitFor({ state: "hidden" });
+  await skillNames.nth(4).click();
+  await tooltip.waitFor({ state: "visible", timeout: 3000 }).catch(async (error) => {
+    if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "tooltip-click-failed.png"), fullPage: true });
+    throw error;
+  });
+  assert.equal(await tooltip.locator("p").textContent(), descriptions[4], "点击技能名未显示副舰效果");
+  await page.locator('.spectator-room-id').click();
+  await tooltip.waitFor({ state: "hidden" });
+
   // 可用态矩阵使用同一展示模块，覆盖真实对局难以稳定触发的异常与零能量边界。
   const states = await page.evaluate(async () => {
     const { spectatorSkillState, createSpectatorView } = await import("/src/online/spectator-view.js");
@@ -157,6 +190,7 @@ try {
     const view = createSpectatorView(container);
     view.update({ active: true, room: { players: [] }, state: { teams: { A: { ships: { main: { ...ship, hp: 100, maxHp: 100, fleetEnergy: 0, fleetMaxEnergy: 100, characterId: "haruhi" } } } } } });
     const zeroGauge = container.querySelector('.spectator-team[data-seat="A"] [data-gauge="energy"] strong').textContent;
+    view.destroy();
     const hud = Object.fromEntries(["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"].map((key) => [key, document.createElement("button")]));
     const koizumiTeam = { loadout: { main: "koizumi" }, ships: { main: ship }, koizumiBarrier: { active: true, remainingHits: 7, maxHits: 15 } };
     updateSkillButtons(hud, koizumiTeam);
@@ -175,16 +209,65 @@ try {
     };
   });
   assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "修复3.0秒", zeroGauge: "0%", charges: "护盾 7/15", playerCharges: "旗舰技能：超能力屏障（护盾 7/15）", playerRepair: "旗舰技能：超能力屏障（修复3.0秒）" });
-  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [320, 568], [844, 390]]) await assertLayout(page, width, height);
+  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [320, 568], [844, 390]]) {
+    await assertLayout(page, width, height);
+    for (const side of ["A", "B"]) {
+      await page.locator(`.spectator-team[data-seat="${side}"] .spectator-skill-name`).last().click();
+      await tooltip.waitFor({ state: "visible", timeout: 3000 }).catch(async (error) => {
+        if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `tooltip-failed-${width}x${height}-${side}.png`), fullPage: true });
+        throw new Error(`${width}×${height} ${side}方点击技能说明未显示`, { cause: error });
+      });
+      const bounds = await tooltip.boundingBox();
+      assert(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.width <= width + 1 && bounds.y + bounds.height <= height + 1, `${width}×${height}技能浮层越出视口`);
+      assert.equal(await tooltip.evaluate((element) => element.matches(":popover-open")), true, "横屏滚动展板中的技能浮层未进入顶层，可能被裁剪");
+      await page.keyboard.press("Escape");
+      await tooltip.waitFor({ state: "hidden" });
+    }
+  }
+  const sampleZoom = () => page.evaluate(async () => {
+    const values = [];
+    for (let frame = 0; frame < 35; frame += 1) {
+      await new Promise(requestAnimationFrame);
+      const label = document.querySelector('[data-camera="reset"]').textContent;
+      values.push(label === "全图" ? 100 : Number.parseInt(label));
+    }
+    return values;
+  });
+  const wheelBox = await page.locator("#gameCanvas").boundingBox();
+  await page.mouse.move(wheelBox.x + wheelBox.width * 0.65, wheelBox.y + wheelBox.height * 0.4);
+  const zoomRecording = sampleZoom();
+  await page.mouse.wheel(0, -180);
+  const samples = await zoomRecording;
+  assert.ok(new Set(samples).size >= 3, "观战滚轮没有跨渲染帧平滑缩放");
+  assert.ok(samples.every((value, index) => index === 0 || value >= samples[index - 1]), "观战滚轮缩放出现回弹或抖动");
+  assert.ok(samples.at(-1) > 120, "窄横屏观战滚轮被移动模式阻止");
+  await page.locator('[data-camera="reset"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-camera="reset"]').textContent === "全图");
+  await page.setViewportSize({ width: 1440, height: 900 });
   await page.locator('[data-camera="in"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-camera="reset"]').textContent === "120%");
   assert.equal(await page.locator('[data-camera="reset"]').textContent(), "120%");
   const mapBox = await page.locator("#gameCanvas").boundingBox();
-  await page.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
+  await page.mouse.move(mapBox.x + mapBox.width * 0.3, mapBox.y + mapBox.height / 2);
   await page.mouse.down();
   assert.equal(await page.locator("#gameCanvas").evaluate((element) => element.hasPointerCapture(1)), true, "观战放大后应捕获拖动镜头的指针");
   await page.mouse.move(mapBox.x + mapBox.width / 2 + 50, mapBox.y + mapBox.height / 2 + 30, { steps: 4 });
   await page.mouse.up();
+  assert.equal(await page.locator("#gameCanvas").evaluate((element) => element.hasPointerCapture(1)), false, "松手后没有释放观战镜头指针");
+  await page.mouse.down();
+  await page.locator("#gameCanvas").dispatchEvent("pointercancel", { pointerId: 1, isPrimary: true });
+  assert.equal(await page.locator("#gameCanvas").evaluate((element) => element.hasPointerCapture(1)), false, "取消拖拽后指针仍被镜头占用");
+  await page.mouse.up();
+  await page.mouse.move(mapBox.x + mapBox.width / 2, mapBox.y + mapBox.height / 2);
+  for (let pulse = 0; pulse < 3; pulse += 1) await page.mouse.wheel(0, -240);
+  await page.waitForFunction(() => document.querySelector('[data-camera="reset"]').textContent === "400%");
+  assert.equal(await page.locator('[data-camera="in"]').isDisabled(), true, "达到导演镜头4倍上限后仍允许继续放大");
+  await page.mouse.down();
+  await page.mouse.move(mapBox.x + mapBox.width * 0.3 + 110, mapBox.y + mapBox.height / 2 + 50, { steps: 12 });
+  await page.mouse.up();
+  await page.evaluate(async () => { for (let frame = 0; frame < 18; frame += 1) await new Promise(requestAnimationFrame); });
   await page.locator('[data-camera="reset"]').click();
+  await page.waitForFunction(() => document.querySelector('[data-camera="reset"]').textContent === "全图");
   assert.equal(await page.locator('[data-camera="reset"]').textContent(), "全图");
   await page.locator('[data-camera="in"]').focus();
   await page.keyboard.press("Tab");
@@ -192,6 +275,7 @@ try {
   for (const shortcut of ["1", "Tab", "c", "v", "x", "Enter"]) await page.keyboard.press(shortcut);
   await page.locator(".spectator-exit").click();
   await page.locator("#lobbyView").waitFor({ state: "visible" });
+  assert.equal(await tooltip.isVisible(), false, "退出观战后技能说明仍留在顶层");
   assert.equal(outgoing.some((message) => message.type === "input" || message.type === "select_ship"), false, "观战缩放和退出不得发送战斗指令");
   assert.ok(outgoing.some((message) => message.type === "leave_room"), "退出观战应离开房间");
 
@@ -205,7 +289,12 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator("#mobileBattleHud").waitFor({ state: "visible" });
   assert.deepEqual(errors, [], "观战和模式切换不应发生浏览器异常");
-  console.log("观战界面检查通过：本地真实三客户端、首帧双方阵容、技能状态、五种视口、缩放退出和玩家模式恢复。");
+  if (videoDir) {
+    const video = page.video();
+    await page.close();
+    await video.saveAs(join(videoDir, "spectator-camera.webm"));
+  }
+  console.log("观战界面检查通过：本地真实三客户端、首帧双方阵容、技能状态、五种视口、平滑滚轮、拖拽取消、缩放退出和玩家模式恢复。");
 } finally {
   await browser?.close();
   for (const client of clients) client.terminate();

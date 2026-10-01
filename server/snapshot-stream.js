@@ -147,8 +147,8 @@ export function createSnapshotStream({ networkStats }) {
     if (options.spectating) {
       header.spectating = true;
     }
-    // 长门雷达属于席位私有的间接情报，不进入共享 state / 差量缓存；
-    // 只有该长门玩家自己的快照消息头会携带，对手与观战者均收不到。
+    // 长门雷达回波属于席位私有的间接情报，不进入共享 state / 差量缓存；
+    // 只有该长门玩家自己的消息头携带回波；公开 state 仅含不带回波的 radarSweep。
     if (options.radar) {
       header.radar = options.radar;
     }

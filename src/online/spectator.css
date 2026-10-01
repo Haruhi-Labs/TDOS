@@ -1,5 +1,5 @@
 /* 观战专用舰队展板：黄铜框、海军蓝与蓝红席位，中央留给共享战场。 */
-.spectator-toolbar[hidden], .spectator-team[hidden], .spectator-bot[hidden], .spectator-cooldown[hidden] { display: none; }
+.spectator-toolbar[hidden], .spectator-team[hidden], .spectator-bot[hidden], .spectator-cooldown[hidden], .spectator-skill-tooltip[hidden] { display: none; }
 .online-shell.battle-shell.spectator-shell {
   --spectator-gap: 16px;
   display: grid;
@@ -31,6 +31,7 @@
 .spectator-toolbar time { color: var(--ivory); font-size: 1.15rem; font-variant-numeric: tabular-nums; }
 .spectator-toolbar button { min-height: 36px; padding: 5px 12px; font-size: .8rem; }
 .spectator-camera-controls button { min-width: 38px; }
+.spectator-camera-controls [data-camera="reset"] { min-width: 70px; font-variant-numeric: tabular-nums; }
 .online-shell.battle-shell.spectator-shell .game-wrap {
   grid-column: 2;
   grid-row: 2;
@@ -51,7 +52,7 @@
   touch-action: pan-y;
 }
 .online-shell.battle-shell.spectator-shell.spectator-zoomed #gameCanvas { touch-action: none; cursor: grab; }
-.online-shell.battle-shell.spectator-shell.spectator-zoomed #gameCanvas:active { cursor: grabbing; }
+.online-shell.battle-shell.spectator-shell #gameCanvas.is-camera-dragging { cursor: grabbing; }
 .spectator-team {
   --seat-color: #8baeea;
   --seat-line: #44659c;
@@ -88,7 +89,27 @@
 .spectator-track i, .spectator-skill-track i { display: block; height: 100%; background: var(--seat-color); }
 .spectator-gauge[data-gauge="energy"] i { background: var(--gilt); }
 .spectator-skill { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px 8px; align-items: start; margin-top: 12px; font-size: .72rem; line-height: 1.45; }
-.spectator-skill-name { color: var(--ivory-soft); overflow-wrap: anywhere; }
+.spectator-skill .spectator-skill-name, .spectator-skill .spectator-skill-name:hover {
+  display: block; min-width: 0; min-height: 0; margin: 0; padding: 0; border: 0;
+  border-radius: 2px; background: none; box-shadow: none; color: var(--ivory-soft);
+  font: inherit; line-height: inherit; text-align: left; text-transform: none;
+  letter-spacing: inherit; overflow-wrap: anywhere; cursor: help; transform: none;
+}
+.spectator-skill-name:focus-visible { outline: 1px solid var(--gilt); outline-offset: 4px; }
+.spectator-skill .spectator-skill-name:disabled { cursor: default; opacity: 1; }
+.spectator-skill-tooltip {
+  position: fixed; inset: auto; z-index: 120; margin: 0;
+  width: min(320px, calc(100vw - 20px)); max-height: calc(100dvh - 20px);
+  box-sizing: border-box; overflow-y: auto; padding: 13px 15px;
+  border: 1px solid var(--brass); border-radius: 5px; background: #101b2e;
+  color: var(--ivory-soft); box-shadow: 0 8px 28px #02060eb3;
+  font-size: .8rem; line-height: 1.65; text-align: left;
+}
+.spectator-skill-tooltip strong { display: block; margin-bottom: 5px; color: var(--gilt-bright); font-weight: 500; }
+.spectator-skill-tooltip p { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+@media (hover: hover) and (pointer: fine) {
+  .spectator-skill .spectator-skill-name:hover { color: var(--gilt-bright); }
+}
 .spectator-skill-state { color: var(--text-soft); font-weight: 500; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .spectator-skill-readout { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .spectator-cooldown { color: var(--seat-color); font-variant-numeric: tabular-nums; }
