@@ -7,7 +7,7 @@ import {
   randomAiLoadout,
   throttleForGear,
 } from "../../shared/game-core.js";
-import { assert, runSteps } from "./helpers.mjs";
+import { assert, runSteps, withSeededRandom } from "./helpers.mjs";
 
 function aiEngageCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
@@ -1330,7 +1330,7 @@ function aiKoizumiBarrierBreachCheck() {
   );
 }
 
-function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
+function aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration = false } = {}) {
   const sim = new MatchSimulation({
     mode: "pvp",
     worldSize: 1440,
@@ -1343,19 +1343,27 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
     },
   });
   sim.setCombatEnabled("A", false);
+  // 次数盾可能在集结完成前被正常火力耗尽。单独保留护盾验证同步突入，
+  // 另一个实战场景保持正常射击，验证耗尽护盾与有效伤害。
+  if (holdFireForInfiltration) sim.setCombatEnabled("B", false);
   const bot = sim.botBySeat("B");
   const defendingMain = sim.teamA.ships.main;
   const attackingTeam = sim.teamB;
   const attackingMain = attackingTeam.ships.main;
-  defendingMain.x = 650;
-  defendingMain.y = 720;
-  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
-  defendingMain.route = null;
-  attackingMain.x = 930;
-  attackingMain.y = 720;
-  attackingMain.angle = Math.PI;
-  attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
-  attackingMain.route = null;
+  // 场景整体平移，保持副舰与旗舰的编队关系，避免副舰遗留在随机出生位置。
+  const placeFleet = (team, x, y, angle) => {
+    const dx = x - team.ships.main.x;
+    const dy = y - team.ships.main.y;
+    for (const ship of team.getPlayerShips()) {
+      ship.x += dx;
+      ship.y += dy;
+      ship.angle = angle;
+      ship.command = { x: ship.x, y: ship.y };
+      ship.route = null;
+    }
+  };
+  placeFleet(sim.teamA, 650, 720, 0);
+  placeFleet(attackingTeam, 930, 720, Math.PI);
 
   bot.rememberContact(defendingMain, "visible");
   let context = bot.buildTacticalContext(attackingMain, bot.selectEnemyFocus(attackingMain));
@@ -1373,6 +1381,8 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
   let sawRamDisruption = false;
   const maximumTicks = Math.ceil(30 / TICK_DT);
   for (let tick = 0; tick < maximumTicks; tick += 1) {
+    // 持续提供固定旗舰的可见接触，避免手工挪动前的出生点污染运动预判。
+    bot.rememberContact(defendingMain, "visible");
     sim.update(TICK_DT);
     sawHitExhaustion ||= sim.koizumiBarrierImpacts.some((impact) => impact.kind === "break");
     sawRamDisruption ||= sim.koizumiBarrierImpacts.some((impact) => impact.kind === "ram");
@@ -1391,6 +1401,7 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
       ) > 150
     ) {
       sawSeparatedApproaches = true;
+
     }
     const radius = context?.barrierTactics?.enemy?.radius || defendingMain.effectiveVision();
     const insideCount = attackingTeam.getPlayerShips().filter((ship) => (
@@ -1403,14 +1414,18 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
 
   assert(attackingTeam.splitLevel === 2, "无破盾阵容没有完成多路突入所需的舰队拆分");
   assert(sawSeparatedApproaches, "无破盾阵容没有从不同角度接近古泉能量圈");
-  assert(sawCommit, "无破盾阵容在集结完成后没有同步突入能量圈");
-  assert(maximumInsideCount >= 2, "无破盾阵容没有形成至少两舰同时入圈的交叉火力");
-  assert(sim.teamA.hullRatio() < 0.9, "无破盾阵容进入圈内后仍未能对古泉舰队造成有效伤害");
+  if (holdFireForInfiltration) {
+    assert(sawCommit, "无破盾阵容在集结完成后没有同步突入能量圈");
+    assert(maximumInsideCount >= 2, "无破盾阵容没有形成至少两舰同时入圈的交叉火力");
+  }
   assert(
     !sawRamDisruption,
     "无破盾阵容错误地产生了破盾碰撞事件",
   );
-  assert(sawHitExhaustion, "无破盾阵容的持续火力没有耗尽次数盾");
+  if (!holdFireForInfiltration) {
+    assert(sim.teamA.hullRatio() < 0.9, "无破盾阵容仍未能对古泉舰队造成有效伤害");
+    assert(sawHitExhaustion, "无破盾阵容的持续火力没有耗尽次数盾");
+  }
 
   const normalSim = new MatchSimulation({
     mode: "pvp",
@@ -1901,7 +1916,11 @@ export function runAiSuite() {
   aiKoizumiBarrierDefenseCheck();
   aiKoizumiBarrierThreatEvasionCheck();
   aiKoizumiBarrierBreachCheck();
-  aiKoizumiBarrierNoBreakerInfiltrationCheck();
+  // 保留原先复现失败的随机序列，让正常破盾与保持护盾的突入分别可重现。
+  for (const seed of [3, 5, 8, 11]) {
+    withSeededRandom(seed, () => aiKoizumiBarrierNoBreakerInfiltrationCheck());
+    withSeededRandom(seed, () => aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration: true }));
+  }
   aiKoizumiBarrierRangedCounterplayCheck();
   aiHaruhiOtherworlderBarrierBreachCheck();
   aiFuture1096FormDecisionCheck();
