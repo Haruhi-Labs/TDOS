@@ -4,15 +4,18 @@ import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
 import { CHARACTER_ORDER, MatchSimulation, skillMetaForCharacter } from "../shared/game-core.js";
-import { setLocale } from "../src/i18n.js";
+import { setLocale, skillText } from "../src/i18n.js";
+import { CHARACTER_TEXT } from "../src/i18n/character-text.js";
 import { skillDetailRows, skillOverview } from "../src/character-select/skill-presentation.js";
 
-// 校验简介与参数分层，并用真实规则对象核对展示层未公开常量的关键数值。
+// 校验指定技能文案与参数分层，并用真实规则对象核对展示层未公开常量的关键数值。
 for (const locale of ["zh", "en", "ja"]) {
   setLocale(locale, { notify: false });
   for (const character of CHARACTER_ORDER) for (const mode of ["flagship", "sub"]) {
     assert.ok(skillOverview(character, mode), `${locale} ${character} ${mode} 缺少简介`);
-    assert.doesNotMatch(skillOverview(character, mode), /\d|%|×/, "简介不可夹带数值");
+    const text = CHARACTER_TEXT[locale][character][mode === "sub" ? "subSkill" : "flagshipSkill"];
+    assert.equal(skillOverview(character, mode), text.overview, "选角说明应完整使用指定技能文案");
+    if (locale === "zh") assert.equal(text.overview, text.description, "中文选角与技能提示应使用同一份原文");
     const rows = skillDetailRows(character, mode);
     assert.ok(rows.length >= 4 && rows.every((row) => row.label && row.value), "详细参数应有完整的逐项标签和值");
     assert.equal(new Set(rows.map((row) => row.label)).size, rows.length, "同一技能不应重复参数项目");
@@ -113,7 +116,8 @@ try {
         const button = page.locator(prefix).nth(skill);
         const mode = skill ? "sub" : "flagship";
         const overview = await button.locator(mobile ? ".csm-skill-desc" : ".cs-page-skill-desc").textContent();
-        assert.doesNotMatch(overview, /\d|%|×/);
+        assert.equal(overview, skillOverview(CHARACTER_ORDER[i], mode), "桌面与触屏应完整显示指定技能文案");
+        assert.equal(await button.locator(mobile ? ".csm-skill-name" : ".cs-page-skill-name").textContent(), skillText(CHARACTER_ORDER[i], mode), "技能名称应与指定文案一致");
         await button.click();
         await page.locator(".cs-skill-popover[data-open=true]").waitFor();
         assert.equal(await page.locator(".cs-skill-detail-row").count(), skillDetailRows(CHARACTER_ORDER[i], mode).length, "浮窗应展示全部结构化参数");
