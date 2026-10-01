@@ -1,10 +1,10 @@
 {
   "kind": "hotfix",
-  "baseMain": "5c8387b885c089f97e793f093a9be292b9d1114a",
-  "sourceDev": "abe5b212d75642577e4838d54b132e1d590bacc7",
+  "baseMain": "fc9c8fd0eee446b13d90560acb6a1c39b226d543",
+  "sourceDev": "f5170254d9c52ffd7ea84733891fb71538c1c47e",
   "commits": [
-    "abe5b212d75642577e4838d54b132e1d590bacc7"
+    "f5170254d9c52ffd7ea84733891fb71538c1c47e"
   ],
   "scope": "web",
-  "evaluation": "维护者明确授权直接推 dev/main 并正式热更新，全程不走 PR；仅观战渲染与响应式布局，公开版本 v0.4、规则和日志保持不变。专项覆盖十二视口一屏六舰、固定状态栏和三种渲染后端手柄隔离；晋级前须通过 dev 完整 CI、测试服构建验证及候选完整门禁。正式范围仅 web，沿用不可变目录和既有统计，不重启联机服务。dev CI：https://github.com/Haruhi-Labs/TDOS/actions/runs/36814901665"
+  "evaluation": "维护者明确授权直接推 dev/main 并正式热更新，全程不走 PR；追加修正六舰同时受控并显示冷却时的矮屏溢出，状态与冷却并排。首轮 fc9c8fd 已通过正式部署及公开验收；本次沿用其 main 基线，仅择取 dev 独立修正。十二视口观战、组合状态、固定状态栏与构建已本地通过；晋级前须通过 dev 完整 CI 与测试服构建验证，正式工作流执行精确候选完整门禁。范围仅 web，保持 v0.4、规则与日志，不重启正式联机服务。dev CI：https://github.com/Haruhi-Labs/TDOS/actions/runs/36816101481"
 }
