@@ -14,7 +14,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "均衡型机动指挥舰",
       flavor: "能够出现在他应该出现的任何地方",
       flagshipSkill: { name: "超能力屏障", overview: "在视野边界拦截外来敌弹与光束。护盾破损后，边界平静时自动修复。", description: "被动在主舰视野边界维持可受击15次的红色能量圈，吸收从圈外进入的敌方子弹并截断射线，每颗子弹或每次射线消耗1次。第15次仍会拦截，随后破盾。破盾后连续5秒没有敌方子弹穿过原护盾边界，恢复为15次；己方子弹不影响修复。朝仓分舰的刀锋女王、古泉分舰的光球，以及春日获得异世界人后的冲撞可直接击破护盾。" },
-      subSkill: { name: "超能力粒子", overview: "化为免伤光球，高速撞击击退并沉默敌舰，能量波使敌舰眩晕。结束后自动归航。", description: "化作高速红色光球8秒，无法射击；可以被攻击但不会受到伤害。撞击会沿碰撞方向击飞敌舰并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。结束后保持光球形态自动归航战场中央。" },
+      subSkill: { name: "超能力粒子", overview: "化为免伤免控光球，高速撞击与能量波压制敌舰。到期自动归航，可被净化驱散。", description: "化作高速红色光球8秒，无法射击；可被攻击但免疫伤害与眩晕、沉默、击退、震慑减速等控制。撞击沿碰撞方向击飞敌舰并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。到期后保持光球形态自动归航战场中央，归航期间继续免控；敌方净化类技能可直接驱散光球形态。" },
     },
     yuki: {
       name: "长门有希",
@@ -54,7 +54,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "高速猎杀渗透舰",
       flavor: "情报与突进,一往无前的刀锋女王",
       flagshipSkill: { name: "资讯压制", overview: "发出视野波探查战场，清除敌方主动增益并驱散友方负面状态。", description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益，友军被扫到时驱散其负面状态。敌方也能看见视野波。" },
-      subSkill: { name: "刀锋女王", overview: "高速穿行敌阵，以接触造成持续伤害，航速越快伤害越高。", description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；刀锋作用半径扩大25%，接触及持续重叠时每秒按实际航速造成伤害：二档及以下为5%最大生命值、三档13%、四档20%，档位速度之间线性变化。" },
+      subSkill: { name: "刀锋女王", overview: "高速穿行敌阵，受控或减速时仍继续飞行，以接触造成持续伤害。", description: "10秒内航速×1.45（加速×1.26、转向×1.12），航速不低于技能强化后的三档满能量航速；低档、能量耗尽、减速或受控也保持飞行，受控时沿当前朝向续飞且仍不能操作。无视碰撞体积，可穿过敌舰，刀锋作用半径扩大25%；接触时造成目标最大生命值15%的伤害，持续重叠时每秒结算一次，与航速无关。" },
     },
     shamisen: {
       name: "三味线",
@@ -80,7 +80,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "均衡型機動指揮艦",
       flavor: "必要な場所に、必要な時に現れる",
       flagshipSkill: { name: "超能力バリア", overview: "視界境界で外から来る敵弾とビームを防ぐ。破壊後、境界が平穏なら自動修復する。", description: "旗艦の視界境界に15回の攻撃を防ぐ赤いリングを展開する。外側から侵入する敵弾1発、またはビーム1回の遮断につき残り回数を1消費する。15回目も防いだ後に破壊され、元の境界を敵弾が5秒間連続で横切らなければ15回分に修復する。味方の弾は修復を妨げない。朝倉のブレードクイーン、古泉の光球、異世界人を得たハルヒの体当たりは直接バリアを破壊する。" },
-      subSkill: { name: "超能力粒子", overview: "ダメージを受けない光球となり、接触で敵を弾き飛ばして沈黙させる。衝撃波は敵をスタンさせ、終了後は中央へ自動帰還する。", description: "8秒間、高速の赤い光球となり、射撃不能。攻撃対象にはなるがダメージを受けない。接触方向へ敵艦を弾き飛ばし、ダメージなしで5秒間沈黙させる。接触時にエネルギー波を放ち、波に触れた敵艦を1秒間スタンさせる。終了後も光球のまま戦場中央へ自動帰還する。" },
+      subSkill: { name: "超能力粒子", overview: "ダメージと行動阻害を受けない光球となり、接触と衝撃波で敵を制圧する。終了後は自動帰還し、敵の浄化で解除される。", description: "8秒間、高速の赤い光球となり、射撃不能。攻撃対象にはなるがダメージ、スタン、沈黙、ノックバック、威圧による減速を受けない。接触方向へ敵艦を弾き飛ばし、ダメージなしで5秒間沈黙させる。接触時にエネルギー波を放ち、波に触れた敵艦を1秒間スタンさせる。時間終了後は光球のまま中央へ自動帰還し、帰還中も行動阻害を受けない。敵の浄化は光球形態を即座に解除する。" },
     },
     yuki: {
       name: "長門有希",
@@ -120,7 +120,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "高速狩猟浸透艦",
       flavor: "情報と突進で切り込むブレードクイーン",
       flagshipSkill: { name: "情報制圧", overview: "視界波で戦場を探査し、敵のアクティブ強化と味方の弱体状態を解除する。", description: "6秒間、1秒ごとに自身を中心とする視界波を放ち、波帯の実視界を得る。波に触れた敵艦のアクティブ強化を解除し、味方艦の弱体効果を解除する。敵側にも視界波は見える。" },
-      subSkill: { name: "ブレードクイーン", overview: "敵艦を高速で通り抜け、接触中に継続ダメージを与える。実際の速度が高いほど強くなる。", description: "10秒間、速度×1.45（加速×1.26・旋回×1.12）で当たり判定を無視（敵艦をすり抜け可）。ブレードの効果半径が25%拡大し、接触時および重なり続けている間は実速度に応じて毎秒ダメージを与える。2速以下は最大耐久の5%、3速は13%、4速は20%で、各速度の間は線形に変化する。" },
+      subSkill: { name: "ブレードクイーン", overview: "敵艦を高速で通り抜け、操作不能や減速中も飛行を続け、接触で継続ダメージを与える。", description: "10秒間、速度×1.45（加速×1.26・旋回×1.12）。強化後の3速・エネルギー満タン時の速度を下限とし、低速ギア、エネルギー切れ、減速、操作不能中も飛行する。操作不能中は現在の向きに進み、操作はできない。敵艦をすり抜け、刃の効果半径が25%拡大。接触時に対象の最大耐久の15%のダメージを与え、重なり続けている間は1秒ごとに判定する。ダメージは速度に依存しない。" },
     },
     shamisen: {
       name: "シャミセン",
@@ -146,7 +146,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "Balanced Mobile Command Ship",
       flavor: "Appears exactly where he is supposed to be",
       flagshipSkill: { name: "Esper Barrier", overview: "Intercept incoming enemy bullets and beams at the vision boundary. A broken barrier repairs when the boundary stays clear.", description: "Maintains a red ring along the flagship's vision boundary with 15 hit charges. Each enemy bullet absorbed from outside or beam stopped consumes one charge. The 15th hit is blocked before the shield breaks. It restores all 15 charges after 5 continuous seconds without an enemy bullet crossing the former boundary; allied bullets do not delay repairs. Blade Queen, Koizumi's orb, and Haruhi's Otherworlder ram break the shield immediately." },
-      subSkill: { name: "Esper Particles", overview: "Become a damage-immune orb that knocks back and silences enemies. Impact waves stun nearby ships; the orb returns to center afterward.", description: "Becomes a high-speed red orb for 8 seconds and cannot fire. It can be targeted, but takes no damage. Contact knocks enemy ships away along the collision direction and silences them for 5 seconds without damage. Each collision emits an energy wave that stuns enemy ships it sweeps for 1 second. The orb then automatically returns to the battlefield center before reverting." },
+      subSkill: { name: "Esper Particles", overview: "Become an orb immune to damage and control effects, suppress enemies with collisions and waves, then return automatically. Enemy purges can dispel the orb.", description: "Becomes a high-speed red orb for 8 seconds and cannot fire. It can be targeted, but is immune to damage, stuns, silence, knockback, and shock-induced slows. Contact knocks enemies away along the collision direction and silences them for 5 seconds without damage. Each collision emits an energy wave that stuns enemies for 1 second. After its duration, the orb automatically returns to center while retaining control immunity. Enemy purges immediately dispel the orb form." },
     },
     yuki: {
       name: "Yuki Nagato",
@@ -186,7 +186,7 @@ export const CHARACTER_TEXT = Object.freeze({
       title: "High-Speed Hunter Infiltrator",
       flavor: "Information and momentum, the Blade Queen pressing forward",
       flagshipSkill: { name: "Information Suppression", overview: "Send vision waves that reveal the battlefield, purge enemy active buffs, and cleanse friendly debuffs.", description: "Emits one circular vision wave per second for 6 seconds, granting true vision across each band and purging active-skill buffs from enemy ships and cleansing debuffs from allied ships it sweeps. Enemies can see the waves." },
-      subSkill: { name: "Blade Queen", overview: "Rush through enemy ships and deal continuous contact damage that increases with actual speed.", description: "For 10 seconds, speed ×1.45 (accel ×1.26, turn ×1.12) and ignores collision, phasing through enemy ships. Its effect radius is 25% larger. Contact and each second of continued overlap deal damage based on actual speed: 5% max hull at gear 2 or below, 13% at gear 3, and 20% at gear 4, with linear interpolation between gear speeds." },
+      subSkill: { name: "Blade Queen", overview: "Rush through enemy ships, keep flying through control effects and slows, and deal continuous contact damage.", description: "For 10 seconds, speed ×1.45 (accel ×1.26, turn ×1.12), with a minimum speed equal to boosted gear 3 at full energy. Keep flying even in lower gears, without energy, while slowed or under control effects. While control is locked, fly along the current heading and remain unable to act. Pass through enemy ships with a 25% larger blade radius. Contact deals 15% of the target’s max hull, repeated once per second during continued overlap, regardless of speed." },
     },
     shamisen: {
       name: "Shamisen",
