@@ -1,5 +1,6 @@
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 import { energyProfileForThrottle, energyRateForThrottle, throttleForGear } from "./throttle.js";
+import { createSupportState } from "./haruhi-support.js";
 
 /**
  * @typedef {"neutral"|"bless"|"knows"|"encore"} BunnyForm
@@ -16,7 +17,7 @@ import { energyProfileForThrottle, energyRateForThrottle, throttleForGear } from
  * @property {number} broadcastUntil
  * @property {number|null} companionId 由未来实体事务填写。
  * @property {boolean} companionSpawned 永久生成历史。
- * @property {Object} support 独立支援状态，本阶段不解锁或推进。
+ * @property {Object} support 独立支援状态，由显式来源适配器解锁和推进。
  */
 
 /** @returns {BunnyHaruhiState} */
@@ -26,10 +27,7 @@ export function createBunnyHaruhiState() {
     visitedForms: new Set(), scoutsDisabled: false, positiveSuppressed: false,
     immunityUntil: 0, drainUntil: 0, broadcastUntil: 0,
     companionId: null, companionSpawned: false,
-    support: {
-      supporters: new Set(), alienNextAt: 0, timeTravelerNextAt: 0,
-      queuedBeamAt: [], otherworlderReadyAt: 0, esperAngle: 0,
-    },
+    support: createSupportState(),
   };
 }
 
