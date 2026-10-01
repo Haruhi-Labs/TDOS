@@ -41,17 +41,17 @@ previous_web="$(readlink "$root/$channel/current-web" || true)"
 previous_server="$(readlink "$root/$channel/current-server" || true)"
 restore() {
   echo '部署验证失败，恢复本次涉及的既有进程；统计数据保持不变' >&2
-  if [[ -n "$previous_web" ]]; then pm2 startOrReload "$previous_web/ecosystem.config.json" --only "$web_name" --update-env; else pm2 delete "$web_name" || true; fi
+  if [[ -n "$previous_web" ]]; then node scripts/release/activate-process.cjs "$previous_web/ecosystem.config.json" "$web_name"; else pm2 delete "$web_name" || true; fi
   if [[ "$scope" == full ]]; then
-    if [[ -n "$previous_server" ]]; then pm2 startOrReload "$previous_server/ecosystem.config.json" --only "$ws_name" --update-env; else pm2 delete "$ws_name" || true; fi
+    if [[ -n "$previous_server" ]]; then node scripts/release/activate-process.cjs "$previous_server/ecosystem.config.json" "$ws_name"; else pm2 delete "$ws_name" || true; fi
   fi
 }
 trap restore ERR
 # 首次迁移现有进程时必须先登记旧版本配置，防止失败后丢失回滚目标。
 if pm2 describe "$web_name" >/dev/null 2>&1 && [[ -z "$previous_web" ]]; then trap - ERR; echo '请先登记既有前端的回滚目录' >&2; exit 1; fi
 if [[ "$scope" == full ]] && pm2 describe "$ws_name" >/dev/null 2>&1 && [[ -z "$previous_server" ]]; then trap - ERR; echo '请先登记既有联机服务的回滚目录' >&2; exit 1; fi
-if [[ "$scope" == full ]]; then pm2 startOrReload "$release_dir/ecosystem.config.json" --only "$ws_name" --update-env; fi
-pm2 startOrReload "$release_dir/ecosystem.config.json" --only "$web_name" --update-env
+if [[ "$scope" == full ]]; then node scripts/release/activate-process.cjs "$release_dir/ecosystem.config.json" "$ws_name"; fi
+node scripts/release/activate-process.cjs "$release_dir/ecosystem.config.json" "$web_name"
 node scripts/release/verify-deployment.mjs "http://127.0.0.1:$WEB_PORT/" "ws://127.0.0.1:$WS_PORT/" "$sha" "$scope"
 trap - ERR
 ln -sfn "$release_dir" "$root/$channel/current-web"
