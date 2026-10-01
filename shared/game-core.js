@@ -68,6 +68,7 @@ import {
   createRadarContact as createTeamRadarContact,
   radarMaxDistanceFrom as teamRadarMaxDistanceFrom,
   serializeRadarPassive as serializeTeamRadarPassive,
+  serializeRadarSweep as serializeTeamRadarSweep,
   updateRadarPassive as updateTeamRadarPassive,
 } from "./game/visibility-radar.js";
 import {
@@ -2980,6 +2981,7 @@ class Team {
         sub2: this.cooldowns.sub2,
       },
       visibleEnemyIds: Array.from(this.visibleEnemyIds),
+      radarSweep: serializeTeamRadarSweep(this),
       visionWaves: this.serializeVisionWaves(),
       koizumiImpactWaves: serializeKoizumiImpactWaves(this),
       ships: {

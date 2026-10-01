@@ -11,6 +11,7 @@ import {
 } from "../shared/game-core.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 import { createOnlineStateSync } from "./online/state-sync.js";
+import { bindDirectorCameraInput } from "./battle/director-camera.js";
 import { buildServerUrlCandidates, defaultServerUrl } from "./online/connection-target.js";
 import { createOnlineLobbyView } from "./online/lobby-view.js";
 import {
@@ -97,6 +98,7 @@ let snapshotTransport = null; // 延迟测量、差量解码与快照队列
 let actionTransport = null; // 统一动作协议的远程传输适配器
 let throttleCommandState = null; // 每艘舰待权威快照确认的换挡意图
 let spectatorView = null; // 独立观战展板，只读取房间资料和权威快照
+let spectatorCameraInput = null;
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -448,6 +450,7 @@ function clearMatchRuntime() {
   app.drag = null;
   app.lastRenderState = null;
   app.lastMatchPhase = null;
+  spectatorCameraInput?.cancel();
   camera.reset();
   app.ackSeq = 0;
   app.pendingSubSkillAim = null;
@@ -769,7 +772,7 @@ function refreshSkillButtons(own) {
 }
 
 function updateSpectatorBattleStatus(state) {
-  spectatorView.update({ active: true, room: app.room, state, zoom: camera.zoom });
+  spectatorView.update({ active: true, room: app.room, state, zoom: camera.zoom, targetZoom: camera.targetZoom });
   syncMobileHud(ui, null, { visible: false });
 }
 
@@ -1253,6 +1256,7 @@ function renderBattleFrame() {
   // backing store(设备像素)对逻辑世界(LOGICAL)的比例:整幅画面放大到物理像素 → 矢量线条像素级清晰。
   const scale = canvas.width / LOGICAL;
   camera.updateCamera();
+  if (isSpectatorMode()) spectatorView.updateCamera({ zoom: camera.zoom, targetZoom: camera.targetZoom, maxZoom: camera.maxZoom });
   const view = camera.currentViewState();
   ctx.setTransform(scale, 0, 0, scale, 0, 0); // 基准变换:屏幕/UI 空间(逻辑坐标 → 物理像素)
   ctx.save();
@@ -1398,29 +1402,7 @@ function useSubSkillOnline() {
 }
 
 function bindUiEvents() {
-  // 观战放大后可直接拖动镜头，不占用任何玩家输入或权威状态。
-  let spectatorPan = null;
-  canvas.addEventListener("pointerdown", (event) => {
-    if (!isSpectatorMode() || camera.zoom <= CAMERA_ZOOM_MIN || event.button !== 0) return;
-    const view = camera.currentViewState();
-    spectatorPan = { id: event.pointerId, x: event.clientX, y: event.clientY, view };
-    canvas.setPointerCapture(event.pointerId);
-    event.preventDefault();
-  });
-  canvas.addEventListener("pointermove", (event) => {
-    if (!spectatorPan || spectatorPan.id !== event.pointerId || !isSpectatorMode()) return;
-    const rect = canvas.getBoundingClientRect();
-    const { view } = spectatorPan;
-    camera.centerCameraOn(
-      view.left + view.width / 2 - (event.clientX - spectatorPan.x) * view.width / rect.width,
-      view.top + view.height / 2 - (event.clientY - spectatorPan.y) * view.height / rect.height,
-      true,
-    );
-  });
-  const endSpectatorPan = () => { spectatorPan = null; };
-  canvas.addEventListener("pointerup", endSpectatorPan);
-  canvas.addEventListener("pointercancel", endSpectatorPan);
-  canvas.addEventListener("lostpointercapture", endSpectatorPan);
+  spectatorCameraInput = bindDirectorCameraInput(canvas, camera, { enabled: isSpectatorMode, signal: ac.signal });
   ui.serverTargetValue.textContent = defaultServerUrl();
   profileController.initializeNickname();
   ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
@@ -1764,6 +1746,11 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("wheel", (event) => {
+    if (isSpectatorMode()) {
+      event.preventDefault();
+      camera.zoomByWheel(event);
+      return;
+    }
     if (app.mobileMode || !app.room || app.room.status !== "running") {
       return;
     }
@@ -2083,8 +2070,12 @@ export function mount(root) {
     isMobile: () => app.mobileMode,
     mobileZoomEnabled: () => !isSpectatorMode(), // 观战要纵览全场,不做移动端基础放大
     overviewWhenIdle: () => isSpectatorMode(), // 观战未手动放大时固定全图视角
+    directorMode: isSpectatorMode,
     getTrackedShip: () => isSpectatorMode() ? null : getSelectedShipFromState(currentBattleState()),
-    onZoomChanged: () => updateBattleStatus(currentBattleState()),
+    onZoomChanged: () => {
+      if (isSpectatorMode()) spectatorView.updateCamera({ zoom: camera.zoom, targetZoom: camera.targetZoom, maxZoom: camera.maxZoom });
+      else updateBattleStatus(currentBattleState());
+    },
   });
   ac = new AbortController();
   running = true;
@@ -2100,6 +2091,8 @@ export function mount(root) {
 }
 
 function unmount() {
+  spectatorCameraInput?.cancel();
+  spectatorCameraInput = null;
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
@@ -2116,6 +2109,7 @@ function unmount() {
   battleRenderer?.destroy();
   battleRenderer = null;
   actionTransport = null;
+  spectatorView?.destroy();
   spectatorView = null;
 }
 

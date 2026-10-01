@@ -4,6 +4,7 @@ import { getPortraitAssetUrl } from "../character-select/portraits.js";
 import "./spectator.css";
 
 const SLOTS = ["main", "sub1", "sub2"];
+let nextTooltipId = 0;
 
 function gaugeHTML(kind, label) {
   return `<div class="spectator-gauge" data-gauge="${kind}"><span>${label}</span><span class="spectator-track"><i></i></span><strong>—</strong></div>`;
@@ -17,7 +18,7 @@ function teamHTML(seat) {
       <div class="spectator-ship-head"><span class="spectator-portrait"><img alt="" draggable="false"></span>
         <div class="spectator-identity"><span class="spectator-role">${slotLabel(slot, "short")}</span><h3>—</h3><span class="spectator-ship-state">—</span></div></div>
       ${gaugeHTML("hull", t("舰体"))}${gaugeHTML("energy", t("能量"))}
-      <div class="spectator-skill"><span class="spectator-skill-name">—</span><span class="spectator-skill-readout"><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
+      <div class="spectator-skill"><button type="button" class="spectator-skill-name" disabled>—</button><span class="spectator-skill-readout"><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
     </article>`).join("")}</div>
   </aside>`;
 }
@@ -79,7 +80,99 @@ export function createSpectatorView(battleView) {
     <button type="button" class="spectator-exit">${t("退出观战")}</button>
   </header>${teamHTML("A")}`);
   battleView.insertAdjacentHTML("beforeend", teamHTML("B"));
+  const tooltipId = `spectator-skill-tooltip-${++nextTooltipId}`;
+  battleView.insertAdjacentHTML("beforeend", `<aside id="${tooltipId}" class="spectator-skill-tooltip" role="tooltip" popover="manual" hidden><strong></strong><p></p></aside>`);
+  const tooltip = battleView.querySelector(`#${tooltipId}`);
+  const tooltipName = tooltip.querySelector("strong");
+  const tooltipDescription = tooltip.querySelector("p");
+  const tooltipEvents = new AbortController();
+  const eventOptions = { signal: tooltipEvents.signal };
+  let tooltipTrigger = null;
+  let tooltipPinned = false;
+  let tooltipTimer = 0;
+  function hideTooltip() {
+    clearTimeout(tooltipTimer);
+    tooltipTrigger = null;
+    tooltipPinned = false;
+    if (tooltip.hidePopover && tooltip.matches(":popover-open")) tooltip.hidePopover();
+    tooltip.hidden = true;
+  }
+  function showTooltip(trigger) {
+    clearTimeout(tooltipTimer);
+    if (trigger.disabled || !trigger.dataset.description) return;
+    if (tooltipTrigger !== trigger) tooltipPinned = false;
+    tooltipTrigger = trigger;
+    tooltipName.textContent = trigger.textContent;
+    tooltipDescription.textContent = trigger.dataset.description;
+    tooltip.hidden = false;
+    if (tooltip.showPopover && !tooltip.matches(":popover-open")) tooltip.showPopover();
+    positionTooltip();
+  }
+  function positionTooltip() {
+    // 顶层浮层避开横屏展板的滚动裁剪，并始终留在当前视口内。
+    if (!tooltipTrigger) return;
+    const anchor = tooltipTrigger.getBoundingClientRect();
+    const width = tooltip.offsetWidth;
+    const height = tooltip.offsetHeight;
+    const left = Math.max(10, Math.min(anchor.left, window.innerWidth - width - 10));
+    const below = anchor.bottom + 8;
+    const top = below + height <= window.innerHeight - 10 ? below : anchor.top - height - 8;
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${Math.max(10, Math.min(top, window.innerHeight - height - 10))}px`;
+  }
+  function delayHideTooltip() {
+    clearTimeout(tooltipTimer);
+    tooltipTimer = setTimeout(() => {
+      // 浮层换边时旧位置会产生离开事件；指针仍在技能名或说明上时继续显示。
+      if (!tooltipPinned && !tooltipTrigger?.matches(":hover, :focus-visible") && !tooltip.matches(":hover")) hideTooltip();
+    }, 120);
+  }
+  for (const trigger of battleView.querySelectorAll(".spectator-skill-name")) {
+    trigger.setAttribute("aria-describedby", tooltipId);
+    trigger.addEventListener("pointerenter", (event) => {
+      if (event.pointerType === "touch") return;
+      clearTimeout(tooltipTimer);
+      if (tooltipTrigger) showTooltip(trigger);
+      else tooltipTimer = setTimeout(() => showTooltip(trigger), 180);
+    }, eventOptions);
+    trigger.addEventListener("pointerleave", delayHideTooltip, eventOptions);
+    trigger.addEventListener("focus", () => showTooltip(trigger), eventOptions);
+    trigger.addEventListener("blur", () => {
+      // 通用按压反馈会清理指针焦点；点击打开的说明仍由外部点按或Escape关闭。
+      if (tooltipTrigger === trigger && tooltipPinned) return;
+      if (trigger.matches(":hover")) delayHideTooltip();
+      else hideTooltip();
+    }, eventOptions);
+    trigger.addEventListener("click", () => { showTooltip(trigger); tooltipPinned = true; }, eventOptions);
+  }
+  tooltip.addEventListener("pointerenter", () => clearTimeout(tooltipTimer), eventOptions);
+  tooltip.addEventListener("pointerleave", delayHideTooltip, eventOptions);
+  document.addEventListener("pointerdown", (event) => {
+    if (!event.target.closest(".spectator-skill-name") && !tooltip.contains(event.target)) hideTooltip();
+  }, eventOptions);
+  document.addEventListener("focusin", (event) => {
+    if (!event.target.closest(".spectator-skill-name") && !tooltip.contains(event.target)) hideTooltip();
+  }, eventOptions);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideTooltip();
+  }, eventOptions);
+  document.addEventListener("scroll", (event) => {
+    if (!tooltip.contains(event.target)) positionTooltip();
+  }, { ...eventOptions, capture: true });
+  window.addEventListener("resize", hideTooltip, eventOptions);
   const toolbar = battleView.querySelector(".spectator-toolbar");
+  const zoomOut = toolbar.querySelector('[data-camera="out"]');
+  const zoomIn = toolbar.querySelector('[data-camera="in"]');
+  const zoomReset = toolbar.querySelector('[data-camera="reset"]');
+  function updateCamera({ zoom = 1, targetZoom = zoom, maxZoom = 4 } = {}) {
+    battleView.classList.toggle("spectator-zoomed", zoom > 1.001);
+    const outDisabled = targetZoom <= 1.001;
+    const inDisabled = targetZoom >= maxZoom - 0.001;
+    if (zoomOut.disabled !== outDisabled) zoomOut.disabled = outDisabled;
+    if (zoomIn.disabled !== inDisabled) zoomIn.disabled = inDisabled;
+    const label = zoom <= 1.001 ? t("全图") : `${Math.round(zoom * 100)}%`;
+    if (zoomReset.textContent !== label) zoomReset.textContent = label;
+  }
   const panels = Array.from(battleView.querySelectorAll(".spectator-team")).map((panel) => ({
     panel,
     seat: panel.dataset.seat,
@@ -90,19 +183,17 @@ export function createSpectatorView(battleView) {
     })),
   }));
 
-  function update({ active, room, state, zoom = 1 }) {
+  function update({ active, room, state, zoom = 1, targetZoom = zoom }) {
     battleView.classList.toggle("spectator-shell", active);
     battleView.classList.toggle("spectator-zoomed", active && zoom > 1.001);
     battleView.querySelector(".battle-panel").hidden = active;
     toolbar.hidden = !active;
     for (const { panel } of panels) panel.hidden = !active;
-    if (!active) return;
+    if (!active) { hideTooltip(); return; }
     toolbar.querySelector(".spectator-room-id").textContent = room?.roomId ? `#${room.roomId}` : "";
     const elapsed = Math.max(0, Math.floor(state?.elapsed || 0));
     toolbar.querySelector("time").textContent = state ? `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}` : "—";
-    toolbar.querySelector('[data-camera="out"]').disabled = zoom <= 1.001;
-    toolbar.querySelector('[data-camera="in"]').disabled = zoom >= 2.599;
-    toolbar.querySelector('[data-camera="reset"]').textContent = zoom <= 1.001 ? t("全图") : `${Math.round(zoom * 100)}%`;
+    updateCamera({ zoom, targetZoom });
     for (const { panel, seat, ships } of panels) {
       const player = room?.players?.find((row) => row.seat === seat);
       const team = state?.teams?.[seat];
@@ -130,15 +221,27 @@ export function createSpectatorView(battleView) {
         updateGauge(energy, ship?.alive ? ship.fleetEnergy ?? ship.energy : 0, ship?.fleetMaxEnergy ?? ship?.maxEnergy, Boolean(ship));
         const info = spectatorSkillState(team, ship, slot, characterId);
         skill.dataset.tone = info.tone;
-        skill.querySelector(".spectator-skill-name").textContent = characterId ? skillText(characterId, slot === "main" ? "flagship" : "sub") : "—";
+        const skillName = skill.querySelector(".spectator-skill-name");
+        const mode = slot === "main" ? "flagship" : "sub";
+        const label = characterId ? skillText(characterId, mode) : "—";
+        const description = characterId ? skillText(characterId, mode, "description") : "";
+        // 冷却每帧更新，静态说明不重写，避免悬浮阅读期间闪烁或重置。
+        if (skillName.textContent !== label) skillName.textContent = label;
+        if (skillName.dataset.description !== description) {
+          skillName.dataset.description = description;
+          if (tooltipTrigger === skillName) {
+            if (description) showTooltip(skillName);
+            else hideTooltip();
+          }
+        }
+        skillName.disabled = !description;
         skill.querySelector("strong").textContent = info.status;
         const cooldown = skill.querySelector(".spectator-cooldown");
         cooldown.hidden = !ship?.alive || info.remaining <= 0 || info.tone === "cooldown";
         cooldown.textContent = `${info.remaining.toFixed(1)}s`;
         skill.querySelector("i").style.width = `${info.progress * 100}%`;
-        skill.title = characterId ? `${skillText(characterId, slot === "main" ? "flagship" : "sub", "description")}${info.remaining > 0 ? ` · ${t("冷却{seconds}秒", { seconds: info.remaining.toFixed(1) })}` : ""}` : "";
       }
     }
   }
-  return { update };
+  return { update, updateCamera, destroy() { hideTooltip(); tooltipEvents.abort(); tooltip.remove(); } };
 }

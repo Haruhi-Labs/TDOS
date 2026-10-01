@@ -240,6 +240,11 @@ async function yukiRadarPrivacyCheck() {
     (message) => message.type === "snapshot" || message.type === "snapshot_delta",
   );
   assert(!Object.hasOwn(spectatorSnapshot, "radar"), "长门雷达状态泄露给了观战者");
+  assert.equal(spectatorSnapshot.type, "snapshot", "新进入观战应收到完整首帧");
+  const publicSweep = spectatorSnapshot.state.teams.A.radarSweep;
+  assert(publicSweep?.active, "观战没有收到长门的公开扫线表现");
+  assert(!Object.hasOwn(publicSweep, "contacts"), "私有雷达回波进入了公开扫线");
+  assert(!Object.hasOwn(enemySnapshot.state.teams.A.radarSweep, "contacts"), "私有回波进入了对手的共享状态");
   await terminateClients();
 }
 

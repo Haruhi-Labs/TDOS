@@ -1079,7 +1079,7 @@ export function drawPauseOverlay(ctx) {
 // 世界空间的整帧战场绘制(调用方已设好相机变换)。frame 字段:
 //   state              显示状态(单人=本地仿真序列化;在线=插值快照)
 //   ownTeam/enemyTeam  己方/敌方队伍(观战时 own 取 A 视角)
-//   spectating         观战:无迷雾、双方航线/扇区/视野圈、名牌常驻
+//   spectating         观战:无迷雾、双方航线/视野圈、名牌常驻
 //   visibleEnemyIds    己方可见敌单位 id 集合(Set)
 //   selectedKeyForTeam(team) → 该队高亮舰 key;非观战时敌方应返回 null
 //   routeForShip(team, ship) → 该舰待显示航线(在线在此合并本地预测覆盖;缺省取 ship.route)
@@ -1165,7 +1165,7 @@ export function drawBattleWorld(ctx, frame) {
     drawTeamVisionCircles(ctx, state.teams?.B, "#ff95a026");
   }
 
-  // 航线:非观战画己方全部可控航线;观战只画双方玩家当前所选舰船的航线。
+  // 观战呈现双方完整航线；选中舰高亮，其余航线沿用低透明表现。
   const routeTeams = spectating ? [state.teams?.A, state.teams?.B] : [ownTeam];
   for (const team of routeTeams) {
     if (!team || !team.ships) {
@@ -1174,9 +1174,6 @@ export function drawBattleWorld(ctx, frame) {
     const selectedKey = selectedKeyForTeam(team);
     for (const ship of teamAllShips(team)) {
       if (!ship || !ship.alive) {
-        continue;
-      }
-      if (spectating && ship.key !== selectedKey) {
         continue;
       }
       const route = routeForShip(team, ship);
@@ -1268,14 +1265,13 @@ export function drawBattleWorld(ctx, frame) {
   drawShipDestructionEffects(ctx, frame.destructionEffects);
   drawShamisenHuntKillEffects(ctx, state.shamisenHuntKillEffects);
 
-  // 选中舰的火力扇区 + 视野圈;观战时双方都画,便于理解走位与输出朝向
+  // 射界倍率圈只供玩家操作；观战保留双方视野圈，避免扇区与倍率文字遮挡战场。
   if (spectating) {
     for (const team of [state.teams?.A, state.teams?.B]) {
       if (!team) {
         continue;
       }
       const key = selectedKeyForTeam(team);
-      drawSelectedFireArc(ctx, team, key);
       drawSelectedVisionCircle(ctx, team, key);
     }
   } else {
