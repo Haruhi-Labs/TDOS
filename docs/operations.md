@@ -55,7 +55,7 @@ main 前进后重新基于最新 main 准备候选并更新评估。发布后把
 2. 为 dev/main 禁止强推和删除，要求 PR、至少一名评审及状态检查 `完整候选校验`，要求分支基于最新基线。main 的发布相关文件由 CODEOWNERS 审阅，明确合并指令写在评审中；不得将工作流成功等同授权。
 3. 建立 GitHub `staging` 环境（仅 dev），以及 `production` 环境（仅 dev/main 可发起手动工作流，但部署代码始终取精确 main SHA）。production 设置维护者审批并禁止自行审批；在默认分支运行手动工作流，不能从任意功能分支运行带生产凭据的作业。
 4. 两个环境分别设置 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`。公钥校验使用预先核实的 known_hosts，不在 CI 临时信任扫描结果。测试部署账号应无权读取或修改生产目录、凭据和进程，禁止把生产 root SSH 密钥提供给 dev 工作流。
-5. 在发布主机安装受控入口 [deploy.sh](../scripts/release/deploy.sh) 到 `/srv/tdos/bin/deploy.sh`；部署用户需有 Node、npm、PM2、tar 和 flock。按环境复制 [staging.env.sample](../deploy/staging.env.sample) 与 [production.env.sample](../deploy/production.env.sample) 到 `/srv/tdos/config/`，权限 600，保持生产原有统计目录、盐与公钥。测试默认端口必须空闲。
+5. 在发布主机安装受控入口 [deploy.sh](../scripts/release/deploy.sh) 到 `/srv/tdos/bin/deploy.sh`，同时安装 [activate-process.cjs](../scripts/release/activate-process.cjs) 到 `/srv/tdos/bin/activate-process.cjs`。两者由运维维护，不依赖候选包是否包含新脚本，以兼容选择性晋级与旧版本回滚；部署用户需有 Node、npm、PM2、tar 和 flock。按环境复制 [staging.env.sample](../deploy/staging.env.sample) 与 [production.env.sample](../deploy/production.env.sample) 到 `/srv/tdos/config/`，权限 600，保持生产原有统计目录、盐与公钥。测试默认端口必须空闲。
 6. 首次接管生产进程前，将旧版本和可恢复的 `ecosystem.config.json` 登记为 `production/current-web`、`production/current-server`。脚本会拒绝接管有进程却没有回滚配置的环境。
 7. 安装 [test-game.nginx.conf](../deploy/test-game.nginx.conf) 到主站现有 HTTPS server，替换旧测试 location；`nginx -t` 通过后重载。确认 `/test-game/ws/` 只到 21256，不改变正式代理。
 8. 合并一个 dev PR，核对 Actions 记录、公开 `build-info.json`、静态资源与真实双客户端。正式环境的首次接管和发布另需明确指令。
@@ -74,7 +74,7 @@ GitHub 的环境保护和分支保护原理分别见[部署环境](https://docs.
 
 ## 回滚与持久数据
 
-`current-web` 和 `current-server` 分别记录最近成功激活的目录，静态热更新不改 server 指针。旧发布目录和统计目录均保留。需要回滚到更早版本时，根据部署记录选择对应的两个目录，使用其 `ecosystem.config.json`，由 `activate-process.cjs` 只恢复目标进程（在包含该脚本的发布目录执行），再核对公开构建与联机握手，并更新相应指针。
+`current-web` 和 `current-server` 分别记录最近成功激活的目录，静态热更新不改 server 指针。旧发布目录和统计目录均保留。需要回滚到更早版本时，根据部署记录选择对应的两个目录，使用其 `ecosystem.config.json`，由 `/srv/tdos/bin/activate-process.cjs` 只恢复目标进程，再核对公开构建与联机握手，并更新相应指针。
 
 回滚不删除 JSONL、匿名盐或身份数据；未标记版本、v0.3 和更早版本统一展示为“v0.3及之前的版本”；分组发生在读取和聚合时，原始版本与日志内容保持不变。正式站升级必须沿用原 `STATS_DATA_DIR` 和匿名盐，首次启动即按同一规则恢复，不需要改写或搬入测试数据。当前仍为 v0.3 时新对局继续归该组，后续新版本独立统计。旧代码可能不支持分版本查询，回滚时应同步选择兼容的前后端。
 
