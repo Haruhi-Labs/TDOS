@@ -195,6 +195,10 @@ async function rulesetHandshakeCheck() {
     (message) => message.type === "ruleset_mismatch" && message.blockedType === "create_room",
   );
   assert.equal(blocked.clientRulesetVersion, "ruleset-20260701-01", "拦截结果未保留客户端规则版本");
+  for (const type of ["set_ready", "start_match"]) {
+    client.send({ type, ready: true });
+    await client.waitFor((message) => message.type === "ruleset_mismatch" && message.blockedType === type);
+  }
 
   client.send({
     type: "protocol_hello",

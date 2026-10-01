@@ -9,7 +9,6 @@ import {
   DEFAULT_WORLD_SIZE,
   TICK_RATE,
   SNAPSHOT_RATE,
-  normalizeLoadout,
 } from "../shared/game-core.js";
 import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
@@ -324,6 +323,9 @@ const {
   joinRoom,
   leaveRoom,
   spectateRoom,
+  updateLoadout,
+  setPlayerReady,
+  startTournament,
 } = createRoomLifecycle({
   rooms,
   registry: roomRegistry,
@@ -377,6 +379,7 @@ wss.on("connection", (ws) => {
     networkProtocolVersion: 1,
     rulesetVersion: "",
     rulesetCompatible: true,
+    supportsTournamentRooms: false,
     statisticsProfile: null,
     identity: null,
   };
@@ -390,6 +393,7 @@ wss.on("connection", (ws) => {
     build: NETWORK_BUILD,
     gameVersion: GAME_VERSION,
     buildId: process.env.GAME_BUILD_ID || "local",
+    roomKinds: ["standard", "tournament"],
     protocolVersion: NETWORK_PROTOCOL_VERSION,
     rulesetVersion: RULESET_VERSION,
     serverTime: Date.now(),
@@ -481,14 +485,19 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "set_loadout") {
-      player.loadout = normalizeLoadout(data.loadout || {}, DEFAULT_TEAM_LOADOUT);
-      if (player.roomId) {
+      const result = updateLoadout(player, data.loadout);
+      if (!result.ok) {
+        sendError(player, result.message);
+        // 开赛与保存阵容交错时，恢复客户端显示的权威阵容。
         const room = rooms.get(player.roomId);
-        if (room && room.status === "waiting") {
-          sendRoomStateToMembers(room);
-        }
+        if (room) sendToPlayer(player, buildRoomStatePayload(room, player.id));
       }
-      broadcastLobby();
+      return;
+    }
+
+    if (type === "set_ready" || type === "start_match") {
+      const result = type === "set_ready" ? setPlayerReady(player, data.ready) : startTournament(player);
+      if (!result.ok) sendError(player, result.message);
       return;
     }
 
@@ -535,7 +544,7 @@ wss.on("connection", (ws) => {
     if (type === "create_room") {
       const visibility = data.visibility === "private" ? "private" : "public";
       const mode = data.mode === "ai" ? "ai" : "pvp";
-      const result = createRoom(player, visibility, mode);
+      const result = createRoom(player, visibility, mode, data.kind);
       if (!result.ok) {
         sendError(player, result.message);
       }
@@ -586,6 +595,7 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "protocol_hello") {
+      player.supportsTournamentRooms = Array.isArray(data.roomKinds) && data.roomKinds.includes("tournament");
       const protocolVersion = Number(data.protocolVersion);
       if (Number.isInteger(protocolVersion) && protocolVersion >= 2 && player.networkProtocolVersion < 2) {
         player.networkProtocolVersion = Math.min(protocolVersion, NETWORK_PROTOCOL_VERSION);
