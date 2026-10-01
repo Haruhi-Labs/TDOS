@@ -893,7 +893,7 @@ export const EN_MESSAGES = {
     "净化": "Cleanse",
     "猫爪爆发": "Claw Burst",
     "钞能力 x{count}": "Money Power x{count}",
-    "我在这里！": "I'M HERE!",
+    "我在这里": "I'M HERE!",
     "找到了宇宙人！": "FOUND AN ALIEN!",
     "找到了未来人！": "FOUND A TIME TRAVELER!",
     "找到了异世界人！": "FOUND A SLIDER!",

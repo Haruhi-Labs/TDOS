@@ -216,7 +216,7 @@ export function createNativeBattleVisualFixture() {
       id: 142,
       x: 720,
       y: 180,
-      text: "我在这里！",
+      text: "我在这里",
       color: "#ffe59a",
       emphasis: "announcement",
       life: 1.8,
