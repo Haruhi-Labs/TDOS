@@ -1,3 +1,4 @@
+import { IS_TEST_BUILD, gameStorageKey } from "./deployment.js";
 // ═══════════════════════════════════════════════════════════════
 // 可选统一身份状态层
 // · 浏览器只保存 PKCE 临时参数，不保存访问令牌或长期会话；
@@ -6,7 +7,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 const CLIENT_ID = "star-game";
-const PKCE_STORAGE_KEY = "haruhi-game-pkce-v1";
+const PKCE_STORAGE_KEY = gameStorageKey("haruhi-game-pkce-v1");
 const SESSION_ENDPOINT = "/api/game/session";
 const REQUEST_TIMEOUT_MS = 5000;
 const IDENTITY_CHANGE_EVENT = "haruhi:identity-change";
@@ -57,6 +58,7 @@ async function responseJson(response) {
 }
 
 export function refreshGameIdentity({ force = false } = {}) {
+  if (IS_TEST_BUILD) return Promise.resolve(publish(null));
   if (!force && identityState.ready) return Promise.resolve(getGameIdentity());
   if (refreshPromise) return refreshPromise;
   refreshPromise = fetch(SESSION_ENDPOINT, {
@@ -117,6 +119,7 @@ function expectedIssuer() {
 }
 
 export async function beginGameIdentityLogin() {
+  if (IS_TEST_BUILD) throw new Error("测试服使用游客身份");
   if (!window.crypto?.subtle || !window.sessionStorage) {
     throw new Error("当前浏览器不支持安全登录流程");
   }
@@ -148,6 +151,7 @@ function readPkceState() {
 }
 
 export async function completeGameIdentityLogin(search = window.location.search) {
+  if (IS_TEST_BUILD) throw new Error("测试服使用游客身份");
   const params = new URLSearchParams(search);
   const stored = readPkceState();
   sessionStorage.removeItem(PKCE_STORAGE_KEY);
@@ -210,6 +214,7 @@ async function gamePost(path) {
 }
 
 export async function logoutGameIdentity() {
+  if (IS_TEST_BUILD) return publish(null);
   try {
     await gamePost(`${SESSION_ENDPOINT}/logout`);
   } finally {
@@ -218,6 +223,7 @@ export async function logoutGameIdentity() {
 }
 
 export async function requestGameIdentityTicket() {
+  if (IS_TEST_BUILD) return null;
   if (!identityState.ready) await refreshGameIdentity();
   if (!identityState.user) return null;
   try {

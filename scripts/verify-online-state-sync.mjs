@@ -99,6 +99,8 @@ nextState.teams.A.extraShips[0].x = 36;
 previousState.teams.A.haruhiFlagship.esperOrb = { x: 30, y: 40, angle: 6.1, radius: 10, absorbRadius: 20 };
 nextState.teams.A.haruhiFlagship.esperOrb = { x: 50, y: 60, angle: 0.1, radius: 10, absorbRadius: 20 };
 previousState.teams.A.koizumiBarrier = {
+  remainingHits: 0,
+  maxHits: 15,
   x: 10,
   y: 20,
   radius: 150,
@@ -108,6 +110,8 @@ previousState.teams.A.koizumiBarrier = {
   recoveryAge: 0,
 };
 nextState.teams.A.koizumiBarrier = {
+  remainingHits: 15,
+  maxHits: 15,
   x: 30,
   y: 20,
   radius: 170,
@@ -141,6 +145,7 @@ assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.x, 40, "春日超能�
 assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.y, 50, "春日超能力者光球纵坐标未平滑插值");
 assert.equal(interpolated.teams.A.koizumiBarrier.radius, 160, "古泉能量圈半径未平滑插值");
 assert.equal(interpolated.teams.A.koizumiBarrier.active, true, "古泉能量圈生效状态没有采用最新权威帧");
+assert.equal(interpolated.teams.A.koizumiBarrier.remainingHits, 15, "次数盾剩余次数应直接采用最新权威帧，不能插值为小数");
 assert(
   Math.abs(interpolated.koizumiBarrierImpacts[0].life - 0.6) < 1e-9,
   "古泉能量圈受击动画寿命未平滑插值",
@@ -227,4 +232,56 @@ app.snapshots = [{ tick: 0, state: battleState(0), serverTimeMs: 1000, receivedA
 now = 1000;
 assert(sync.getRenderState()?.teams?.A?.ships?.main, "单快照无法生成显示状态");
 
-console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈/猎杀与勇者之力特效插值、额外舰船、弹体与边界外推均保持一致。");
+// 复现观战7.5Hz下，后一快照清理短特效导致整段插值提前丢失的缺陷。
+const beforeRemoval = battleState(10);
+const afterRemoval = battleState(10 + 4 / 30);
+const shortVisual = { id: 400, x: 40, y: 40, radius: 10, life: 0.09, maxLife: 0.35 };
+for (const field of ["bursts", "floatingTexts", "koizumiBarrierImpacts", "shamisenHuntKillEffects", "haruhiHeroPowerEffects"]) {
+  beforeRemoval[field] = [{ ...shortVisual, phase: "shock", progress: 0.7, kind: field === "bursts" ? "burst" : field }];
+}
+for (const seat of ["A", "B"]) {
+  beforeRemoval.teams[seat].beams = [{ ...shortVisual, phase: "fire", x1: 10, y1: 10, x2: 90, y2: 90 }];
+  beforeRemoval.teams[seat].visionWaves = [{ id: 401, emittedAt: 9, expiresAt: 10.09, speed: 200 }];
+  beforeRemoval.teams[seat].koizumiImpactWaves = [{ id: 402, emittedAt: 9, expiresAt: 10.09, speed: 200 }];
+}
+beforeRemoval.projectiles = [{ id: 403, alive: true, x: 40, y: 40, targetX: 90, targetY: 40, speed: 200 }];
+const sourceCopy = structuredClone(beforeRemoval);
+function removalFrame(ratio) {
+  return sync.interpolateSnapshotState({ tick: 300, state: beforeRemoval }, { tick: 304, state: afterRemoval }, ratio);
+}
+const fadingFrame = removalFrame(0.25);
+const expiredFrame = removalFrame(0.8);
+for (const field of ["bursts", "floatingTexts", "koizumiBarrierImpacts", "shamisenHuntKillEffects", "haruhiHeroPowerEffects"]) {
+  assert.equal(fadingFrame[field].length, 1, `${field}在显示寿命结束前丢失`);
+  assert(Math.abs(fadingFrame[field][0].life - (0.09 - 1 / 30)) < 1e-9, `${field}残余动画没有按时间淡出`);
+  assert.equal(expiredFrame[field].length, 0, `${field}到期后仍在显示`);
+}
+assert.equal(fadingFrame.bursts[0].radius, 12, "消退中的命中爆发没有继续扩散");
+assert.equal(fadingFrame.projectiles.length, 0, "命中后的弹体被错误保留为幽灵弹");
+for (const seat of ["A", "B"]) {
+  assert.equal(fadingFrame.teams[seat].beams.length, 1, `${seat}方激光被提前清除`);
+  assert.equal(expiredFrame.teams[seat].beams.length, 0, `${seat}方激光到期后残留`);
+  assert.equal(fadingFrame.teams[seat].visionWaves.length, 1, `${seat}方视野波被提前清除`);
+  assert.equal(fadingFrame.teams[seat].koizumiImpactWaves.length, 1, `${seat}方撞击波被提前清除`);
+  assert.equal(expiredFrame.teams[seat].visionWaves.length, 0, `${seat}方视野波到期后残留`);
+  assert.equal(expiredFrame.teams[seat].koizumiImpactWaves.length, 0, `${seat}方撞击波到期后残留`);
+}
+const agingFrame = sync.extrapolateState(beforeRemoval, 0.05);
+assert(Math.abs(agingFrame.koizumiBarrierImpacts[0].life - 0.04) < 1e-9, "护盾受击在外推期间冻结");
+for (const seat of ["A", "B"]) {
+  assert(Math.abs(agingFrame.teams[seat].beams[0].life - 0.04) < 1e-9, `${seat}方激光在外推期间冻结`);
+}
+assert.deepEqual(beforeRemoval, sourceCopy, "特效补帧写回了权威状态");
+const beamCharge = battleState(20);
+const beamFire = battleState(20 + 4 / 30);
+beamCharge.teams.A.beams = [{ ...shortVisual, phase: "charge", progress: 0.99, maxLife: 1.05 }];
+beamFire.teams.A.beams = [{ ...shortVisual, phase: "fire", progress: 1, life: 0.2, maxLife: 0.26 }];
+const releasedBeam = sync.interpolateSnapshotState({ tick: 600, state: beamCharge }, { tick: 604, state: beamFire }, 0.5).teams.A.beams[0];
+assert.equal(releasedBeam.maxLife, 0.26, "激光释放阶段混入了蓄力寿命，导致射线亮度变弱");
+assert.equal(releasedBeam.life, 0.2, "激光跨阶段寿命被错误插值");
+beamFire.teams.A.beams = [];
+beamFire.teams.A.ships.main.alive = false;
+const cancelledBeam = sync.interpolateSnapshotState({ tick: 600, state: beamCharge }, { tick: 604, state: beamFire }, 0.25);
+assert.equal(cancelledBeam.teams.A.beams.length, 0, "已取消的蓄力被错误补成仍在施法");
+
+console.log("在线显示状态校验通过：航线覆盖、舰船/光球/能量圈/猎杀与勇者之力特效插值、额外舰船、弹体与边界外推、双方短特效自然淡出均保持一致。");

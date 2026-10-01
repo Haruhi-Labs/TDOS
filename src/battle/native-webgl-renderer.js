@@ -1,7 +1,8 @@
+import { gameStorageKey } from "../deployment.js";
 import { acquireBattleGl, NativeWebGLDriver } from "./webgl/driver.js";
 import { NativeBattleContext } from "./webgl/native-context.js";
 
-const RENDERER_SESSION_KEY = "haruhi-battle-renderer-fallback-v1";
+const RENDERER_SESSION_KEY = gameStorageKey("haruhi-battle-renderer-fallback-v1");
 const DEFAULT_CONTEXT_LOSS_TIMEOUT_MS = 2500;
 
 function storedRendererMode() {
@@ -75,6 +76,7 @@ export function createNativeBattleRenderer(canvas, {
         ctx: fallback,
         mode: "canvas2d",
         native: false,
+        maxCanvasDimension: Infinity,
         beginFrame() {},
         present() {},
         recoverFromFailure() { return false; },
@@ -171,6 +173,7 @@ export function createNativeBattleRenderer(canvas, {
     ctx,
     mode,
     native: true,
+    maxCanvasDimension: driver.maxCanvasDimension,
     beginFrame() {
       ctx.beginFrame({ skipDriver: contextLost });
     },

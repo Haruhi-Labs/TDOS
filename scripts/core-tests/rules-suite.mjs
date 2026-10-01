@@ -2,7 +2,6 @@ import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
   CHARACTER_DEFS,
   ENERGY_GEAR_PROFILES,
-  EMERGENCY_BRAKE_COST,
   MANUAL_SCOUT_COOLDOWN,
   MatchSimulation,
   THROTTLE_GEAR_VALUES,
@@ -14,7 +13,6 @@ import {
   throttleGearForValue,
 } from "../../shared/game-core.js";
 import {
-  BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR,
   BLADE_QUEEN_RANGE_MULTIPLIER,
   HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
 } from "../../shared/game/collision-system.js";
@@ -25,9 +23,13 @@ import {
   HARUHI_SUPPORTS,
   haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
-import { KOIZUMI_BARRIER_DISABLE_SECONDS } from "../../shared/game/koizumi-barrier.js";
-import { updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
+import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
+import { beginKoizumiOrbReturn, updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
+import { serializeShipStatusEffects } from "../../shared/game/status-effects.js";
 import { DAMAGE_KIND } from "../../shared/game/damage.js";
+import { applyHaruhiHeroPowerShock } from "../../shared/game/haruhi-hero-power.js";
+import { applyMatchAction } from "../../shared/game/action-dispatcher.js";
+import { matchActions } from "../../shared/protocol/match-actions.js";
 import { assert, runSteps } from "./helpers.mjs";
 
 function closeRangeCombatCheck() {
@@ -217,26 +219,23 @@ function boundaryRouteThrottleCheck() {
   );
 }
 
-function emergencyBrakeCheck() {
+function removedBrakeCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
-  const teamA = sim.teamA;
-  const main = teamA.ships.main;
-
-  main.angle = 0;
-  main.speed = main.effectiveSpeed();
-  main.command.x = main.x + 420;
-  main.command.y = main.y;
-  main.route = null;
-
-  const beforeEnergy = teamA.availableEnergyForShip(main);
-  const ok = sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" });
-  assert(ok, "急刹动作触发失败");
-  assert(teamA.availableEnergyForShip(main) <= beforeEnergy - EMERGENCY_BRAKE_COST + 0.01, "急刹未正确扣除能量");
-  assert(main.speed < main.effectiveSpeed() * 0.4, "急刹未立即显著压低速度");
-
-  runSteps(sim, 0.4);
-  assert(main.speed < 6, "急刹持续期内减速仍不明显");
-  assert(main.effects.brakeCooldownUntil > sim.elapsed, "急刹未进入冷却");
+  const ship = sim.teamA.ships.main;
+  ship.speed = ship.effectiveSpeed();
+  ship.command = { x: ship.x + 420, y: ship.y };
+  const before = JSON.stringify(sim.serializeState());
+  assert(!sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" }), "移除后旧急刹动作必须被拒绝");
+  assert(JSON.stringify(sim.serializeState()) === before, "旧急刹动作不能扣能量、减速或写入冷却");
+  assert(typeof sim.teamA.emergencyBrake === "undefined", "权威队伍不应残留急刹接口");
+  for (const state of Object.values(sim.serializeState().teams.A.ships)) {
+    assert(!("braking" in state) && !("brakeCooldown" in state), "公开快照不应残留急刹状态");
+  }
+  assert(!("brakeUntil" in ship.effects) && !("brakeCooldownUntil" in ship.effects), "舰船不应残留急刹计时器");
+  assert(sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 0 }), "移除急刹后 P 档必须仍然可用");
+  ship.update(0.1);
+  assert(ship.speed > 0 && ship.speed < ship.effectiveSpeed(), "P 档应沿原推进逻辑自然减速");
+  assert(sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 1 }), "前进档位必须仍可恢复");
 }
 
 function autoScoutCheck() {
@@ -929,6 +928,7 @@ function koizumiFlagshipBarrierCheck() {
       assert(!haruhiOtherworlderReady(attackingTeam), "异世界人撞破能量圈后没有进入原有8秒碰撞冷却");
     }
     ramSim.elapsed += KOIZUMI_BARRIER_DISABLE_SECONDS + 0.01;
+    ramSim.updateProjectiles(0);
     assert(defendingTeam.serialize().koizumiBarrier.active, `${ramKind}破盾5秒后能量圈没有自动恢复`);
   };
 
@@ -957,6 +957,128 @@ function koizumiFlagshipBarrierCheck() {
   normalSim.resolveKoizumiBarrierRamContacts();
   assert(normalSim.teamA.serialize().koizumiBarrier.active, "普通舰船接触错误击破了古泉能量圈");
   assert(normalSim.koizumiBarrierImpacts.length === 0, "普通舰船接触错误生成了破盾动画");
+}
+
+function koizumiBarrierChargesCheck() {
+  const createScenario = () => {
+    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: {
+      A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
+      B: { main: "kyon", sub1: "haruhi", sub2: "future1096" },
+    } });
+    sim.setCombatEnabled("A", false);
+    sim.setCombatEnabled("B", false);
+    const main = sim.teamA.ships.main;
+    main.x = main.previousX = 720;
+    main.y = main.previousY = 720;
+    const attacker = sim.teamB.ships.main;
+    attacker.x = main.x + main.effectiveVision() + 90;
+    attacker.y = main.y;
+    attacker.angle = Math.PI / 2;
+    sim.teamB.visibleEnemyIds = new Set([main.id]);
+    const shot = (start = main.effectiveVision() + 40, end = 0, team = sim.teamB, y = 0) => {
+      attacker.cooldown = 0;
+      const previousCount = sim.projectiles.length;
+      attacker.tryAttack(sim, sim.teamA);
+      assert(sim.projectiles.length === previousCount + 1, "次数盾测试未生成真实炮弹");
+      const projectile = sim.projectiles.at(-1);
+      projectile.x = main.x + start;
+      projectile.y = main.y + y;
+      projectile.targetX = main.x + end;
+      projectile.targetY = main.y + y;
+      projectile.speed = 1000;
+      projectile.team = team;
+      return projectile;
+    };
+    return { sim, main, attacker, shot, barrier: () => sim.teamA.serialize().koizumiBarrier };
+  };
+  const { sim, main, shot, barrier } = createScenario();
+  const hullBefore = main.hp;
+  assert(barrier().remainingHits === KOIZUMI_BARRIER_MAX_HITS, "古泉开局护盾不是15次");
+  for (let i = 0; i < 14; i += 1) shot();
+  sim.updateProjectiles(0.1);
+  assert(barrier().active && barrier().remainingHits === 1, "同一帧14颗子弹没有逐颗扣除盾次数");
+  assert(main.hp === hullBefore && sim.projectiles.length === 0, "前14颗子弹没有完整拦截");
+  shot();
+  shot();
+  sim.updateProjectiles(0.1);
+  assert(!barrier().active && barrier().remainingHits === 0, "第15颗子弹没有击破次数盾");
+  assert(sim.projectiles.length === 1, "缓存几何令破盾后同帧第16颗子弹仍被吸收");
+  assert(main.hp === hullBefore, "第15次拦截仍应保护舰体");
+  sim.updateProjectiles(0.2);
+  assert(main.hp < hullBefore, "破盾后第16颗子弹没有伤害圈内舰船");
+  assert(sim.koizumiBarrierImpacts.some((impact) => impact.kind === "break"), "次数耗尽未生成破盾反馈");
+
+  sim.elapsed = 4.9;
+  shot();
+  sim.updateProjectiles(0.1);
+  assert(Math.abs(barrier().disabledRemaining - 5) < 1e-9, "敌弹入圈没有重新开始完整5秒静默计时");
+  sim.elapsed = 5;
+  sim.updateProjectiles(0);
+  assert(!barrier().active, "原破盾5秒截止时忽略了后续敌弹穿越");
+  sim.projectiles = [];
+  sim.elapsed = 8;
+  shot(main.effectiveVision() - 30, main.effectiveVision() + 30);
+  sim.updateProjectiles(0.1);
+  assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "敌弹从圈内向外穿越没有重置修复计时");
+  sim.elapsed = 12.9;
+  shot(main.effectiveVision() - 30, main.effectiveVision() + 30, sim.teamA);
+  sim.updateProjectiles(0.1);
+  assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "己方子弹穿越错误阻止修复");
+  sim.elapsed = 12.95;
+  shot(60, 70);
+  shot(main.effectiveVision() + 30, main.effectiveVision() + 30, sim.teamB, 200);
+  sim.updateProjectiles(0.01);
+  assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "圈内飞行或圈外未相交子弹错误重置静默计时");
+  sim.projectiles = [];
+  sim.elapsed = 13;
+  assert(!barrier().active && sim.teamA.koizumiBarrier.remainingHits === 0, "几何查询或序列化提前写回护盾修复状态");
+  sim.updateProjectiles(0);
+  assert(barrier().active && barrier().remainingHits === 15, "连续5秒无敌弹穿越后未恢复完整15次");
+
+  const crossing = createScenario();
+  crossing.sim.teamA.koizumiBarrier.remainingHits = 0;
+  crossing.sim.teamA.koizumiBarrier.disabledUntil = 5;
+  crossing.sim.elapsed = 4.99;
+  crossing.shot(crossing.main.effectiveVision() + 30, -crossing.main.effectiveVision() - 30);
+  crossing.sim.updateProjectiles(1);
+  assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "单帧贯穿整个护盾圆的高速敌弹没有阻止修复");
+  crossing.sim.projectiles = [];
+  crossing.sim.elapsed = crossing.sim.teamA.koizumiBarrier.disabledUntil;
+  crossing.shot();
+  crossing.sim.updateProjectiles(0.1);
+  assert(!crossing.barrier().active, "修复截止帧仍有敌弹穿越时提前恢复了护盾");
+  crossing.sim.projectiles = [];
+  crossing.sim.elapsed += 1;
+  crossing.main.previousX = crossing.main.x;
+  crossing.main.x += 60;
+  const movingShot = crossing.shot(130, 130);
+  movingShot.speed = 0;
+  crossing.sim.updateProjectiles(0.1);
+  assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "移动护盾边界扫过敌弹没有重置计时");
+  crossing.sim.projectiles = [];
+  crossing.main.previousX = crossing.main.x;
+  crossing.sim.elapsed += 1;
+  const smallCrossing = crossing.shot();
+  const contactRadius = crossing.main.effectiveVision() + smallCrossing.radius;
+  smallCrossing.x = crossing.main.x + contactRadius + 0.1;
+  smallCrossing.targetX = crossing.main.x + contactRadius - 0.1;
+  crossing.sim.updateProjectiles(0.01);
+  assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, `贴近边界的小幅敌弹穿越被入圈容差漏计：${crossing.barrier().disabledRemaining}`);
+
+  const beams = createScenario();
+  for (let hit = 0; hit < 16; hit += 1) {
+    assert(beams.sim.teamB.queueBeamDirection(beams.attacker, -1, 0), "次数盾测试未生成射线");
+    const beam = beams.sim.teamB.beams.at(-1);
+    beam.life = 0;
+    beams.sim.teamB.resolveChargedBeams(beams.sim.teamA);
+    assert(Boolean(beam.blockedByBarrier) === (hit < 15), "光线没有遵循15次盾的拦截边界");
+    assert(beams.barrier().remainingHits === Math.max(0, 14 - hit), "一次独立光线没有只消耗一次盾");
+    beams.sim.teamB.resolveChargedBeams(beams.sim.teamA);
+    assert(beams.barrier().remainingHits === Math.max(0, 14 - hit), "已结算光线的视觉存续重复消耗了盾次数");
+  }
+  const snapshot = sim.serializeState();
+  assert(snapshot.teams.A.koizumiBarrier.maxHits === 15 && snapshot.teams.A.koizumiBarrier.remainingHits === 15,
+    "剩余次数没有进入单人、联机、观战共享快照");
 }
 
 function koizumiImpactWaveCheck() {
@@ -1193,6 +1315,79 @@ function koizumiOrbRamCheck() {
   const hpAfterReturn = returning.hp;
   returning.takeDamage(20, returnSim.teamB.ships.main, returnSim);
   assert(returning.hp < hpAfterReturn, "古泉结束光球形态后仍然免疫伤害");
+}
+
+function koizumiControlImmunityCheck() {
+  const setup = (seat, phase, enemyMain = "asakura") => {
+    const loadouts = {
+      A: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
+      B: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
+    };
+    loadouts[seat === "A" ? "B" : "A"].main = enemyMain;
+    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: loadouts });
+    const team = sim.teamBySeat(seat);
+    const enemy = sim.enemyTeamBySeat(seat);
+    team.splitLevel = enemy.splitLevel = 2;
+    const ship = team.ships.sub1;
+    applyHaruhiHeroPowerShock(ship, 0);
+    sim.elapsed = 2.1;
+    ship.collisionSlowUntil = 5;
+    ship.forcedKnockback = { startedAt: 2, endsAt: 3, fromX: 400, fromY: 500, toX: 600, toY: 500 };
+    ship.clawMarks = { ...ship.clawMarks, stacks: 1, sourceSeat: enemy.seat, expiresAt: 10 };
+    assert(team.castSubSkill("sub1"), "光球免控测试未能施放技能");
+    assert(ship.heroPowerShock.recoveryUntil === 0 && !ship.forcedKnockback && ship.collisionSlowUntil === 0, "进入光球没有清除已有控制");
+    assert(ship.clawMarks.stacks === 1, "光球免控错误清除了非控制标记");
+    Object.assign(ship, { x: 420, y: 500, angle: 0, command: { x: 1200, y: 500 }, route: null });
+    ship.koizumiOrb.previousX = ship.x;
+    ship.koizumiOrb.previousY = ship.y;
+    if (phase === "returning") beginKoizumiOrbReturn(ship);
+    return { sim, team, enemy, ship };
+  };
+  for (const seat of ["A", "B"]) for (const phase of ["active", "returning"]) {
+    const { sim, team, enemy, ship } = setup(seat, phase);
+    const speedBeforeShock = ship.speed;
+    assert(!applyHaruhiHeroPowerShock(ship, sim.elapsed), "光球仍被勇者之力控制");
+    assert(ship.speed === speedBeforeShock && !ship.isControlLocked(), "勇者之力仍然停止光球");
+    assert(ship.canControl() === (phase === "active"), "光球免控错误改变了主动飞行或归航的操作权限");
+
+    const enemyOrb = enemy.ships.sub1;
+    assert(enemy.castSubSkill("sub1"), "光球免控测试未能施放敌方光球");
+    Object.assign(enemyOrb, { x: ship.x + 10, y: ship.y });
+    enemyOrb.koizumiOrb.previousX = ship.x - 60;
+    enemyOrb.koizumiOrb.previousY = ship.y;
+    sim.resolveKoizumiOrbContacts();
+    assert(!ship.forcedKnockback && !ship.isSilenced() && ship.effects.silencedUntil === 0, "光球仍受到敌方光球击退或沉默");
+    updateKoizumiImpactWaves(sim);
+    assert(ship.effects.stunnedUntil === 0, "光球仍受到撞击波眩晕");
+    assert(!serializeShipStatusEffects(ship).some(({ id }) => ["stun", "silence", "hero_lock", "hero_shock", "knockback", "collision_slow"].includes(id)), "免控光球仍显示无效控制图标");
+    const positionBefore = { x: ship.x, y: ship.y };
+    ship.update(TICK_DT);
+    assert(Math.hypot(ship.x - positionBefore.x, ship.y - positionBefore.y) > 0, "光球受击后没有继续飞行");
+
+    const purger = enemy.ships.main;
+    purger.x = ship.x;
+    purger.y = ship.y;
+    assert(enemy.castFlagshipSkill(), "光球免控测试未能施放净化波");
+    // 进入下一逻辑帧后，实际视野波扫到目标应直接解除形态。
+    sim.tick += 1;
+    sim.resolveVisionWavePurges();
+    assert(!ship.koizumiOrb && !ship.isControlImmune() && !ship.isDamageImmune(), "净化没有直接驱散光球形态");
+    assert(ship.x !== sim.worldSize / 2 || ship.y !== sim.worldSize / 2, "净化光球错误瞬移到战场中央");
+    assert(ship.canControl(), "净化结束后未恢复普通操作权限");
+    assert(applyHaruhiHeroPowerShock(ship, sim.elapsed), "净化后光球仍保留控制免疫");
+    const afterPurge = { x: ship.x, y: ship.y };
+    ship.update(TICK_DT);
+    assert(ship.x === afterPurge.x && ship.y === afterPurge.y && !ship.canControl(), "净化后普通舰体没有恢复正常禁控");
+
+    const ram = setup(seat, phase, "haruhi");
+    const haruhi = ram.enemy.ships.main;
+    Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
+    ram.enemy.haruhiFlagship.supporters.add("otherworlder");
+    const hpBefore = ram.ship.hp;
+    ram.sim.resolveHaruhiOtherworlderContacts();
+    assert(!haruhiOtherworlderReady(ram.enemy), "免控测试没有发生真实异世界冲撞");
+    assert(!ram.ship.forcedKnockback && ram.ship.hp === hpBefore && ram.ship.koizumiOrb.phase === phase, "异世界冲撞仍打断或伤害光球");
+  }
 }
 
 function beamSkillCheck() {
@@ -1932,8 +2127,6 @@ function asakuraAllyCleanseCheck() {
       ship.collisionSlowUntil = 5;
       ship.clawMarks = { sourceSeat: seat === "A" ? "B" : "A", stacks: 3, expiresAt: 8 };
       ship.effects.reliableUntil = 10;
-      ship.effects.brakeUntil = 3;
-      ship.effects.brakeCooldownUntil = 12;
     }
     // 沉默期间不能主动施法，此处只激活波纹以验证已经发出的波的驱散行为。
     source.effects.silencedUntil = 0;
@@ -1944,7 +2137,7 @@ function asakuraAllyCleanseCheck() {
     assert(!ally.isSilenced() && ally.heroPowerShock.recoveryUntil === 0, "波带没有驱散友军沉默、震慑、减速与易伤");
     assert(ally.collisionSlowUntil === 0 && ally.clawMarks.stacks === 0, "波带没有驱散碰撞减速与猫爪印记");
     assert(distant.isSilenced() && distant.clawMarks.stacks === 3, "尚未被波带扫到的友军被提前驱散");
-    assert(ally.hasEffect("reliableUntil") && ally.hasEffect("brakeUntil") && ally.effects.brakeCooldownUntil === 12, "驱散误清除了正面增益或主动急刹状态");
+    assert(ally.hasEffect("reliableUntil"), "驱散误清除了正面增益");
     assert(sim.floatingTexts.some((item) => item.textKey === "净化"), "友军驱散没有显示反馈");
   }
 }
@@ -2076,32 +2269,32 @@ function asakuraBladeQueenCheck() {
   const castOk = teamA.castSubSkill("sub1");
   assert(castOk, "朝仓分舰技能释放失败");
   assert(sub1.baseSpeed() > baseSpeed * 1.3, "朝仓分舰技能未显著提升速度");
-  assert(
-    BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[2] === 0.05
-      && BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[3] === 0.13
-      && BLADE_QUEEN_DAMAGE_RATIO_BY_GEAR[4] === 0.2,
-    "刀锋女王档位伤害锚点不符合5%/13%/20%规则",
-  );
   assert(BLADE_QUEEN_RANGE_MULTIPLIER === 1.25, "刀锋女王作用范围未扩大25%");
 
   const fullSpeed = sub1.effectiveSpeed();
   const damageScenarios = [
-    { speed: 0, ratio: 0.05, label: "低于二档" },
-    { speed: fullSpeed * throttleForGear(2), ratio: 0.05, label: "二档" },
-    { speed: fullSpeed * (throttleForGear(2) + throttleForGear(3)) * 0.5, ratio: 0.09, label: "二至三档中间速度" },
-    { speed: fullSpeed * throttleForGear(3), ratio: 0.13, label: "三档" },
-    { speed: fullSpeed * (throttleForGear(3) + throttleForGear(4)) * 0.5, ratio: 0.165, label: "三至四档中间速度" },
-    { speed: fullSpeed * throttleForGear(4), ratio: 0.2, label: "四档" },
+    { speed: 0, label: "静止" },
+    { speed: fullSpeed * throttleForGear(2), label: "二档" },
+    { speed: fullSpeed * (throttleForGear(2) + throttleForGear(3)) * 0.5, label: "二至三档中间速度" },
+    { speed: fullSpeed * throttleForGear(3), label: "三档" },
+    { speed: fullSpeed * (throttleForGear(3) + throttleForGear(4)) * 0.5, label: "三至四档中间速度" },
+    { speed: fullSpeed * throttleForGear(4), label: "四档" },
   ];
   for (const [index, scenario] of damageScenarios.entries()) {
-    if (index > 0) sim.elapsed += 1.01;
+    if (index > 0) sim.elapsed += 0.02;
     sub1.speed = scenario.speed;
     enemyMain.hp = enemyMain.maxHp;
     sim.resolveBladeQueenContacts();
     assert(
-      Math.abs(enemyMain.maxHp - enemyMain.hp - enemyMain.maxHp * scenario.ratio) < 1e-7,
-      `刀锋女王${scenario.label}伤害没有按实际速度正确结算`,
+      Math.abs(enemyMain.maxHp - enemyMain.hp - enemyMain.maxHp * 0.15) < 1e-7,
+      `刀锋女王${scenario.label}接触伤害不是固定15%`,
     );
+    const afterHit = enemyMain.hp;
+    sim.resolveBladeQueenContacts();
+    assert(enemyMain.hp === afterHit, "刀锋同一秒内重复结算接触伤害");
+    sim.elapsed += 0.99;
+    sim.resolveBladeQueenContacts();
+    assert(enemyMain.hp === afterHit, "刀锋不足一秒便重复结算伤害");
   }
 
   sim.elapsed += 1.01;
@@ -2109,6 +2302,99 @@ function asakuraBladeQueenCheck() {
   const hpBeforeMiss = enemyMain.hp;
   sim.resolveBladeQueenContacts();
   assert(enemyMain.hp === hpBeforeMiss, "刀锋女王在扩大后的作用范围外仍错误命中敌舰");
+}
+
+function asakuraBladeQueenFlightCheck() {
+  const setup = () => {
+    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: {
+      A: { main: "future1096", sub1: "asakura", sub2: "yuki" },
+      B: { main: "haruhi", sub1: "koizumi", sub2: "kyon" },
+    } });
+    sim.teamA.splitLevel = 2;
+    const ship = sim.teamA.ships.sub1;
+    Object.assign(ship, { x: 720, y: 720, angle: 0, speed: 0, throttle: 0, route: null, command: { x: 720, y: 720 } });
+    assert(sim.teamA.castSubSkill("sub1"), "刀锋飞行测试施放失败");
+    return { sim, ship, minimum: CHARACTER_DEFS.asakura.stats.speed * 1.45 * throttleForGear(3) };
+  };
+  for (const scenario of ["P档到点", "一档", "能量耗尽", "撞击减速", "眩晕", "震慑禁控", "震慑恢复减速", "防御形态减速", "转弯减速", "旧击退"]) {
+    const { sim, ship, minimum } = setup();
+    assert(ship.speed >= minimum, "开启刀锋未立即达到三档满能量航速");
+    ship.speed = 0;
+    if (scenario === "一档") ship.throttle = throttleForGear(1);
+    if (scenario === "能量耗尽") ship.energy = 0;
+    if (scenario === "撞击减速") ship.collisionSlowUntil = 3;
+    if (scenario === "眩晕") ship.effects.stunnedUntil = 2;
+    if (scenario.startsWith("震慑")) {
+      applyHaruhiHeroPowerShock(ship, 0);
+      assert(ship.speed >= minimum, "震慑施加瞬间把刀锋航速归零");
+      if (scenario === "震慑恢复减速") sim.elapsed = 2.1;
+    }
+    if (scenario === "防御形态减速") sim.teamA.future1096Form = "B";
+    if (scenario === "转弯减速") ship.setBezierRoute(600, 820, 400, 720, throttleForGear(1), false);
+    if (scenario === "旧击退") ship.forcedKnockback = { startedAt: 0, endsAt: 0.6, fromX: 720, fromY: 720, toX: 620, toY: 720 };
+    if (ship.isControlLocked()) {
+      assert(!ship.canControl(), "刀锋错误解除禁控权限");
+      for (const action of [
+        matchActions.setThrottle({ shipKey: "sub1", throttle: 1.4 }),
+        matchActions.setRoute({ shipKey: "sub1", endX: 500, endY: 900 }),
+        matchActions.launchScout({ shipKey: "sub1", zoneId: 5 }),
+        matchActions.castSubSkill({ shipKey: "sub1" }),
+      ]) assert(!applyMatchAction(sim.teamA, action), "刀锋禁控期间错误放行操作");
+      ship.tryAttack(sim, sim.teamB);
+      assert(sim.projectiles.length === 0, "刀锋禁控期间仍能射击");
+    }
+    for (let tick = 0; tick < 10; tick += 1) {
+      const previous = { x: ship.x, y: ship.y, angle: ship.angle };
+      ship.update(TICK_DT);
+      assert(ship.speed >= minimum - 1e-9, `刀锋${scenario}未保持航速下限`);
+      assert(Math.hypot(ship.x - previous.x, ship.y - previous.y) >= minimum * TICK_DT - 1e-9, `刀锋${scenario}没有持续前飞`);
+      if (ship.isControlLocked()) assert(ship.angle === previous.angle && ship.x > previous.x, "刀锋受控时改变了朝向或没有前飞");
+      sim.elapsed += TICK_DT;
+    }
+    assert(!ship.forcedKnockback, "刀锋未清除旧击退，存在坐标回跳风险");
+  }
+  for (const end of ["到期", "涤除"]) {
+    const { sim, ship } = setup();
+    ship.effects.stunnedUntil = 20;
+    if (end === "到期") sim.elapsed = 10;
+    else ship.clearActiveSkillBuffs({ preserveCurrentTick: false });
+    const previousX = ship.x;
+    ship.update(TICK_DT);
+    assert(ship.speed === 0 && ship.x === previousX, `刀锋${end}后没有恢复眩晕停船`);
+  }
+  const { ship, minimum } = setup();
+  ship.throttle = throttleForGear(4);
+  ship.command = { x: 1200, y: 720 };
+  ship.speed = minimum * throttleForGear(4);
+  ship.update(TICK_DT);
+  assert(ship.speed > minimum, "刀锋航速下限错误变成上限，阻止四档飞行");
+
+  const contact = setup();
+  contact.sim.teamB.splitLevel = 2;
+  const orb = contact.sim.teamB.ships.sub1;
+  assert(contact.sim.teamB.castSubSkill("sub1"), "刀锋受击测试未开启古泉光球");
+  orb.x = contact.ship.x + 10;
+  orb.y = contact.ship.y;
+  orb.koizumiOrb.previousX = contact.ship.x - 60;
+  orb.koizumiOrb.previousY = contact.ship.y;
+  contact.sim.resolveKoizumiOrbContacts();
+  assert(contact.ship.isSilenced(), "刀锋错误免除了光球沉默");
+  assert(!contact.ship.forcedKnockback && contact.ship.speed >= contact.minimum, "光球撞击打断刀锋飞行");
+  updateKoizumiImpactWaves(contact.sim);
+  assert(contact.ship.isControlLocked() && contact.ship.speed >= contact.minimum, "真实撞击波未保留眩晕与刀锋航速");
+  const contactX = contact.ship.x;
+  contact.ship.update(TICK_DT);
+  assert(contact.ship.x - contactX >= contact.minimum * TICK_DT - 1e-9, "刀锋在真实撞击波眩晕下停止前飞");
+
+  const ram = setup();
+  ram.sim.teamB.splitLevel = 2;
+  const haruhi = ram.sim.teamB.ships.main;
+  Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
+  ram.sim.teamB.haruhiFlagship.supporters.add("otherworlder");
+  const hpBefore = ram.ship.hp;
+  ram.sim.resolveHaruhiOtherworlderContacts();
+  assert(ram.ship.hp < hpBefore, "刀锋错误免除了异世界冲撞伤害");
+  assert(!ram.ship.forcedKnockback && ram.ship.speed >= ram.minimum, "异世界冲撞打断刀锋飞行");
 }
 
 function shamisenCatPawCheck() {
@@ -2319,7 +2605,7 @@ export function runRulesSuite() {
   speedAndEnergyRuleCheck();
   throttleGearCheck();
   boundaryRouteThrottleCheck();
-  emergencyBrakeCheck();
+  removedBrakeCheck();
   autoScoutCheck();
   yukiBurstScoutStabilityCheck();
   yukiFlagshipCombatScoutCheck();
@@ -2331,7 +2617,9 @@ export function runRulesSuite() {
   skippedSplitLevelCheck();
   yukiPassiveCheck();
   koizumiFlagshipBarrierCheck();
+  koizumiBarrierChargesCheck();
   koizumiOrbRamCheck();
+  koizumiControlImmunityCheck();
   koizumiImpactWaveCheck();
   beamSkillCheck();
   beamHitCountDamageCheck();
@@ -2344,6 +2632,7 @@ export function runRulesSuite() {
   asakuraAllyCleanseCheck();
   asakuraSimultaneousSkillPurgeCheck();
   asakuraBladeQueenCheck();
+  asakuraBladeQueenFlightCheck();
   shamisenFlagshipHuntCheck();
   shamisenCatPawCheck();
 }

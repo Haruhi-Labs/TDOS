@@ -17,8 +17,6 @@ import {
 } from "./game/throttle.js";
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-  EMERGENCY_BRAKE_COOLDOWN,
-  EMERGENCY_BRAKE_COST,
   FIRE_ARC_BANDS,
   MANUAL_SCOUT_COOLDOWN,
   SCOUT_LAUNCH_COST,
@@ -55,6 +53,7 @@ import {
 } from "./game/math.js";
 import { BotController } from "./game/bot-controller.js";
 import { applyMatchAction } from "./game/action-dispatcher.js";
+import { serializeShipStatusEffects, statusEffectNames } from "./game/status-effects.js";
 import {
   COLLISION_SLOW_DURATION,
   COLLISION_SLOW_FLOOR,
@@ -68,6 +67,7 @@ import {
   createRadarContact as createTeamRadarContact,
   radarMaxDistanceFrom as teamRadarMaxDistanceFrom,
   serializeRadarPassive as serializeTeamRadarPassive,
+  serializeRadarSweep as serializeTeamRadarSweep,
   updateRadarPassive as updateTeamRadarPassive,
 } from "./game/visibility-radar.js";
 import {
@@ -88,7 +88,7 @@ import {
 } from "./game/targeting-system.js";
 import {
   activateKoizumiOrb,
-  beginKoizumiOrbReturn,
+  dispelKoizumiOrb,
   isKoizumiOrbActive,
   isKoizumiOrbReturning,
   resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts,
@@ -99,14 +99,16 @@ import {
 } from "./game/koizumi-orb.js";
 import {
   createKoizumiBarrierState,
+  consumeKoizumiBarrierHit,
   koizumiBarrierBeamImpact,
   koizumiBarrierGeometry,
   koizumiBarrierProjectileImpact,
   resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts,
   serializeKoizumiBarrier,
+  trackKoizumiBarrierProjectileCrossing,
+  updateKoizumiBarrierRecovery,
 } from "./game/koizumi-barrier.js";
 import {
-  HARUHI_SUPPORT_LABELS,
   activateHaruhiFlagship,
   createHaruhiFlagshipState,
   haruhiBoostActive,
@@ -163,7 +165,6 @@ export {
   throttleForGear,
   throttleGearForValue,
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-  EMERGENCY_BRAKE_COST,
   FIRE_ARC_BANDS,
   MANUAL_SCOUT_COOLDOWN,
   SCOUT_LAUNCH_COST,
@@ -196,7 +197,7 @@ const BEAM_DAMAGE_RATIOS = Object.freeze({
   double: 0.21,
   triple: 0.18,
 });
-// 护盾仍会拦截每一颗炮弹，但受击动画无需跟着炮弹数量无限增长。
+// 护盾逐颗结算剩余次数，但受击动画无需跟着炮弹数量无限增长。
 // 15 次/秒已经能连续表现密集火力，同时把单人绘制和多人状态同步控制在稳定上限。
 const KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL = 1 / 15;
 const FUTURE_1096_FORMS = Object.freeze({
@@ -205,7 +206,6 @@ const FUTURE_1096_FORMS = Object.freeze({
 });
 const FUTURE_1096_BASE_FORM = Object.freeze({ damageTaken: 1, speed: 1, fireRate: 1 });
 const DEG_TO_RAD = Math.PI / 180;
-const EMERGENCY_BRAKE_DURATION = 0.82;
 
 function beamDamageRatioForHitCount(hitCount) {
   if (hitCount >= 3) return BEAM_DAMAGE_RATIOS.triple;
@@ -555,8 +555,6 @@ class Ship {
       reliableUntil: 0,
       bladeQueenUntil: 0,
       catPawUntil: 0,
-      brakeUntil: 0,
-      brakeCooldownUntil: 0,
       silencedUntil: 0,
       stunnedUntil: 0,
       nextShotDamageMultiplier: 1,
@@ -615,16 +613,24 @@ class Ship {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
   }
 
-  isEmergencyBraking() {
-    return this.hasEffect("brakeUntil");
-  }
-
   isControlLocked() {
-    return this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this);
+    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this));
   }
 
   isSilenced() {
-    return this.hasEffect("silencedUntil");
+    return !this.isControlImmune() && this.hasEffect("silencedUntil");
+  }
+
+  isControlImmune() {
+    return this.isKoizumiOrbActive();
+  }
+
+  clearControlEffects() {
+    this.effects.silencedUntil = 0;
+    this.effects.stunnedUntil = 0;
+    this.heroPowerShock = createHaruhiHeroPowerShockState();
+    this.collisionSlowUntil = 0;
+    this.forcedKnockback = null;
   }
 
   isKoizumiOrbActive() {
@@ -659,13 +665,13 @@ class Ship {
 
     if (this.hasEffect("bladeQueenUntil")) {
       if (statKey === "speed") {
-        value *= 1.45;
+        value *= CHARACTER_DEFS.asakura.subSkill.speedMultiplier;
       }
       if (statKey === "accel") {
-        value *= 1.26;
+        value *= CHARACTER_DEFS.asakura.subSkill.accelerationMultiplier;
       }
       if (statKey === "turnRate") {
-        value *= 1.12;
+        value *= CHARACTER_DEFS.asakura.subSkill.turnMultiplier;
       }
     }
 
@@ -697,6 +703,24 @@ class Ship {
 
   effectiveSpeed() {
     return this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
+  }
+
+  minimumFlightSpeed() {
+    // 刀锋下限取技能强化后的满能量航速，不使用能量、震慑或碰撞减速系数。
+    if (!this.hasEffect("bladeQueenUntil")) return 0;
+    const meta = CHARACTER_DEFS.asakura.subSkill;
+    // 舰队防御形态等属性减速也不能压低角色自身的刀锋巡航下限。
+    return Math.max(this.base.speed * meta.speedMultiplier, this.baseSpeed()) * throttleForGear(meta.minimumGear);
+  }
+
+  applyControlSpeedLimit() {
+    const minimumSpeed = this.minimumFlightSpeed();
+    this.speed = minimumSpeed > 0 ? Math.max(this.speed, minimumSpeed) : 0;
+  }
+
+  advanceFlight(dt) {
+    this.x = this.team.match.clampX(this.x + Math.cos(this.angle) * this.speed * dt, 8);
+    this.y = this.team.match.clampY(this.y + Math.sin(this.angle) * this.speed * dt, 8);
   }
 
   // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
@@ -792,7 +816,7 @@ class Ship {
     clearTimedEffect("bladeQueenUntil");
     clearTimedEffect("catPawUntil");
     if (this.koizumiOrb && canClear("koizumiOrb")) {
-      beginKoizumiOrbReturn(this);
+      dispelKoizumiOrb(this);
       cleared = true;
       delete this.activeSkillEffectStartedTicks.koizumiOrb;
     }
@@ -814,11 +838,7 @@ class Ship {
       || this.collisionSlowUntil > now
       || Boolean(this.forcedKnockback)
       || this.activeClawMarks().stacks > 0;
-    this.effects.silencedUntil = 0;
-    this.effects.stunnedUntil = 0;
-    this.heroPowerShock = createHaruhiHeroPowerShockState();
-    this.collisionSlowUntil = 0;
-    this.forcedKnockback = null;
+    this.clearControlEffects();
     this.clawMarks.sourceSeat = null;
     this.clawMarks.stacks = 0;
     this.clawMarks.expiresAt = 0;
@@ -1093,7 +1113,9 @@ class Ship {
     }
 
     if (this.isControlLocked()) {
-      this.speed = 0;
+      this.applyControlSpeedLimit();
+      // 禁控仍拒绝输入和自动转向，刀锋只保留当前朝向上的飞行。
+      if (this.minimumFlightSpeed() > 0) this.advanceFlight(dt);
       return;
     }
 
@@ -1145,25 +1167,18 @@ class Ship {
 
     const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
-    const braking = this.isEmergencyBraking();
-    const cruiseTargetSpeed = dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor();
-    const targetSpeed = braking ? Math.min(cruiseTargetSpeed * 0.08, 4.2) : cruiseTargetSpeed;
+    const minimumSpeed = this.minimumFlightSpeed();
+    const targetSpeed = Math.max(minimumSpeed, dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor());
 
-    const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this) * (braking ? 4.4 : 1), 0.65, 9.6);
-    this.speed = lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
-    if (braking && this.speed < 1.2) {
-      this.speed = 0;
-    }
+    const accelResponse = clamp(this.baseAcceleration() * this.team.accelerationModifierForShip(this), 0.65, 9.6);
+    this.speed = Math.max(minimumSpeed, lerp(this.speed, targetSpeed, clamp(dt * accelResponse, 0, 1)));
 
-    this.x += Math.cos(this.angle) * this.speed * dt;
-    this.y += Math.sin(this.angle) * this.speed * dt;
-    this.x = match.clampX(this.x, 8);
-    this.y = match.clampY(this.y, 8);
+    this.advanceFlight(dt);
 
     if (this.route) {
       const minAdvance = 5;
-      // P 档下保持当前航线进度，重新挂入前进档后可沿原航线继续航行。
-      const routeSpeed = this.throttle <= 0 ? 0 : Math.max(minAdvance, this.speed);
+      // 普通 P 档保持航线进度；刀锋强制前飞时仍推进航线。
+      const routeSpeed = this.throttle <= 0 && minimumSpeed <= 0 ? 0 : Math.max(minAdvance, this.speed);
       const headingAlign = clamp(Math.cos(deltaAbs), -1, 1);
       const alignFactor = clamp((headingAlign + 0.25) / 1.25, 0.12, 1);
       const deltaT = (routeSpeed * dt * alignFactor) / Math.max(130, this.route.length);
@@ -1177,6 +1192,11 @@ class Ship {
   updateForcedKnockback() {
     const forced = this.forcedKnockback;
     if (!forced) {
+      return false;
+    }
+    if (this.isControlImmune() || this.minimumFlightSpeed() > 0) {
+      // 光球免控与刀锋持续前飞均不接受旧击退插值，避免随后回跳到旧坐标。
+      this.forcedKnockback = null;
       return false;
     }
     const now = this.team.match.elapsed;
@@ -1354,6 +1374,7 @@ class Ship {
 
   serialize() {
     const fleetEnergy = this.team.fleetEnergyForShip(this);
+    const statusEffects = serializeShipStatusEffects(this);
     return {
       id: this.id,
       key: this.key,
@@ -1379,8 +1400,6 @@ class Ship {
       range: this.effectiveRange(),
       attached: this.isAttached(),
       canControl: this.canControl(),
-      braking: this.isEmergencyBraking(),
-      brakeCooldown: Math.max(0, (this.effects.brakeCooldownUntil || 0) - this.team.match.elapsed),
       bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
       catPawVolley: this.hasEffect("catPawUntil"),
       silenced: this.isSilenced(),
@@ -1401,7 +1420,8 @@ class Ship {
         };
       })(),
       nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
-      buffs: this.team.listShipBuffs(this),
+      buffs: statusEffectNames(statusEffects),
+      statusEffects,
       route: this.route
         ? {
             anchorToMain: this.route.anchorToMain,
@@ -2143,52 +2163,7 @@ class Team {
   }
 
   listShipBuffs(ship) {
-    const list = [];
-    if (ship.effects.nextShotDamageMultiplier > 1) {
-      list.push("超能力");
-    }
-    if (ship.hasEffect("reliableUntil")) {
-      list.push("靠谱的普通人");
-    }
-    if (ship.hasEffect("bladeQueenUntil")) {
-      list.push("刀锋女王");
-    }
-    if (ship.hasEffect("catPawUntil")) {
-      list.push("猫爪乱舞");
-    }
-    if (ship.isKoizumiOrbActive()) {
-      list.push(ship.koizumiOrb.phase === "returning" ? "超能力粒子·归航" : "超能力粒子");
-    }
-    if (ship.hasEffect("stunnedUntil")) {
-      list.push("眩晕");
-    }
-    if (ship.isSilenced()) {
-      list.push("沉默");
-    }
-    if (ship.heroPowerShock?.recoveryUntil > this.match.elapsed) {
-      list.push("勇者震慑");
-    }
-    if (ship.isEmergencyBraking()) {
-      list.push("急刹");
-    }
-    if (this.hasActiveSponsor()) {
-      list.push("神秘赞助人");
-    }
-    if (this.hasActiveVisionWaveSkill()) {
-      list.push(CHARACTER_DEFS.asakura.flagshipSkill.name);
-    }
-    if (this.mainCharacterId() === "future1096" && this.future1096Form) {
-      list.push(`${this.future1096Form}形态`);
-    }
-    if (haruhiBoostActive(this)) {
-      list.push("我在这里！");
-    }
-    if (this.mainCharacterId() === "haruhi") {
-      for (const supportId of this.haruhiFlagship.supporters) {
-        list.push(HARUHI_SUPPORT_LABELS[supportId]);
-      }
-    }
-    return list;
+    return statusEffectNames(serializeShipStatusEffects(ship));
   }
 
   areSkillsDisabled() {
@@ -2503,26 +2478,6 @@ class Team {
     return true;
   }
 
-  emergencyBrake(shipOrKey) {
-    const ship = typeof shipOrKey === "string" ? this.shipByKey(shipOrKey) : shipOrKey;
-    if (!ship || !ship.alive || !ship.canControl() || ship.isAttached() || ship.isKoizumiOrbActive()) {
-      return false;
-    }
-    if ((ship.effects.brakeCooldownUntil || 0) > this.match.elapsed) {
-      return false;
-    }
-    if (!this.spendEnergyForShip(ship, EMERGENCY_BRAKE_COST)) {
-      return false;
-    }
-    ship.speed *= 0.34;
-    ship.effects.brakeUntil = this.match.elapsed + EMERGENCY_BRAKE_DURATION;
-    ship.effects.brakeCooldownUntil = this.match.elapsed + EMERGENCY_BRAKE_COOLDOWN;
-    this.match.spawnBurst(ship.x, ship.y, "#98e9ff", 7);
-    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "急刹", {}, "#9eefff");
-    this.match.recordAction(this.seat, "emergency_brake");
-    return true;
-  }
-
   launchWingman(zoneId) {
     const cost = 55;
     if (this.cooldowns.flagship > 0) {
@@ -2726,6 +2681,7 @@ class Team {
       }
     } else if (ship.characterId === "asakura") {
       this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
+      ship.speed = Math.max(ship.speed, ship.minimumFlightSpeed());
       ok = true;
     } else if (ship.characterId === "shamisen") {
       this.setShipEffect(ship, "catPawUntil", meta.duration || 12);
@@ -2859,6 +2815,7 @@ class Team {
 
       const barrierImpact = koizumiBarrierBeamImpact(beam, enemyTeam);
       if (barrierImpact) {
+        consumeKoizumiBarrierHit(enemyTeam, barrierImpact, this.seat);
         beam.x2 = barrierImpact.x;
         beam.y2 = barrierImpact.y;
         beam.blockedByBarrier = true;
@@ -2976,6 +2933,7 @@ class Team {
         sub2: this.cooldowns.sub2,
       },
       visibleEnemyIds: Array.from(this.visibleEnemyIds),
+      radarSweep: serializeTeamRadarSweep(this),
       visionWaves: this.serializeVisionWaves(),
       koizumiImpactWaves: serializeKoizumiImpactWaves(this),
       ships: {
@@ -3314,7 +3272,7 @@ export class MatchSimulation {
       this.koizumiBarrierProjectileImpactNextAt[teamSeat]
         = this.elapsed + KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL;
     }
-    const maxLife = kind === "ram" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
+    const maxLife = kind === "ram" || kind === "break" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
     this.koizumiBarrierImpacts.push({
       id: nextEntityId(),
       kind,
@@ -3343,6 +3301,7 @@ export class MatchSimulation {
     };
     for (const projectile of this.projectiles) {
       const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
+      trackKoizumiBarrierProjectileCrossing(projectile, dt, defendingTeam, barrierGeometryBySeat[defendingTeam.seat]);
       const barrierImpact = koizumiBarrierProjectileImpact(
         projectile,
         dt,
@@ -3350,6 +3309,7 @@ export class MatchSimulation {
         barrierGeometryBySeat[defendingTeam.seat],
       );
       if (barrierImpact) {
+        consumeKoizumiBarrierHit(defendingTeam, barrierImpact, projectile.team.seat);
         projectile.alive = false;
         this.spawnKoizumiBarrierImpact({
           ...barrierImpact,
@@ -3369,6 +3329,9 @@ export class MatchSimulation {
       projectile.update(dt, this);
     }
     this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
+    // 本帧所有穿越先重置静默计时，再判定修复，避免边界帧提前恢复。
+    updateKoizumiBarrierRecovery(this.teamA);
+    updateKoizumiBarrierRecovery(this.teamB);
   }
 
   updateVisualEffects(dt) {

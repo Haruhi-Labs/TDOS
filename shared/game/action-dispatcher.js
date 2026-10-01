@@ -77,9 +77,6 @@ export function applyMatchAction(team, action) {
   if (type === MATCH_ACTION_TYPES.CONFIGURE_AUTO_SCOUT) {
     return team.configureAutoScout(action.enabled, action.zoneId);
   }
-  if (type === MATCH_ACTION_TYPES.EMERGENCY_BRAKE) {
-    return team.emergencyBrake(String(action.shipKey || "main"));
-  }
   if (type === MATCH_ACTION_TYPES.CAST_FLAGSHIP_SKILL) {
     return team.castFlagshipSkill(Number(action.zoneId) || 5);
   }

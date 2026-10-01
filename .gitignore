@@ -9,3 +9,6 @@ bench/
 shared/game-core.baseline.js
 shared/game-core.fair0.js
 dist-star/
+
+# 本地发布包；源代码和构建身份另行记录
+release.tgz

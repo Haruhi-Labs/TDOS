@@ -1,3 +1,4 @@
+import { IS_TEST_BUILD } from "./deployment.js";
 // ═══════════════════════════════════════════════════════════════
 // 主菜单 / 标题画面（路由 /）
 // 左：标题 + 竖排菜单；右：七人群像（前后拥簇，随阵营着色）；底：动态星尘背景。
@@ -42,15 +43,117 @@ function statisticsLinkHTML() {
 
 // 页脚版本号也是更新日志入口；比新增独立图标更符合用户查阅版本内容的习惯。
 function versionLinkHTML() {
-  return `<a class="ts-ver ts-ver-link" href="/changelog">${t(CURRENT_VERSION_LABEL)}</a>`;
+  return `<a class="ts-ver ts-ver-link" href="/changelog">${t(CURRENT_VERSION_LABEL)}${IS_TEST_BUILD ? ` · ${t("测试服")}` : ""}</a>`;
 }
 
-// 右上角语言切换:地球图标 + 原生语言下拉(隐藏「语言」字样,图标表意),与左上角印章标题对称
+// 原生选择器保留收起时的显示和尺寸，自定义下拉复用主菜单视觉。
 function languageCornerHTML() {
   return `<div class="ts-lang-corner">` +
     `<svg class="ts-globe" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>` +
-    languageSelectorHTML("ts-language ts-language-corner") +
+    `<div class="ts-language-dropdown">${languageSelectorHTML("ts-language ts-language-corner")}</div>` +
     `</div>`;
+}
+
+function bindMenuLanguage(root, signal) {
+  const dropdown = root.querySelector(".ts-language-dropdown");
+  const select = dropdown.querySelector("select");
+  const options = Array.from(select.options);
+  const trigger = document.createElement("div");
+  trigger.className = "ts-language-trigger";
+  trigger.tabIndex = 0;
+  trigger.setAttribute("role", "combobox");
+  trigger.setAttribute("aria-label", select.getAttribute("aria-label"));
+  trigger.setAttribute("aria-haspopup", "listbox");
+  trigger.setAttribute("aria-controls", "menu-language-options");
+  trigger.setAttribute("aria-expanded", "false");
+  trigger.textContent = options[select.selectedIndex].textContent;
+
+  const list = document.createElement("div");
+  list.id = "menu-language-options";
+  list.className = "ts-language-options";
+  list.setAttribute("role", "listbox");
+  list.setAttribute("aria-label", select.getAttribute("aria-label"));
+  list.hidden = true;
+  const rows = options.map((option, index) => {
+    const row = document.createElement("div");
+    row.id = `menu-language-option-${option.value}`;
+    row.className = "ts-language-option";
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(option.selected));
+    row.textContent = option.textContent;
+    row.addEventListener("pointerenter", () => activate(index), { signal });
+    row.addEventListener("click", () => choose(index, false), { signal });
+    list.append(row);
+    return row;
+  });
+  dropdown.append(trigger, list);
+  select.tabIndex = -1;
+  select.setAttribute("aria-hidden", "true");
+  dropdown.classList.add("is-enhanced");
+  let activeIndex = select.selectedIndex;
+
+  function activate(index) {
+    activeIndex = (index + rows.length) % rows.length;
+    rows.forEach((row, i) => row.classList.toggle("is-active", i === activeIndex));
+    trigger.setAttribute("aria-activedescendant", rows[activeIndex].id);
+  }
+  function open() {
+    list.hidden = false;
+    trigger.setAttribute("aria-expanded", "true");
+    activate(select.selectedIndex);
+  }
+  function close() {
+    list.hidden = true;
+    trigger.setAttribute("aria-expanded", "false");
+    trigger.removeAttribute("aria-activedescendant");
+  }
+  function choose(index, restoreFocus) {
+    const changed = select.selectedIndex !== index;
+    select.selectedIndex = index;
+    trigger.textContent = options[index].textContent;
+    rows.forEach((row, i) => row.setAttribute("aria-selected", String(i === index)));
+    close();
+    if (changed) select.dispatchEvent(new Event("change", { bubbles: true }));
+    // 切换语言会重新挂载首页，将键盘焦点交还给新控件。
+    if (changed && restoreFocus) requestAnimationFrame(() => root.querySelector(".ts-language-trigger")?.focus());
+  }
+  list.addEventListener("pointerdown", (event) => event.preventDefault(), { signal });
+  trigger.addEventListener("click", () => list.hidden ? open() : close(), { signal });
+  trigger.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Tab") {
+      close();
+      return;
+    }
+    if (["ArrowDown", "ArrowUp", "Home", "End", "Enter", " ", "Escape"].includes(event.key)) {
+      event.preventDefault();
+      if (event.key === "Escape") close();
+      else if (event.key === "Enter" || event.key === " ") {
+        if (list.hidden) open();
+        else choose(activeIndex, true);
+      } else {
+        const wasClosed = list.hidden;
+        if (wasClosed) open();
+        if (event.key === "Home") activate(0);
+        else if (event.key === "End") activate(rows.length - 1);
+        else if (!wasClosed) activate(activeIndex + (event.key === "ArrowDown" ? 1 : -1));
+      }
+    } else if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      const index = options.findIndex((option) => option.textContent.toLowerCase().startsWith(event.key.toLowerCase()));
+      if (index >= 0) {
+        event.preventDefault();
+        if (list.hidden) open();
+        activate(index);
+      }
+    }
+  }, { signal });
+  dropdown.addEventListener("focusout", (event) => {
+    if (!dropdown.contains(event.relatedTarget)) close();
+  }, { signal });
+  document.addEventListener("pointerdown", (event) => {
+    if (!dropdown.contains(event.target)) close();
+  }, { signal });
+  window.addEventListener("blur", close, { signal });
 }
 
 function menuItemsHTML() {
@@ -132,6 +235,7 @@ export function mount(root, ctx) {
 
   const ac = new AbortController();
   const { signal } = ac;
+  bindMenuLanguage(root, signal);
 
   const bg = root.querySelector(".ts-bg");
   startStarfield(bg, signal);

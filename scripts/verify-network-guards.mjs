@@ -1,3 +1,4 @@
+import { GAME_VERSION } from "../shared/game-version.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import WebSocket from "ws";
@@ -239,6 +240,11 @@ async function yukiRadarPrivacyCheck() {
     (message) => message.type === "snapshot" || message.type === "snapshot_delta",
   );
   assert(!Object.hasOwn(spectatorSnapshot, "radar"), "长门雷达状态泄露给了观战者");
+  assert.equal(spectatorSnapshot.type, "snapshot", "新进入观战应收到完整首帧");
+  const publicSweep = spectatorSnapshot.state.teams.A.radarSweep;
+  assert(publicSweep?.active, "观战没有收到长门的公开扫线表现");
+  assert(!Object.hasOwn(publicSweep, "contacts"), "私有雷达回波进入了公开扫线");
+  assert(!Object.hasOwn(enemySnapshot.state.teams.A.radarSweep, "contacts"), "私有回波进入了对手的共享状态");
   await terminateClients();
 }
 
@@ -314,6 +320,7 @@ async function statisticsPrivacyCheck() {
   client.send({
     type: "report_solo_match",
     eventId: "guard-solo-1",
+    gameVersion: GAME_VERSION,
     difficulty: "normal",
     rulesetVersion: RULESET_VERSION,
     profile: { clientId: "private-raw-client-id", nickname: "隐私测试", faction: "blue", locale: "zh" },
@@ -331,8 +338,11 @@ async function statisticsPrivacyCheck() {
   assert.equal(report.accepted, true, "合法单人结算没有被统计服务接收");
   client.send({ type: "get_winrate_stats" });
   const response = await client.waitFor((message) => message.type === "winrate_stats");
+  assert.equal(response.stats.gameVersion, GAME_VERSION);
   assert.deepEqual(Object.keys(response.stats.modes).sort(), ["multiplayer", "solo"], "公开统计应只分单人与多人榜单");
   assert.equal(response.stats.modes.solo.matches, 1, "单人结算上报没有进入公开聚合");
+  assert.equal(response.stats.modes.solo.totalMatches, 1, "真实协议响应应包含全部版本对局数");
+  assert.equal(response.stats.modes.solo.currentVersionMatches, 1, "真实协议响应应包含当前版本对局数");
   assert.equal(JSON.stringify(response).includes("trackedPlayers"), false, "公开统计响应不得包含玩家聚合信息");
   assert.equal(JSON.stringify(response).includes("隐私测试"), false, "公开统计响应不得包含玩家昵称");
   client.terminate();

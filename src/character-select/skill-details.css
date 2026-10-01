@@ -1,0 +1,48 @@
+/* 简介融入书页，详细参数在独立的轻量档案浮窗中阅读。 */
+.cs-page-skills .cs-skill-trigger, .csm-skills .cs-skill-trigger {
+  display: block; width: 100%; text-align: left; color: inherit; font: inherit;
+  border: 1px solid #9d7d3f40; border-radius: 3px; padding: 10px 12px;
+  background: #ffffff12; box-shadow: none; text-shadow: none; letter-spacing: 0;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.cs-page-skills .cs-skill-trigger:hover:not(:disabled) { background: #fff5d640; border-color: #967438; box-shadow: none; color: inherit; }
+.cs-skill-trigger .cs-page-skill-header, .cs-skill-trigger .csm-skill-head { display: flex; gap: 8px; align-items: baseline; margin-bottom: 5px; }
+.cs-skill-trigger .cs-page-skill-name, .cs-skill-trigger .csm-skill-name { flex: 1; min-width: 0; }
+.cs-skill-trigger .cs-page-skill-desc, .cs-skill-trigger .csm-skill-desc { display: block; margin: 0; line-height: 1.6; }
+.cs-skill-more { flex: none; font: .64rem var(--font-cn); color: #7b6849; white-space: nowrap; }
+.cs-page-skills .cs-skill-trigger:focus-visible { outline: 2px solid #8b6c35; outline-offset: 3px; }
+.csm-skills .cs-skill-trigger { padding: 10px 11px; border-color: #aa8b544a; background: #0a142480; }
+.csm-skills .cs-skill-trigger:hover:not(:disabled) { background: #25334a; border-color: #be9b5d; box-shadow: none; color: inherit; }
+.csm-skills .cs-skill-trigger .csm-skill-tag { color: #c8ad75; }
+.csm-skills .cs-skill-more { color: #c1aa7e; }
+.csm-skills .cs-skill-trigger:focus-visible { outline: 2px solid #e6cf95; outline-offset: 3px; }
+/* 参数像书页边的注释，保持窄幅与浅层次，长内容只在浮窗内滚动。 */
+.cs-skill-popover {
+  --skill-paper: #f2e8d1; --skill-ink: #352c21; --skill-muted: #77684f; --skill-rule: #96743830;
+  position: fixed; inset: auto; margin: 0; padding: 0; z-index: 10000;
+  display: none; flex-direction: column; overflow: visible; box-sizing: border-box; width: 340px;
+  color: var(--skill-ink); background: var(--skill-paper); border: 1px solid #a8894c80;
+  border-radius: 4px; box-shadow: 0 5px 18px #02081230; font-family: var(--font-cn);
+}
+.cs-skill-popover[data-open="true"] { display: flex; }
+.cs-skill-popover::backdrop { background: transparent; pointer-events: none; }
+.cs-skill-popover::after {
+  content: ""; position: absolute; left: calc(var(--skill-arrow-x) - 4px); width: 7px; height: 7px;
+  background: var(--skill-paper); transform: rotate(45deg); pointer-events: none;
+}
+.cs-skill-popover[data-placement="above"]::after { bottom: -5px; border-right: 1px solid #a8894c80; border-bottom: 1px solid #a8894c80; }
+.cs-skill-popover[data-placement="below"]::after { top: -5px; border-left: 1px solid #a8894c80; border-top: 1px solid #a8894c80; }
+.cs-skill-popover-head { flex: none; display: flex; align-items: center; gap: 8px; padding: 7px 10px 5px; border-bottom: 1px solid var(--skill-rule); }
+.cs-skill-popover h2 { flex: 1; min-width: 0; margin: 0; color: var(--skill-ink); font: 600 .87rem/1.4 var(--font-cn); letter-spacing: 0; text-shadow: none; text-align: left; overflow-wrap: anywhere; }
+.cs-skill-popover .cs-skill-close { flex: none; width: 28px; height: 28px; padding: 0; margin: -2px -4px -2px 0; font: 1.15rem/1 var(--font-cn); border: 0; border-radius: 3px; color: var(--skill-muted); background: transparent; box-shadow: none; text-shadow: none; transform: none; }
+.cs-skill-popover .cs-skill-close:hover:not(:disabled) { color: var(--skill-ink); background: var(--skill-rule); box-shadow: none; transform: none; }
+.cs-skill-popover .cs-skill-close:focus-visible { outline: 2px solid #a8894c; outline-offset: -2px; }
+.cs-skill-detail-list { margin: 0; padding: 3px 11px 7px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #a8894c66 transparent; }
+.cs-skill-detail-list:focus-visible { outline: 1px solid #a8894c80; outline-offset: -2px; }
+.cs-skill-detail-row { display: grid; grid-template-columns: minmax(76px, .85fr) minmax(0, 1.8fr); align-items: baseline; gap: 10px; padding: 5px 0; border-bottom: 1px solid var(--skill-rule); font-size: .74rem; line-height: 1.5; }
+.cs-skill-detail-row:last-child { border: 0; }
+.cs-skill-detail-row dt { color: var(--skill-muted); font-weight: 400; overflow-wrap: anywhere; }
+.cs-skill-detail-row dd { margin: 0; color: var(--skill-ink); font-weight: 500; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cs-skill-popover-mobile { --skill-paper: #142032; --skill-ink: #e7e1d4; --skill-muted: #b5a78c; --skill-rule: #b49a6330; box-shadow: 0 5px 18px #02081250; }
+.cs-skill-popover-mobile .cs-skill-close { width: 36px; height: 36px; }
+@media (prefers-reduced-motion: reduce) { .cs-skill-trigger { transition: none; } }

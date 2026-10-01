@@ -696,13 +696,12 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   gap: 7px;
 }
 
-/* 技能：2 列网格，整行按钮用 .span-2 */
+/* 技能：2 列网格 */
 .battle-panel .btn-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 7px;
 }
-.battle-panel .btn-grid .span-2 { grid-column: 1 / -1; }
 
 /* 全队舰况 — 吃掉日志腾出的高度；每艘舰一张铜牌（血/能量条 + 状态） */
 .battle-panel .fleet-section {
@@ -949,9 +948,11 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 
 .mobile-action-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
+.mobile-action-grid > button { grid-column: span 2; }
+.mobile-action-grid > .mobile-zoom-btn { grid-column: span 3; }
 .mobile-action-grid > button,
 .mobile-throttle-row { min-height: 42px; }
 
@@ -1544,6 +1545,10 @@ button.toggle-active {
   letter-spacing: 0.03em;
 }
 .room-item-meta { color: var(--text-soft); font-size: 0.82rem; line-height: 1.5; }
+.room-item-versus { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .86rem; }
+.room-combatant { overflow-wrap: anywhere; }
+.room-combatant-a { color: #a8c4f2; }
+.room-combatant-b { color: #eeaaa2; }
 .room-item-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3754,6 +3759,61 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
 .ts-language-corner { gap: 0; min-width: 0; }
 .ts-language-corner > span { display: none; } /* 隐藏「语言」字样,地球图标已表意 */
 .ts-language-corner select { min-width: 80px; max-width: 132px; }
+.ts-language-dropdown { position: relative; display: inline-flex; min-width: 0; }
+/* 原生控件负责显示；透明交互层打开自定义菜单，避免重复维护外观。 */
+.ts-language-dropdown.is-enhanced select { pointer-events: none; }
+.ts-language-trigger {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+  user-select: none;
+}
+.ts-language-dropdown:has(.ts-language-trigger:focus-visible) select {
+  outline: 1px solid var(--gilt);
+  outline-offset: 2px;
+}
+.ts-language-options {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: max(100%, 148px);
+  padding: 6px 9px 6px 6px;
+  border: 1px solid var(--brass-dark);
+  border-radius: 8px;
+  background: var(--leather-deep);
+  font-family: var(--font-cn);
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+}
+.ts-language-options[hidden] { display: none; }
+.ts-language-option {
+  position: relative;
+  padding: 10px 26px 10px 10px;
+  border-left: 2px solid transparent;
+  border-radius: 8px;
+  color: var(--text-primary);
+  line-height: 1.3;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+}
+.ts-language-option[aria-selected="true"]::after {
+  content: "✓";
+  position: absolute;
+  right: 10px;
+  color: var(--gilt);
+}
+.ts-language-option.is-active {
+  background: var(--menu-item-highlight);
+  border-left-color: var(--gilt);
+  color: var(--gilt-bright);
+  text-shadow: 0 0 16px #c8a24e44;
+  transform: translateX(3px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ts-language-option { transition: none; }
+  .ts-language-option.is-active { transform: none; }
+}
 @media (max-width: 980px) {
   .ts-lang-corner { padding: 3px 7px 3px 10px; gap: 6px; }
   .ts-language-corner select { min-width: 76px; font-size: 0.7rem; }
@@ -4008,7 +4068,7 @@ button.cs-mode-link { appearance: none; -webkit-appearance: none; background: no
   color: var(--text-soft);
   font: 0.75rem var(--font-cn);
 }
-.stats-meta { min-height: 1.3em; padding: 0 13px; color: var(--text-muted); font: 0.7rem var(--font-cn); letter-spacing: 0.05em; }
+.stats-meta { display: flex; flex-wrap: wrap; gap: 6px 18px; min-height: 1.3em; padding: 0 13px; color: var(--text-muted); font: 0.7rem var(--font-cn); letter-spacing: 0.05em; }
 .stats-board { display: flex; flex-direction: column; gap: 5px; }
 .stats-column-head {
   display: grid;

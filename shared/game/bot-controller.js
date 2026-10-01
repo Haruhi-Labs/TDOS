@@ -1378,8 +1378,7 @@ export class BotController {
     if (profile.ratio <= AI_ENERGY_GEAR_POLICY.criticalRatio) {
       return 1;
     }
-    // 刀锋女王的伤害由实际航速决定。技能期间优先完成四档加速，但仍在危险能量线前降档，
-    // 避免为了短时伤害把舰船推进能量彻底耗空。
+    // 刀锋期间优先以四档迅速穿入敌阵；接触伤害固定，危险能量线前仍降档保留后续机动。
     if (ship?.hasEffect?.("bladeQueenUntil")) {
       return 4;
     }

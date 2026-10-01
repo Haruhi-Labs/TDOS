@@ -1,7 +1,6 @@
 import {
   DEFAULT_TEAM_LOADOUT,
   DEFAULT_WORLD_SIZE,
-  EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
   clamp,
   cloneLoadout,
@@ -9,8 +8,9 @@ import {
   normalizeLoadout,
   skillMetaForCharacter,
 } from "../shared/game-core.js";
-import { matchActions } from "../shared/protocol/match-actions.js";
+import { MATCH_ACTION_TYPES, matchActions } from "../shared/protocol/match-actions.js";
 import { createOnlineStateSync } from "./online/state-sync.js";
+import { bindDirectorCameraInput } from "./battle/director-camera.js";
 import { buildServerUrlCandidates, defaultServerUrl } from "./online/connection-target.js";
 import { createOnlineLobbyView } from "./online/lobby-view.js";
 import {
@@ -24,6 +24,7 @@ import {
   DEFAULT_INTERP_MS,
 } from "./online/snapshot-transport.js";
 import { createThrottleCommandState } from "./online/throttle-command-state.js";
+import { createSpectatorView } from "./online/spectator-view.js";
 
 import { getFaction } from "./profile.js";
 
@@ -42,6 +43,7 @@ import {
   prefersMobileBattleMode,
 } from "./battle/camera.js";
 import { routeHandleAtPoint, zoneFromPoint } from "./battle/input.js";
+import { isShipControlLocked, isShipSelectable, resolveSelectedShipKey } from "./battle/ship-selection.js";
 import {
   syncThrottleGearControls,
   throttleGearFromShortcut,
@@ -74,6 +76,7 @@ import {
   translateServerText,
 } from "./i18n.js";
 import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
+import { createStatusEffectTooltip } from "./battle/status-effects.js";
 import { statisticsProfile } from "./statistics-client.js";
 import {
   getGameIdentity,
@@ -95,6 +98,15 @@ let lobbyView = null; // 大厅房间列表与摘要
 let snapshotTransport = null; // 延迟测量、差量解码与快照队列
 let actionTransport = null; // 统一动作协议的远程传输适配器
 let throttleCommandState = null; // 每艘舰待权威快照确认的换挡意图
+let spectatorView = null; // 独立观战展板，只读取房间资料和权威快照
+let spectatorCameraInput = null;
+let statusEffectTooltip = null;
+
+const SHIP_CONTROL_ACTIONS = new Set([
+  MATCH_ACTION_TYPES.SET_ROUTE, MATCH_ACTION_TYPES.ROUTE_CONTROL, MATCH_ACTION_TYPES.ROUTE_END,
+  MATCH_ACTION_TYPES.SET_THROTTLE, MATCH_ACTION_TYPES.CLEAR_ROUTE,
+  MATCH_ACTION_TYPES.CAST_SUB_SKILL,
+]);
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -142,7 +154,6 @@ function cacheDom() {
   splitTwoBtn: document.getElementById("splitTwoBtn"),
   scoutBtn: document.getElementById("scoutBtn"),
   autoScoutBtn: document.getElementById("autoScoutBtn"),
-  brakeBtn: document.getElementById("brakeBtn"),
   flagshipBtn: document.getElementById("flagshipBtn"),
   subSkillBtn: document.getElementById("subSkillBtn"),
   onlineMainRole: document.getElementById("onlineMainRole"),
@@ -179,7 +190,6 @@ function cacheDom() {
   mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
   mobileScoutBtn: document.getElementById("mobileScoutBtn"),
   mobileAutoScoutBtn: document.getElementById("mobileAutoScoutBtn"),
-  mobileBrakeBtn: document.getElementById("mobileBrakeBtn"),
   mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
   mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
   mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
@@ -364,6 +374,7 @@ function setBattleControlsEnabled(enabled) {
 
 // 大厅页与战斗页二选一全屏切换（visible=true 显示独立大厅页，false 显示战斗页）
 function setRoomHudVisible(visible) {
+  spectatorView?.update({ active: isSpectatorMode(), room: app.room, state: app.latestSnapshot?.state, zoom: camera?.zoom });
   if (ui.lobbyView) ui.lobbyView.hidden = !visible;
   if (ui.battleView) ui.battleView.hidden = visible;
 }
@@ -445,6 +456,7 @@ function clearMatchRuntime() {
   app.drag = null;
   app.lastRenderState = null;
   app.lastMatchPhase = null;
+  spectatorCameraInput?.cancel();
   camera.reset();
   app.ackSeq = 0;
   app.pendingSubSkillAim = null;
@@ -690,22 +702,16 @@ function syncShipSelectOptions(team) {
     return;
   }
 
-  const selected = team.ships[app.selectedShipKey];
-  if (!selected || !selected.alive || !selected.canControl) {
-    const fallback = Object.keys(team.ships).find((key) => {
-      const ship = team.ships[key];
-      return ship && ship.alive && ship.canControl;
-    });
-    if (fallback) {
-      app.selectedShipKey = fallback;
-      sendSelectedShipUpdate();
-    }
+  const selectedKey = resolveSelectedShipKey(team, app.selectedShipKey);
+  if (selectedKey !== app.selectedShipKey) {
+    app.selectedShipKey = selectedKey;
+    sendSelectedShipUpdate();
   }
 
   if (ui.shipSelect) {
     for (const option of Array.from(ui.shipSelect.options)) {
       const ship = team.ships[option.value];
-      option.disabled = !(ship && ship.alive && ship.canControl);
+      option.disabled = !isShipSelectable(ship);
     }
     ui.shipSelect.value = app.selectedShipKey;
   }
@@ -713,7 +719,7 @@ function syncShipSelectOptions(team) {
   for (const button of ui.shipSwitchButtons) {
     const key = button.dataset.ship;
     const ship = key ? team.ships[key] : null;
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    const enabled = isShipSelectable(ship);
     button.disabled = !enabled;
     button.classList.toggle("active", key === app.selectedShipKey);
   }
@@ -733,7 +739,7 @@ function syncPowerFromSelectedShip(team) {
 }
 
 function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.state : null) {
-  if (!shipKey) {
+  if (!shipKey || isSpectatorMode()) {
     return false;
   }
   const own = teamBySeat(state, app.seat);
@@ -741,7 +747,7 @@ function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.sta
     return false;
   }
   const ship = own.ships[shipKey];
-  if (!ship || !ship.alive || !ship.canControl) {
+  if (!isShipSelectable(ship)) {
     return false;
   }
   app.selectedShipKey = shipKey;
@@ -766,23 +772,7 @@ function refreshSkillButtons(own) {
 }
 
 function updateSpectatorBattleStatus(state) {
-  const teamA = teamBySeat(state, "A");
-  const teamB = teamBySeat(state, "B");
-  const hullA = Math.round((teamA?.hullRatio || 0) * 100);
-  const hullB = Math.round((teamB?.hullRatio || 0) * 100);
-  const energyA = energyPercentForShip(teamA?.ships?.main);
-  const energyB = energyPercentForShip(teamB?.ships?.main);
-
-  ui.hullValue.textContent = `A ${hullA}% / B ${hullB}%`;
-  ui.energyValue.textContent = `A ${energyA}% / B ${energyB}%`;
-  ui.splitValue.textContent = `${localizedSplitLabel(teamA?.splitLevel || 0)} / ${localizedSplitLabel(teamB?.splitLevel || 0)}`;
-  ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
-  ui.selectedValue.textContent = t("观战");
-  ui.zoomValue.textContent = `${Math.round(camera.zoom * 100)}%`;
-  ui.zoomOutBtn.disabled = camera.zoom <= CAMERA_ZOOM_MIN + 1e-3;
-  ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
-  refreshSkillButtons(null);
-  renderFleetRoster(ui, teamA, { selectedShipKey: app.selectedShipKey });
+  spectatorView.update({ active: true, room: app.room, state, zoom: camera.zoom, targetZoom: camera.targetZoom });
   syncMobileHud(ui, null, { visible: false });
 }
 
@@ -820,12 +810,12 @@ function updateBattleStatus(state) {
     selectedShip && selectedShip.alive
       ? `${shipCharacterName(selectedShip)} | ${t("能量")} ${Math.round(Number(selectedShip.fleetEnergy) || 0)}/${Math.round(
           Number(selectedShip.fleetMaxEnergy) || 1,
-        )}${selectedShip.braking ? ` | ${t("急刹中")}` : ""}`
+        )}`
       : t("无");
   ui.splitOneBtn.disabled = own.splitLevel >= 1;
   ui.splitTwoBtn.disabled = own.splitLevel < 1 || own.splitLevel >= 2;
   refreshSkillButtons(own);
-  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey });
+  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey, portraitColor: getFaction() });
   syncMobileHud(ui, own, {
     visible: app.mobileMode && Boolean(app.room && app.room.status === "running") && !app.spectating,
     selected: selectedShip,
@@ -952,6 +942,10 @@ function handleServerMessage(raw) {
 }
 
 function sendAction(action) {
+  // 指令权限只看最新权威快照，插值中的旧状态不能放行禁控动作或本地航线预测。
+  if (SHIP_CONTROL_ACTIONS.has(action.type) && !getLatestOwnShip(action.shipKey || "main")?.canControl) return null;
+  if (action.type === MATCH_ACTION_TYPES.CAST_FLAGSHIP_SKILL && !getLatestOwnShip("main")?.canControl) return null;
+  if (action.type === MATCH_ACTION_TYPES.LAUNCH_SCOUT && isShipControlLocked(getLatestOwnShip(action.shipKey || "main"))) return null;
   return actionTransport ? actionTransport.send(action) : null;
 }
 
@@ -1131,6 +1125,7 @@ function pruneAckedOverrides(snapshotState) {
 }
 
 function setThrottleGear(gear, shouldSend = true) {
+  if (shouldSend && !getLatestOwnShip(app.selectedShipKey)?.canControl) return false;
   const throttle = throttleValueForGear(gear);
   app.throttle = throttle;
   syncThrottleGearControls(ui, throttle);
@@ -1220,18 +1215,6 @@ function toggleAutoScoutOnline() {
   return seq;
 }
 
-function useEmergencyBrakeOnline() {
-  const ship = getLatestOwnShip(app.selectedShipKey);
-  if (!ship || !ship.alive || !ship.canControl) {
-    return null;
-  }
-  const seq = sendAction(matchActions.emergencyBrake(ship.key));
-  if (seq !== null) {
-    log(t("{ship} 执行急刹", { ship: shipDisplayName(ship) }));
-  }
-  return seq;
-}
-
 function handleMinimapTap(screenPos, state, { allowZoneLog = true } = {}) {
   if (!app.mobileMode || !state) {
     return false;
@@ -1266,6 +1249,7 @@ function renderBattleFrame() {
   // backing store(设备像素)对逻辑世界(LOGICAL)的比例:整幅画面放大到物理像素 → 矢量线条像素级清晰。
   const scale = canvas.width / LOGICAL;
   camera.updateCamera();
+  if (isSpectatorMode()) spectatorView.updateCamera({ zoom: camera.zoom, targetZoom: camera.targetZoom, maxZoom: camera.maxZoom });
   const view = camera.currentViewState();
   ctx.setTransform(scale, 0, 0, scale, 0, 0); // 基准变换:屏幕/UI 空间(逻辑坐标 → 物理像素)
   ctx.save();
@@ -1322,25 +1306,14 @@ function renderBattleFrame() {
   drawBattleWorld(ctx, frame);
   ctx.restore();
 
-  // 屏幕空间:对战视角沿用玩家阵营立绘;观战按 A 蓝/B 红在地图两侧显示双方当前所选角色。
-  if (spectating) {
-    const teamA = teamBySeat(state, "A");
-    const teamB = teamBySeat(state, "B");
-    const selectedA = teamA?.ships?.[selectedShipKeyForSeat(state, "A")];
-    const selectedB = teamB?.ships?.[selectedShipKeyForSeat(state, "B")];
-    if (selectedA?.alive) {
-      drawInGamePortrait(ctx, selectedA.characterId, LOGICAL, LOGICAL, 0.16, "blue", "left");
-    }
-    if (selectedB?.alive) {
-      drawInGamePortrait(ctx, selectedB.characterId, LOGICAL, LOGICAL, 0.16, "red", "right");
-    }
-  } else {
+  // 观战立绘已移到双方展板，战场中央完整留给交战信息。
+  if (!spectating) {
     const activeShip = ownTeam && ownTeam.ships ? ownTeam.ships[app.selectedShipKey] : null;
     if (activeShip && activeShip.alive) {
       drawInGamePortrait(ctx, activeShip.characterId, LOGICAL, LOGICAL, 0.14, getFaction());
     }
   }
-  drawMinimap(ctx, frame, camera.minimapRect(), view);
+  if (!spectating) drawMinimap(ctx, frame, camera.minimapRect(), view);
   if (app.room?.status === "countdown") {
     drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - stateSync.estimateServerNowMs());
   }
@@ -1387,7 +1360,7 @@ function useSubSkillOnline() {
   const own = teamBySeat(state, app.seat);
   const ship = own && own.ships ? own.ships[app.selectedShipKey] : null;
   const meta = currentSubMeta(ship);
-  if (!ship || !meta) {
+  if (!ship?.canControl || !meta) {
     return;
   }
   if (meta.target === "point" || meta.target === "optional_point") {
@@ -1422,6 +1395,7 @@ function useSubSkillOnline() {
 }
 
 function bindUiEvents() {
+  spectatorCameraInput = bindDirectorCameraInput(canvas, camera, { enabled: isSpectatorMode, signal: ac.signal });
   ui.serverTargetValue.textContent = defaultServerUrl();
   profileController.initializeNickname();
   ui.zoneValue.textContent = t("战区 {zone}", { zone: app.selectedZoneId });
@@ -1511,6 +1485,14 @@ function bindUiEvents() {
     resultView.close();
     setRoomHudVisible(true); // 立即切回大厅页
   });
+
+  ui.battleView.querySelector(".spectator-exit").addEventListener("click", () => ui.leaveRoomBtn.click());
+  for (const button of ui.battleView.querySelectorAll("[data-camera]")) {
+    button.addEventListener("click", () => {
+      if (button.dataset.camera === "reset") camera.setCameraZoom(CAMERA_ZOOM_MIN);
+      else camera.adjustCameraZoom(button.dataset.camera === "in" ? 1 : -1);
+    });
+  }
 
   if (ui.overlayActionBtn) {
     ui.overlayActionBtn.addEventListener("click", () => {
@@ -1629,8 +1611,6 @@ function bindUiEvents() {
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScoutOnline);
   bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScoutOnline);
-  bindPressButton(ui.brakeBtn, useEmergencyBrakeOnline);
-  bindPressButton(ui.mobileBrakeBtn, useEmergencyBrakeOnline);
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkillOnline);
   bindPressButton(ui.mobileFlagshipBtn, useFlagshipSkillOnline);
@@ -1757,6 +1737,11 @@ function bindUiEvents() {
   });
 
   canvas.addEventListener("wheel", (event) => {
+    if (isSpectatorMode()) {
+      event.preventDefault();
+      camera.zoomByWheel(event);
+      return;
+    }
     if (app.mobileMode || !app.room || app.room.status !== "running") {
       return;
     }
@@ -1766,7 +1751,7 @@ function bindUiEvents() {
   }, { passive: false });
 
   canvas.addEventListener("click", (event) => {
-    if (event.button !== 0) {
+    if (event.button !== 0 || isSpectatorMode()) {
       return;
     }
     if (app.suppressClick) {
@@ -1850,6 +1835,8 @@ function bindUiEvents() {
       return;
     }
     const active = document.activeElement;
+    // 聚焦操作控件时保留原生激活与焦点移动，避免 Enter 下航线或空格暂停抢走交互。
+    if (active?.closest("button, a, summary") && ["Enter", "Space", "Tab"].includes(event.code)) return;
     if (
       active &&
       (active.tagName === "INPUT" ||
@@ -1859,6 +1846,24 @@ function bindUiEvents() {
     ) {
       return;
     }
+
+    if (event.code === "Equal" || event.code === "NumpadAdd") {
+      event.preventDefault();
+      camera.adjustCameraZoom(1);
+      return;
+    }
+    if (event.code === "Minus" || event.code === "NumpadSubtract") {
+      event.preventDefault();
+      camera.adjustCameraZoom(-1);
+      return;
+    }
+    if (event.code === "Digit0" || event.code === "Numpad0") {
+      event.preventDefault();
+      camera.setCameraZoom(CAMERA_ZOOM_MIN);
+      return;
+    }
+    // 观战保留 Tab 的原生焦点导航，不沿用切舰、战区与施放快捷键。
+    if (isSpectatorMode()) return;
 
     const throttleGear = throttleGearFromShortcut(event, app.throttle);
     if (throttleGear !== null) {
@@ -1954,6 +1959,7 @@ function bindUiEvents() {
       }
       const seq = sendAction(matchActions.launchScout({
         zoneId: app.selectedZoneId,
+        shipKey: app.selectedShipKey,
       }));
       if (seq !== null) {
         log(t("侦查机已派往战区 {zone}", { zone: app.selectedZoneId }));
@@ -1967,15 +1973,6 @@ function bindUiEvents() {
         return;
       }
       toggleAutoScoutOnline();
-      return;
-    }
-
-    if (event.code === "KeyB") {
-      event.preventDefault();
-      if (!canControlBattle()) {
-        return;
-      }
-      useEmergencyBrakeOnline();
       return;
     }
 
@@ -1995,21 +1992,6 @@ function bindUiEvents() {
       }
       useSubSkillOnline();
       return;
-    }
-
-    if (event.code === "Equal" || event.code === "NumpadAdd") {
-      event.preventDefault();
-      camera.adjustCameraZoom(1);
-      return;
-    }
-    if (event.code === "Minus" || event.code === "NumpadSubtract") {
-      event.preventDefault();
-      camera.adjustCameraZoom(-1);
-      return;
-    }
-    if (event.code === "Digit0" || event.code === "Numpad0") {
-      event.preventDefault();
-      camera.setCameraZoom(CAMERA_ZOOM_MIN);
     }
   });
   addWin("resize", () => {
@@ -2067,13 +2049,20 @@ export function mount(root) {
   root.innerHTML = onlineTemplate();
   cacheDom();
   initApp();
+  spectatorView = createSpectatorView(ui.battleView);
+  statusEffectTooltip = createStatusEffectTooltip(ui.battleView);
   camera = createBattleCamera({
     canvas,
+    maxCanvasDimension: battleRenderer.maxCanvasDimension,
     isMobile: () => app.mobileMode,
     mobileZoomEnabled: () => !isSpectatorMode(), // 观战要纵览全场,不做移动端基础放大
     overviewWhenIdle: () => isSpectatorMode(), // 观战未手动放大时固定全图视角
-    getTrackedShip: () => getSelectedShipFromState(currentBattleState()),
-    onZoomChanged: () => updateBattleStatus(currentBattleState()),
+    directorMode: isSpectatorMode,
+    getTrackedShip: () => isSpectatorMode() ? null : getSelectedShipFromState(currentBattleState()),
+    onZoomChanged: () => {
+      if (isSpectatorMode()) spectatorView.updateCamera({ zoom: camera.zoom, targetZoom: camera.targetZoom, maxZoom: camera.maxZoom });
+      else updateBattleStatus(currentBattleState());
+    },
   });
   ac = new AbortController();
   running = true;
@@ -2089,6 +2078,11 @@ export function mount(root) {
 }
 
 function unmount() {
+  camera?.destroy();
+  statusEffectTooltip?.destroy();
+  statusEffectTooltip = null;
+  spectatorCameraInput?.cancel();
+  spectatorCameraInput = null;
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;
@@ -2105,6 +2099,8 @@ function unmount() {
   battleRenderer?.destroy();
   battleRenderer = null;
   actionTransport = null;
+  spectatorView?.destroy();
+  spectatorView = null;
 }
 
 

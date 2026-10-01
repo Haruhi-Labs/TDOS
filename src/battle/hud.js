@@ -3,12 +3,10 @@
 // 战斗状态与选中信息全部显式传入,不读各模式的模块级变量。
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-  EMERGENCY_BRAKE_COST,
   MANUAL_SCOUT_COOLDOWN,
   SCOUT_LAUNCH_COST,
   skillMetaForCharacter,
 } from "../../shared/game-core.js";
-import { EMERGENCY_BRAKE_COOLDOWN } from "../../shared/game/combat-rules.js";
 import { shipCharacterName, slotLabel as localizedSlotLabel, t } from "../i18n.js";
 import {
   clearCooldownProgress,
@@ -16,9 +14,12 @@ import {
   setCooldownButtonLabel,
   setCooldownProgress,
 } from "./cooldown-progress.js";
+import { mirrorCommandButton, renderCommandPanel, renderCommandShip } from "./command-panel.js";
 import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
+import { isShipControlLocked, isShipSelectable } from "./ship-selection.js";
+import { renderStatusEffects } from "./status-effects.js";
 
-const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"];
+const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn"];
 
 function scoutCooldownDuration(remaining) {
   return remaining > MANUAL_SCOUT_COOLDOWN + 0.05
@@ -31,8 +32,8 @@ export function fleetSlotLabel(slotKey) {
 }
 
 export function energyPercentForShip(ship) {
-  const max = Math.max(1, Number(ship?.fleetMaxEnergy) || Number(ship?.maxEnergy) || 1);
-  const value = Number(ship?.fleetEnergy) || Number(ship?.energy) || 0;
+  const max = Math.max(1, Number(ship?.fleetMaxEnergy ?? ship?.maxEnergy) || 1);
+  const value = Number(ship?.fleetEnergy ?? ship?.energy) || 0;
   return Math.round((value / max) * 100);
 }
 
@@ -52,15 +53,19 @@ export function currentSubMeta(ship) {
   return skillMetaForCharacter(ship.characterId, "sub");
 }
 
-// 技能区按钮(侦察/自动侦察/旗舰技/急刹/分舰技)的可用态与文案。
+// 技能区按钮(侦察/自动侦察/旗舰技/分舰技)的可用态与文案。
 // opts: { selected 当前选中舰, selectedZoneId, pendingSubSkillAim, fallbackLoadout }
 export function updateSkillButtons(ui, own, opts = {}) {
+  updateSkillAvailability(ui, own, opts);
+  renderCommandPanel(ui, own, opts);
+}
+
+function updateSkillAvailability(ui, own, opts = {}) {
   const { selected = null, selectedZoneId, pendingSubSkillAim = null, fallbackLoadout = null } = opts;
   if (!own) {
     ui.scoutBtn.disabled = true;
     ui.autoScoutBtn.disabled = true;
     ui.autoScoutBtn.classList.remove("toggle-active");
-    ui.brakeBtn.disabled = true;
     ui.flagshipBtn.disabled = true;
     ui.subSkillBtn.disabled = true;
     for (const key of DESKTOP_COOLDOWN_BUTTON_KEYS) {
@@ -76,7 +81,8 @@ export function updateSkillButtons(ui, own, opts = {}) {
   const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
 
   const scoutLocked = own.skillsDisabled;
-  ui.scoutBtn.disabled = scoutLocked || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
+  ui.scoutBtn.disabled = scoutLocked || isShipControlLocked(selected || mainShip) || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
+  for (const button of [...(ui.powerGearButtons || []), ...(ui.mobileThrottleButtons || [])]) button.disabled = !selected?.canControl;
   setCooldownButtonLabel(ui.scoutBtn, scoutLocked
     ? t("派出侦查机（已被封印）")
     : (cooldowns.scout || 0) > 0
@@ -110,7 +116,13 @@ export function updateSkillButtons(ui, own, opts = {}) {
     setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能"));
   } else if (flagMeta.type === "passive") {
     ui.flagshipBtn.disabled = true;
-    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") }));
+    const barrier = own.koizumiBarrier;
+    const suffix = barrier && flagMeta.id === "closed_space_barrier"
+      ? barrier.active
+        ? `（${t("护盾 {count}/{max}", { count: barrier.remainingHits, max: barrier.maxHits })}）`
+        : `（${t("修复{seconds}秒", { seconds: barrier.disabledRemaining.toFixed(1) })}）`
+      : t("（被动）");
+    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix }));
   } else {
     const flagshipCooldown = cooldowns.flagship || 0;
     const flagshipSilenced = Boolean(mainShip?.silenced);
@@ -120,6 +132,7 @@ export function updateSkillButtons(ui, own, opts = {}) {
     const disabled =
       own.skillsDisabled ||
       flagshipSilenced ||
+      isShipControlLocked(mainShip) ||
       flagshipCooldown > 0 ||
       mainEnergy < (flagMeta.cost || 0) ||
       !(mainShip && mainShip.alive);
@@ -141,29 +154,6 @@ export function updateSkillButtons(ui, own, opts = {}) {
     flagMeta?.type === "active" ? flagMeta.cooldown : 0,
     flagMeta?.id || "flagship",
   );
-
-  const brakeCooldown = Number(selected?.brakeCooldown) || 0;
-  const brakeEnergy = Number(selected?.fleetEnergy) || 0;
-  const brakeDisabled = !selected || !selected.alive || !selected.canControl || selected.attached || selected.koizumiOrb?.active || brakeCooldown > 0 || brakeEnergy < EMERGENCY_BRAKE_COST;
-  let brakeSuffix = "";
-  if (!selected || !selected.alive) {
-    brakeSuffix = t("（切换到可控舰）");
-  } else if (selected.koizumiOrb?.active) {
-    brakeSuffix = selected.koizumiOrb.phase === "returning" ? t("（自动归航）") : t("（光球形态）");
-  } else if (!selected.canControl) {
-    brakeSuffix = t("（切换到可控舰）");
-  } else if (selected.attached) {
-    brakeSuffix = t("（分离后可用）");
-  } else if (brakeCooldown > 0) {
-    brakeSuffix = t("（冷却{seconds}秒）", { seconds: brakeCooldown.toFixed(1) });
-  } else if (brakeEnergy < EMERGENCY_BRAKE_COST) {
-    brakeSuffix = t("（需{energy}能量）", { energy: EMERGENCY_BRAKE_COST });
-  } else if (selected.braking) {
-    brakeSuffix = t("（制动中）");
-  }
-  ui.brakeBtn.disabled = brakeDisabled;
-  setCooldownButtonLabel(ui.brakeBtn, t("急刹{suffix}", { suffix: brakeSuffix }));
-  setCooldownProgress(ui.brakeBtn, brakeCooldown, EMERGENCY_BRAKE_COOLDOWN, `brake:${selected?.key || "none"}`);
 
   const subMeta = currentSubMeta(selected);
   if (!selected || !subMeta) {
@@ -211,11 +201,12 @@ export function syncMobileHud(ui, own, opts = {}) {
   }
 
   const shipName = selected ? shipCharacterName(selected) : t("无");
-  const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
-  ui.mobileBattleHint.textContent = pendingSubSkillAim
+  const energyPercent = energyPercentForShip(selected);
+  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("能量")}${energyPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
+  const hintText = pendingSubSkillAim
     ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
     : t("点舰船切换 · 点战场下航线 · 拖侦察选择战区");
+  if (ui.mobileBattleHint.textContent !== hintText) ui.mobileBattleHint.textContent = hintText;
 
   const buttonStates = {
     main: own.ships.main,
@@ -224,32 +215,37 @@ export function syncMobileHud(ui, own, opts = {}) {
   };
   for (const button of ui.mobileShipButtons) {
     const ship = buttonStates[button.dataset.ship];
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    const enabled = isShipSelectable(ship);
     button.disabled = !enabled;
     button.classList.toggle("active", button.dataset.ship === selectedShipKey);
+    button.setAttribute("aria-pressed", String(button.dataset.ship === selectedShipKey));
+    const name = button.querySelector(".mobile-ship-name");
+    const health = button.querySelector(".mobile-ship-health");
+    if (name) name.textContent = `${fleetSlotLabel(button.dataset.ship)} ${ship ? shipCharacterName(ship) : "—"}`;
+    if (health) health.textContent = !ship?.alive ? t("已击沉") : ship.attached ? t("待分离") : `${t("舰体")} ${Math.round(ship.hp / Math.max(1, ship.maxHp) * 100)}%`;
   }
 
   ui.mobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
   ui.mobileSplitTwoBtn.disabled = ui.splitTwoBtn.disabled;
   ui.mobileScoutBtn.disabled = ui.scoutBtn.disabled;
   ui.mobileAutoScoutBtn.disabled = ui.autoScoutBtn.disabled;
-  ui.mobileBrakeBtn.disabled = ui.brakeBtn.disabled;
   ui.mobileFlagshipBtn.disabled = ui.flagshipBtn.disabled;
   ui.mobileSubSkillBtn.disabled = ui.subSkillBtn.disabled;
 
   const autoScoutEnabled = Boolean(own.autoScout?.enabled);
   setCooldownButtonLabel(ui.mobileAutoScoutBtn, autoScoutEnabled ? t("自侦开") : t("自侦关"));
   ui.mobileAutoScoutBtn.classList.toggle("toggle-active", autoScoutEnabled);
-  setCooldownButtonLabel(ui.mobileBrakeBtn, t("急刹"));
   setCooldownButtonLabel(ui.mobileFlagshipBtn, t("旗舰技"));
   setCooldownButtonLabel(ui.mobileSubSkillBtn, selected && currentSubMeta(selected) ? currentSubMeta(selected).name : t("分舰技"));
 
   mirrorCooldownProgress(ui.scoutBtn, ui.mobileScoutBtn);
   mirrorCooldownProgress(ui.autoScoutBtn, ui.mobileAutoScoutBtn);
-  mirrorCooldownProgress(ui.brakeBtn, ui.mobileBrakeBtn);
   mirrorCooldownProgress(ui.flagshipBtn, ui.mobileFlagshipBtn);
   mirrorCooldownProgress(ui.subSkillBtn, ui.mobileSubSkillBtn);
 
+  for (const [source, target] of [[ui.flagshipBtn, ui.mobileFlagshipBtn], [ui.subSkillBtn, ui.mobileSubSkillBtn], [ui.autoScoutBtn, ui.mobileAutoScoutBtn]]) {
+    mirrorCommandButton(source, target);
+  }
   syncThrottleGearControls(ui, selected?.throttle);
 }
 
@@ -261,7 +257,10 @@ export function renderFleetRoster(ui, own, opts = {}) {
   }
   for (const cell of ui.fleetRows) {
     const ship = own && own.ships ? own.ships[cell.key] : null;
+    renderStatusEffects(cell.row.closest(".fleet-card")?.querySelector(".status-effects"), ship);
+    cell.row.disabled = !isShipSelectable(ship);
     cell.row.classList.toggle("active", cell.key === selectedShipKey);
+    renderCommandShip(cell.row, ship, cell.key, own, opts.portraitColor);
     if (!ship) {
       cell.row.classList.add("gone");
       cell.name.textContent = fleetSlotLabel(cell.key);
@@ -281,8 +280,12 @@ export function renderFleetRoster(ui, own, opts = {}) {
     let state = "";
     if (dead) {
       state = `✖ ${t("阵亡")}`;
-    } else if (ship.braking) {
-      state = t("急刹中");
+    } else if (isShipControlLocked(ship)) {
+      state = t(ship.stunRemaining > 0 ? "眩晕" : "不可操控");
+    } else if (ship.attached) {
+      state = t("待分离");
+    } else if (cell.key === selectedShipKey) {
+      state = t("操控中");
     } else if (cell.key !== "main" && ship.attached === false) {
       state = t("分离中");
     }

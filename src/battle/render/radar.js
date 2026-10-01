@@ -159,11 +159,18 @@ function drawRadarAfterimage(ctx, contact, elapsed, alpha) {
   ctx.restore();
 }
 
-// 长门旗舰私有雷达：只消费调用方显式传入的 frame.radar。联机对手与观战帧不带此字段，
-// 因而既看不到扫线，也看不到任何回波；回波也从不参与 visibleEnemyIds。
+// 玩家雷达消费私有 frame.radar；观战只消费双方公开 radarSweep。
+// 私有回波不进入观战，也不参与 visibleEnemyIds。
 export function drawYukiRadar(ctx, frame) {
   const { state, ownTeam, spectating = false, radar } = frame;
-  if (spectating || !state || state.phase === "finished" || !radar?.active || !ownTeam?.ships?.main?.alive) {
+  if (spectating) {
+    // 观战同时呈现双方公开扫线，不读取私有回波，也不叠加虚假舰影。
+    for (const team of [state?.teams?.A, state?.teams?.B]) {
+      drawYukiRadar(ctx, { ...frame, ownTeam: team, radar: team?.radarSweep, spectating: false, radarSweepOnly: true });
+    }
+    return;
+  }
+  if (!state || state.phase === "finished" || !radar?.active || !ownTeam?.ships?.main?.alive) {
     return;
   }
   const source = ownTeam.ships.main;
@@ -257,6 +264,7 @@ export function drawYukiRadar(ctx, frame) {
   ctx.stroke();
   ctx.restore();
 
+  if (frame.radarSweepOnly) return;
   const visibleEnemyIds = frame.visibleEnemyIds || new Set();
   for (const contact of radar.contacts || []) {
     if (!contact || visibleEnemyIds.has(contact.targetId)) {

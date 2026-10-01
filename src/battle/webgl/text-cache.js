@@ -1,8 +1,9 @@
-const TEXTURE_SCALE = 2;
 const MAX_TEXT_TEXTURES = 320;
+const MAX_TEXT_BYTES = 32 * 1024 * 1024;
 
 function createCanvas(width = 1, height = 1) {
-  if (typeof OffscreenCanvas !== "undefined") return new OffscreenCanvas(width, height);
+  // 页面字形沿用文档的语言与字体环境；无 DOM 的渲染环境再使用 OffscreenCanvas。
+  if (typeof document === "undefined") return new OffscreenCanvas(width, height);
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -27,11 +28,15 @@ function drawSpacedText(ctx, text, x, y, spacing, method) {
 }
 
 export class NativeTextCache {
-  constructor(driver) {
+  constructor(driver, { maxBytes = MAX_TEXT_BYTES } = {}) {
     this.driver = driver;
     this.measureCanvas = createCanvas();
     this.measureContext = this.measureCanvas.getContext("2d");
     this.entries = new Map();
+    this.maxBytes = maxBytes;
+    this.bytes = 0;
+    this.inFrame = false;
+    this.used = new Set();
   }
 
   measure(text, font, letterSpacing = "0px") {
@@ -56,27 +61,32 @@ export class NativeTextCache {
       options.letterSpacing,
       options.shadowColor,
       options.shadowBlur,
+      options.textureScale,
     ].join("\u001f");
   }
 
   get(options) {
+    // 整数密度档位避免平滑缩放每帧上传；既有的两倍采样作为最低精度保留。
+    options = { ...options, textureScale: Math.max(2, Math.ceil(Number(options.scale) || 1)) };
     const key = this.keyFor(options);
     const cached = this.entries.get(key);
     if (cached) {
       this.entries.delete(key);
       this.entries.set(key, cached);
+      if (this.inFrame) this.used.add(key);
       return cached;
     }
     const metrics = this.measure(options.text, options.font, options.letterSpacing);
     const padding = Math.ceil(Math.max(3, options.shadowBlur * 1.5 + options.lineWidth + 2));
     const logicalWidth = Math.max(1, Math.ceil(metrics.width + padding * 2));
     const logicalHeight = Math.max(1, Math.ceil(metrics.ascent + metrics.descent + padding * 2));
+    const textureScale = Math.min(options.textureScale, (this.driver.maxTextureSize || 8192) / Math.max(logicalWidth, logicalHeight));
     const surface = createCanvas(
-      Math.ceil(logicalWidth * TEXTURE_SCALE),
-      Math.ceil(logicalHeight * TEXTURE_SCALE),
+      Math.ceil(logicalWidth * textureScale),
+      Math.ceil(logicalHeight * textureScale),
     );
     const ctx = surface.getContext("2d");
-    ctx.scale(TEXTURE_SCALE, TEXTURE_SCALE);
+    ctx.scale(textureScale, textureScale);
     ctx.font = options.font;
     ctx.textAlign = "left";
     ctx.textBaseline = "alphabetic";
@@ -102,15 +112,28 @@ export class NativeTextCache {
       ascent: metrics.ascent,
       descent: metrics.descent,
       padding,
+      textureScale,
+      bytes: surface.width * surface.height * 4,
     };
     this.entries.set(key, entry);
-    while (this.entries.size > MAX_TEXT_TEXTURES) {
-      const oldestKey = this.entries.keys().next().value;
-      const oldest = this.entries.get(oldestKey);
+    this.bytes += entry.bytes;
+    if (this.inFrame) this.used.add(key);
+    this.prune();
+    return entry;
+  }
+
+  beginFrame() { this.inFrame = true; this.used.clear(); }
+  endFrame() { this.inFrame = false; this.used.clear(); this.prune(); }
+
+  prune() {
+    for (const [oldestKey, oldest] of this.entries) {
+      if (this.entries.size <= MAX_TEXT_TEXTURES && this.bytes <= this.maxBytes) break;
+      // GPU 尚未提交的本帧字形不能提前删除；提交后再完成预算回收。
+      if (this.used.has(oldestKey)) continue;
       this.driver.deleteTexture(oldest.texture);
       this.entries.delete(oldestKey);
+      this.bytes -= oldest.bytes;
     }
-    return entry;
   }
 
   clear({ deleteTextures = true } = {}) {
@@ -118,5 +141,7 @@ export class NativeTextCache {
       for (const entry of this.entries.values()) this.driver.deleteTexture(entry.texture);
     }
     this.entries.clear();
+    this.used.clear();
+    this.bytes = 0;
   }
 }

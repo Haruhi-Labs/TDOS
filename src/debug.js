@@ -1,3 +1,4 @@
+import { gameStorageKey } from "./deployment.js";
 import {
   DEFAULT_WORLD_SIZE,
   FIRE_ARC_BANDS,
@@ -92,8 +93,8 @@ const TAU = Math.PI * 2;
 const LOGICAL = DEFAULT_WORLD_SIZE;
 const ROUTE_HANDLE_RADIUS = 11;
 const STORAGE_KEYS = {
-  A: "haruhi-debug-loadout-a-v1",
-  B: "haruhi-debug-loadout-b-v1",
+  A: gameStorageKey("haruhi-debug-loadout-a-v1"),
+  B: gameStorageKey("haruhi-debug-loadout-b-v1"),
 };
 const MOBILE_ZOOM = 1.72;
 const SPEED_PRESETS = [0.5, 1, 2, 4];
@@ -106,7 +107,7 @@ function initApp() {
   teamALoadout: readStoredLoadout("A", getLoadout()),
   teamBLoadout: readStoredLoadout("B", DEFAULT_AI_LOADOUT),
   // 对照开关：B 队改用升级前的旧版AI，便于直观对比新AI的压制力
-  opponentLegacy: window.localStorage.getItem("haruhi-debug-legacy-b") === "1",
+  opponentLegacy: window.localStorage.getItem(gameStorageKey("haruhi-debug-legacy-b")) === "1",
   selected: {
     seat: "A",
     shipId: null,
@@ -1765,7 +1766,7 @@ function bindUiEvents() {
     refreshLegacyLabels();
     ui.legacyToggle.addEventListener("change", () => {
       app.opponentLegacy = ui.legacyToggle.checked;
-      window.localStorage.setItem("haruhi-debug-legacy-b", app.opponentLegacy ? "1" : "0");
+      window.localStorage.setItem(gameStorageKey("haruhi-debug-legacy-b"), app.opponentLegacy ? "1" : "0");
       refreshLegacyLabels();
       resetMatch(true);
       log(app.opponentLegacy ? t("对照模式开启：B队改用旧版AI") : t("对照模式关闭：双方均为新AI"));

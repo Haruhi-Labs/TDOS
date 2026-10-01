@@ -1,0 +1,30 @@
+{
+  "kind": "release",
+  "baseMain": "9fa11974bbf2b1ac3ce584cd76473b3c2a5f07ad",
+  "sourceDev": "ea435605a9cc1b66469d08129a42b57b04accd4f",
+  "commits": [
+    "8eb073cb6e43df5f1b675fd8912b18a055f2b7d5",
+    "aba0fd008c7e2cdbe33e569afc3589ced29adbe3",
+    "a218bf00ff5a14fa056f3ca144682a37d3c95650",
+    "cee2afce4538847ae2c3ea2bab402ba822a4c889",
+    "c4340a4d4307e7b0bbf6efbae6a6d21985697104",
+    "7c4e0513c076507a60182f9a1d9a4ec91e56ad0c",
+    "52790efb3b935ab2b0336e0fae52b4070be2ddc6",
+    "1222cf83ba2b1e28ed1a4122ef3944508509aebb",
+    "1f73547efa85c3836e86e1a42071ff2bac9258a5",
+    "c70d19f33c05d499f37f2aa445d0723c935f852f",
+    "0a4123df9e80da0eb07493102fba73326f19e90e",
+    "c538af245a17c437e6e39eb5cf9046ef2b4fc875",
+    "6fe70f1c984ba798eb0117ec1330eefd44942a2a",
+    "ff75687a883fa84e5fc075aa4853022bc75d1726",
+    "b471dd34897b360a3e7d5f91dba2e652727f10fd",
+    "f963254962cdc69163b4ba519b24352bbe79f3bb",
+    "3788a8aade24804bd8b9ce0969399938cc209378",
+    "ec04bae5dc70f55990b6a31ff981d6ba2e475459",
+    "eeb8517efa4b599aa27fff4a1471d20dc608e14d",
+    "2d2f5bf802b5647fdf8af18754718f6f45d16fdd",
+    "ea435605a9cc1b66469d08129a42b57b04accd4f"
+  ],
+  "scope": "full",
+  "evaluation": "dev ea43560 已通过完整 CI https://github.com/Haruhi-Labs/TDOS/actions/runs/36807826296，测试服前端与 WS 提交验证通过；近期角色规则、单人操作、多人观战、移动布局和统计均有专项回归。维护者确认中文更新日志并明确授权 PR 合并和 v0.4 发版。full 发布采用独立不可变目录与既有数据，替换正式联机服务会短暂中断在途对局，失败恢复登记的旧进程配置。"
+}

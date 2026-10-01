@@ -1,9 +1,15 @@
+import { LEGACY_STATISTICS_VERSION, statisticsVersionGroup, isStatisticsVersion } from "../shared/statistics-version.js";
+import { GAME_VERSION } from "../shared/game-version.js";
 import { characterShortName, t } from "./i18n.js";
 import { isMobile } from "./mobile.js";
 import { startStarfield } from "./starfield.js";
 import { requestWinrateStatistics } from "./statistics-client.js";
 
 const state = {
+  version: statisticsVersionGroup(GAME_VERSION),
+  versions: [statisticsVersionGroup(GAME_VERSION)],
+  requestId: 0,
+  cache: new Map(),
   mode: "solo",
   sort: "games",
   stats: null,
@@ -18,6 +24,10 @@ function modeControlsHTML() {
         <button type="button" class="stats-tab active" data-stats-mode="solo" role="tab" aria-selected="true">${t("单人游戏")}</button>
         <button type="button" class="stats-tab" data-stats-mode="multiplayer" role="tab" aria-selected="false">${t("多人游戏")}</button>
       </div>
+      <label class="stats-sort-label">
+        <span>${t("游戏版本")}</span>
+        <select class="stats-sort stats-version" aria-label="${t("游戏版本")}"></select>
+      </label>
       <label class="stats-sort-label">
         <span>${t("排序")}</span>
         <select class="stats-sort" aria-label="${t("排序方式")}">
@@ -109,8 +119,19 @@ function render(root) {
     button.classList.toggle("active", active);
     button.setAttribute("aria-selected", active ? "true" : "false");
   }
-  const select = root.querySelector(".stats-sort");
+  const select = root.querySelector(".stats-sort:not(.stats-version)");
   if (select) select.value = state.sort;
+
+  const versionSelect = root.querySelector(".stats-version");
+  if (versionSelect) {
+    versionSelect.replaceChildren(...state.versions.map((version) => {
+      const option = document.createElement("option");
+      option.value = version;
+      option.textContent = version === LEGACY_STATISTICS_VERSION ? t("v0.3及之前的版本") : version;
+      return option;
+    }));
+    versionSelect.value = state.version;
+  }
 
   if (state.loading) {
     meta.textContent = "";
@@ -124,7 +145,18 @@ function render(root) {
   }
 
   const modeStats = state.stats?.modes?.[state.mode] || { matches: 0, lineups: [] };
-  meta.textContent = t("已完成对局 {count} 场", { count: Number(modeStats.matches || 0).toLocaleString() });
+  const labels = [
+    t("全部版本对局 {count} 场", { count: Number(modeStats.totalMatches).toLocaleString() }),
+    t("当前版本对局 {count} 场", { count: Number(modeStats.currentVersionMatches).toLocaleString() }),
+  ];
+  if (state.version !== state.stats.currentVersionGroup) {
+    labels.push(t("所选版本对局 {count} 场", { count: Number(modeStats.matches).toLocaleString() }));
+  }
+  meta.replaceChildren(...labels.map((label) => {
+    const item = document.createElement("span");
+    item.textContent = label;
+    return item;
+  }));
   const rows = sortedRows();
   board.innerHTML = rows.length > 0
     ? `<div class="stats-column-head"><span>${t("阵容")}</span><span>${t("出场")}</span><span>${t("胜率")}</span></div>${rows.map(rowHTML).join("")}`
@@ -132,20 +164,37 @@ function render(root) {
 }
 
 async function load(root) {
+  const requestId = ++state.requestId;
+  const version = state.version;
   state.loading = true;
   state.error = false;
   render(root);
   try {
-    state.stats = await requestWinrateStatistics();
+    const stats = state.cache.get(version) || await requestWinrateStatistics(version);
+    if (requestId !== state.requestId) return;
+    if (stats?.schemaVersion !== 2 || stats.gameVersion !== version) throw new Error("统计服务不支持所选版本");
+    if (!stats.currentVersionGroup || ["solo", "multiplayer"].some((mode) =>
+      !Number.isInteger(stats.modes?.[mode]?.totalMatches) || !Number.isInteger(stats.modes?.[mode]?.currentVersionMatches))) {
+      throw new Error("统计服务尚未提供跨版本汇总");
+    }
+    state.cache.set(version, stats);
+    state.stats = stats;
+    state.versions = [...new Set([stats.currentVersionGroup, version, ...(stats.versions || [])])]
+      .filter(isStatisticsVersion);
   } catch (_error) {
-    state.error = true;
+    if (requestId === state.requestId) state.error = true;
   } finally {
-    state.loading = false;
-    render(root);
+    if (requestId === state.requestId) {
+      state.loading = false;
+      render(root);
+    }
   }
 }
 
 export function mount(root) {
+  state.version = statisticsVersionGroup(GAME_VERSION);
+  state.versions = [statisticsVersionGroup(GAME_VERSION)];
+  state.cache = new Map();
   state.mode = "solo";
   state.sort = "games";
   state.stats = null;
@@ -164,11 +213,15 @@ export function mount(root) {
     }
     if (event.target.closest(".stats-retry")) load(root);
   }, { signal: ac.signal });
-  root.querySelector(".stats-sort")?.addEventListener("change", (event) => {
+  root.querySelector(".stats-sort:not(.stats-version)")?.addEventListener("change", (event) => {
     state.sort = event.target.value === "winRate" ? "winRate" : "games";
     render(root);
   }, { signal: ac.signal });
 
+  root.querySelector(".stats-version")?.addEventListener("change", (event) => {
+    state.version = event.target.value;
+    void load(root);
+  }, { signal: ac.signal });
   void load(root);
-  return () => ac.abort();
+  return () => { state.requestId += 1; ac.abort(); };
 }

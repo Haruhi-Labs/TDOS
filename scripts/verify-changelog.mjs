@@ -1,3 +1,4 @@
+import { GAME_VERSION_LABELS, PUBLISHED_GAME_VERSIONS } from "../shared/game-version.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -11,12 +12,13 @@ import { JA_MESSAGES } from "../src/i18n/messages-ja.js";
 
 const locales = ["zh", "ja", "en"];
 const referenceIds = CHANGELOG_BY_LOCALE.zh.map((release) => release.id);
+assert.deepEqual(PUBLISHED_GAME_VERSIONS, referenceIds, "公开版本清单必须与日志历史一致");
 
 assert.ok(referenceIds.includes(CURRENT_RELEASE_ID), "当前版本必须存在于更新日志中");
 assert.equal(CHANGELOG_BY_LOCALE.zh[0].id, CURRENT_RELEASE_ID, "当前版本必须位于更新日志首位");
 assert.equal(CHANGELOG_BY_LOCALE.zh[0].title, CURRENT_VERSION_LABEL, "首页版本号与中文日志标题未同步");
-assert.equal(EN_MESSAGES[CURRENT_VERSION_LABEL], "Public beta v0.3", "英文首页版本号未同步");
-assert.equal(JA_MESSAGES[CURRENT_VERSION_LABEL], "公開テスト版 v0.3", "日文首页版本号未同步");
+assert.equal(EN_MESSAGES[CURRENT_VERSION_LABEL], GAME_VERSION_LABELS.en, "英文首页版本号未同步");
+assert.equal(JA_MESSAGES[CURRENT_VERSION_LABEL], GAME_VERSION_LABELS.ja, "日文首页版本号未同步");
 
 for (const locale of locales) {
   const releases = CHANGELOG_BY_LOCALE[locale];
@@ -50,11 +52,11 @@ for (const locale of locales) {
 assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE), "更新日志数据必须只读");
 assert.ok(Object.isFrozen(CHANGELOG_BY_LOCALE.zh[0].groups[0].items), "更新日志嵌套数据必须只读");
 assert.deepEqual(
-  CHANGELOG_BY_LOCALE.zh[0].groups.map((group) => group.id),
+  CHANGELOG_BY_LOCALE.zh.find((release) => release.id === "v0.3").groups.map((group) => group.id),
   ["characters", "balance", "systems"],
   "v0.3 分类结构异常",
 );
-const v03Items = CHANGELOG_BY_LOCALE.zh[0].groups.flatMap((group) => group.items);
+const v03Items = CHANGELOG_BY_LOCALE.zh.find((release) => release.id === "v0.3").groups.flatMap((group) => group.items);
 assert.deepEqual(
   v03Items.map((item) => item.id),
   [
@@ -81,7 +83,7 @@ assert.deepEqual(
   "v0.3 中文正文没有逐字采用用户提供的文案",
 );
 for (const locale of ["ja", "en"]) {
-  const localizedItems = CHANGELOG_BY_LOCALE[locale][0].groups.flatMap((group) => group.items);
+  const localizedItems = CHANGELOG_BY_LOCALE[locale].find((release) => release.id === "v0.3").groups.flatMap((group) => group.items);
   assert.equal(localizedItems.length, v03Items.length, `${locale}/v0.3 翻译条目数量错误`);
   assert.ok(
     localizedItems.every((item, index) => item.text && item.text !== v03Items[index].text),

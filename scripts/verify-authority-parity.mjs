@@ -8,9 +8,10 @@ import {
 import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 import { createInputQueue } from "../server/input-queue.js";
+import { applyHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
 
 const LOADOUTS = {
-  A: { main: "kyon", sub1: "asakura", sub2: "future1096" },
+  A: { main: "kyon", sub1: "asakura", sub2: "koizumi" },
   B: { main: "koizumi", sub1: "tsuruya", sub2: "haruhi" },
 };
 
@@ -49,7 +50,7 @@ const ACTIONS_BY_TICK = new Map([
     ["A", matchActions.configureAutoScout({ enabled: true, zoneId: 1 })],
     ["B", matchActions.configureAutoScout({ enabled: true, zoneId: 9 })],
   ]],
-  [10, [["A", matchActions.emergencyBrake("main")]]],
+  [10, [["A", { type: "emergency_brake", shipKey: "main" }]]],
   [15, [["A", matchActions.routeControl({ shipKey: "sub1", controlX: 310, controlY: 760 })]]],
   [16, [["A", matchActions.routeEnd({ shipKey: "sub1", endX: 400, endY: 860 })]]],
   [20, [["A", matchActions.split(2)], ["B", matchActions.split(2)]]],
@@ -57,8 +58,18 @@ const ACTIONS_BY_TICK = new Map([
     ["A", matchActions.setRoute({ shipKey: "sub2", endX: 520, endY: 1020, throttle: 1.4 })],
     ["B", matchActions.setRoute({ shipKey: "sub2", endX: 920, endY: 420, throttle: 1.4 })],
   ]],
+  [34, [["A", matchActions.castSubSkill({ shipKey: "sub2" })]]],
   [35, [["A", matchActions.clearRoute({ shipKey: "sub1" })]]],
+  [36, [["A", matchActions.castSubSkill({ shipKey: "sub1" })]]],
+  [41, [["A", matchActions.setThrottle({ shipKey: "sub1", throttle: 0 })]]],
 ]);
+
+function applyFlightControlScenario(simulation, tick) {
+  if (tick === 40) {
+    for (const key of ["sub1", "sub2"]) applyHaruhiHeroPowerShock(simulation.teamA.ships[key], simulation.elapsed, { lockDuration: 0.2, recoveryDuration: 0.4 });
+  }
+  if (tick === 50) simulation.teamA.ships.sub2.clearActiveSkillBuffs();
+}
 
 function createSimulation() {
   resetRandomSeed();
@@ -77,6 +88,7 @@ function replayDirect(tickCount) {
     for (const [seat, action] of ACTIONS_BY_TICK.get(tick) || []) {
       simulation.applyActionForSeat(seat, action);
     }
+    applyFlightControlScenario(simulation, tick);
     simulation.update(TICK_DT);
     states.push(JSON.stringify(simulation.serializeState()));
   }
@@ -102,6 +114,7 @@ function replayThroughServerQueue(tickCount) {
       inputQueue.queueInput(players.get(room.seats[seat]), { seq: sequences[seat], action });
     }
     inputQueue.applyQueuedInputs(room, (playerId) => players.get(playerId) || null);
+    applyFlightControlScenario(simulation, tick);
     simulation.update(TICK_DT);
     states.push(JSON.stringify(simulation.serializeState()));
   }
@@ -112,6 +125,17 @@ Math.random = deterministicRandom;
 try {
   const directStates = replayDirect(90);
   const queuedStates = replayThroughServerQueue(90);
+  const beforeShock = JSON.parse(directStates[39]).teams.A.ships.sub1;
+  const shocked = JSON.parse(directStates[40]).teams.A.ships.sub1;
+  assert.equal(shocked.bladeQueen, true, "权威回放未覆盖刀锋女王");
+  assert.equal(shocked.canControl, false, "权威回放未覆盖刀锋禁控");
+  assert.ok(Math.hypot(shocked.x - beforeShock.x, shocked.y - beforeShock.y) > 0, "权威回放中刀锋禁控后停止飞行");
+  const orbBefore = JSON.parse(directStates[39]).teams.A.ships.sub2;
+  const orbAfter = JSON.parse(directStates[40]).teams.A.ships.sub2;
+  assert.equal(orbAfter.koizumiOrb?.phase, "active", "权威回放未覆盖古泉飞行");
+  assert.equal(orbAfter.canControl, true, "权威回放中的光球没有免疫震慑");
+  assert.ok(Math.hypot(orbAfter.x - orbBefore.x, orbAfter.y - orbBefore.y) > 0, "权威回放中的光球受控停船");
+  assert.equal(JSON.parse(directStates[50]).teams.A.ships.sub2.koizumiOrb, null, "权威回放中的净化未直接解除光球");
   assert.equal(directStates.length, queuedStates.length);
   for (let tick = 0; tick < directStates.length; tick += 1) {
     assert.equal(

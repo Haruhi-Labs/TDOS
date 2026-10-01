@@ -98,7 +98,8 @@ export function updateRadarPassive(team, enemyTeam, dt) {
   }
 }
 
-export function serializeRadarPassive(team) {
+// 扫线是公开技能表现；回波仍只进入施放方的私有快照。
+export function serializeRadarSweep(team) {
   const source = team.ships.main;
   if (!team.hasYukiFlagship() || !source?.alive || !team.radarPassive) return null;
   return {
@@ -108,6 +109,14 @@ export function serializeRadarPassive(team) {
     angularVelocity: -RADAR_ANGULAR_SPEED,
     rotationSeconds: YUKI_RADAR_ROTATION_SECONDS,
     sampledAt: team.match.elapsed,
+  };
+}
+
+export function serializeRadarPassive(team) {
+  const sweep = serializeRadarSweep(team);
+  if (!sweep) return null;
+  return {
+    ...sweep,
     contacts: [...team.radarPassive.contacts.values()].map((contact) => ({ ...contact })),
   };
 }

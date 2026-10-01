@@ -1,3 +1,4 @@
+import { GAME_VERSION } from "../shared/game-version.js";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { NETWORK_BUILD } from "./config.js";
 import { anonymizeStatisticsPlayerId } from "./statistics-store.js";
@@ -33,6 +34,8 @@ export function buildServerMatchStatisticsRecord({ room, getPlayerById, hashSalt
     mode,
     source: "server",
     verified: true,
+    gameVersion: GAME_VERSION,
+    buildId: process.env.GAME_BUILD_ID || "local",
     rulesetVersion: RULESET_VERSION,
     networkBuild: NETWORK_BUILD,
     campaign: room.mode === "pvp" ? "pvp" : "online_ai",
@@ -60,6 +63,8 @@ export function buildSoloStatisticsRecord(payload, player, { hashSalt = "", now 
     mode: "solo",
     source: "client_solo",
     verified: false,
+    gameVersion: payload?.gameVersion,
+    buildId: payload?.buildId,
     rulesetVersion: String(payload?.rulesetVersion || player?.rulesetVersion || "").slice(0, 80),
     networkBuild: NETWORK_BUILD,
     campaign: "standard",

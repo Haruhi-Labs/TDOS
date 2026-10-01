@@ -1,7 +1,8 @@
+import { gameStorageKey } from "./deployment.js";
 import { CHARACTER_DEFS } from "../shared/game-core.js";
 import { CHARACTER_TEXT, MESSAGES } from "./i18n/catalog.js";
 
-const STORAGE_KEY = "haruhi-locale-v1";
+const STORAGE_KEY = gameStorageKey("haruhi-locale-v1");
 
 export const SUPPORTED_LOCALES = Object.freeze({
   zh: { code: "zh", label: "中文", nativeName: "中文", htmlLang: "zh-CN", timeLocale: "zh-CN" },

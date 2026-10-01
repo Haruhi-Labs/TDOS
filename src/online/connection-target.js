@@ -19,6 +19,11 @@ export function buildServerUrlCandidates({
   baseUrl = import.meta.env.BASE_URL,
   remotePort = DEFAULT_REMOTE_WS_PORT,
 } = {}) {
+  // 测试构建只能访问其专属代理，禁止失败后回落到正式直连端口。
+  if (baseUrl === "/test-game/" || import.meta.env?.VITE_DEPLOY_CHANNEL === "staging") {
+    const protocol = locationObject.protocol === "https:" ? "wss" : "ws";
+    return [`${protocol}://${locationObject.host}${baseUrl}ws/`];
+  }
   const params = new URLSearchParams(locationObject.search || "");
   const forced = String(params.get("ws") || "").trim();
   if (forced) {

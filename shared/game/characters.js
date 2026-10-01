@@ -26,13 +26,13 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "im_here", name: "我在这里！", type: "active", cooldown: 22, cost: 68,
       duration: 16, target: "none",
-      description: "广播己方位置，16秒内令敌方持续获得对全舰队的真实视野，同时全舰队航速、机动、射程、视野、伤害与射速提升15%，并减免15%伤害。每次使用随机解锁一种常驻支援。",
+      description: "广播己方位置，16秒内使敌方获得全舰队的真实视野，期间全舰队获得属性增强。每次使用可随机发现一位宇宙人、未来人、异世界人、超能力者，提供常驻支援。",
     },
     subSkill: {
       id: "hero_power", name: "勇者之力", type: "active", cooldown: 10, cost: 60,
       chargeDuration: 0.8, radiusZoneRatio: 0.5, lockDuration: 2, recoveryDuration: 3,
       target: "none",
-      description: "短暂蓄力后冲击周围半个战区：敌舰立即失速并在2秒内无法控制和射击，随后3秒逐渐恢复航速；5秒减益期间受到的伤害提高20%。同时击毁范围内不分敌我的所有侦察机与僚机。",
+      description: "短暂蓄力后冲击附近区域，对敌舰造成2秒眩晕与3秒减速，期间伤害加深20%，并不分敌我地击毁技能范围内所有侦察机和僚机。",
     },
   },
   koizumi: {
@@ -48,12 +48,12 @@ export const CHARACTER_DEFS = {
     },
     flagshipSkill: {
       id: "closed_space_barrier", name: "超能力屏障", type: "passive",
-      description: "被动在主舰视野边界维持红色能量圈，吸收从圈外进入的子弹并截断射线。刀锋女王、古泉光球与异世界人冲撞可令能量圈失效5秒。",
+      description: "在视野边界制造一圈护盾，吸收子弹、光线的攻击。护盾受到15次攻击后被击破，5秒内没有敌方攻击穿过护盾边界才会恢复。冲撞类技能可以直接击破护盾。",
     },
     subSkill: {
       id: "esper", name: "超能力粒子", type: "active", cooldown: 15, cost: 50,
       duration: 8, silenceDuration: 5, stunDuration: 1, target: "none",
-      description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。结束后保持光球形态自动归航战场中央。",
+      description: "化身在战场中高速游曳的红色粒子，无法攻击、免疫伤害和控制，冲撞敌人时造成击退和沉默，并在冲撞时发出覆盖战场的能量波，接触到能量波的敌人眩晕1秒。技能结束后自动回到战场中央。",
     },
   },
   yuki: {
@@ -69,12 +69,12 @@ export const CHARACTER_DEFS = {
     },
     flagshipSkill: {
       id: "data_overmind_radar", name: "资讯统合雷达", type: "passive",
-      description: "被动持续以雷达扫描全图，可识别敌人动向，距离越近误差越小。在较近的距离内，可以辨识敌方角色。不会获得真实视野。己方每次释放一架战斗僚机，获得舰船级视野，并以常规舰炮射速发射16伤害的子弹。",
+      description: "被动以雷达扫描全图，可识别敌人动向，距离越近识别越清晰，在较近的距离内可以辨识敌方角色。每次释放侦察机时，改为释放一架战斗僚机，拥有较大视野和射击能力。",
     },
     subSkill: {
       id: "apm_overdrive", name: "apm上万", type: "active", cooldown: 24,
       cost: 60, target: "none",
-      description: "向8个方向各射出一对（共16架）高速侦察机。",
+      description: "向8个方向各射出一对高速侦察机。",
     },
   },
   future1096: {
@@ -91,12 +91,12 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "past_future_me", name: "过去与未来的我", type: "active", cooldown: 10,
       target: "none",
-      description: "初始无形态。首次使用进入A形态：全队射速×2、受到伤害×2（易伤）、航速×1.5；再次使用进入B形态：全队射速×0.5、受到伤害×0.5（减伤50%）、航速×0.5。此后每次使用交替切换，冷却10秒。",
+      description: "初始无形态，使用时在A、B形态之间切换。A形态舰队射速提升、受到伤害增加、速度提升；B形态舰队射速降低、受到伤害减少、速度降低。",
     },
     subSkill: {
       id: "beam_1096", name: "1096光线", type: "active", cooldown: 12,
       cost: 74, target: "point",
-      description: "蓄力1.05秒后向指定方向发射光线。命中1艘时造成其最大生命值28%的伤害；命中2艘时各造成21%；命中3艘及以上时各造成18%。",
+      description: "蓄力后向指定方向发射光线，命中时造成和最大生命值有关的伤害。总伤随着击中数量增加，但对单舰船的伤害随着击中数量递减。",
     },
   },
   kyon: {
@@ -112,12 +112,12 @@ export const CHARACTER_DEFS = {
     },
     flagshipSkill: {
       id: "reality_seeker", name: "在虚构世界里寻求现实感的人才有问题", type: "passive",
-      description: "全舰队转向×1.28、加速×1.16、最小转弯半径×0.62，且各朝向火力密度趋于一致（削弱侧舷强·船尾弱的差异）。各方向射速均×1.5。",
+      description: "被动提升全舰队转向、加速、机动能力，且各方向火力密度一致，均为1.5倍，不受射界影响。",
     },
     subSkill: {
       id: "reliable_normal", name: "靠谱的普通人", type: "active", cooldown: 18,
       cost: 42, duration: 14, target: "none",
-      description: "14秒内转向×1.28、航速×1.08、伤害×1.08、加速×1.12，并立即回复18%最大生命。",
+      description: "14秒内小幅提升机动、速度、伤害、加速能力，并立刻恢复18%最大生命值。",
     },
   },
   tsuruya: {
@@ -134,12 +134,12 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "secret_sponsor", name: "神秘赞助人", type: "active", cooldown: 20,
       cost: 60, duration: 8, target: "none",
-      description: "8秒内全队技能冷却流逝速度×2，并每秒回复全队1%最大生命。",
+      description: "8秒内全队技能冷却速度变为两倍，并每秒回复全队1%最大生命值。",
     },
     subSkill: {
       id: "money_power", name: "钞能力", type: "active", cooldown: 24,
       cost: 66, target: "zone",
-      description: "令一个战区内的敌军僚机与侦察机叛变。",
+      description: "令一个战区内的敌方僚机和侦察机叛变。",
     },
   },
   asakura: {
@@ -156,12 +156,14 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "no_escape", name: "资讯压制", type: "active", cooldown: 24,
       cost: 64, duration: 6, pulseInterval: 1, target: "none",
-      description: "6秒内每秒以自身为中心发射一圈视野波，获得波带覆盖区域的真实视野；敌舰被扫到时涤除其主动技能增益，友军被扫到时驱散其负面状态。敌方也能看见视野波。",
+      description: "6秒内持续发射覆盖整个战场的视野波，获得被波及处的真实视野，对接触到视野波的舰船施加驱散效果，清除敌方正面buff和己方负面buff。",
     },
     subSkill: {
       id: "blade_queen", name: "刀锋女王", type: "active", cooldown: 20,
       cost: 52, duration: 10, target: "none",
-      description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；刀锋作用半径扩大25%，接触及持续重叠时每秒按实际航速造成伤害：二档及以下为5%最大生命值、三档13%、四档20%，档位速度之间线性变化。",
+      speedMultiplier: 1.45, accelerationMultiplier: 1.26, turnMultiplier: 1.12,
+      minimumGear: 3, damageRatio: 0.15, hitInterval: 1, rangeMultiplier: 1.25,
+      description: "10秒内航速大幅提升，无视碰撞体积，并围绕舰船产生刀锋，对接触到的敌人造成每秒15%最大生命值伤害。",
     },
   },
   shamisen: {
@@ -178,13 +180,13 @@ export const CHARACTER_DEFS = {
     flagshipSkill: {
       id: "hunt_decree", name: "猫爪印记", type: "passive",
       damageMultiplier: 1.5,
-      description: "开局标记一名猎杀目标，双方均能看见标记；己方可持续追踪但不会获得真实视野。目标进入真实视野后会被优先锁定，己方子弹与攻击命中特效对其造成1.5倍伤害；技能、状态效果及碰撞伤害不受加成。击杀后自动标记下一名敌人。",
+      description: "开局时随机标记一名猎杀目标，追踪其位置但不会获得真实视野，己方对其造成的攻击类伤害变为1.5倍，击杀后自动标记下一名敌人。双方均能看到标记的存在。",
     },
     subSkill: {
       id: "cat_paw_barrage", name: "猫爪乱舞", type: "active", cooldown: 22,
       cost: 52, duration: 12, target: "none", fireRateMultiplier: 1.15, triggerHits: 4,
       burstDamage: 80, markDuration: 8,
-      description: "12秒内射速提升15%，自身子弹变为猫爪。命中同一敌舰4次时引爆抓痕，额外造成80伤害；抓痕连续8秒未被刷新会消退。",
+      description: "12秒内射速提升，自身子弹变为猫爪，命中同一敌舰4次时引爆抓痕，造成额外80点伤害。",
     },
   },
 };

@@ -1,3 +1,4 @@
+import { GAME_VERSION } from "../shared/game-version.js";
 import { WebSocketServer } from "ws";
 import { randomUUID } from "node:crypto";
 import {
@@ -387,6 +388,8 @@ wss.on("connection", (ws) => {
     type: "connected",
     playerId,
     build: NETWORK_BUILD,
+    gameVersion: GAME_VERSION,
+    buildId: process.env.GAME_BUILD_ID || "local",
     protocolVersion: NETWORK_PROTOCOL_VERSION,
     rulesetVersion: RULESET_VERSION,
     serverTime: Date.now(),
@@ -503,7 +506,7 @@ wss.on("connection", (ws) => {
     if (type === "get_winrate_stats") {
       sendToPlayer(player, {
         type: "winrate_stats",
-        stats: statisticsStore.publicLeaderboard(),
+        stats: statisticsStore.publicLeaderboard(data.gameVersion),
       });
       return;
     }
