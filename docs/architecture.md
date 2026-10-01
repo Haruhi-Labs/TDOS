@@ -113,7 +113,7 @@
 - `src/battle/webgl/driver.js`：WebGL1/2 着色器、动态缓冲、纹理、混合、裁剪、上下文释放与 GPU 绘制提交。
 - `src/battle/webgl/native-context.js`：把共享绘制语义转换为原生三角形、弹体批次和字形/立绘纹理命令；文字允许离屏生成小型字形纹理，但最终战场合成始终由 WebGL 完成。
 - `src/battle/webgl/geometry.js`、`matrix.js`、`color.js`：无 DOM 的路径三角化、虚线/曲线采样、二维矩阵和颜色/渐变计算；圆弧和曲线按物理像素误差取样，大实心圆直接绘制矢量几何，避免放大小圆盘纹理。`projectile-batch.js` 负责将普通弹体与猫爪弹合并为固定数量的 GPU 批次。
-- `src/battle/webgl/text-cache.js`：字形按最终变换的最大伸缩率分档采样，最低两倍，并沿用页面字体语言环境；320 条/32 MiB 缓存预算在提交后回收，不能删除本帧尚待提交的字形，避免战斗文字逐帧上传。
+- `src/battle/webgl/text-cache.js`：字形按最终变换的最大伸缩率分档采样，最低两倍，并沿用页面字体语言环境；320 条/32 MiB 缓存预算在提交后回收，不能删除本帧尚待提交的字形，避免战斗文字逐帧上传。字形测量保留合法的零边距，仅缺失度量时按 px 字号兜底，前置字重不参与边距计算。
 - `src/battle/state-interpolation.js`：单人逻辑帧与联机快照共用的纯显示插值，统一处理舰船、侦察机、僚机、弹体、光束和视觉效果。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
 - `src/battle/render/vision-wave.js`：朝仓视野波与古泉撞击能量波在主战场和小地图上的共用波带表现；双方都能看到波纹，只有朝仓视野波提供真实视野。

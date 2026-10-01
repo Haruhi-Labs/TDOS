@@ -44,10 +44,12 @@ export class NativeTextCache {
     const spacing = parseLetterSpacing(letterSpacing);
     this.measureContext.font = font;
     const metrics = this.measureContext.measureText(source);
+    // 零边距是合法测量值；仅缺少字形度量时兜底，并从 px 字号取值，避免把字重当字号。
+    const fontSize = Number(this.measureContext.font.match(/(?:^|\s)(\d+(?:\.\d+)?)px(?:\s|\/|$)/)?.[1]) || 12;
     return {
       width: metrics.width + Math.max(0, source.length - 1) * spacing,
-      ascent: metrics.actualBoundingBoxAscent || Math.max(8, Number.parseFloat(font) * 0.82 || 10),
-      descent: metrics.actualBoundingBoxDescent || Math.max(2, Number.parseFloat(font) * 0.22 || 3),
+      ascent: Number.isFinite(metrics.actualBoundingBoxAscent) ? metrics.actualBoundingBoxAscent : Math.max(8, fontSize * 0.82),
+      descent: Number.isFinite(metrics.actualBoundingBoxDescent) ? metrics.actualBoundingBoxDescent : Math.max(2, fontSize * 0.22),
     };
   }
 
