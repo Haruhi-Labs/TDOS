@@ -6,7 +6,6 @@ import {
   DEFAULT_AI_LOADOUT,
   DEFAULT_TEAM_LOADOUT,
   randomAiLoadout,
-  EMERGENCY_BRAKE_COST,
   SCOUT_LAUNCH_COST,
   TICK_DT,
   clamp,
@@ -58,6 +57,7 @@ import {
   prefersMobileBattleMode,
 } from "./battle/camera.js";
 import { routeHandleAtPoint, zoneFromPoint } from "./battle/input.js";
+import { isShipSelectable, resolveSelectedShipKey } from "./battle/ship-selection.js";
 import {
   localThrottleForShip,
   syncThrottleGearControls,
@@ -124,7 +124,6 @@ function cacheDom() {
   shipSwitchButtons: Array.from(document.querySelectorAll("#shipQuickSwitch .ship-switch-btn")),
   scoutBtn: document.getElementById("scoutBtn"),
   autoScoutBtn: document.getElementById("autoScoutBtn"),
-  brakeBtn: document.getElementById("brakeBtn"),
   flagshipBtn: document.getElementById("flagshipBtn"),
   subSkillBtn: document.getElementById("subSkillBtn"),
   playerMainRole: document.getElementById("playerMainRole"),
@@ -157,7 +156,6 @@ function cacheDom() {
   mobileSplitTwoBtn: document.getElementById("mobileSplitTwoBtn"),
   mobileScoutBtn: document.getElementById("mobileScoutBtn"),
   mobileAutoScoutBtn: document.getElementById("mobileAutoScoutBtn"),
-  mobileBrakeBtn: document.getElementById("mobileBrakeBtn"),
   mobileFlagshipBtn: document.getElementById("mobileFlagshipBtn"),
   mobileSubSkillBtn: document.getElementById("mobileSubSkillBtn"),
   mobileThrottleButtons: Array.from(document.querySelectorAll("#mobileBattleHud .mobile-throttle-btn")),
@@ -453,7 +451,7 @@ function setSelectedShip(shipKey) {
     return false;
   }
   const ship = own.ships[shipKey];
-  if (!ship || !ship.alive || !ship.canControl) {
+  if (!isShipSelectable(ship)) {
     return false;
   }
   if (tutorial.isActive() && !tutorial.allowsShipSelection(shipKey)) {
@@ -479,21 +477,12 @@ function syncShipSelection() {
     return;
   }
 
-  const selected = own.ships[app.selectedShipKey];
-  if (!selected || !selected.alive || !selected.canControl) {
-    const fallback = Object.keys(own.ships).find((key) => {
-      const ship = own.ships[key];
-      return ship && ship.alive && ship.canControl;
-    });
-    if (fallback) {
-      app.selectedShipKey = fallback;
-    }
-  }
+  app.selectedShipKey = resolveSelectedShipKey(own, app.selectedShipKey);
 
   for (const button of ui.shipSwitchButtons) {
     const key = button.dataset.ship;
     const ship = key ? own.ships[key] : null;
-    const enabled = Boolean(ship && ship.alive && ship.canControl);
+    const enabled = isShipSelectable(ship);
     button.disabled = !enabled;
     button.classList.toggle("active", key === app.selectedShipKey);
   }
@@ -509,6 +498,7 @@ function syncPowerFromSelected() {
 
 function setThrottleGear(gear) {
   if (tutorial.isActive() && !tutorial.allowsControl("throttle")) return false;
+  if (!selectedShipSim()?.canControl()) return false;
   const throttle = throttleValueForGear(gear);
   syncThrottleGearControls(ui, throttle);
   applyAction(matchActions.setThrottle({
@@ -554,19 +544,6 @@ function toggleAutoScout() {
   }));
   if (ok) {
     log(enabled ? t("自动侦查已开启，目标战区{zone}", { zone: app.selectedZoneId }) : t("自动侦查已关闭"));
-    updateUi();
-  }
-  return ok;
-}
-
-function useEmergencyBrake() {
-  const ship = selectedShipState();
-  if (!ship || !ship.alive || !ship.canControl) {
-    return false;
-  }
-  const ok = applyAction(matchActions.emergencyBrake(ship.key));
-  if (ok) {
-    log(t("{ship} 执行急刹", { ship: shipDisplayName(ship) }));
     updateUi();
   }
   return ok;
@@ -624,7 +601,7 @@ function applyTutorialUiGates() {
   const allow = (key) => tutorial.allowsControl(key);
   forceTutorialControl([...ui.powerGearButtons, ...ui.mobileThrottleButtons], false);
   forceTutorialControl([ui.zoomOutBtn, ui.zoomInBtn, ui.mobileZoomOutBtn, ui.mobileZoomInBtn], false);
-  forceTutorialControl([ui.autoScoutBtn, ui.mobileAutoScoutBtn, ui.brakeBtn, ui.mobileBrakeBtn], false);
+  forceTutorialControl([ui.autoScoutBtn, ui.mobileAutoScoutBtn], false);
   forceTutorialControl([ui.mobileCenterBtn, ui.applyLoadoutBtn], false);
   forceTutorialControl([ui.scoutBtn, ui.mobileScoutBtn], allow("scout"));
   forceTutorialControl([ui.splitOneBtn, ui.mobileSplitOneBtn], allow("split1"));
@@ -661,7 +638,7 @@ function updateUi() {
     const minRadius = Math.round(selectedSim.routeConstraintProfile().minTurnRadius);
     ui.selectedValue.textContent = `${shipCharacterName(selectedState)} | ${throttleLabelForValue(selectedState.throttle)} | ${t("能量")} ${Math.round(
       Number(selectedState.fleetEnergy) || 0,
-    )}/${Math.round(Number(selectedState.fleetMaxEnergy) || 1)} | ${t("最小半径")}${minRadius}${selectedState.braking ? ` | ${t("急刹中")}` : ""}`;
+    )}/${Math.round(Number(selectedState.fleetMaxEnergy) || 1)} | ${t("最小半径")}${minRadius}`;
   } else {
     ui.selectedValue.textContent = t("无");
   }
@@ -999,7 +976,7 @@ function useSubSkill() {
   const selected = selectedShipState();
   const own = ownTeamState();
   const meta = currentSubMeta(selected);
-  if (!selected || !meta || !own) {
+  if (!selected?.canControl || !meta || !own) {
     return;
   }
   if (meta.target === "point" || meta.target === "optional_point") {
@@ -1142,8 +1119,6 @@ function bindUiEvents() {
   });
   bindPressButton(ui.autoScoutBtn, toggleAutoScout);
   bindPressButton(ui.mobileAutoScoutBtn, toggleAutoScout);
-  bindPressButton(ui.brakeBtn, useEmergencyBrake);
-  bindPressButton(ui.mobileBrakeBtn, useEmergencyBrake);
 
   bindPressButton(ui.flagshipBtn, useFlagshipSkill);
   bindPressButton(ui.mobileFlagshipBtn, useFlagshipSkill);
@@ -1428,13 +1403,6 @@ function bindUiEvents() {
     if (event.code === "KeyZ") {
       event.preventDefault();
       toggleAutoScout();
-      return;
-    }
-
-    // B — emergency brake
-    if (event.code === "KeyB") {
-      event.preventDefault();
-      useEmergencyBrake();
       return;
     }
 

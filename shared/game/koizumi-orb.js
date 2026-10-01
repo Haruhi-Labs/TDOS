@@ -123,7 +123,6 @@ export function activateKoizumiOrb(ship, duration = 8) {
   };
   // 从既有航速连续加速，既不会瞬移，也能在半秒内形成明确的高速感。
   ship.speed = Math.max(ship.speed, cruiseSpeed * 0.46);
-  ship.effects.brakeUntil = 0;
   ship.collisionSlowUntil = 0;
   ship.team.match.spawnBurst(ship.x, ship.y, "#ff405f", 14);
   ship.team.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "超能力粒子", {}, "#ff8da1");

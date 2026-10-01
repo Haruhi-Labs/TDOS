@@ -191,7 +191,7 @@ try {
     view.update({ active: true, room: { players: [] }, state: { teams: { A: { ships: { main: { ...ship, hp: 100, maxHp: 100, fleetEnergy: 0, fleetMaxEnergy: 100, characterId: "haruhi" } } } } } });
     const zeroGauge = container.querySelector('.spectator-team[data-seat="A"] [data-gauge="energy"] strong').textContent;
     view.destroy();
-    const hud = Object.fromEntries(["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"].map((key) => [key, document.createElement("button")]));
+    const hud = Object.fromEntries(["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn"].map((key) => [key, document.createElement("button")]));
     const koizumiTeam = { loadout: { main: "koizumi" }, ships: { main: ship }, koizumiBarrier: { active: true, remainingHits: 7, maxHits: 15 } };
     updateSkillButtons(hud, koizumiTeam);
     const playerCharges = hud.flagshipBtn.textContent;
