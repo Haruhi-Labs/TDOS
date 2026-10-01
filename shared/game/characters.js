@@ -24,7 +24,7 @@ export const CHARACTER_DEFS = {
       damage: 29, fireRate: 0.47, radius: 10 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "im_here", name: "我在这里", type: "active", cooldown: 22, cost: 68,
+      id: "im_here", name: "我在这里！", type: "active", cooldown: 22, cost: 68,
       duration: 16, target: "none",
       description: "广播己方位置，16秒内使敌方获得全舰队的真实视野，期间全舰队获得属性增强。每次使用可随机发现一位宇宙人、未来人、异世界人、超能力者，提供常驻支援。",
     },
@@ -111,7 +111,7 @@ export const CHARACTER_DEFS = {
       damage: 24, fireRate: 0.52, radius: 10 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "reality_seeker", name: "在虚构世界寻求现实感的人才有问题", type: "passive",
+      id: "reality_seeker", name: "在虚构世界里寻求现实感的人才有问题", type: "passive",
       description: "被动提升全舰队转向、加速、机动能力，且各方向火力密度一致，均为1.5倍，不受射界影响。",
     },
     subSkill: {
@@ -178,7 +178,7 @@ export const CHARACTER_DEFS = {
       damage: 18, fireRate: 0.7, radius: 7 * SHIP_HULL_SIZE_SCALE,
     },
     flagshipSkill: {
-      id: "hunt_decree", name: "三味线", type: "passive",
+      id: "hunt_decree", name: "猫爪印记", type: "passive",
       damageMultiplier: 1.5,
       description: "开局时随机标记一名猎杀目标，追踪其位置但不会获得真实视野，己方对其造成的攻击类伤害变为1.5倍，击杀后自动标记下一名敌人。双方均能看到标记的存在。",
     },
