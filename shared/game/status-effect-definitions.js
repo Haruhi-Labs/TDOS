@@ -11,7 +11,7 @@ export const STATUS_EFFECT_DEFS = Object.freeze({
   esper_return: positive("超能力粒子·归航", "return", "保持光球形态与伤害、控制免疫，自动返回战场中央；无法射击或手动操控，敌方净化可直接解除形态。", "归航完成后结束"),
   sponsor: positive("神秘赞助人", "plus", "全队技能冷却流逝速度翻倍，每秒回复1%最大生命。"),
   vision_wave: positive("资讯压制", "radar", "每秒发射视野波，获得波带覆盖区域的真实视野；扫过友军驱散负面状态，扫过敌军涤除主动技能增益。"),
-  haruhi_boost: positive("我在这里！", "star", "航速、转向、加速、射程、视野、伤害与射速提高15%，受到伤害降低15%。"),
+  haruhi_boost: positive("我在这里", "star", "航速、转向、加速、射程、视野、伤害与射速提高15%，受到伤害降低15%。"),
   support_alien: positive("宇宙人", "radar", "主舰每6秒释放一架战斗侦察机。"),
   support_time_traveler: positive("未来人", "beam", "主舰每10秒向随机方向发射三道光线。"),
   support_otherworlder: positive("异世界人", "impact", "主舰获得舰首冲撞气场，冷却8秒；撞击造成目标最大生命15%的伤害并击退，可破坏古泉屏障。"),

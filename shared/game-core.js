@@ -2574,7 +2574,7 @@ class Team {
           }
         }
       }
-      this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里！", {}, "#ffe59a");
+      this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里", {}, "#ffe59a");
       this.match.spawnBurst(main.x, main.y, "#ffe59a", Math.max(16, main.radius * 1.7));
       if (supporter) {
         const key = HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter];

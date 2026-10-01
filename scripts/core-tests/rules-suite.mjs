@@ -1853,7 +1853,7 @@ function haruhiFlagshipReworkCheck() {
   haruhi.takeDamage(100, null, sim, false);
   assert(Math.abs(hpBeforeReduction - haruhi.hp - 85) < 1e-9, "春日旗舰技能未减免15%伤害");
   assert(
-    sim.floatingTexts.some((label) => label.textKey === "我在这里！" && label.emphasis === "announcement"),
+    sim.floatingTexts.some((label) => label.textKey === "我在这里" && label.emphasis === "announcement"),
     "春日广播没有生成醒目的全局位置文字",
   );
 
