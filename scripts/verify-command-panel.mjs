@@ -53,6 +53,13 @@ try {
   assert.equal(await page.locator(nextZoom).evaluate((element) => element === document.activeElement), true, "面板控件内 Tab 应正常移焦");
   await page.locator(".command-help summary").click();
   await page.keyboard.press("1");
+  await page.locator("#flagshipBtn").click();
+  await page.locator('.fleet-card [data-effect="haruhi_boost"]').first().waitFor();
+  await page.locator('.fleet-card [data-effect="broadcast"]').first().waitFor();
+  await page.locator('.fleet-card [data-effect="haruhi_boost"]').first().hover();
+  await page.locator(".status-effect-tooltip:visible").waitFor();
+  assert.match(await page.locator(".status-effect-tooltip p").textContent(), /伤害与射速提高15%/);
+  await page.keyboard.press("Escape");
   if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "battle-desktop.png") });
 
   // 构造权威快照的边界状态，验证信息呈现，不向真实模拟写回数据。

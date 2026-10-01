@@ -1,4 +1,5 @@
 import { clamp, lerp, shortestAngleDelta } from "../../shared/game/math.js";
+import { interpolateStatusEffects } from "./status-effect-timing.js";
 
 function clonePoint(point) {
   if (!point) {
@@ -74,6 +75,7 @@ function interpolateShip(previous, current, ratio) {
     speed: lerp(previous.speed, current.speed, ratio),
     hp: lerp(previous.hp, current.hp, ratio),
     throttle: lerp(previous.throttle, current.throttle, ratio),
+    statusEffects: interpolateStatusEffects(previous.statusEffects, current.statusEffects, ratio),
     route: interpolateRoute(previous.route, current.route, ratio),
   };
 }

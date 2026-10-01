@@ -17,6 +17,7 @@ import {
 import { mirrorCommandButton, renderCommandPanel, renderCommandShip } from "./command-panel.js";
 import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
 import { isShipControlLocked, isShipSelectable } from "./ship-selection.js";
+import { renderStatusEffects } from "./status-effects.js";
 
 const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn"];
 
@@ -256,6 +257,7 @@ export function renderFleetRoster(ui, own, opts = {}) {
   }
   for (const cell of ui.fleetRows) {
     const ship = own && own.ships ? own.ships[cell.key] : null;
+    renderStatusEffects(cell.row.closest(".fleet-card")?.querySelector(".status-effects"), ship);
     cell.row.disabled = !isShipSelectable(ship);
     cell.row.classList.toggle("active", cell.key === selectedShipKey);
     renderCommandShip(cell.row, ship, cell.key, own, opts.portraitColor);
