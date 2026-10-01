@@ -24,7 +24,8 @@ import {
   haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
 import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
-import { updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
+import { beginKoizumiOrbReturn, updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
+import { serializeShipStatusEffects } from "../../shared/game/status-effects.js";
 import { DAMAGE_KIND } from "../../shared/game/damage.js";
 import { applyHaruhiHeroPowerShock } from "../../shared/game/haruhi-hero-power.js";
 import { applyMatchAction } from "../../shared/game/action-dispatcher.js";
@@ -1316,6 +1317,79 @@ function koizumiOrbRamCheck() {
   assert(returning.hp < hpAfterReturn, "古泉结束光球形态后仍然免疫伤害");
 }
 
+function koizumiControlImmunityCheck() {
+  const setup = (seat, phase, enemyMain = "asakura") => {
+    const loadouts = {
+      A: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
+      B: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
+    };
+    loadouts[seat === "A" ? "B" : "A"].main = enemyMain;
+    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: loadouts });
+    const team = sim.teamBySeat(seat);
+    const enemy = sim.enemyTeamBySeat(seat);
+    team.splitLevel = enemy.splitLevel = 2;
+    const ship = team.ships.sub1;
+    applyHaruhiHeroPowerShock(ship, 0);
+    sim.elapsed = 2.1;
+    ship.collisionSlowUntil = 5;
+    ship.forcedKnockback = { startedAt: 2, endsAt: 3, fromX: 400, fromY: 500, toX: 600, toY: 500 };
+    ship.clawMarks = { ...ship.clawMarks, stacks: 1, sourceSeat: enemy.seat, expiresAt: 10 };
+    assert(team.castSubSkill("sub1"), "光球免控测试未能施放技能");
+    assert(ship.heroPowerShock.recoveryUntil === 0 && !ship.forcedKnockback && ship.collisionSlowUntil === 0, "进入光球没有清除已有控制");
+    assert(ship.clawMarks.stacks === 1, "光球免控错误清除了非控制标记");
+    Object.assign(ship, { x: 420, y: 500, angle: 0, command: { x: 1200, y: 500 }, route: null });
+    ship.koizumiOrb.previousX = ship.x;
+    ship.koizumiOrb.previousY = ship.y;
+    if (phase === "returning") beginKoizumiOrbReturn(ship);
+    return { sim, team, enemy, ship };
+  };
+  for (const seat of ["A", "B"]) for (const phase of ["active", "returning"]) {
+    const { sim, team, enemy, ship } = setup(seat, phase);
+    const speedBeforeShock = ship.speed;
+    assert(!applyHaruhiHeroPowerShock(ship, sim.elapsed), "光球仍被勇者之力控制");
+    assert(ship.speed === speedBeforeShock && !ship.isControlLocked(), "勇者之力仍然停止光球");
+    assert(ship.canControl() === (phase === "active"), "光球免控错误改变了主动飞行或归航的操作权限");
+
+    const enemyOrb = enemy.ships.sub1;
+    assert(enemy.castSubSkill("sub1"), "光球免控测试未能施放敌方光球");
+    Object.assign(enemyOrb, { x: ship.x + 10, y: ship.y });
+    enemyOrb.koizumiOrb.previousX = ship.x - 60;
+    enemyOrb.koizumiOrb.previousY = ship.y;
+    sim.resolveKoizumiOrbContacts();
+    assert(!ship.forcedKnockback && !ship.isSilenced() && ship.effects.silencedUntil === 0, "光球仍受到敌方光球击退或沉默");
+    updateKoizumiImpactWaves(sim);
+    assert(ship.effects.stunnedUntil === 0, "光球仍受到撞击波眩晕");
+    assert(!serializeShipStatusEffects(ship).some(({ id }) => ["stun", "silence", "hero_lock", "hero_shock", "knockback", "collision_slow"].includes(id)), "免控光球仍显示无效控制图标");
+    const positionBefore = { x: ship.x, y: ship.y };
+    ship.update(TICK_DT);
+    assert(Math.hypot(ship.x - positionBefore.x, ship.y - positionBefore.y) > 0, "光球受击后没有继续飞行");
+
+    const purger = enemy.ships.main;
+    purger.x = ship.x;
+    purger.y = ship.y;
+    assert(enemy.castFlagshipSkill(), "光球免控测试未能施放净化波");
+    // 进入下一逻辑帧后，实际视野波扫到目标应直接解除形态。
+    sim.tick += 1;
+    sim.resolveVisionWavePurges();
+    assert(!ship.koizumiOrb && !ship.isControlImmune() && !ship.isDamageImmune(), "净化没有直接驱散光球形态");
+    assert(ship.x !== sim.worldSize / 2 || ship.y !== sim.worldSize / 2, "净化光球错误瞬移到战场中央");
+    assert(ship.canControl(), "净化结束后未恢复普通操作权限");
+    assert(applyHaruhiHeroPowerShock(ship, sim.elapsed), "净化后光球仍保留控制免疫");
+    const afterPurge = { x: ship.x, y: ship.y };
+    ship.update(TICK_DT);
+    assert(ship.x === afterPurge.x && ship.y === afterPurge.y && !ship.canControl(), "净化后普通舰体没有恢复正常禁控");
+
+    const ram = setup(seat, phase, "haruhi");
+    const haruhi = ram.enemy.ships.main;
+    Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
+    ram.enemy.haruhiFlagship.supporters.add("otherworlder");
+    const hpBefore = ram.ship.hp;
+    ram.sim.resolveHaruhiOtherworlderContacts();
+    assert(!haruhiOtherworlderReady(ram.enemy), "免控测试没有发生真实异世界冲撞");
+    assert(!ram.ship.forcedKnockback && ram.ship.hp === hpBefore && ram.ship.koizumiOrb.phase === phase, "异世界冲撞仍打断或伤害光球");
+  }
+}
+
 function beamSkillCheck() {
   const sim = new MatchSimulation({
     mode: "pvp",
@@ -2545,6 +2619,7 @@ export function runRulesSuite() {
   koizumiFlagshipBarrierCheck();
   koizumiBarrierChargesCheck();
   koizumiOrbRamCheck();
+  koizumiControlImmunityCheck();
   koizumiImpactWaveCheck();
   beamSkillCheck();
   beamHitCountDamageCheck();

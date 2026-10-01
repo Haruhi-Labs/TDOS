@@ -85,7 +85,7 @@ function applyForcedKnockback(match, source, contactTarget, contact = null) {
   const endsAt = startedAt + HARUHI_OTHERWORLDER_KNOCKBACK_DURATION;
 
   for (const ship of fleet) {
-    if (ship.minimumFlightSpeed() > 0) continue;
+    if (ship.isControlImmune() || ship.minimumFlightSpeed() > 0) continue;
     const padding = Math.max(8, ship.radius + 2);
     ship.forcedKnockback = {
       startedAt,

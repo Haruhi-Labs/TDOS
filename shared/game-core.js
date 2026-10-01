@@ -88,7 +88,7 @@ import {
 } from "./game/targeting-system.js";
 import {
   activateKoizumiOrb,
-  beginKoizumiOrbReturn,
+  dispelKoizumiOrb,
   isKoizumiOrbActive,
   isKoizumiOrbReturning,
   resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts,
@@ -614,11 +614,23 @@ class Ship {
   }
 
   isControlLocked() {
-    return this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this);
+    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this));
   }
 
   isSilenced() {
-    return this.hasEffect("silencedUntil");
+    return !this.isControlImmune() && this.hasEffect("silencedUntil");
+  }
+
+  isControlImmune() {
+    return this.isKoizumiOrbActive();
+  }
+
+  clearControlEffects() {
+    this.effects.silencedUntil = 0;
+    this.effects.stunnedUntil = 0;
+    this.heroPowerShock = createHaruhiHeroPowerShockState();
+    this.collisionSlowUntil = 0;
+    this.forcedKnockback = null;
   }
 
   isKoizumiOrbActive() {
@@ -804,7 +816,7 @@ class Ship {
     clearTimedEffect("bladeQueenUntil");
     clearTimedEffect("catPawUntil");
     if (this.koizumiOrb && canClear("koizumiOrb")) {
-      beginKoizumiOrbReturn(this);
+      dispelKoizumiOrb(this);
       cleared = true;
       delete this.activeSkillEffectStartedTicks.koizumiOrb;
     }
@@ -826,11 +838,7 @@ class Ship {
       || this.collisionSlowUntil > now
       || Boolean(this.forcedKnockback)
       || this.activeClawMarks().stacks > 0;
-    this.effects.silencedUntil = 0;
-    this.effects.stunnedUntil = 0;
-    this.heroPowerShock = createHaruhiHeroPowerShockState();
-    this.collisionSlowUntil = 0;
-    this.forcedKnockback = null;
+    this.clearControlEffects();
     this.clawMarks.sourceSeat = null;
     this.clawMarks.stacks = 0;
     this.clawMarks.expiresAt = 0;
@@ -1186,8 +1194,8 @@ class Ship {
     if (!forced) {
       return false;
     }
-    if (this.minimumFlightSpeed() > 0) {
-      // 开启刀锋后继续前飞，清理旧击退插值以免随后回跳到旧坐标。
+    if (this.isControlImmune() || this.minimumFlightSpeed() > 0) {
+      // 光球免控与刀锋持续前飞均不接受旧击退插值，避免随后回跳到旧坐标。
       this.forcedKnockback = null;
       return false;
     }

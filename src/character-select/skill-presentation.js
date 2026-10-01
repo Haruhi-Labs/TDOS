@@ -70,7 +70,9 @@ export function skillDetailRows(characterId, mode) {
       row("碰撞沉默", seconds(meta.silenceDuration));
       row("能量波眩晕", seconds(meta.stunDuration));
       row("光球状态", t("无法射击，免疫伤害"));
-      row("结束行为", t("保持光球形态，自动返回战场中央"));
+      row("控制免疫", t("飞行及归航期间免疫眩晕、沉默、击退与震慑减速"));
+      row("技能驱散", t("敌方净化可直接解除光球形态"));
+      row("到期行为", t("保持光球形态，自动返回战场中央"));
       break;
     case "data_overmind_radar":
       row("雷达范围", t("全战场"));

@@ -30,6 +30,8 @@ for (const id of CHARACTER_ORDER) for (const mode of ["flagship", "sub"]) {
 }
 assert.equal(value("koizumi", "flagship", "拦截次数"), "15次");
 assert.equal(value("koizumi", "flagship", "修复等待"), "5秒");
+assert.equal(value("koizumi", "sub", "控制免疫"), "飞行及归航期间免疫眩晕、沉默、击退与震慑减速");
+assert.equal(value("koizumi", "sub", "技能驱散"), "敌方净化可直接解除光球形态");
 assert.equal(value("asakura", "sub", "最低航速"), "3档满能量航速（技能强化后）");
 assert.equal(value("asakura", "sub", "接触伤害"), "目标最大舰体的15%");
 assert.equal(value("asakura", "sub", "结算间隔"), "1秒");
