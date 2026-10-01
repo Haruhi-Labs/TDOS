@@ -75,7 +75,6 @@ export function renderStatusEffects(container, ship) {
     button.remove();
     buttons.delete(id);
   }
-  container.hidden = active.size === 0;
 }
 
 export function createStatusEffectTooltip(root) {
