@@ -287,6 +287,7 @@ export const JA_MESSAGES = {
     "制作人员": "Credits",
     "画师 · 设计开发 · 出品": "Artist · design/dev · production",
     "公测版 v0.2": "公開テスト版 v0.2",
+    "公测版 v0.4": "公開テスト版 v0.4",
     "公测版 v0.3": "公開テスト版 v0.3",
     "GitHub 源码仓库": "GitHub ソースリポジトリ",
     "源码 · AGPL v3": "ソース · AGPL v3",

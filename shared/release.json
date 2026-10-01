@@ -1,11 +1,12 @@
 {
-  "version": "v0.3",
+  "version": "v0.4",
   "labels": {
-    "zh": "公测版 v0.3",
-    "en": "Public beta v0.3",
-    "ja": "公開テスト版 v0.3"
+    "zh": "公测版 v0.4",
+    "en": "Public beta v0.4",
+    "ja": "公開テスト版 v0.4"
   },
   "previousVersions": [
+    "v0.3",
     "v0.2"
   ]
 }

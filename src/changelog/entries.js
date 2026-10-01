@@ -12,6 +12,124 @@ function deepFreeze(value) {
 export const CHANGELOG_BY_LOCALE = deepFreeze({
   zh: [
     {
+      "id": "v0.4",
+      "version": "v0.4",
+      "date": "2026-10-01",
+      "title": "公测版 v0.4",
+      "groups": [
+        {
+          "id": "characters",
+          "title": "角色与平衡调整",
+          "items": [
+            {
+              "id": "koizumi-flagship",
+              "title": "古泉一树 · 主舰技",
+              "text": "主舰技「超能力屏障」：改为可拦截 15 次的次数盾。护盾被击破后，需要连续 5 秒没有敌方子弹穿过原护盾边界才会修复。"
+            },
+            {
+              "id": "koizumi-sub",
+              "title": "古泉一树 · 分舰技",
+              "text": "分舰技「超能力粒子」：撞击时新增能量波，波及的敌舰眩晕 1 秒。技能期间免疫控制效果。"
+            },
+            {
+              "id": "asakura-flagship",
+              "title": "朝仓凉子 · 主舰技",
+              "text": "主舰技「资讯压制」：视野波现在可以驱散友军的负面状态，同时保留对敌方主动增益的涤除效果。"
+            },
+            {
+              "id": "asakura-sub",
+              "title": "朝仓凉子 · 分舰技",
+              "text": "分舰技「刀锋女王」：技能期间航速不低于强化后的三档满能量航速，被控制的状态下也会继续飞行。接触伤害固定为目标最大生命值的 15%。"
+            },
+            {
+              "id": "shamisen-flagship",
+              "title": "三味线",
+              "text": "主舰技「猫爪印记」：伤害倍率由 2 倍下调至 1.5 倍。"
+            },
+            {
+              "id": "yuki-flagship",
+              "title": "长门有希",
+              "text": "主舰技：每次释放的战斗侦察机由 2 架减为 1 架。"
+            }
+          ]
+        },
+        {
+          "id": "spectator",
+          "title": "观战模式",
+          "items": [
+            {
+              "id": "layout",
+              "title": "观战界面改版",
+              "text": "观战界面改版：战场放在中间，双方舰队信息分列左右。进入房间就能看到双方玩家和完整阵容。观战时实时显示每艘舰船的舰体、能量、技能状态和冷却。"
+            },
+            {
+              "id": "camera",
+              "title": "观战镜头优化",
+              "text": "观战镜头优化：镜头移动更平滑，方便赛事观战和直播取景。"
+            },
+            {
+              "id": "effects",
+              "title": "观战特效修复",
+              "text": "观战特效修复：修复观战中部分特效、动画消失的问题。"
+            }
+          ]
+        },
+        {
+          "id": "controls",
+          "title": "对战操作与技能展示",
+          "items": [
+            {
+              "id": "panel",
+              "title": "操作面板重构",
+              "text": "操作面板重构：突出重点操作，更加简洁好用。"
+            },
+            {
+              "id": "selection",
+              "title": "受控选舰修复",
+              "text": "受控选舰修复：修复眩晕、震慑期间操作焦点自动切到其他舰船的问题。"
+            },
+            {
+              "id": "brake",
+              "title": "移除「急刹」",
+              "text": "移除「急刹」功能。"
+            },
+            {
+              "id": "status",
+              "title": "状态图标统一",
+              "text": "状态图标统一：桌面端对战和观战时均能看到角色身上的正面/负面状态。"
+            }
+          ]
+        },
+        {
+          "id": "visuals",
+          "title": "画面与界面",
+          "items": [
+            {
+              "id": "resolution",
+              "title": "战场清晰度提升",
+              "text": "战场清晰度提升：在大屏、高分屏或镜头放大时，图像显示更锐利。"
+            },
+            {
+              "id": "language",
+              "title": "语言菜单优化",
+              "text": "语言菜单优化：首页语言下拉菜单更易读，风格与整体界面统一。"
+            }
+          ]
+        },
+        {
+          "id": "statistics",
+          "title": "统计",
+          "items": [
+            {
+              "id": "versions",
+              "title": "胜率可按版本查看",
+              "text": "胜率可按版本查看：新版本胜率单独统计，原始历史记录完整保留。"
+            }
+          ]
+        }
+      ]
+    },
+    {
       id: "v0.3",
       version: "v0.3",
       date: "2026-08-13",
@@ -171,6 +289,124 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
   ],
   ja: [
     {
+      "id": "v0.4",
+      "version": "v0.4",
+      "date": "2026-10-01",
+      "title": "公開テスト版 v0.4",
+      "groups": [
+        {
+          "id": "characters",
+          "title": "キャラクターとバランス調整",
+          "items": [
+            {
+              "id": "koizumi-flagship",
+              "title": "古泉一樹 · 主艦スキル",
+              "text": "主艦スキル「超能力障壁」：15回の攻撃を遮断する回数制のシールドに変更。破壊後は、敵の弾が元のシールド境界を通過しない状態が5秒間連続して続くと修復されます。"
+            },
+            {
+              "id": "koizumi-sub",
+              "title": "古泉一樹 · 分艦スキル",
+              "text": "分艦スキル「超能力粒子」：衝突時にエネルギー波が発生し、波に触れた敵艦を1秒間スタンさせます。スキル中は行動妨害を受けません。"
+            },
+            {
+              "id": "asakura-flagship",
+              "title": "朝倉涼子 · 主艦スキル",
+              "text": "主艦スキル「情報制圧」：視野波が味方の弱体効果も解除するようになり、敵の能動的な強化効果を解除する効果も維持されます。"
+            },
+            {
+              "id": "asakura-sub",
+              "title": "朝倉涼子 · 分艦スキル",
+              "text": "分艦スキル「刃の女王」：スキル中の速度は、強化後のエネルギー満タン時のギア3速度を下回りません。行動妨害中も飛行を続けます。接触ダメージは対象の最大船体耐久値の15%に固定されます。"
+            },
+            {
+              "id": "shamisen-flagship",
+              "title": "シャミセン",
+              "text": "主艦スキル「猫の爪印」：ダメージ倍率を2倍から1.5倍に引き下げました。"
+            },
+            {
+              "id": "yuki-flagship",
+              "title": "長門有希",
+              "text": "主艦スキル：一度に発進する戦闘偵察機を2機から1機に減らしました。"
+            }
+          ]
+        },
+        {
+          "id": "spectator",
+          "title": "観戦モード",
+          "items": [
+            {
+              "id": "layout",
+              "title": "観戦画面の刷新",
+              "text": "観戦画面の刷新：中央に戦場を配置し、左右に両艦隊の情報を表示します。ルームに入ると双方のプレイヤーと全編成を確認できます。観戦中は各艦の船体耐久、エネルギー、スキル状態とクールダウンをリアルタイムで表示します。"
+            },
+            {
+              "id": "camera",
+              "title": "観戦カメラの改善",
+              "text": "観戦カメラの改善：カメラの移動が滑らかになり、大会の観戦やライブ配信での画面構成がしやすくなりました。"
+            },
+            {
+              "id": "effects",
+              "title": "観戦エフェクトの修正",
+              "text": "観戦エフェクトの修正：観戦中に一部のエフェクトやアニメーションが消える問題を修正しました。"
+            }
+          ]
+        },
+        {
+          "id": "controls",
+          "title": "対戦操作とスキル表示",
+          "items": [
+            {
+              "id": "panel",
+              "title": "操作パネルの刷新",
+              "text": "操作パネルの刷新：重要な操作を目立たせ、より簡潔で使いやすくしました。"
+            },
+            {
+              "id": "selection",
+              "title": "行動妨害中の艦選択の修正",
+              "text": "行動妨害中の艦選択の修正：スタンや震慑の間に操作対象が自動的に別の艦へ切り替わる問題を修正しました。"
+            },
+            {
+              "id": "brake",
+              "title": "「急ブレーキ」の削除",
+              "text": "「急ブレーキ」機能を削除しました。"
+            },
+            {
+              "id": "status",
+              "title": "状態アイコンの統一",
+              "text": "状態アイコンの統一：デスクトップの対戦と観戦の両方で、キャラクターの強化・弱体状態を確認できます。"
+            }
+          ]
+        },
+        {
+          "id": "visuals",
+          "title": "描画とインターフェース",
+          "items": [
+            {
+              "id": "resolution",
+              "title": "戦場の鮮明さ向上",
+              "text": "戦場の鮮明さ向上：大型画面、高解像度画面、カメラ拡大時の画像がより鮮明になります。"
+            },
+            {
+              "id": "language",
+              "title": "言語メニューの改善",
+              "text": "言語メニューの改善：ホーム画面の言語選択メニューが読みやすくなり、画面全体のデザインに統一しました。"
+            }
+          ]
+        },
+        {
+          "id": "statistics",
+          "title": "統計",
+          "items": [
+            {
+              "id": "versions",
+              "title": "バージョン別の勝率",
+              "text": "バージョン別の勝率：新しいバージョンの勝率を個別に集計し、元の過去記録はすべて保持します。"
+            }
+          ]
+        }
+      ]
+    },
+    {
       id: "v0.3",
       version: "v0.3",
       date: "2026-08-13",
@@ -329,6 +565,124 @@ export const CHANGELOG_BY_LOCALE = deepFreeze({
     },
   ],
   en: [
+    {
+      "id": "v0.4",
+      "version": "v0.4",
+      "date": "2026-10-01",
+      "title": "Public beta v0.4",
+      "groups": [
+        {
+          "id": "characters",
+          "title": "Characters and Balance",
+          "items": [
+            {
+              "id": "koizumi-flagship",
+              "title": "Itsuki Koizumi · Flagship Ability",
+              "text": "Flagship ability “Psychic Barrier”: The shield now intercepts 15 hits. After it breaks, it only repairs after 5 consecutive seconds with no enemy bullets crossing its original boundary."
+            },
+            {
+              "id": "koizumi-sub",
+              "title": "Itsuki Koizumi · Subship Ability",
+              "text": "Subship ability “Psychic Particle”: Collisions now emit an energy wave that stuns affected enemy ships for 1 second. Control effects are ignored during the ability."
+            },
+            {
+              "id": "asakura-flagship",
+              "title": "Ryoko Asakura · Flagship Ability",
+              "text": "Flagship ability “Information Suppression”: Vision waves can now dispel negative effects from allies while retaining their ability to remove active buffs from enemies."
+            },
+            {
+              "id": "asakura-sub",
+              "title": "Ryoko Asakura · Subship Ability",
+              "text": "Subship ability “Blade Queen”: During the ability, speed stays at or above the enhanced gear-3 speed at full energy, and the ship keeps flying even while controlled. Contact damage is fixed at 15% of the target’s maximum hull."
+            },
+            {
+              "id": "shamisen-flagship",
+              "title": "Shamisen",
+              "text": "Flagship ability “Claw Mark”: The damage multiplier is reduced from 2× to 1.5×."
+            },
+            {
+              "id": "yuki-flagship",
+              "title": "Yuki Nagato",
+              "text": "Flagship ability: Each launch now releases 1 combat scout instead of 2."
+            }
+          ]
+        },
+        {
+          "id": "spectator",
+          "title": "Spectator Mode",
+          "items": [
+            {
+              "id": "layout",
+              "title": "Spectator Interface Redesign",
+              "text": "Spectator interface redesign: The battlefield is centered between the two fleets’ information panels. Both players and their complete lineups are visible upon entering a room. Every ship’s hull, energy, ability state, and cooldown are displayed in real time."
+            },
+            {
+              "id": "camera",
+              "title": "Spectator Camera Improvements",
+              "text": "Spectator camera improvements: Smoother camera movement makes it easier to frame matches for spectating and live broadcasts."
+            },
+            {
+              "id": "effects",
+              "title": "Spectator Effects Fixes",
+              "text": "Spectator effects fixes: Fixed missing effects and animations in spectator mode."
+            }
+          ]
+        },
+        {
+          "id": "controls",
+          "title": "Battle Controls and Ability Display",
+          "items": [
+            {
+              "id": "panel",
+              "title": "Control Panel Rework",
+              "text": "Control panel rework: Key actions are more prominent, with a simpler and easier-to-use layout."
+            },
+            {
+              "id": "selection",
+              "title": "Ship Selection under Control Effects",
+              "text": "Ship selection under control effects: Fixed input focus automatically switching to another ship during stuns and shock effects."
+            },
+            {
+              "id": "brake",
+              "title": "Emergency Brake Removal",
+              "text": "Removed the “Emergency Brake” feature."
+            },
+            {
+              "id": "status",
+              "title": "Unified Status Icons",
+              "text": "Unified status icons: Desktop battle and spectator views both show characters’ positive and negative status effects."
+            }
+          ]
+        },
+        {
+          "id": "visuals",
+          "title": "Graphics and Interface",
+          "items": [
+            {
+              "id": "resolution",
+              "title": "Sharper Battlefields",
+              "text": "Sharper battlefields: Images are sharper on large screens, high-resolution displays, and when the camera is zoomed in."
+            },
+            {
+              "id": "language",
+              "title": "Language Menu Improvements",
+              "text": "Language menu improvements: The home screen’s language dropdown is easier to read and better matches the overall interface."
+            }
+          ]
+        },
+        {
+          "id": "statistics",
+          "title": "Statistics",
+          "items": [
+            {
+              "id": "versions",
+              "title": "Win Rates by Version",
+              "text": "Win rates by version: Each new version has separate win-rate statistics, while all original historical records are preserved."
+            }
+          ]
+        }
+      ]
+    },
     {
       id: "v0.3",
       version: "v0.3",
