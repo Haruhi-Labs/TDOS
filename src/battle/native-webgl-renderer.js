@@ -76,6 +76,7 @@ export function createNativeBattleRenderer(canvas, {
         ctx: fallback,
         mode: "canvas2d",
         native: false,
+        maxCanvasDimension: Infinity,
         beginFrame() {},
         present() {},
         recoverFromFailure() { return false; },
@@ -172,6 +173,7 @@ export function createNativeBattleRenderer(canvas, {
     ctx,
     mode,
     native: true,
+    maxCanvasDimension: driver.maxCanvasDimension,
     beginFrame() {
       ctx.beginFrame({ skipDriver: contextLost });
     },

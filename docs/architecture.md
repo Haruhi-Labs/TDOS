@@ -92,12 +92,13 @@
 角色卡状态由共享状态目录、权威序列化与通用 UI 组件组成，旧 `buffs` 名称也从结构化状态生成，不再维护另一套名称判断。单人、联机与观战共用正负图标、时间环、叠层和顶层说明，显示插值不写回规则。新增状态入口与当前正负状态列表见[角色卡状态](status-effects.md)。
 
 - `src/battle/camera.js`、`input.js`、`throttle.js`、`hud.js`、`template.js`：分别负责相机、命中与航线输入、推进控件、战斗 HUD 和公共 DOM 骨架。
+- `src/battle/canvas-resolution.js`：画布以内容区域的实际设备像素分配缓冲，保留原逻辑尺寸的最低采样，不截断 DPR 或固定为 2880；WebGL 仅按后端的渲染缓冲/视口上限约束。尺寸观察与 DPR 媒体查询覆盖布局变化、显示/隐藏和跨屏，卸载相机时一并解除，分辨率变化不改变逻辑世界或取景。
 - `src/battle/render.js`：单人、联机和观战共用的战场绘制语义入口；只描述绘制顺序和视觉参数，不管理 GPU 生命周期。
 - `src/battle/native-webgl-renderer.js`：生产战场渲染后端入口，优先创建原生 WebGL2，失败时使用同一套几何与批处理实现回退到原生 WebGL1；只有两者都不可用才启用 Canvas 2D 可用性兜底。禁止把完整 2D 战场逐帧上传为纹理。
 - `src/battle/webgl/driver.js`：WebGL1/2 着色器、动态缓冲、纹理、混合、裁剪、上下文释放与 GPU 绘制提交。
 - `src/battle/webgl/native-context.js`：把共享绘制语义转换为原生三角形、弹体批次和字形/立绘纹理命令；文字允许离屏生成小型字形纹理，但最终战场合成始终由 WebGL 完成。
-- `src/battle/webgl/geometry.js`、`matrix.js`、`color.js`：无 DOM 的路径三角化、虚线/曲线采样、二维矩阵和颜色/渐变计算；`projectile-batch.js` 负责将普通弹体与猫爪弹合并为固定数量的 GPU 批次。
-- `src/battle/webgl/text-cache.js`：有界字形纹理缓存，避免战斗文字逐帧上传。
+- `src/battle/webgl/geometry.js`、`matrix.js`、`color.js`：无 DOM 的路径三角化、虚线/曲线采样、二维矩阵和颜色/渐变计算；圆弧和曲线按物理像素误差取样，大实心圆直接绘制矢量几何，避免放大小圆盘纹理。`projectile-batch.js` 负责将普通弹体与猫爪弹合并为固定数量的 GPU 批次。
+- `src/battle/webgl/text-cache.js`：字形按最终变换的最大伸缩率分档采样，最低两倍，并沿用页面字体语言环境；320 条/32 MiB 缓存预算在提交后回收，不能删除本帧尚待提交的字形，避免战斗文字逐帧上传。
 - `src/battle/state-interpolation.js`：单人逻辑帧与联机快照共用的纯显示插值，统一处理舰船、侦察机、僚机、弹体、光束和视觉效果。
 - `src/battle/render/radar.js`：长门雷达的扫线、远近回波和移动端小地图雷达表现。
 - `src/battle/render/vision-wave.js`：朝仓视野波与古泉撞击能量波在主战场和小地图上的共用波带表现；双方都能看到波纹，只有朝仓视野波提供真实视野。

@@ -60,7 +60,7 @@ void main() {
 }`;
 
 const TEXTURE_FRAGMENT_WEBGL2 = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform sampler2D u_texture;
 in vec2 v_uv;
 in vec4 v_color;
@@ -85,7 +85,11 @@ void main() {
 }`;
 
 const TEXTURE_FRAGMENT_WEBGL1 = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform sampler2D u_texture;
 varying vec2 v_uv;
 varying vec4 v_color;
@@ -108,7 +112,7 @@ void main() {
 }`;
 
 const RADAR_FRAGMENT_WEBGL2 = `#version 300 es
-precision mediump float;
+precision highp float;
 uniform float u_length;
 uniform float u_alpha;
 in vec2 v_radarCoord;
@@ -143,7 +147,11 @@ void main() {
 }`;
 
 const RADAR_FRAGMENT_WEBGL1 = `
+#ifdef GL_FRAGMENT_PRECISION_HIGH
+precision highp float;
+#else
 precision mediump float;
+#endif
 uniform float u_length;
 uniform float u_alpha;
 varying vec2 v_radarCoord;
@@ -342,6 +350,8 @@ export class NativeWebGLDriver {
     this.gl = gl;
     this.canvas = canvas;
     this.webgl2 = webgl2;
+    this.maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+    this.maxCanvasDimension = Math.min(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE), ...gl.getParameter(gl.MAX_VIEWPORT_DIMS));
     this.resources = null;
     this.stats = { drawCalls: 0, triangles: 0, textureUploads: 0, huntShaderEffects: 0 };
     this.buildResources();
