@@ -286,8 +286,15 @@ try {
   assert.equal(await page.locator(".battle-panel").isVisible(), true);
   assert.equal(await page.locator(".spectator-toolbar").isVisible(), false);
   assert.equal(await page.locator('.spectator-team[data-seat="A"]').isVisible(), false);
+  await page.waitForFunction(() => document.querySelector('.fleet-row[data-ship="main"]').getAttribute("aria-pressed") === "true");
+  assert.equal(await page.locator('.fleet-row[data-ship="sub1"]').isDisabled(), true, "联机编队中的副舰应明确禁用选择");
+  await page.locator("#splitOneBtn").click();
+  await page.locator('.fleet-row[data-ship="sub1"]').click();
+  await page.waitForFunction(() => document.querySelector('.fleet-row[data-ship="sub1"]').getAttribute("aria-pressed") === "true");
+  assert.ok(outgoing.some((message) => message.type === "select_ship" && message.shipKey === "sub1"), "新版舰况入口应发送联机切舰指令");
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator("#mobileBattleHud").waitFor({ state: "visible" });
+  assert.equal(await page.locator('.mobile-ship-btn[data-ship="sub1"]').getAttribute("aria-pressed"), "true", "移动端应沿用联机当前选舰");
   assert.deepEqual(errors, [], "观战和模式切换不应发生浏览器异常");
   if (videoDir) {
     const video = page.video();

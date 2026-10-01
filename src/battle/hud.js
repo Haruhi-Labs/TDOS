@@ -16,6 +16,7 @@ import {
   setCooldownButtonLabel,
   setCooldownProgress,
 } from "./cooldown-progress.js";
+import { mirrorCommandButton, renderCommandPanel, renderCommandShip } from "./command-panel.js";
 import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
 
 const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"];
@@ -31,8 +32,8 @@ export function fleetSlotLabel(slotKey) {
 }
 
 export function energyPercentForShip(ship) {
-  const max = Math.max(1, Number(ship?.fleetMaxEnergy) || Number(ship?.maxEnergy) || 1);
-  const value = Number(ship?.fleetEnergy) || Number(ship?.energy) || 0;
+  const max = Math.max(1, Number(ship?.fleetMaxEnergy ?? ship?.maxEnergy) || 1);
+  const value = Number(ship?.fleetEnergy ?? ship?.energy) || 0;
   return Math.round((value / max) * 100);
 }
 
@@ -55,6 +56,11 @@ export function currentSubMeta(ship) {
 // 技能区按钮(侦察/自动侦察/旗舰技/急刹/分舰技)的可用态与文案。
 // opts: { selected 当前选中舰, selectedZoneId, pendingSubSkillAim, fallbackLoadout }
 export function updateSkillButtons(ui, own, opts = {}) {
+  updateSkillAvailability(ui, own, opts);
+  renderCommandPanel(ui, own, opts);
+}
+
+function updateSkillAvailability(ui, own, opts = {}) {
   const { selected = null, selectedZoneId, pendingSubSkillAim = null, fallbackLoadout = null } = opts;
   if (!own) {
     ui.scoutBtn.disabled = true;
@@ -217,11 +223,12 @@ export function syncMobileHud(ui, own, opts = {}) {
   }
 
   const shipName = selected ? shipCharacterName(selected) : t("无");
-  const hullPercent = Math.round((own.hullRatio || 0) * 100);
-  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("体")}${hullPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
-  ui.mobileBattleHint.textContent = pendingSubSkillAim
+  const energyPercent = energyPercentForShip(selected);
+  ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("能量")}${energyPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
+  const hintText = pendingSubSkillAim
     ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
     : t("点舰船切换 · 点战场下航线 · 拖侦察选择战区");
+  if (ui.mobileBattleHint.textContent !== hintText) ui.mobileBattleHint.textContent = hintText;
 
   const buttonStates = {
     main: own.ships.main,
@@ -233,6 +240,11 @@ export function syncMobileHud(ui, own, opts = {}) {
     const enabled = Boolean(ship && ship.alive && ship.canControl);
     button.disabled = !enabled;
     button.classList.toggle("active", button.dataset.ship === selectedShipKey);
+    button.setAttribute("aria-pressed", String(button.dataset.ship === selectedShipKey));
+    const name = button.querySelector(".mobile-ship-name");
+    const health = button.querySelector(".mobile-ship-health");
+    if (name) name.textContent = `${fleetSlotLabel(button.dataset.ship)} ${ship ? shipCharacterName(ship) : "—"}`;
+    if (health) health.textContent = !ship?.alive ? t("已击沉") : ship.attached ? t("待分离") : `${t("舰体")} ${Math.round(ship.hp / Math.max(1, ship.maxHp) * 100)}%`;
   }
 
   ui.mobileSplitOneBtn.disabled = ui.splitOneBtn.disabled;
@@ -256,6 +268,9 @@ export function syncMobileHud(ui, own, opts = {}) {
   mirrorCooldownProgress(ui.flagshipBtn, ui.mobileFlagshipBtn);
   mirrorCooldownProgress(ui.subSkillBtn, ui.mobileSubSkillBtn);
 
+  for (const [source, target] of [[ui.flagshipBtn, ui.mobileFlagshipBtn], [ui.subSkillBtn, ui.mobileSubSkillBtn], [ui.brakeBtn, ui.mobileBrakeBtn], [ui.autoScoutBtn, ui.mobileAutoScoutBtn]]) {
+    mirrorCommandButton(source, target);
+  }
   syncThrottleGearControls(ui, selected?.throttle);
 }
 
@@ -267,7 +282,9 @@ export function renderFleetRoster(ui, own, opts = {}) {
   }
   for (const cell of ui.fleetRows) {
     const ship = own && own.ships ? own.ships[cell.key] : null;
+    cell.row.disabled = !Boolean(ship?.alive && ship.canControl);
     cell.row.classList.toggle("active", cell.key === selectedShipKey);
+    renderCommandShip(cell.row, ship, cell.key, own, opts.portraitColor);
     if (!ship) {
       cell.row.classList.add("gone");
       cell.name.textContent = fleetSlotLabel(cell.key);
@@ -289,6 +306,10 @@ export function renderFleetRoster(ui, own, opts = {}) {
       state = `✖ ${t("阵亡")}`;
     } else if (ship.braking) {
       state = t("急刹中");
+    } else if (ship.attached) {
+      state = t("待分离");
+    } else if (cell.key === selectedShipKey) {
+      state = t("操控中");
     } else if (cell.key !== "main" && ship.attached === false) {
       state = t("分离中");
     }

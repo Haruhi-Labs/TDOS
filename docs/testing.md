@@ -18,7 +18,9 @@
 
 `test:camera` 在 Node 中验证导演镜头的鼠标锚点、反向接管、阻尼平移、30/60/144Hz响应一致性、边界、复位及减少动态效果偏好；同时检查玩家模式仍使用原即时缩放。它不代表实际浏览器手感或物理设备验收。
 
-`test:ui:spectator` 自建回环 WebSocket 服务与临时统计目录，以两位玩家和 Chromium 观众验证进入前双方昵称、首快照前阵容、实时冷却、六个技能名的悬浮/键盘/点按说明与视口边界、五种视口、逐帧平滑滚轮、拖拽取消、退出和玩家模式恢复；身份接口使用游客夹具。异常技能状态与零能量另用构造数据验证。可设置 `SPECTATOR_SCREENSHOT_DIR` 保存画面、`SPECTATOR_VIDEO_DIR` 保存交互录像，仍不代表远程多端或物理设备验收。
+`test:ui:spectator` 自建回环 WebSocket 服务与临时统计目录，以两位玩家和 Chromium 观众验证进入前双方昵称、首快照前阵容、实时冷却、六个技能名的悬浮/键盘/点按说明与视口边界、五种视口、逐帧平滑滚轮、拖拽取消、退出、玩家模式恢复及新版联机舰况入口的分离/切舰；身份接口使用游客夹具。异常技能状态与零能量另用构造数据验证。可设置 `SPECTATOR_SCREENSHOT_DIR` 保存画面、`SPECTATOR_VIDEO_DIR` 保存交互录像，仍不代表远程多端或物理设备验收。
+
+`test:ui:command` 启动回环前端并夹具化身份/统计接口，验证真实单人对战的分离、切舰、换挡、键盘帮助和五种视口；另用权威快照夹具覆盖技能冷却、沉默、瞄准、被动技能及编队零能量。可设置 `COMMAND_SCREENSHOT_DIR` 保存画面，不代表联机延迟或物理触屏验收。
 
 `test:all` 按静态、逻辑、AI 模拟、浏览器、网络集成顺序执行，首个失败即停止。后续未执行项目应明确标注；修复后先重跑失败及受影响检查，发布前补齐完整候选结果。
 
@@ -36,7 +38,7 @@
 | 快照、房间、网络协议 | `test:network`、`test:online:components`、`test:server:rooms`、`test:server:runtime`、`test:network:guards`；构建 | 断连、观战、乱序/恢复；容量参数变化另做隔离压测 |
 | 插值或联机显示 | `test:online:state`、`test:online:components`；构建 | 延迟下的移动、换挡与航线确认，显示不得写回模拟 |
 | 战场视觉或 WebGL | `check:static`、`test:ui:webgl`，古泉效果加 `test:ui:koizumi`；构建 | 单人/联机/观战受影响画面、WebGL1/2 及失效回退 |
-| 普通页面、移动交互 | 对应 `test:ui:interaction` / `test:mobile:scout` / `test:ui:cooldown`；构建 | 受影响桌面/窄屏路径；无现成测试时直接验证实际页面 |
+| 普通页面、移动交互 | 对应 `test:ui:interaction` / `test:ui:command` / `test:mobile:scout` / `test:ui:cooldown`；构建 | 受影响桌面/窄屏路径；无现成测试时直接验证实际页面 |
 | 更新日志或多语言内容 | `test:changelog`、`test:ui:changelog`；构建 | 非日志页面翻译另查实际页面，日志测试不覆盖全部词典 |
 | 身份链路 | `test:identity`、`test:ui:identity`，服务端接入变化加 `test:network:guards`；构建 | 修改 SSO 流程时使用隔离身份环境走真实登录及游客降级 |
 | 统计采集、存储或榜单 | `test:statistics`、`test:network:guards`，页面变化加 `test:ui:statistics`；构建 | 去重、跨版本隔离、热更新同桶、旧记录恢复、公开字段及一次性上报 |
