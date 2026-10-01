@@ -24,6 +24,7 @@ import {
   DEFAULT_INTERP_MS,
 } from "./online/snapshot-transport.js";
 import { createThrottleCommandState } from "./online/throttle-command-state.js";
+import { createTournamentView } from "./online/tournament-view.js";
 import { createSpectatorView } from "./online/spectator-view.js";
 
 import { getFaction } from "./profile.js";
@@ -100,6 +101,7 @@ let actionTransport = null; // 统一动作协议的远程传输适配器
 let throttleCommandState = null; // 每艘舰待权威快照确认的换挡意图
 let spectatorView = null; // 独立观战展板，只读取房间资料和权威快照
 let spectatorCameraInput = null;
+let tournamentView = null;
 let statusEffectTooltip = null;
 
 const SHIP_CONTROL_ACTIONS = new Set([
@@ -130,6 +132,7 @@ function cacheDom() {
   createPublicBtn: document.getElementById("createPublicBtn"),
   createPrivateBtn: document.getElementById("createPrivateBtn"),
   createAiRoomBtn: document.getElementById("createAiRoomBtn"),
+  createTournamentBtn: document.getElementById("createTournamentBtn"),
   joinCodeInput: document.getElementById("joinCodeInput"),
   joinCodeBtn: document.getElementById("joinCodeBtn"),
   refreshRoomsBtn: document.getElementById("refreshRoomsBtn"),
@@ -218,6 +221,8 @@ function initApp() {
   room: null,
   seat: null,
   spectating: false,
+  isRoomHost: false,
+  supportsTournamentRooms: false,
   seq: 0,
   ackSeq: 0,
   selectedShipKey: "main",
@@ -352,12 +357,14 @@ function updateConnectionUi() {
   ui.jitterValue.textContent = app.connected ? `${Math.round(app.jitterMs)}ms` : "-";
   ui.interpValue.textContent = app.connected ? `${Math.round(app.interpDelayMs)}ms` : "-";
 
+  tournamentView?.update({ room: app.room, seat: app.seat, isHost: app.isRoomHost, connected: app.connected, compatible: app.rulesetCompatible });
   ui.connectBtn.disabled = app.connected;
   ui.disconnectBtn.disabled = !app.connected;
   const lobbyActionsDisabled = !app.connected || !app.rulesetCompatible || Boolean(app.room);
   ui.createPublicBtn.disabled = lobbyActionsDisabled;
   ui.createPrivateBtn.disabled = lobbyActionsDisabled;
   ui.createAiRoomBtn.disabled = lobbyActionsDisabled;
+  ui.createTournamentBtn.disabled = lobbyActionsDisabled || !app.supportsTournamentRooms;
   ui.joinCodeBtn.disabled = lobbyActionsDisabled;
   ui.joinCodeInput.disabled = lobbyActionsDisabled;
 }
@@ -373,8 +380,13 @@ function setBattleControlsEnabled(enabled) {
 }
 
 // 大厅页与战斗页二选一全屏切换（visible=true 显示独立大厅页，false 显示战斗页）
+function isTournamentPreparing() {
+  return app.room?.kind === "tournament" && app.room.status === "waiting";
+}
+
 function setRoomHudVisible(visible) {
-  spectatorView?.update({ active: isSpectatorMode(), room: app.room, state: app.latestSnapshot?.state, zoom: camera?.zoom });
+  tournamentView?.update({ room: app.room, seat: app.seat, isHost: app.isRoomHost, connected: app.connected, compatible: app.rulesetCompatible });
+  spectatorView?.update({ active: isSpectatorMode() || isTournamentPreparing(), room: app.room, state: app.latestSnapshot?.state, zoom: camera?.zoom });
   if (ui.lobbyView) ui.lobbyView.hidden = !visible;
   if (ui.battleView) ui.battleView.hidden = visible;
 }
@@ -514,6 +526,7 @@ async function connectServer() {
       }
       opened = true;
       app.connected = true;
+      app.supportsTournamentRooms = false;
       updateConnectionUi();
       log(t("已连接服务器：{url}", { url }));
 
@@ -545,6 +558,9 @@ async function connectServer() {
       app.room = null;
       app.seat = null;
       app.spectating = false;
+      app.isRoomHost = false;
+      app.supportsTournamentRooms = false;
+      if (charSelect) { charSelect.hide(); charSelect = null; }
       lobbyView.updateRoomSummary();
       setBattleControlsEnabled(false);
       setRoomHudVisible(true);
@@ -589,6 +605,7 @@ function applyRoomState(message) {
   const previousSpectating = app.spectating;
   app.room = message.room || null;
   app.spectating = Boolean(message.self && message.self.spectating);
+  app.isRoomHost = Boolean(message.self?.isHost);
   app.seat = app.spectating ? null : message.self ? message.self.seat : null;
   if (app.room && (app.room.roomId !== previousRoomId || app.spectating !== previousSpectating)) {
     clearMatchRuntime();
@@ -605,7 +622,7 @@ function applyRoomState(message) {
   const isCountdown = roomStatus === "countdown";
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
-  const showBattleView = isCountdown || canBattle || isFinished;
+  const showBattleView = isTournamentPreparing() || isCountdown || canBattle || isFinished;
   setBattleControlsEnabled(Boolean(canBattle && !app.spectating && app.rulesetCompatible));
   setRoomHudVisible(!showBattleView);
   syncResponsiveMode();
@@ -613,6 +630,7 @@ function applyRoomState(message) {
   if (showBattleView) requestAnimationFrame(() => camera.resizeCanvas());
   profileController.updateShipSwitchLabels(app.playerLoadout);
   const loadoutLocked = Boolean(app.room && (app.room.status === "countdown" || app.room.status === "running"));
+  if (loadoutLocked && charSelect) { charSelect.hide(); charSelect = null; }
   for (const element of [ui.onlineMainRole, ui.onlineSub1Role, ui.onlineSub2Role, ui.applyLoadoutOnlineBtn]) {
     if (element) {
       element.disabled = loadoutLocked;
@@ -670,6 +688,8 @@ function handleRoomClosed(message) {
   app.room = null;
   app.seat = null;
   app.spectating = false;
+  app.isRoomHost = false;
+  if (charSelect) { charSelect.hide(); charSelect = null; }
   lobbyView.updateRoomSummary();
   updateConnectionUi();
   setBattleControlsEnabled(false);
@@ -881,7 +901,9 @@ function handleServerMessage(raw) {
   const type = String(message.type || "");
 
   if (type === "connected") {
+    app.supportsTournamentRooms = Array.isArray(message.roomKinds) && message.roomKinds.includes("tournament");
     snapshotTransport.handleConnected(message);
+    updateConnectionUi();
     return;
   }
 
@@ -1265,7 +1287,7 @@ function renderBattleFrame() {
   if (!state) {
     drawBackground(ctx, app.stars, elapsed || 0);
     ctx.restore();
-    drawNoDataHint(ctx);
+    if (!isTournamentPreparing()) drawNoDataHint(ctx);
     if (app.room?.status === "countdown") {
       drawBattleCountdown(ctx, Number(app.room.countdownEndsAt || 0) - stateSync.estimateServerNowMs());
     }
@@ -1335,11 +1357,13 @@ function syncLoadoutToServer(logOnSuccess = true) {
 
 // 与单机一致的「翻书选角」：选完写回隐藏下拉并同步服务器
 function openOnlineCharSelect() {
+  if (app.room && ["countdown", "running"].includes(app.room.status)) return;
   if (charSelect && typeof charSelect.hide === "function") charSelect.hide();
   charSelect = createCharacterSelect((loadout) => {
+    if (app.room && ["countdown", "running"].includes(app.room.status)) return;
     profileController.syncLoadoutControls(loadout); // 写入下拉，复用既有同步机制
     syncLoadoutToServer(true); // 读取下拉 → app.playerLoadout → 本地档案 → 发服务器
-  });
+  }, { onBack: () => {}, backLabel: "取消", launchLabel: "保存阵容" });
   charSelect.show();
 }
 
@@ -1458,6 +1482,10 @@ function bindUiEvents() {
     socketSend({ type: "create_room", visibility: "private", mode: "pvp" });
   });
 
+  ui.createTournamentBtn.addEventListener("click", () => {
+    socketSend({ type: "create_room", visibility: "public", mode: "pvp", kind: "tournament" });
+  });
+
   ui.createAiRoomBtn.addEventListener("click", () => {
     syncLoadoutToServer(false);
     socketSend({ type: "create_room", visibility: "private", mode: "ai" });
@@ -1478,6 +1506,8 @@ function bindUiEvents() {
     app.room = null;
     app.seat = null;
     app.spectating = false;
+    app.isRoomHost = false;
+    if (charSelect) { charSelect.hide(); charSelect = null; }
     lobbyView.updateRoomSummary();
     updateConnectionUi();
     setBattleControlsEnabled(false);
@@ -2050,6 +2080,11 @@ export function mount(root) {
   cacheDom();
   initApp();
   spectatorView = createSpectatorView(ui.battleView);
+  tournamentView = createTournamentView(ui.battleView, {
+    onLoadout: openOnlineCharSelect,
+    onReady: (ready) => socketSend({ type: "set_ready", ready }),
+    onStart: () => socketSend({ type: "start_match" }),
+  });
   statusEffectTooltip = createStatusEffectTooltip(ui.battleView);
   camera = createBattleCamera({
     canvas,
@@ -2101,6 +2136,8 @@ function unmount() {
   actionTransport = null;
   spectatorView?.destroy();
   spectatorView = null;
+  tournamentView?.destroy();
+  tournamentView = null;
 }
 
 
@@ -2154,6 +2191,7 @@ function onlineTemplate() {
                 <button id="createPublicBtn">${t("创建公开房")}</button>
                 <button id="createPrivateBtn">${t("创建私人房")}</button>
               </div>
+              <button id="createTournamentBtn">${t("创建比赛房间")}</button>
               <button id="createAiRoomBtn">${t("创建 AI 训练房")}</button>
               <div class="join-code-wrap">
                 <input id="joinCodeInput" type="text" inputmode="numeric" maxlength="6" placeholder="${t("输入 6 位房间号")}" />

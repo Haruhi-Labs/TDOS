@@ -172,6 +172,7 @@ export function createOnlineSnapshotTransport({ app, nowMs, socketSend, updateCo
     if (app.networkProtocolVersion >= 2) {
       socketSend({
         type: "protocol_hello",
+        roomKinds: ["standard", "tournament"],
         protocolVersion: 2,
         rulesetVersion: RULESET_VERSION,
       });

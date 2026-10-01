@@ -320,7 +320,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
   launchBtn.type = "button";
   launchBtn.className = "cs-launch";
   launchBtn.disabled = true;
-  launchBtn.innerHTML = `<span class="cs-launch-text">${t("出 击")}</span><span class="cs-launch-glow"></span>`;
+  launchBtn.innerHTML = `<span class="cs-launch-text">${t(opts.launchLabel || "出 击")}</span><span class="cs-launch-glow"></span>`;
   launchBtn.addEventListener("click", launch);
   fleetBar.appendChild(launchBtn);
 
@@ -1231,7 +1231,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   function renderCta() {
     const id = curId();
     if (isReady()) {
-      els.cta.textContent = t("出 击");
+      els.cta.textContent = t(opts.launchLabel || "出 击");
       els.cta.className = "csm-cta ready";
       els.cta.disabled = false;
       return;
