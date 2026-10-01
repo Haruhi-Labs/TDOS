@@ -192,6 +192,37 @@ try {
       return stats;
     }
 
+    function routeHandleCalls() {
+      return Object.fromEntries(["webgl2", "webgl1", "canvas2d"].map((mode) => {
+        const calls = {};
+        for (const spectating of [false, true]) {
+          const fixture = createNativeBattleVisualFixture();
+          for (const seat of ["A", "B"]) {
+            for (const ship of Object.values(fixture.state.teams[seat].ships)) ship.route = null;
+          }
+          const route = { p0: { x: 80, y: 140 }, p1: { x: 180, y: 140 }, p2: { x: 280, y: 140 }, t: .2 };
+          fixture.state.teams.A.ships.main.route = route;
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const renderer = createNativeBattleRenderer(canvas, { forceMode: mode });
+          const arc = renderer.ctx.arc.bind(renderer.ctx);
+          const handles = { endpoint: 0, curve: 0 };
+          renderer.ctx.arc = (x, y, ...args) => {
+            if (x === route.p2.x && y === route.p2.y) handles.endpoint++;
+            if (x === route.p1.x && y === route.p1.y) handles.curve++;
+            return arc(x, y, ...args);
+          };
+          renderer.beginFrame();
+          drawBattleWorld(renderer.ctx, { ...fixture.frame, spectating, mobileMode: false, selectedKeyForTeam: () => "main" });
+          renderer.present();
+          renderer.destroy();
+          calls[spectating ? "spectator" : "player"] = handles;
+        }
+        return [mode, calls];
+      }));
+    }
+
     function spectatorEffectPixels() {
       const fixture = createNativeBattleVisualFixture();
       for (const seat of ["A", "B"]) {
@@ -286,6 +317,7 @@ try {
       comparisons,
       benchmark: benchmarkResults,
       spectatorEffects: spectatorEffectPixels(),
+      routeHandles: routeHandleCalls(),
       radar: {
         subframeAngles: radarSubframeAngles,
         webgl2TrianglesWithoutRadar: renderStatsWithoutRadar("webgl2").triangles,
@@ -305,6 +337,10 @@ try {
     };
   });
 
+  for (const [mode, handles] of Object.entries(report.routeHandles)) {
+    assert.deepEqual(handles.spectator, { endpoint: 0, curve: 0 }, `${mode} 观战不能绘制航线操作手柄`);
+    assert.ok(handles.player.endpoint > 0 && handles.player.curve > 0, `${mode} 对战须保留终点与曲度手柄`);
+  }
   for (const [mode, effects] of Object.entries(report.spectatorEffects)) {
     for (const [name, pixelRatio] of Object.entries(effects)) {
       assert.ok(pixelRatio > 0, `${mode}观战缺少可见的${name}`);

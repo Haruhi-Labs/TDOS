@@ -100,7 +100,7 @@ export function drawZones(ctx, state, selectedZoneId) {
   }
 }
 
-export function drawRoute(ctx, route, selected, time = 0, showKnob = true) {
+export function drawRoute(ctx, route, selected, time = 0, showKnob = true, showHandles = true) {
   if (!route) {
     return;
   }
@@ -154,7 +154,7 @@ export function drawRoute(ctx, route, selected, time = 0, showKnob = true) {
 
   if (selected) {
     // ④ 终点:目标十字标记(环 + 四向刻度 + 心点 + 航向箭头),清楚地读作"到这里"
-    drawTargetMarker(ctx, p2, heading, time);
+    if (showHandles) drawTargetMarker(ctx, p2, heading, time);
 
     // ⑤ 进度点:沿曲线滑动的亮点,表示当前推进位置
     const progressPoint = quadraticPoint(p0, p1, p2, clamp(route.t || 0, 0, 1));
@@ -168,7 +168,7 @@ export function drawRoute(ctx, route, selected, time = 0, showKnob = true) {
     ctx.fill();
 
     // ⑥ 控制点 + 控制多边形(仅桌面可拖拽):琥珀色"旋钮",一眼可抓
-    if (showKnob) {
+    if (showHandles && showKnob) {
       ctx.lineWidth = 1.1;
       ctx.strokeStyle = "#ffd9912e";
       ctx.setLineDash([2, 6]);
@@ -1180,7 +1180,7 @@ export function drawBattleWorld(ctx, frame) {
       if (!route) {
         continue;
       }
-      drawRoute(ctx, route, ship.key === selectedKey, elapsed, !frame.mobileMode);
+      drawRoute(ctx, route, ship.key === selectedKey, elapsed, !frame.mobileMode, !spectating);
     }
   }
 
