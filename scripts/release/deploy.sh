@@ -5,6 +5,8 @@ channel="${1:-}"; sha="${2:-}"; scope="${3:-}"; archive="${4:-}"
 [[ "$channel" == staging || "$channel" == production ]] || { echo '部署环境无效' >&2; exit 1; }
 [[ "$sha" =~ ^[a-f0-9]{40}$ && ( "$scope" == web || "$scope" == full ) ]] || { echo '提交号或部署范围无效' >&2; exit 1; }
 root="${TDOS_DEPLOY_ROOT:-/srv/tdos}"
+process_helper="$root/bin/activate-process.cjs"
+[[ -f "$process_helper" ]] || { echo '缺少受控进程切换脚本' >&2; exit 1; }
 [[ -f "$root/config/$channel.env" ]] || { echo '缺少服务器环境配置' >&2; exit 1; }
 # 此文件由运维维护，包含该环境的端口、公钥及持久目录；不来自发布包。
 set -a
@@ -41,17 +43,17 @@ previous_web="$(readlink "$root/$channel/current-web" || true)"
 previous_server="$(readlink "$root/$channel/current-server" || true)"
 restore() {
   echo '部署验证失败，恢复本次涉及的既有进程；统计数据保持不变' >&2
-  if [[ -n "$previous_web" ]]; then pm2 startOrReload "$previous_web/ecosystem.config.json" --only "$web_name" --update-env; else pm2 delete "$web_name" || true; fi
+  if [[ -n "$previous_web" ]]; then node "$process_helper" "$previous_web/ecosystem.config.json" "$web_name"; else pm2 delete "$web_name" || true; fi
   if [[ "$scope" == full ]]; then
-    if [[ -n "$previous_server" ]]; then pm2 startOrReload "$previous_server/ecosystem.config.json" --only "$ws_name" --update-env; else pm2 delete "$ws_name" || true; fi
+    if [[ -n "$previous_server" ]]; then node "$process_helper" "$previous_server/ecosystem.config.json" "$ws_name"; else pm2 delete "$ws_name" || true; fi
   fi
 }
 trap restore ERR
 # 首次迁移现有进程时必须先登记旧版本配置，防止失败后丢失回滚目标。
 if pm2 describe "$web_name" >/dev/null 2>&1 && [[ -z "$previous_web" ]]; then trap - ERR; echo '请先登记既有前端的回滚目录' >&2; exit 1; fi
 if [[ "$scope" == full ]] && pm2 describe "$ws_name" >/dev/null 2>&1 && [[ -z "$previous_server" ]]; then trap - ERR; echo '请先登记既有联机服务的回滚目录' >&2; exit 1; fi
-if [[ "$scope" == full ]]; then pm2 startOrReload "$release_dir/ecosystem.config.json" --only "$ws_name" --update-env; fi
-pm2 startOrReload "$release_dir/ecosystem.config.json" --only "$web_name" --update-env
+if [[ "$scope" == full ]]; then node "$process_helper" "$release_dir/ecosystem.config.json" "$ws_name"; fi
+node "$process_helper" "$release_dir/ecosystem.config.json" "$web_name"
 node scripts/release/verify-deployment.mjs "http://127.0.0.1:$WEB_PORT/" "ws://127.0.0.1:$WS_PORT/" "$sha" "$scope"
 trap - ERR
 ln -sfn "$release_dir" "$root/$channel/current-web"
