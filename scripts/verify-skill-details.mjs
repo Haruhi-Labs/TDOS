@@ -68,8 +68,12 @@ const screenshotDir = process.env.SKILL_DETAILS_SCREENSHOT_DIR;
 const errors = [];
 try {
   if (screenshotDir) await mkdir(screenshotDir, { recursive: true });
-  async function enter(viewport, mobile, locale) {
+  async function enter(viewport, mobile, locale, fallback = false) {
     const context = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile, locale });
+    if (fallback) await context.addInitScript(() => {
+      Object.defineProperty(HTMLElement.prototype, "showPopover", { configurable: true, value: undefined });
+      Object.defineProperty(HTMLElement.prototype, "hidePopover", { configurable: true, value: undefined });
+    });
     await context.route("**/api/**", (route) => route.fulfill({ status: 200, contentType: "application/json", body: '{"authenticated":false,"items":[]}' }));
     const page = await context.newPage();
     page.on("pageerror", (error) => errors.push(error.message));
@@ -80,13 +84,17 @@ try {
     return { context, page };
   }
   async function verifyGeometry(page, viewport) {
-    const geometry = await page.locator(".cs-skill-dialog").evaluate((element) => {
+    const geometry = await page.locator(".cs-skill-popover").evaluate((element) => {
       const r = element.getBoundingClientRect();
       const list = element.querySelector("dl");
-      return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, scrollWidth: element.scrollWidth, width: element.clientWidth, listScroll: list.scrollHeight, listHeight: list.clientHeight };
+      const a = document.querySelector('.cs-skill-trigger[aria-expanded="true"]').getBoundingClientRect();
+      return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, height: r.height, anchorTop: a.top, anchorBottom: a.bottom, modal: document.querySelectorAll(":modal").length, scrollWidth: element.scrollWidth, width: element.clientWidth, listScroll: list.scrollHeight, listHeight: list.clientHeight };
     });
     assert.ok(geometry.x >= 0 && geometry.y >= 0 && geometry.right <= viewport.width + 1 && geometry.bottom <= viewport.height + 1, "技能浮窗必须留在视口内");
     assert.ok(geometry.scrollWidth <= geometry.width, "参数浮窗不可横向溢出");
+    assert.ok(geometry.width <= 340 && geometry.height <= 360, "技能详情应保持紧凑的局部浮窗");
+    assert.ok(geometry.bottom <= geometry.anchorTop - 6 || geometry.y >= geometry.anchorBottom + 6, "浮窗应贴近入口并避开技能说明");
+    assert.equal(geometry.modal, 0, "技能浮窗不可锁定页面为模态窗口");
     assert.ok(await page.locator(".cs-skill-close").isVisible(), "关闭按钮必须始终可见");
     return geometry;
   }
@@ -107,37 +115,58 @@ try {
         const overview = await button.locator(mobile ? ".csm-skill-desc" : ".cs-page-skill-desc").textContent();
         assert.doesNotMatch(overview, /\d|%|×/);
         await button.click();
-        await page.locator(".cs-skill-dialog[open]").waitFor();
+        await page.locator(".cs-skill-popover[data-open=true]").waitFor();
         assert.equal(await page.locator(".cs-skill-detail-row").count(), skillDetailRows(CHARACTER_ORDER[i], mode).length, "浮窗应展示全部结构化参数");
         await verifyGeometry(page, viewport);
         await page.keyboard.press("ArrowRight");
         assert.equal(await button.getAttribute("data-character"), CHARACTER_ORDER[i], "阅读浮窗时不可翻到另一角色");
         if (screenshotDir && i < 2 && skill === 0) await page.screenshot({ path: join(screenshotDir, `${mobile ? "mobile" : "desktop"}-${CHARACTER_ORDER[i]}.png`) });
         await page.keyboard.press("Escape");
-        await page.locator(".cs-skill-dialog").waitFor({ state: "detached" });
+        await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
         await page.waitForFunction((element) => element === document.activeElement, await button.elementHandle());
         const focusAfterClose = await button.evaluate((element) => ({ restored: element === document.activeElement, active: document.activeElement.outerHTML.slice(0, 200) }));
         assert.equal(focusAfterClose.restored, true, `关闭浮窗后焦点应回到原技能入口：${mobile ? "触屏" : "桌面"} ${CHARACTER_ORDER[i]} ${mode} ${focusAfterClose.active}`);
       }
     }
+    // 浮窗不遮挡背景交互；点击其他技能可以直接替换，再点同一技能收起。
+    await page.locator(prefix).first().click();
+    await page.locator(prefix).nth(1).click();
+    assert.equal(await page.locator(".cs-skill-popover").count(), 1);
+    assert.equal(await page.locator(".cs-skill-popover h2").textContent(), await page.locator(prefix).nth(1).locator(mobile ? ".csm-skill-name" : ".cs-page-skill-name").textContent());
+    await page.locator(prefix).nth(1).click();
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
+    assert.equal(await page.locator(prefix).nth(1).getAttribute("aria-expanded"), "false");
+    await page.locator(prefix).first().click();
+    await (mobile ? page.locator(".csm-next") : page.locator(".cs-tab").first()).click();
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
+    if (!mobile) await page.locator(".cs-page-flipper").waitFor({ state: "detached" });
+    await page.waitForFunction(({ prefix, id }) => document.querySelector(prefix)?.dataset.character === id, { prefix, id: CHARACTER_ORDER[0] });
     // 键盘激活技能入口不能被选角的 Enter 快捷键抢去编队。
     const prompt = mobile ? ".csm-cta" : ".cs-enlist-prompt";
     const before = await page.locator(prompt).textContent();
     await page.locator(prefix).first().focus();
     await page.keyboard.press("Enter");
-    await page.locator(".cs-skill-dialog[open]").waitFor();
+    await page.locator(".cs-skill-popover[data-open=true]").waitFor();
     assert.equal(await page.locator(prompt).textContent(), before);
-    for (let tab = 0; tab < 4; tab++) await page.keyboard.press("Tab");
-    const focusedElement = await page.evaluate(() => ({ inside: Boolean(document.activeElement.closest(".cs-skill-dialog")), element: document.activeElement.outerHTML.slice(0, 160) }));
-    assert.equal(focusedElement.inside, true, `模态窗口需约束键盘焦点：${focusedElement.element}`);
+    await page.keyboard.press("Tab");
+    assert.equal(await page.locator(".cs-skill-detail-list").evaluate((element) => element === document.activeElement), true, "键盘可以进入参数列表滚动阅读");
     await page.keyboard.press("Shift+Tab");
-    assert.equal(await page.locator(".cs-skill-detail-list").evaluate((element) => element === document.activeElement), true, "反向 Tab 应能到达参数列表，以键盘滚动阅读");
+    const reverseFocus = await page.evaluate(() => {
+      const active = document.activeElement;
+      return Boolean(active.closest(".cs-skill-popover")) || active.matches('.cs-skill-trigger[aria-expanded="true"]');
+    });
+    assert.equal(reverseFocus, true, "原生非模态浮层的反向 Tab 可以返回入口或浮窗控件");
+    const nextCharacter = page.locator(mobile ? ".csm-dot" : ".cs-tab").first();
+    await nextCharacter.focus();
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
+    assert.equal(await nextCharacter.evaluate((element) => element === document.activeElement), true, "轻量浮窗不可约束背景选角的键盘焦点");
+    await page.locator(prefix).first().click();
     await page.mouse.click(4, 4);
-    await page.locator(".cs-skill-dialog").waitFor({ state: "detached" });
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
     await page.locator(prefix).first().click();
     // 同一选角实例退出时应清除顶层窗口。
     await page.evaluate(async () => { history.pushState(null, "", "/"); window.dispatchEvent(new PopStateEvent("popstate")); });
-    await page.locator(".cs-skill-dialog").waitFor({ state: "detached" });
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
     await context.close();
   }
   for (const [viewport, mobile, locale, index] of [
@@ -149,7 +178,7 @@ try {
     await page.locator(mobile ? ".csm-dot" : ".cs-tab").nth(index).click();
     if (!mobile) await page.locator(".cs-page-flipper").waitFor({ state: "detached" });
     await page.locator(mobile ? ".csm .cs-skill-trigger" : ".cs-book > .cs-page-right .cs-skill-trigger").first().click();
-    await page.locator(".cs-skill-dialog[open]").waitFor();
+    await page.locator(".cs-skill-popover[data-open=true]").waitFor();
     const geometry = await verifyGeometry(page, viewport);
     if (viewport.height === 540) {
       assert.ok(geometry.listScroll > geometry.listHeight, "长参数列表应内部滚动，保持标题与关闭按钮固定");
@@ -163,9 +192,27 @@ try {
     if (locale === "en-US") assert.doesNotMatch(await page.locator(".cs-skill-detail-list").textContent(), /[\u4e00-\u9fff]/u, "英文详细信息不应夹带中文");
     if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `details-${viewport.width}x${viewport.height}.png`) });
     await page.locator(".cs-skill-close").click();
-    await page.locator(".cs-skill-dialog").waitFor({ state: "detached" });
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
+    await context.close();
+  }
+  {
+    const viewport = { width: 1280, height: 800 };
+    const { context, page } = await enter(viewport, false, "zh-CN", true);
+    await page.locator(".cs-book > .cs-page-right .cs-skill-trigger").first().click();
+    await page.locator(".cs-skill-popover[data-open=true]").waitFor();
+    assert.equal(await page.locator(".cs-skill-popover").getAttribute("popover"), null, "无原生 Popover API 时仍能使用局部浮窗");
+    await verifyGeometry(page, viewport);
+    await page.setViewportSize({ width: 1080, height: 700 });
+    await page.waitForFunction(() => {
+      const p = document.querySelector(".cs-skill-popover").getBoundingClientRect();
+      const a = document.querySelector('.cs-skill-trigger[aria-expanded="true"]').getBoundingClientRect();
+      return p.right <= innerWidth && p.bottom <= innerHeight && (p.bottom <= a.top - 6 || p.top >= a.bottom + 6);
+    });
+    await verifyGeometry(page, { width: 1080, height: 700 });
+    await page.keyboard.press("Escape");
+    await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
     await context.close();
   }
   assert.deepEqual(errors, [], "技能详情与选角交互不应产生浏览器异常");
-  console.log("技能分层介绍检查通过：八角色十六技能、三语言、规则数值核对、桌面/触屏、键盘/遮罩关闭、焦点约束、卸载及矮屏滚动。");
+  console.log("技能轻量浮窗检查通过：八角色十六技能、三语言、参数核对、入口定位、无模态遮罩、键盘/外部关闭、非约束焦点、卸载与矮屏滚动。");
 } finally { await browser.close(); await vite.close(); }
