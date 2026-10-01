@@ -1544,6 +1544,10 @@ button.toggle-active {
   letter-spacing: 0.03em;
 }
 .room-item-meta { color: var(--text-soft); font-size: 0.82rem; line-height: 1.5; }
+.room-item-versus { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: .86rem; }
+.room-combatant { overflow-wrap: anywhere; }
+.room-combatant-a { color: #a8c4f2; }
+.room-combatant-b { color: #eeaaa2; }
 .room-item-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
