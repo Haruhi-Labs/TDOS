@@ -1,0 +1,113 @@
+/* 舰队操作台：海军蓝承载状态，黄铜标识当前操控与可用命令。 */
+.battle-shell .battle-panel { padding: 15px; gap: 14px; background: linear-gradient(155deg, #172338f7, #090f1bf7), var(--tex-leather); background-blend-mode: normal; background-size: cover, 220px 220px; }
+.battle-shell .battle-panel .controls::before { display: none; }
+.battle-shell .battle-panel::before, .battle-shell .battle-panel::after { opacity: .55; }
+.battle-panel .command-legacy[hidden] { display: none; }
+.battle-shell .battle-panel .panel-actions { display: flex; justify-content: space-between; gap: 8px; padding-bottom: 9px; border-bottom: 1px solid #a6864938; }
+.battle-shell .panel-actions .btn-link, .battle-shell .panel-actions button { padding: 5px 0; border: 0; background: none; box-shadow: none; color: var(--text-soft); font-size: .76rem; }
+.battle-shell .panel-actions :is(button, a):hover { color: var(--gilt-bright); background: none; box-shadow: none; }
+.battle-shell .battle-panel .controls { padding-top: 12px; border-color: #a6864938; }
+.battle-shell .battle-panel .fleet-section { flex: 0 0 auto; border: 0; padding: 0; }
+.command-section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 9px; }
+.battle-shell .command-section-head h2 { margin: 0; font: 600 .84rem var(--font-cn); color: var(--gilt-pale); letter-spacing: .08em; text-shadow: none; }
+.command-section-head > span, .command-section-head > strong { color: var(--text-muted); font: 400 .7rem var(--font-cn); }
+.battle-shell .fleet-roster { flex: none; gap: 6px; }
+.battle-shell .battle-panel .fleet-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) 16px; align-items: center; flex: none; gap: 9px; min-height: 67px; padding: 7px 8px; border-color: #a6864938; background: #0a1222a0; box-shadow: none; }
+.command-portrait { display: block; height: 47px; overflow: hidden; border: 1px solid #b597554d; border-radius: 2px; background: #15243c; }
+.command-portrait img { display: block; width: 180%; height: 180%; max-width: none; object-fit: cover; object-position: 50% 18%; transform: translate(-22%, -7%); }
+.command-fleet-content { min-width: 0; display: grid; gap: 8px; }
+.battle-shell .fleet-row-head { gap: 6px; }
+.battle-shell .fleet-name { font-size: .79rem; letter-spacing: 0; }
+.battle-shell .fleet-state { font: .63rem var(--font-cn); letter-spacing: 0; color: #a2b8bb; }
+.battle-shell .fleet-row.active .fleet-state { color: #e2ca94; }
+.battle-shell .fleet-gauges { gap: 8px; }
+.battle-shell .fleet-gauge { gap: 4px; }
+.battle-shell .fleet-glabel { font-size: .59rem; letter-spacing: 0; }
+.battle-shell .fleet-pct { min-width: 24px; font-size: .65rem; }
+.battle-shell .fleet-bar { height: 3px; border-radius: 0; background: #030910; box-shadow: none; }
+.battle-shell .fleet-fill { border-radius: 0; }
+.battle-shell .battle-panel .fleet-row.active { border-color: #c4a065; background: linear-gradient(90deg, #b294402b, #172337aa); box-shadow: inset 2px 0 #d4b770; }
+.battle-shell .battle-panel .fleet-row:hover:not(:disabled) { border-color: #c4a065; background: #243348; box-shadow: none; }
+.battle-shell .battle-panel .fleet-row:disabled { opacity: .65; filter: saturate(.6); }
+.battle-shell .battle-panel .fleet-row.gone { opacity: .42; }
+.command-formation { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 9px; }
+.command-formation > strong { color: var(--text-muted); font: .7rem var(--font-cn); }
+.battle-shell .command-formation .btn-row { display: flex; gap: 5px; }
+.battle-shell .command-formation button { padding: 6px 10px; font-size: .73rem; }
+.battle-shell .battle-panel #battleControls { gap: 13px; }
+.battle-shell .throttle-wrap { gap: 7px; }
+.battle-shell .throttle-wrap .slider-head > span { font-size: .7rem; letter-spacing: .03em; }
+.battle-shell .throttle-wrap strong { font: 600 .76rem var(--font-cn); }
+.battle-shell .throttle-gear-row { gap: 0; border: 1px solid #a6864966; border-radius: 3px; overflow: hidden; }
+.battle-shell .throttle-gear-row .throttle-gear-btn { border: 0; border-radius: 0; background: #101b2b; box-shadow: none; padding: 8px 2px; color: #a6b1c1; }
+.battle-shell .throttle-gear-row .throttle-gear-btn + button { border-left: 1px solid #a6864938; }
+.battle-shell .throttle-gear-row .throttle-gear-btn.active { color: #f2dcac; background: #655332; box-shadow: inset 0 -2px #d4b770; }
+.battle-shell .throttle-gear-row .throttle-gear-btn:hover:not(:disabled) { color: #fff0c9; background: #3d3b36; }
+.command-route-hint { display: flex; justify-content: space-between; gap: 6px; color: var(--text-muted); font-size: .68rem; }
+.battle-shell .throttle-energy-hint { font-size: .68rem; color: #9fc0b7; }
+.battle-shell .battle-panel .btn-grid { gap: 6px; }
+.battle-shell .command-action { display: grid; align-content: center; gap: 7px; min-width: 0; min-height: 59px; padding: 9px 10px; text-align: left; border: 1px solid #a6864955; background: linear-gradient(150deg, #253347, #152033); color: var(--gilt-pale); box-shadow: inset 0 1px #e6d19b0a; text-shadow: none; letter-spacing: 0; }
+.battle-shell .command-action:hover:not(:disabled) { border-color: #c4a065; background: #2e3d4e; box-shadow: inset 0 1px #e6d19b22; }
+.battle-shell .command-action:disabled { opacity: .77; filter: none; cursor: default; }
+.battle-shell .command-action.toggle-active { border-color: #6c9c91; background: #233d3e; box-shadow: inset 2px 0 #80b6a8; }
+.command-action-heading, .command-action-detail { display: flex; justify-content: space-between; gap: 5px; align-items: baseline; position: relative; z-index: 2; min-width: 0; }
+.command-action-kind { color: #9aa8b9; font: .58rem var(--font-cn); white-space: nowrap; }
+.command-action-title { flex: 1; font: 600 .8rem var(--font-cn); min-width: 0; overflow-wrap: anywhere; }
+.command-action-detail { font: .65rem var(--font-cn); color: #b0b9c6; }
+.command-action-cost { color: #8b9aab; white-space: nowrap; }
+.command-action[data-ready="true"] .command-action-state { color: #abd0b6; }
+.battle-shell kbd { border: 1px solid #c9af7640; border-radius: 2px; padding: 1px 3px; color: #abacaa; font: .62rem var(--font-engrave); box-shadow: 0 1px #0006; }
+.battle-shell .command-action.span-2 { min-height: 43px; grid-template-columns: 1fr 1fr; gap: 16px; }
+.command-context-hint { margin: 9px 0 0; color: #e4c994; font: .74rem/1.5 var(--font-cn); }
+.command-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: auto !important; padding-top: 10px; border-top: 1px solid #a6864938; }
+.command-help { flex: 1; min-width: 80px; font: .7rem var(--font-cn); color: var(--text-muted); }
+.command-help summary { cursor: pointer; width: max-content; padding: 5px 0; }
+.command-help[open] { flex-basis: 100%; }
+.command-help dl { display: grid; grid-template-columns: 40px 1fr; gap: 8px; line-height: 1.5; margin: 7px 0 9px; }
+.command-help dt { color: var(--gilt-pale); }
+.command-help dd { margin: 0; }
+.battle-shell .command-footer .zoom-control-row { display: flex; gap: 3px; margin: 0; }
+.battle-shell .command-footer .zoom-control-row strong { font-size: .76rem; }
+.battle-shell .command-footer .zoom-control-row button { width: 28px; height: 28px; padding: 0; border: 1px solid #a6864944; background: #111c2a; box-shadow: none; font-size: 1rem; }
+.battle-shell .command-footer button:hover:not(:disabled) { background: #314052; }
+.command-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.battle-shell :is(button, a, summary):focus-visible { outline: 2px solid #e4c994; outline-offset: 3px; }
+@media (max-width: 980px) {
+  .battle-shell .mobile-battle-hud { background: linear-gradient(145deg, #18263bee, #0c1423f5); border-color: #a6864966; box-shadow: none; }
+  .battle-shell .mobile-battle-summary { border: 0; background: none; box-shadow: none; }
+  .battle-shell .mobile-ship-btn { display: grid; gap: 2px; align-content: center; min-width: 0; background: #111d30; border-color: #a6864944; box-shadow: none; text-shadow: none; }
+  .mobile-ship-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .75rem; }
+  .mobile-ship-health { font-size: .61rem; color: #a1b7b9; }
+  .battle-shell .mobile-ship-btn.active { border-color: #c4a065; background: #3e3b32; box-shadow: inset 0 -2px #d4b770; }
+  .battle-shell .mobile-action-grid > button { background: #253347; border-color: #a6864944; box-shadow: none; text-shadow: none; }
+  .battle-shell .mobile-action-grid .command-action { min-height: 40px; gap: 3px; padding: 5px 6px; text-align: center; }
+  .battle-shell .mobile-action-grid .command-action-heading, .battle-shell .mobile-action-grid .command-action-detail { justify-content: center; }
+  .battle-shell .mobile-action-grid kbd, .battle-shell .mobile-action-grid .command-action-kind { display: none; }
+  .battle-shell .mobile-action-grid .command-action-title { font-size: .73rem; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .battle-shell .mobile-action-grid .command-action-cost { font-size: .57rem; }
+  .battle-shell .mobile-action-grid .command-action-state { font-size: .6rem; line-height: 1.1; }
+  .battle-shell .mobile-action-grid .command-action.toggle-active { background: #23423e; border-color: #6c9c91; box-shadow: none; }
+  .battle-shell .mobile-action-grid .mobile-scout-control { border-color: #c4a065; background: #5c4c32; }
+  .battle-shell .mobile-battle-hint { color: #aebcce; }
+}
+@media (max-width: 430px) and (max-height: 600px) and (orientation: portrait) {
+  .battle-shell .mobile-action-grid .command-action { min-height: 36px; padding: 4px 3px; }
+}
+@media (min-width: 981px) and (max-height: 720px) {
+  .battle-shell .battle-panel { gap: 8px; padding: 11px 13px; }
+  .battle-shell .battle-panel .controls { padding-top: 9px; }
+  .battle-shell .battle-panel .fleet-section { padding-top: 0; }
+  .command-section-head { margin-bottom: 6px; }
+  .battle-shell .battle-panel .fleet-row { min-height: 53px; padding-block: 5px; }
+  .command-portrait { height: 39px; }
+  .command-fleet-content { gap: 5px; }
+  .battle-shell .battle-panel #battleControls { gap: 10px; }
+  .battle-shell .command-action { min-height: 52px; padding: 7px 8px; }
+  .battle-shell .command-action.span-2 { min-height: 37px; }
+}
+@media (max-width: 980px) {
+  .battle-shell .mobile-throttle-wrap .throttle-gear-btn { background: #111d30; border-color: #a6864944; box-shadow: none; color: #a6b1c1; }
+  .battle-shell .mobile-throttle-wrap .throttle-gear-btn.active { color: #f2dcac; background: #655332; border-color: #c4a065; box-shadow: inset 0 -2px #d4b770; }
+  .battle-shell .mobile-throttle-wrap .throttle-gear-btn:hover:not(:disabled) { color: #fff0c9; background: #3d3b36; }
+  .battle-shell .mobile-battle-hint { font-style: normal; }
+}

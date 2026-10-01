@@ -674,7 +674,7 @@ function updateUi() {
     pendingSubSkillAim: app.pendingSubSkillAim,
     fallbackLoadout: app.playerLoadout,
   });
-  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey });
+  renderFleetRoster(ui, own, { selectedShipKey: app.selectedShipKey, portraitColor: app.playerColor });
   syncMobileHud(ui, own, {
     visible: app.mobileMode,
     selected: selectedState,
@@ -1325,6 +1325,8 @@ function bindUiEvents() {
       return;
     }
     const active = document.activeElement;
+    // 聚焦操作控件时保留原生激活与焦点移动，避免 Enter 下航线或空格暂停抢走交互。
+    if (active?.closest("button, a, summary") && ["Enter", "Space", "Tab"].includes(event.code)) return;
     if (
       active &&
       (active.tagName === "INPUT" || active.tagName === "TEXTAREA" || active.tagName === "SELECT" || active.isContentEditable)

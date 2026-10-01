@@ -8,17 +8,19 @@
 //   overlayActionsHTML 结算卡操作区(单人:再来一局+返回主菜单;在线:返回大厅)
 import { DEFAULT_THROTTLE_GEAR, DEFAULT_WORLD_SIZE, THROTTLE_GEAR_VALUES } from "../../shared/game-core.js";
 import { t } from "../i18n.js";
+import "./command-panel.css";
 
 const LOGICAL = DEFAULT_WORLD_SIZE;
 
 function fleetRowHTML(slotKey, label) {
   return `
             <button type="button" class="fleet-row" data-ship="${slotKey}">
-              <div class="fleet-row-head"><span class="fleet-name">${label}</span><span class="fleet-state"></span></div>
-              <div class="fleet-gauges">
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></div>
-                <div class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></div>
-              </div>
+              <span class="command-portrait"><img alt="" draggable="false"></span>
+              <span class="command-fleet-content"><span class="fleet-row-head"><span class="fleet-name">${label}</span><span class="fleet-state"></span></span>
+              <span class="fleet-gauges">
+                <span class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></span>
+                <span class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></span>
+              </span></span><kbd aria-hidden="true">${{ main: 1, sub1: 2, sub2: 3 }[slotKey]}</kbd>
             </button>`;
 }
 
@@ -39,6 +41,15 @@ function throttleGearButtonsHTML(buttonClass = "") {
   }).join("");
 }
 
+function commandButtonHTML(id, label, key, extraClass = "") {
+  const kind = id.toLowerCase().includes("flagship") ? t("主舰") : id.toLowerCase().includes("subskill") ? t("副舰") : "";
+  return `<button id="${id}" type="button" class="command-action ${extraClass}">
+    <span class="cooldown-button-label command-sr-only">${label}</span>
+    <span class="command-action-heading" aria-hidden="true">${kind ? `<span class="command-action-kind">${kind}</span>` : ""}<span class="command-action-title">${label}</span><kbd>${key}</kbd></span>
+    <span class="command-action-detail" aria-hidden="true"><span class="command-action-state">—</span><span class="command-action-cost"></span></span>
+  </button>`;
+}
+
 export function battleViewTemplate({
   shellClass = "",
   hidden = false,
@@ -50,90 +61,84 @@ export function battleViewTemplate({
   return `
     <div id="battleView" class="${shell}"${hidden ? " hidden" : ""}>
       <aside class="panel compact-panel battle-panel">
-        <h1>${t("射手座之日")}</h1>
-
         <div class="panel-actions">
           <a class="btn-link btn-link-home" href="/">${t("← 主菜单")}</a>
           ${panelActionsHTML}
         </div>
-
-        <section class="status">
-          <div><span>${t("舰体")}</span><strong id="hullValue">100%</strong></div>
-          <div><span>${t("能量")}</span><strong id="energyValue">100%</strong></div>
-          <div><span>${t("分离")}</span><strong id="splitValue">${t("编队")}</strong></div>
-          <div><span>${t("战区")}</span><strong id="zoneValue">${t("战区{zone}", { zone: 5 })}</strong></div>
-        </section>
-
-        <div id="battleControls">
-          <section class="controls slim-controls">
-            <h2>${t("舰队控制")}</h2>
-            <div id="shipQuickSwitch" class="ship-switch">
-              <button type="button" class="ship-switch-btn" data-ship="main">${t("主舰")}</button>
-              <button type="button" class="ship-switch-btn" data-ship="sub1">${t("副舰1")}</button>
-              <button type="button" class="ship-switch-btn" data-ship="sub2">${t("副舰2")}</button>
-            </div>
-            <div class="btn-row">
-              <button id="splitOneBtn">${t("一级分离")}</button>
-              <button id="splitTwoBtn">${t("二级分离")}</button>
-            </div>
-            <div class="throttle-wrap">
-              <div class="slider-head"><span>${t("速度档位")}</span><strong id="powerValue">${t("前进{gear}", { gear: DEFAULT_THROTTLE_GEAR })}</strong></div>
-              <div id="powerGearControl" class="throttle-gear-row" role="group" aria-label="${t("速度档位")}">
-                ${throttleGearButtonsHTML()}
-              </div>
-              <small class="throttle-energy-hint">${t("能量：P/1/2档回能，3档小幅回能，4档持续耗能")}</small>
-              <small class="throttle-shortcut">${t("快捷键：P 停车，Shift+1–4 直达，Q/E 降升档")}</small>
-            </div>
-            <div class="zoom-control-row">
-              <button id="zoomOutBtn" type="button">${t("缩小")}</button>
-              <strong id="zoomValue">100%</strong>
-              <button id="zoomInBtn" type="button">${t("放大")}</button>
-            </div>
-          </section>
-
-          <section class="controls slim-controls">
-            <h2>${t("技能")}</h2>
-            <div class="btn-grid">
-              <button id="flagshipBtn"><span class="cooldown-button-label">${t("旗舰技能")}</span></button>
-              <button id="subSkillBtn"><span class="cooldown-button-label">${t("分舰技能")}</span></button>
-              <button id="scoutBtn"><span class="cooldown-button-label">${t("派出侦查机")}</span></button>
-              <button id="autoScoutBtn" type="button"><span class="cooldown-button-label">${t("自动侦查：{state}", { state: t("关") })}</span></button>
-              <button id="brakeBtn" type="button" class="span-2"><span class="cooldown-button-label">${t("急刹")}</span></button>
-            </div>
-          </section>
-        </div>
-
         <section class="controls slim-controls fleet-section">
-          <h2>${t("全队舰况")}</h2>
+          <div class="command-section-head"><h2>${t("舰队")}</h2><span>${t("点击选舰")}</span></div>
           <div id="fleetRoster" class="fleet-roster">
 ${fleetRowHTML("main", t("主舰"))}
 ${fleetRowHTML("sub1", t("副一"))}
 ${fleetRowHTML("sub2", t("副二"))}
           </div>
+          <div class="command-formation"><strong id="splitValue">${t("编队")}</strong><div class="btn-row">
+            <button id="splitOneBtn">${t("一级分离")}</button>
+            <button id="splitTwoBtn">${t("二级分离")}</button>
+          </div></div>
         </section>
+        <div class="command-legacy" hidden aria-hidden="true">
+          <strong id="hullValue">100%</strong><strong id="energyValue">100%</strong>
+          <div id="shipQuickSwitch" class="ship-switch">
+            <button type="button" class="ship-switch-btn" data-ship="main">${t("主舰")}</button>
+            <button type="button" class="ship-switch-btn" data-ship="sub1">${t("副舰1")}</button>
+            <button type="button" class="ship-switch-btn" data-ship="sub2">${t("副舰2")}</button>
+          </div>
+        </div>
+        <div id="battleControls">
+          <section class="controls slim-controls command-navigation">
+            <div class="command-section-head"><h2>${t("航行")}</h2><strong id="commandSelectedShip">${t("主舰")}</strong></div>
+            <div class="throttle-wrap">
+              <div class="slider-head"><span>${t("速度档位")}</span><strong id="powerValue">${t("前进{gear}", { gear: DEFAULT_THROTTLE_GEAR })}</strong></div>
+              <div id="powerGearControl" class="throttle-gear-row" role="group" aria-label="${t("速度档位")}">${throttleGearButtonsHTML()}</div>
+              <div class="command-route-hint"><small class="throttle-energy-hint">${t("巡航·小幅回能")}</small><span>${t("右键下航线")}</span></div>
+            </div>
+          </section>
+          <section class="controls slim-controls command-skills">
+            <div class="command-section-head"><h2>${t("技能")}</h2><strong id="zoneValue">${t("战区{zone}", { zone: 5 })}</strong></div>
+            <div class="btn-grid">
+              ${commandButtonHTML("flagshipBtn", t("旗舰技能"), "C")}
+              ${commandButtonHTML("subSkillBtn", t("分舰技能"), "V")}
+              ${commandButtonHTML("scoutBtn", t("侦察"), "X")}
+              ${commandButtonHTML("autoScoutBtn", t("自动侦察"), "Z")}
+              ${commandButtonHTML("brakeBtn", t("急刹"), "B", "span-2")}
+            </div>
+            <p class="command-context-hint" id="commandContextHint"></p>
+          </section>
+        </div>
+        <footer class="command-footer">
+          <details class="command-help"><summary>${t("操作帮助")}</summary>
+            <dl><dt>${t("航线")}</dt><dd>${t("右键下航线，左键拖动端点或曲线手柄调整")}</dd>
+              <dt>${t("切舰")}</dt><dd>1 / 2 / 3</dd>
+              <dt>${t("档位")}</dt><dd>P · Shift+1–4 · Q / E</dd>
+              <dt>${t("战区")}</dt><dd>${t("WASD 选战区，Enter 前往中心")}</dd>
+              <dt>${t("视野")}</dt><dd>+ / − · 0</dd></dl>
+          </details>
+          <div class="zoom-control-row"><button id="zoomOutBtn" type="button" aria-label="${t("缩小")}" title="${t("缩小")}">−</button><strong id="zoomValue">100%</strong><button id="zoomInBtn" type="button" aria-label="${t("放大")}" title="${t("放大")}">+</button></div>
+        </footer>
       </aside>
 
       <main class="game-wrap">
         <canvas id="gameCanvas" width="${LOGICAL}" height="${LOGICAL}"></canvas>
-        <section id="mobileBattleHud" class="mobile-battle-hud" aria-live="polite">
+        <section id="mobileBattleHud" class="mobile-battle-hud">
           <div class="mobile-battle-head">
             <a class="mobile-menu-btn" href="/">${t("← 菜单")}</a>
             <div id="mobileBattleSummary" class="mobile-battle-summary">${t("主舰")} · ${t("区")}5 · ${t("前进{gear}", { gear: DEFAULT_THROTTLE_GEAR })}</div>
             <button id="mobileCenterBtn" type="button" class="mobile-chip-btn">${t("跟随")}</button>
           </div>
           <div id="mobileShipSwitch" class="mobile-ship-switch">
-            <button type="button" class="mobile-ship-btn" data-ship="main">${t("主舰")}</button>
-            <button type="button" class="mobile-ship-btn" data-ship="sub1">${t("副一")}</button>
-            <button type="button" class="mobile-ship-btn" data-ship="sub2">${t("副二")}</button>
+            <button type="button" class="mobile-ship-btn" data-ship="main"><span class="mobile-ship-name">${t("主舰")}</span><span class="mobile-ship-health">—</span></button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub1"><span class="mobile-ship-name">${t("副一")}</span><span class="mobile-ship-health">—</span></button>
+            <button type="button" class="mobile-ship-btn" data-ship="sub2"><span class="mobile-ship-name">${t("副二")}</span><span class="mobile-ship-health">—</span></button>
           </div>
           <div class="mobile-action-grid">
             <button id="mobileSplitOneBtn" type="button">${t("分离1")}</button>
             <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
-            <button id="mobileBrakeBtn" type="button"><span class="cooldown-button-label">${t("急刹")}</span></button>
-            <button id="mobileFlagshipBtn" type="button"><span class="cooldown-button-label">${t("旗舰技")}</span></button>
+            ${commandButtonHTML("mobileBrakeBtn", t("急刹"), "B")}
+            ${commandButtonHTML("mobileFlagshipBtn", t("旗舰技"), "C")}
             <button id="mobileScoutBtn" type="button" class="mobile-scout-control" aria-pressed="false" aria-label="${t("侦察：点击释放到中央战区，拖向八个方向选择外围战区")}"><span class="mobile-scout-label cooldown-button-label">${t("侦察")}</span></button>
-            <button id="mobileSubSkillBtn" type="button"><span class="cooldown-button-label">${t("分舰技")}</span></button>
-            <button id="mobileAutoScoutBtn" type="button"><span class="cooldown-button-label">${t("自动侦察")}</span></button>
+            ${commandButtonHTML("mobileSubSkillBtn", t("分舰技"), "V")}
+            ${commandButtonHTML("mobileAutoScoutBtn", t("自动侦察"), "Z")}
             <button id="mobileZoomOutBtn" type="button" class="mobile-zoom-btn">${t("缩小")}</button>
             <button id="mobileZoomInBtn" type="button" class="mobile-zoom-btn">${t("放大")}</button>
           </div>
@@ -141,7 +146,7 @@ ${fleetRowHTML("sub2", t("副二"))}
             <span class="mobile-throttle-label">${t("档位")}</span>
             ${throttleGearButtonsHTML("mobile-throttle-btn")}
           </div>
-          <div id="mobileBattleHint" class="mobile-battle-hint">${t("点舰船切换 · 点战场下航线 · 拖侦察选择战区")}</div>
+          <div id="mobileBattleHint" class="mobile-battle-hint" aria-live="polite">${t("点舰船切换 · 点战场下航线 · 拖侦察选择战区")}</div>
         </section>
         <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
           <div id="resultCard" class="result-card">

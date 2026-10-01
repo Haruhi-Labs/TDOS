@@ -18,6 +18,8 @@ export function syncThrottleGearControls(ui, throttle) {
   const gear = throttleGearForValue(throttle);
   if (ui.powerValue) {
     ui.powerValue.textContent = throttleGearLabel(gear);
+    const hint = ui.powerValue.closest?.(".throttle-wrap")?.querySelector(".throttle-energy-hint");
+    if (hint) hint.textContent = [t("快速回能"), t("高效回能"), t("稳定回能"), t("巡航·小幅回能"), t("超速·持续耗能")][gear];
   }
   for (const button of [...(ui.powerGearButtons || []), ...(ui.mobileThrottleButtons || [])]) {
     const active = Number(button.dataset.gear) === gear;
