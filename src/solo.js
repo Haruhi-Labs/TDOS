@@ -78,6 +78,7 @@ import { createLocalBattleActionTransport } from "./battle/action-transport.js";
 import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
 import { interpolateBattleState } from "./battle/state-interpolation.js";
 import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
+import { createStatusEffectTooltip } from "./battle/status-effects.js";
 import {
   characterShortName,
   shipCharacterName,
@@ -98,6 +99,7 @@ let running = false; // 渲染循环开关
 let charSelect = null; // 选角覆盖层引用，卸载时移除
 let setupFlow = null; // 战役 / 难度选择覆盖层
 let actionTransport = null; // 单人本地权威动作入口，与联机传输保持同一接口
+let statusEffectTooltip = null;
 
 function addWin(type, handler) {
   window.addEventListener(type, handler, ac ? { signal: ac.signal } : undefined);
@@ -1572,6 +1574,7 @@ function bindBattleExitGuard() {
 
 export function mount(root) {
   root.innerHTML = soloTemplate();
+  statusEffectTooltip = createStatusEffectTooltip(root.querySelector("#battleView"));
   cacheDom();
   initApp();
   camera = createBattleCamera({
@@ -1598,6 +1601,8 @@ export function mount(root) {
 }
 
 function unmount() {
+  statusEffectTooltip?.destroy();
+  statusEffectTooltip = null;
   running = false;
   if (rafId) cancelAnimationFrame(rafId);
   rafId = 0;

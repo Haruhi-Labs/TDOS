@@ -1,4 +1,5 @@
 import { clamp, distance, lerp, shortestAngleDelta } from "../../shared/game/math.js";
+import { advanceStatusEffects } from "../battle/status-effect-timing.js";
 import {
   advanceProjectile,
   advanceVisualEffect,
@@ -52,6 +53,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     }
     return {
       ...ship,
+      statusEffects: advanceStatusEffects(ship.statusEffects, dt),
       x: clampToMapX(ship.x + Math.cos(ship.angle) * ship.speed * dt, 2),
       y: clampToMapY(ship.y + Math.sin(ship.angle) * ship.speed * dt, 2),
     };

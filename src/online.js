@@ -76,6 +76,7 @@ import {
   translateServerText,
 } from "./i18n.js";
 import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
+import { createStatusEffectTooltip } from "./battle/status-effects.js";
 import { statisticsProfile } from "./statistics-client.js";
 import {
   getGameIdentity,
@@ -99,6 +100,7 @@ let actionTransport = null; // 统一动作协议的远程传输适配器
 let throttleCommandState = null; // 每艘舰待权威快照确认的换挡意图
 let spectatorView = null; // 独立观战展板，只读取房间资料和权威快照
 let spectatorCameraInput = null;
+let statusEffectTooltip = null;
 
 const SHIP_CONTROL_ACTIONS = new Set([
   MATCH_ACTION_TYPES.SET_ROUTE, MATCH_ACTION_TYPES.ROUTE_CONTROL, MATCH_ACTION_TYPES.ROUTE_END,
@@ -2048,6 +2050,7 @@ export function mount(root) {
   cacheDom();
   initApp();
   spectatorView = createSpectatorView(ui.battleView);
+  statusEffectTooltip = createStatusEffectTooltip(ui.battleView);
   camera = createBattleCamera({
     canvas,
     isMobile: () => app.mobileMode,
@@ -2074,6 +2077,8 @@ export function mount(root) {
 }
 
 function unmount() {
+  statusEffectTooltip?.destroy();
+  statusEffectTooltip = null;
   spectatorCameraInput?.cancel();
   spectatorCameraInput = null;
   running = false;

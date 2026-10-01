@@ -1,6 +1,7 @@
 import { clamp, skillMetaForCharacter } from "../../shared/game-core.js";
 import { characterName, skillText, slotLabel, splitLabel, t, translateServerText } from "../i18n.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";
+import { renderStatusEffects } from "../battle/status-effects.js";
 import "./spectator.css";
 
 const SLOTS = ["main", "sub1", "sub2"];
@@ -18,6 +19,7 @@ function teamHTML(seat) {
       <div class="spectator-ship-head"><span class="spectator-portrait"><img alt="" draggable="false"></span>
         <div class="spectator-identity"><span class="spectator-role">${slotLabel(slot, "short")}</span><h3>—</h3><span class="spectator-ship-state">—</span></div></div>
       ${gaugeHTML("hull", t("舰体"))}${gaugeHTML("energy", t("能量"))}
+      <div class="status-effects" hidden></div>
       <div class="spectator-skill"><button type="button" class="spectator-skill-name" disabled>—</button><span class="spectator-skill-readout"><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
     </article>`).join("")}</div>
   </aside>`;
@@ -216,6 +218,7 @@ export function createSpectatorView(battleView) {
         row.classList.toggle("is-destroyed", Boolean(ship && !ship.alive));
         row.classList.toggle("is-selected", Boolean(ship?.alive && state?.selectedShips?.[seat] === slot));
         stateLabel.textContent = shipState(ship, team, slot);
+        renderStatusEffects(row.querySelector(".status-effects"), ship);
         updateGauge(hull, ship?.alive ? ship.hp : 0, ship?.maxHp, Boolean(ship));
         updateGauge(energy, ship?.alive ? ship.fleetEnergy ?? ship.energy : 0, ship?.fleetMaxEnergy ?? ship?.maxEnergy, Boolean(ship));
         const info = spectatorSkillState(team, ship, slot, characterId);
