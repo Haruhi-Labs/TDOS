@@ -4,6 +4,8 @@ export const CONTROL_MESSAGE_TYPES = new Set([
   "set_loadout",
   "list_rooms",
   "create_room",
+  "set_ready",
+  "start_match",
   "join_room",
   "spectate_room",
   "join_private",
@@ -15,6 +17,8 @@ export const CONTROL_MESSAGE_TYPES = new Set([
 
 export const RULESET_GUARDED_MESSAGE_TYPES = new Set([
   "create_room",
+  "set_ready",
+  "start_match",
   "join_room",
   "spectate_room",
   "join_private",
@@ -24,6 +28,14 @@ export const RULESET_GUARDED_MESSAGE_TYPES = new Set([
 ]);
 
 const MESSAGE_CODES = {
+  "客户端不支持比赛房间，请刷新页面": "tournament_client_unsupported",
+  "主持人离开，比赛房间已关闭": "tournament_host_left",
+  "比赛开始后不能更换阵容": "tournament_loadout_locked",
+  "只有比赛选手可以设置就绪": "tournament_player_only",
+  "就绪状态无效": "invalid_ready_state",
+  "只有主持人可以开始比赛": "tournament_host_only",
+  "双方选手就绪后才能开始比赛": "tournament_not_ready",
+
   "房间已关闭": "room_closed",
   "对手离开房间": "opponent_left",
   "对手断开连接，房间已解散": "opponent_disconnected",

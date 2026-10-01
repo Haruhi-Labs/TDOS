@@ -98,6 +98,7 @@ export function createRoomRegistry({
       playerId: playerA ? playerA.id : null,
       loadout: playerA ? playerA.loadout : null,
       isBot: false,
+      ready: Boolean(room.ready?.A),
     }];
 
     if (room.mode === "ai") {
@@ -115,6 +116,7 @@ export function createRoomRegistry({
         playerId: playerB ? playerB.id : null,
         loadout: playerB ? playerB.loadout : null,
         isBot: false,
+        ready: Boolean(room.ready?.B),
       });
     }
     return rows;
@@ -141,14 +143,17 @@ export function createRoomRegistry({
 
   function buildRoomStatePayload(room, viewerId = null) {
     const viewer = viewerId ? getPlayerById(viewerId) : null;
-    const isMember = viewer && viewer.roomId === room.id && !viewer.spectating;
+    const isHost = Boolean(viewer && viewer.roomId === room.id && room.kind === "tournament" && room.ownerId === viewer.id);
+    const isMember = viewer && viewer.roomId === room.id && (!viewer.spectating || isHost);
     const result = room.result || null;
     return {
       type: "room_state",
       room: {
         roomId: room.id,
         mode: room.mode,
+        kind: room.kind || "standard",
         visibility: room.visibility,
+        hostName: getPlayerById(room.ownerId)?.name || "",
         code: room.visibility === "private" && isMember ? room.code : null,
         status: room.status,
         countdownEndsAt: room.countdownEndsAt || null,
@@ -164,6 +169,7 @@ export function createRoomRegistry({
             playerId: viewer.id,
             seat: viewer.seat,
             spectating: Boolean(viewer.spectating),
+            isHost,
             loadout: viewer.loadout,
           }
         : null,
@@ -176,13 +182,14 @@ export function createRoomRegistry({
       if (room.visibility !== "public") {
         continue;
       }
-      const host = getPlayerById(room.seats.A);
+      const host = getPlayerById(room.ownerId || room.seats.A);
       const resultHost = room.result && Array.isArray(room.result.players)
         ? room.result.players.find((row) => row.seat === "A")
         : null;
       list.push({
         roomId: room.id,
         mode: room.mode,
+        kind: room.kind || "standard",
         visibility: room.visibility,
         status: room.status,
         count: connectedCount(room),
@@ -235,12 +242,15 @@ export function createRoomRegistry({
     room.spectators.add(player.id);
   }
 
-  function createRoomRecord(visibility, mode, now = Date.now()) {
+  function createRoomRecord(visibility, mode, now = Date.now(), kind = "standard") {
     const safeVisibility = visibility === "private" ? "private" : "public";
     const safeMode = mode === "ai" ? "ai" : "pvp";
     return {
       id: createRoomId(),
       mode: safeMode,
+      kind: safeMode === "pvp" && kind === "tournament" ? "tournament" : "standard",
+      ownerId: null,
+      ready: { A: false, B: false },
       visibility: safeVisibility,
       code: safeVisibility === "private" ? createPrivateCode() : null,
       status: "waiting",

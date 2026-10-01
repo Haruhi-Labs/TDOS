@@ -27,7 +27,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
     const rows = [];
     rows.push(t("房间ID：{id}", { id: app.room.roomId }));
-    rows.push(t("类型：{type}", { type: app.room.mode === "ai" ? t("AI 训练") : t("玩家对战") }));
+    rows.push(t("类型：{type}", { type: app.room.kind === "tournament" ? t("比赛房间") : app.room.mode === "ai" ? t("AI 训练") : t("玩家对战") }));
     rows.push(t("可见性：{visibility}", { visibility: app.room.visibility === "private" ? t("私人") : t("公开") }));
     if (app.room.visibility === "private" && app.room.code) {
       rows.push(t("房间号：{code}", { code: app.room.code }));
@@ -71,7 +71,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const title = document.createElement("div");
       title.className = "room-item-title";
-      title.textContent = `${room.mode === "ai" ? t("AI房") : t("玩家对战房")} · ${room.roomId}`;
+      title.textContent = `${room.kind === "tournament" ? t("比赛房间") : room.mode === "ai" ? t("AI房") : t("玩家对战房")} · ${room.roomId}`;
 
       const versus = document.createElement("div");
       versus.className = "room-item-versus";
@@ -105,7 +105,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const spectateButton = document.createElement("button");
       spectateButton.textContent = t("观战");
-      spectateButton.disabled = !app.connected || !app.rulesetCompatible || Boolean(app.room) || room.status !== "running";
+      spectateButton.disabled = !app.connected || !app.rulesetCompatible || Boolean(app.room) || !(room.status === "running" || room.kind === "tournament" && ["waiting", "countdown"].includes(room.status));
       spectateButton.addEventListener("click", () => {
         socketSend({ type: "spectate_room", roomId: room.roomId });
       });

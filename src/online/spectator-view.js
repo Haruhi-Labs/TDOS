@@ -191,6 +191,9 @@ export function createSpectatorView(battleView) {
     toolbar.hidden = !active;
     for (const { panel } of panels) panel.hidden = !active;
     if (!active) { hideTooltip(); return; }
+    const preparing = room?.kind === "tournament" && room.status === "waiting";
+    toolbar.querySelector(".spectator-match-meta > span").textContent = room?.kind === "tournament" ? t("比赛房间") : t("观战");
+    toolbar.querySelector(".spectator-exit").textContent = room?.kind === "tournament" ? t("离开房间") : t("退出观战");
     toolbar.querySelector(".spectator-room-id").textContent = room?.roomId ? `#${room.roomId}` : "";
     const elapsed = Math.max(0, Math.floor(state?.elapsed || 0));
     toolbar.querySelector("time").textContent = state ? `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}` : "—";
@@ -203,8 +206,9 @@ export function createSpectatorView(battleView) {
       panel.querySelector("h2").textContent = player?.isBot ? translateServerText("统合思念体AI") : rawName || "—";
       panel.querySelector("h2").title = panel.querySelector("h2").textContent;
       panel.querySelector(".spectator-bot").hidden = !player?.isBot;
-      panel.querySelector(".spectator-survivors").textContent = team ? t("存活 {count}/3", { count: SLOTS.filter((slot) => team.ships?.[slot]?.alive).length }) : "—";
-      panel.querySelector(".spectator-formation").textContent = team ? splitLabel(team.splitLevel) : "—";
+      panel.dataset.ready = String(Boolean(preparing && player?.ready));
+      panel.querySelector(".spectator-survivors").textContent = preparing ? (player?.playerId ? t("选手") : t("空位")) : team ? t("存活 {count}/3", { count: SLOTS.filter((slot) => team.ships?.[slot]?.alive).length }) : "—";
+      panel.querySelector(".spectator-formation").textContent = preparing ? (player?.playerId ? player.ready ? t("已就绪") : t("未就绪") : t("等待加入")) : team ? splitLabel(team.splitLevel) : "—";
       for (const { row, slot, img, name, state: stateLabel, hull, energy, skill } of ships) {
         const ship = team?.ships?.[slot];
         const characterId = ship?.characterId || team?.loadout?.[slot] || player?.loadout?.[slot];

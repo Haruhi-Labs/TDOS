@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../shared/game-core.js";
 import { createRoomLifecycle } from "../server/room-lifecycle.js";
+import { MAX_ACTIVE_ROOMS, MAX_STREAM_CAPACITY_UNITS } from "../server/config.js";
 import { createRoomRegistry } from "../server/room-registry.js";
 
 function createPlayer(id, name = id) {
@@ -18,7 +19,7 @@ function createPlayer(id, name = id) {
   };
 }
 
-function createHarness() {
+function createHarness(overrides = {}) {
   const players = new Map();
   const rooms = new Map();
   const sent = [];
@@ -35,7 +36,7 @@ function createHarness() {
   });
   const lifecycle = createRoomLifecycle({
     rooms,
-    registry,
+    registry: { ...registry, ...overrides },
     sendToPlayer(player, payload) {
       sent.push({ playerId: player.id, payload });
     },
@@ -107,6 +108,7 @@ function roomRegistryCheck() {
   assert.deepEqual(lobby.rooms[0], {
     roomId: room.id,
     mode: "pvp",
+    kind: "standard",
     visibility: "public",
     status: "running",
     count: 2,
@@ -203,8 +205,120 @@ function finishedRoomForcedCloseCheck() {
   );
 }
 
+function tournamentFixture(overrides = {}) {
+  const harness = createHarness(overrides);
+  const [host, a, b, viewer, outsider] = ["主持<人>", "选手甲", "选手乙", "观众", "旁观者"].map((name, i) => {
+    const player = { ...createPlayer(String(i), name), supportsTournamentRooms: true };
+    harness.players.set(player.id, player);
+    return player;
+  });
+  const result = harness.lifecycle.createRoom(host, "public", "pvp", "tournament");
+  assert.equal(result.ok, true);
+  return { ...harness, host, a, b, viewer, outsider, room: result.room };
+}
+
+function tournamentLifecycleCheck() {
+  const h = tournamentFixture();
+  const { lifecycle: life, room, host, a, b, viewer, outsider } = h;
+  assert.equal(room.kind, "tournament");
+  assert.equal(room.mode, "pvp", "比赛房仍共用玩家对战规则");
+  assert.equal(host.spectating, true, "主持独立观战，不占选手席位");
+  assert.deepEqual(room.seats, { A: null, B: null });
+  assert.equal(room.match, null, "赛前不建立模拟或发送快照");
+  assert.equal(life.spectateRoom(viewer, room).ok, true, "空房也可独立观战");
+  assert.equal(life.joinRoom(a, room).ok, true);
+  assert.equal(a.seat, "A");
+  assert.equal(life.joinRoom(b, room).ok, true);
+  assert.equal(b.seat, "B");
+  assert.equal(room.status, "waiting");
+  assert.equal(h.counters.matchStarts, 0, "双方入房不能自动开赛");
+  assert.equal(life.joinRoom(outsider, room).ok, false, "主持和观众不能占用第三个选手席位");
+  for (const nonPlayer of [host, viewer, outsider]) assert.equal(life.setPlayerReady(nonPlayer, true).ok, false);
+  for (const nonHost of [a, b, viewer, outsider]) assert.equal(life.startTournament(nonHost).ok, false);
+  assert.equal(life.startTournament(host).ok, false);
+  assert.equal(life.setPlayerReady(a, "true").ok, false, "只接受布尔就绪状态");
+  assert.equal(life.setPlayerReady(a, true).ok, true);
+  assert.equal(life.setPlayerReady(b, true).ok, true);
+  assert.equal(h.counters.matchStarts, 0, "双方就绪依然等待主持");
+  assert.equal(life.updateLoadout(a, a.loadout).ok, true);
+  assert.equal(room.ready.A, true, "相同阵容同步不取消就绪");
+  const newLoadout = { main: "asakura", sub1: "koizumi", sub2: "yuki" };
+  assert.equal(life.updateLoadout(a, newLoadout).ok, true);
+  assert.deepEqual(room.ready, { A: false, B: true }, "换阵容只取消本人就绪");
+  assert.equal(life.startTournament(host).ok, false);
+  assert.equal(life.setPlayerReady(a, true).ok, true);
+  const payload = h.registry.buildRoomStatePayload(room, host.id);
+  assert.equal(payload.self.isHost, true);
+  assert.equal(payload.self.seat, null);
+  assert.equal(payload.room.hostName, host.name);
+  assert.deepEqual(payload.room.players[0].loadout, newLoadout);
+  assert.equal(h.registry.buildRoomStatePayload(room, viewer.id).self.isHost, false);
+  assert.equal(life.setPlayerReady(b, false).ok, true);
+  assert.equal(life.startTournament(host).ok, false, "撤回就绪阻止开赛");
+  assert.equal(life.setPlayerReady(b, true).ok, true);
+  assert.equal(life.startTournament(host).ok, true);
+  assert.equal(h.counters.matchStarts, 1, "主持启动既有对战入口一次");
+  for (const status of ["countdown", "running"]) {
+    room.status = status;
+    assert.equal(life.updateLoadout(a, DEFAULT_TEAM_LOADOUT).ok, false);
+    assert.deepEqual(a.loadout, newLoadout, "开赛后阵容锁定");
+    assert.equal(life.setPlayerReady(b, false).ok, false);
+    assert.equal(life.startTournament(host).ok, false, "重复开始不能重置模拟");
+  }
+  room.status = "countdown";
+  assert.equal(life.spectateRoom(outsider, room).ok, true, "倒计时也可入场观战");
+  life.leaveRoom(viewer);
+  assert.equal(h.rooms.has(room.id), true, "观众离开不影响主持或选手");
+  life.leaveRoom(host);
+  assert.equal(h.rooms.has(room.id), false);
+  for (const member of [host, a, b, outsider]) assert.equal(member.roomId, null, "主持离开应统一清理房间");
+  assert.ok(h.sent.every(({ payload: event }) => event.reasonCode === "tournament_host_left"));
+}
+
+function tournamentWaitingAndCapacityCheck() {
+  const h = tournamentFixture();
+  for (const player of [h.a, h.b]) {
+    h.lifecycle.joinRoom(player, h.room);
+    h.lifecycle.setPlayerReady(player, true);
+  }
+  h.lifecycle.leaveRoom(h.a);
+  assert.deepEqual(h.room.seats, { A: null, B: h.b.id }, "离开不挪动另一选手席位");
+  assert.deepEqual(h.room.ready, { A: false, B: false });
+  assert.equal(h.rooms.has(h.room.id), true);
+  assert.equal(h.lifecycle.joinRoom(h.outsider, h.room).ok, true);
+  assert.equal(h.outsider.seat, "A");
+  h.room.visibility = "private";
+  assert.equal(h.registry.buildRoomStatePayload(h.room, h.host.id).room.code, h.room.code);
+  assert.equal(h.registry.buildRoomStatePayload(h.room, h.viewer.id).room.code, null);
+  assert.equal(h.lifecycle.spectateRoom(h.viewer, h.room).ok, false);
+
+  for (const [overrides, expected] of [
+    [{ activeRoomCount: () => MAX_ACTIVE_ROOMS }, "服务器活跃对局已满"],
+    [{ streamCapacityUnits: () => MAX_STREAM_CAPACITY_UNITS - 5 }, "服务器实时流容量已满"],
+  ]) {
+    const full = tournamentFixture(overrides);
+    assert.equal(full.lifecycle.spectateRoom(full.viewer, full.room).ok, true, "等待观战不占实时流容量");
+    for (const player of [full.a, full.b]) {
+      full.lifecycle.joinRoom(player, full.room);
+      full.lifecycle.setPlayerReady(player, true);
+    }
+    assert.equal(full.lifecycle.startTournament(full.host).message, expected);
+    assert.equal(full.room.status, "waiting", "容量不足不得锁定阵容或开始模拟");
+    assert.equal(full.counters.matchStarts, 0);
+  }
+  const old = createPlayer("legacy");
+  h.players.set(old.id, old);
+  assert.equal(h.lifecycle.createRoom(old, "public", "pvp", "tournament").ok, false);
+  h.room.visibility = "public";
+  assert.equal(h.lifecycle.joinRoom(old, h.room).ok, false);
+  assert.equal(h.lifecycle.spectateRoom(old, h.room).ok, false);
+  assert.equal(h.lifecycle.createRoom(old, "public", "pvp").ok, true, "旧客户端仍可加入普通房流程");
+}
+
+tournamentLifecycleCheck();
+tournamentWaitingAndCapacityCheck();
 roomRegistryCheck();
 roomLifecycleCheck();
 spectatorLifecycleCheck();
 finishedRoomForcedCloseCheck();
-console.log("服务端房间契约校验通过：房间模型、席位、生命周期、结算回收和观战行为保持稳定。");
+console.log("服务端房间契约校验通过：普通房回归与比赛房主持权限、赛前观战、就绪/阵容锁定、离房及容量门禁。");
