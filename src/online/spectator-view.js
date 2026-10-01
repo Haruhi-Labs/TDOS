@@ -18,9 +18,9 @@ function teamHTML(seat) {
     <div class="spectator-ships">${SLOTS.map((slot) => `<article class="spectator-ship" data-slot="${slot}">
       <div class="spectator-ship-head"><span class="spectator-portrait"><img alt="" draggable="false"></span>
         <div class="spectator-identity"><span class="spectator-role">${slotLabel(slot, "short")}</span><h3>—</h3><span class="spectator-ship-state">—</span></div></div>
-      ${gaugeHTML("hull", t("舰体"))}${gaugeHTML("energy", t("能量"))}
+      <div class="spectator-gauges">${gaugeHTML("hull", t("舰体"))}${gaugeHTML("energy", t("能量"))}</div>
       <div class="status-effects" hidden></div>
-      <div class="spectator-skill"><button type="button" class="spectator-skill-name" disabled>—</button><span class="spectator-skill-readout"><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
+      <div class="spectator-skill"><button type="button" class="spectator-skill-name" disabled>—</button><span class="spectator-skill-readout"><span class="spectator-mobile-state" hidden></span><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
     </article>`).join("")}</div>
   </aside>`;
 }
@@ -209,6 +209,7 @@ export function createSpectatorView(battleView) {
         const ship = team?.ships?.[slot];
         const characterId = ship?.characterId || team?.loadout?.[slot] || player?.loadout?.[slot];
         name.textContent = characterId ? characterName(characterId) : "—";
+        name.title = name.textContent;
         if (img.dataset.character !== (characterId || "")) {
           img.dataset.character = characterId || "";
           img.hidden = !characterId;
@@ -217,11 +218,16 @@ export function createSpectatorView(battleView) {
         }
         row.classList.toggle("is-destroyed", Boolean(ship && !ship.alive));
         row.classList.toggle("is-selected", Boolean(ship?.alive && state?.selectedShips?.[seat] === slot));
-        stateLabel.textContent = shipState(ship, team, slot);
+        const specialState = Boolean(ship?.alive && (ship.stunRemaining > 0 || ship.silenced || ship.koizumiOrb?.active || (slot === "main" && team.future1096Form)));
+        const stateText = shipState(ship, team, slot);
+        stateLabel.textContent = stateText;
         renderStatusEffects(row.querySelector(".status-effects"), ship);
         updateGauge(hull, ship?.alive ? ship.hp : 0, ship?.maxHp, Boolean(ship));
         updateGauge(energy, ship?.alive ? ship.fleetEnergy ?? ship.energy : 0, ship?.fleetMaxEnergy ?? ship?.maxEnergy, Boolean(ship));
         const info = spectatorSkillState(team, ship, slot, characterId);
+        const mobileState = skill.querySelector(".spectator-mobile-state");
+        mobileState.textContent = stateText;
+        mobileState.hidden = !specialState || stateText === info.status;
         skill.dataset.tone = info.tone;
         const skillName = skill.querySelector(".spectator-skill-name");
         const mode = slot === "main" ? "flagship" : "sub";

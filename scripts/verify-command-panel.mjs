@@ -105,7 +105,7 @@ try {
     const boxes = await page.evaluate(() => {
       const rect = (selector) => { const r = document.querySelector(selector).getBoundingClientRect(); return { x: r.x, y: r.y, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
       const panel = document.querySelector(".battle-panel");
-      return { panel: rect(".battle-panel"), map: rect("#gameCanvas"), hud: rect("#mobileBattleHud"), hint: rect("#mobileBattleHint"), scrollWidth: document.documentElement.scrollWidth, panelOverflow: panel.scrollHeight - panel.clientHeight, buttons: [...document.querySelectorAll(".mobile-action-grid > button")].map((button) => { const r = button.getBoundingClientRect(); return { x: r.x, right: r.right, bottom: r.bottom }; }) };
+      return { panel: rect(".battle-panel"), map: rect("#gameCanvas"), hud: rect("#mobileBattleHud"), hint: rect("#mobileBattleHint"), scrollWidth: document.documentElement.scrollWidth, panelOverflow: panel.scrollHeight - panel.clientHeight, buttons: [...document.querySelectorAll(".mobile-action-grid > button")].map((button) => ({ id: button.id, ...rect(`#${button.id}`) })) };
     });
     if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `battle-${width}x${height}.png`) });
     assert.equal(await page.locator("#brakeBtn, #mobileBrakeBtn").count(), 0, "所有视口均不可出现急刹入口");
@@ -116,6 +116,15 @@ try {
       assert.ok(boxes.hud.bottom <= height + 1, "移动操作台不可越出视口");
       assert.ok(boxes.hint.bottom <= height + 1, "移动指引应保持可读");
       for (const box of boxes.buttons) assert.ok(box.x >= 0 && box.right <= width + 1, "移动按钮不可越出视口");
+      const rows = [
+        ["mobileSplitOneBtn", "mobileSplitTwoBtn", "mobileAutoScoutBtn"],
+        ["mobileFlagshipBtn", "mobileScoutBtn", "mobileSubSkillBtn"],
+      ].map((ids) => ids.map((id) => boxes.buttons.find((button) => button.id === id)));
+      for (const row of rows) {
+        assert.ok(row.every((button) => Math.abs(button.y - row[0].y) < 1), "移动端每组操作必须保持同一行");
+        assert.ok(row[0].right <= row[1].x && row[1].right <= row[2].x, "移动端按钮必须按约定从左到右排列");
+      }
+      assert.ok(rows[0][0].bottom <= rows[1][0].y, "分离与自动侦察应位于主舰技、侦察、分舰技上一行");
     }
   }
   assert.deepEqual(errors, [], "对战面板操作不应产生浏览器异常");
