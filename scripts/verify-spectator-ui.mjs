@@ -235,6 +235,29 @@ try {
     };
   });
   assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "修复3.0秒", zeroGauge: "0%", charges: "护盾 7/15", playerCharges: "旗舰技能：超能力屏障（护盾 7/15）", playerRepair: "旗舰技能：超能力屏障（修复3.0秒）" });
+  // 复制正在更新的展板，构造六舰同时受控并处于冷却的布局压力夹具。
+  await page.evaluate(() => {
+    globalThis.__spectatorLayoutOriginals = [...document.querySelectorAll(".spectator-team")];
+    for (const panel of globalThis.__spectatorLayoutOriginals) {
+      const copy = panel.cloneNode(true);
+      for (const row of copy.querySelectorAll(".spectator-ship")) {
+        row.querySelector(".spectator-ship-state").textContent = "眩晕";
+        row.querySelector(".spectator-skill-state").textContent = "眩晕";
+        const cooldown = row.querySelector(".spectator-cooldown");
+        cooldown.hidden = false;
+        cooldown.textContent = "60.0s";
+      }
+      panel.replaceWith(copy);
+    }
+  });
+  try {
+    await assertLayout(page, 1280, 600);
+  } finally {
+    await page.evaluate(() => {
+      document.querySelectorAll(".spectator-team").forEach((copy, index) => copy.replaceWith(globalThis.__spectatorLayoutOriginals[index]));
+      delete globalThis.__spectatorLayoutOriginals;
+    });
+  }
   for (const [width, height] of [[1920, 1080], [1440, 900], [1280, 720], [1280, 600], [1024, 768], [390, 844], [390, 540], [320, 568], [320, 480], [844, 390], [640, 360], [568, 320]]) {
     await assertLayout(page, width, height);
     for (const side of ["A", "B"]) {

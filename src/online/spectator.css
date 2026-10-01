@@ -147,6 +147,7 @@
   .spectator-gauge { grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px; margin: 0; }
   .spectator-ship > .status-effects { height: 28px; padding-block: 2px; }
   .spectator-ship > .status-effects .status-effect { flex-basis: 24px; width: 24px; height: 24px; }
+  .spectator-skill-readout { flex-direction: row; align-items: center; gap: 4px; }
   .spectator-skill .spectator-skill-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 }
 /* 移动端按视口分配地图空间，双方六舰完整展示，不靠裁剪或展板滚动腾位置。 */
