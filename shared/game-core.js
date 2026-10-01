@@ -99,11 +99,14 @@ import {
 } from "./game/koizumi-orb.js";
 import {
   createKoizumiBarrierState,
+  consumeKoizumiBarrierHit,
   koizumiBarrierBeamImpact,
   koizumiBarrierGeometry,
   koizumiBarrierProjectileImpact,
   resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts,
   serializeKoizumiBarrier,
+  trackKoizumiBarrierProjectileCrossing,
+  updateKoizumiBarrierRecovery,
 } from "./game/koizumi-barrier.js";
 import {
   HARUHI_SUPPORT_LABELS,
@@ -196,7 +199,7 @@ const BEAM_DAMAGE_RATIOS = Object.freeze({
   double: 0.21,
   triple: 0.18,
 });
-// 护盾仍会拦截每一颗炮弹，但受击动画无需跟着炮弹数量无限增长。
+// 护盾逐颗结算剩余次数，但受击动画无需跟着炮弹数量无限增长。
 // 15 次/秒已经能连续表现密集火力，同时把单人绘制和多人状态同步控制在稳定上限。
 const KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL = 1 / 15;
 const FUTURE_1096_FORMS = Object.freeze({
@@ -2859,6 +2862,7 @@ class Team {
 
       const barrierImpact = koizumiBarrierBeamImpact(beam, enemyTeam);
       if (barrierImpact) {
+        consumeKoizumiBarrierHit(enemyTeam, barrierImpact, this.seat);
         beam.x2 = barrierImpact.x;
         beam.y2 = barrierImpact.y;
         beam.blockedByBarrier = true;
@@ -3314,7 +3318,7 @@ export class MatchSimulation {
       this.koizumiBarrierProjectileImpactNextAt[teamSeat]
         = this.elapsed + KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL;
     }
-    const maxLife = kind === "ram" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
+    const maxLife = kind === "ram" || kind === "break" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
     this.koizumiBarrierImpacts.push({
       id: nextEntityId(),
       kind,
@@ -3343,6 +3347,7 @@ export class MatchSimulation {
     };
     for (const projectile of this.projectiles) {
       const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
+      trackKoizumiBarrierProjectileCrossing(projectile, dt, defendingTeam, barrierGeometryBySeat[defendingTeam.seat]);
       const barrierImpact = koizumiBarrierProjectileImpact(
         projectile,
         dt,
@@ -3350,6 +3355,7 @@ export class MatchSimulation {
         barrierGeometryBySeat[defendingTeam.seat],
       );
       if (barrierImpact) {
+        consumeKoizumiBarrierHit(defendingTeam, barrierImpact, projectile.team.seat);
         projectile.alive = false;
         this.spawnKoizumiBarrierImpact({
           ...barrierImpact,
@@ -3369,6 +3375,9 @@ export class MatchSimulation {
       projectile.update(dt, this);
     }
     this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
+    // 本帧所有穿越先重置静默计时，再判定修复，避免边界帧提前恢复。
+    updateKoizumiBarrierRecovery(this.teamA);
+    updateKoizumiBarrierRecovery(this.teamB);
   }
 
   updateVisualEffects(dt) {

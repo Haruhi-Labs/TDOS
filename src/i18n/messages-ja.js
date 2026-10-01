@@ -1,4 +1,6 @@
 export const JA_MESSAGES = {
+  "护盾 {count}/{max}": "バリア {count}/{max}",
+  "修复{seconds}秒": "修復{seconds}秒",
   "退出观战": "退出",
   "全图": "全体",
   "存活 {count}/3": "生存 {count}/3",

@@ -45,8 +45,11 @@ export function spectatorSkillState(team, ship, slot, characterId) {
     if (!ship.alive) status = t("已击沉");
     else if (team.skillsDisabled) status = t("已封印");
     else if (meta?.type === "passive") {
-      status = team.koizumiBarrier?.disabledRemaining > 0
-        ? t("恢复{seconds}秒", { seconds: team.koizumiBarrier.disabledRemaining.toFixed(1) }) : t("被动");
+      const barrier = characterId === "koizumi" ? team.koizumiBarrier : null;
+      status = barrier?.active
+        ? t("护盾 {count}/{max}", { count: barrier.remainingHits, max: barrier.maxHits })
+        : barrier && !barrier.active
+          ? t("修复{seconds}秒", { seconds: barrier.disabledRemaining.toFixed(1) }) : t("被动");
       tone = "passive";
     } else if (ship.silenced) status = t("沉默");
     else if (ship.stunRemaining > 0) status = t("眩晕");

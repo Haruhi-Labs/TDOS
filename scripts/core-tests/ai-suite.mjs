@@ -1214,6 +1214,7 @@ function aiKoizumiBarrierDefenseCheck() {
   }
 
   team.koizumiBarrier.disabledAt = sim.elapsed;
+  team.koizumiBarrier.remainingHits = 0;
   team.koizumiBarrier.disabledUntil = sim.elapsed + 5;
   bot.modeTimer = 0;
   context = bot.buildTacticalContext(main, bot.selectEnemyFocus(main));
@@ -1368,9 +1369,13 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
   let maximumInsideCount = 0;
   let sawCommit = false;
   let sawSeparatedApproaches = false;
+  let sawHitExhaustion = false;
+  let sawRamDisruption = false;
   const maximumTicks = Math.ceil(30 / TICK_DT);
   for (let tick = 0; tick < maximumTicks; tick += 1) {
     sim.update(TICK_DT);
+    sawHitExhaustion ||= sim.koizumiBarrierImpacts.some((impact) => impact.kind === "break");
+    sawRamDisruption ||= sim.koizumiBarrierImpacts.some((impact) => impact.kind === "ram");
     context = bot.currentContext;
     const infiltration = context?.barrierTactics?.infiltration;
     if (infiltration?.phase === "commit") sawCommit = true;
@@ -1402,9 +1407,10 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck() {
   assert(maximumInsideCount >= 2, "无破盾阵容没有形成至少两舰同时入圈的交叉火力");
   assert(sim.teamA.hullRatio() < 0.9, "无破盾阵容进入圈内后仍未能对古泉舰队造成有效伤害");
   assert(
-    sim.teamA.koizumiBarrier.disabledAt === null,
+    !sawRamDisruption,
     "无破盾阵容错误地产生了破盾碰撞事件",
   );
+  assert(sawHitExhaustion, "无破盾阵容的持续火力没有耗尽次数盾");
 
   const normalSim = new MatchSimulation({
     mode: "pvp",
@@ -1477,6 +1483,7 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
 
   // 关闭护盾后验证蓄力射线会对移动目标做前置量，而非瞄准旧位置。
   sim.teamA.koizumiBarrier.disabledAt = sim.elapsed;
+  sim.teamA.koizumiBarrier.remainingHits = 0;
   sim.teamA.koizumiBarrier.disabledUntil = sim.elapsed + 5;
   defendingMain.angle = Math.PI * 0.5;
   defendingMain.speed = 40;

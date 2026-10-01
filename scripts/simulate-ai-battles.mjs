@@ -310,12 +310,16 @@ function runBarrierInfiltrationScenario(seed) {
   let maximumInsideCount = 0;
   let sawStage = false;
   let sawCommit = false;
+  let sawHitExhaustion = false;
+  let sawRamDisruption = false;
   const previousRandom = Math.random;
   Math.random = seededRandom(seed);
   try {
     const maximumTicks = Math.ceil(30 / TICK_DT);
     for (let tick = 0; tick < maximumTicks; tick += 1) {
       simulation.update(TICK_DT);
+      sawHitExhaustion ||= simulation.koizumiBarrierImpacts.some((impact) => impact.kind === "break");
+      sawRamDisruption ||= simulation.koizumiBarrierImpacts.some((impact) => impact.kind === "ram");
       const tactics = bot.currentContext?.barrierTactics;
       sawStage ||= tactics?.infiltration?.phase === "stage";
       sawCommit ||= tactics?.infiltration?.phase === "commit";
@@ -335,7 +339,8 @@ function runBarrierInfiltrationScenario(seed) {
     sawCommit,
     maximumInsideCount,
     defenderHullRatio: Number(simulation.teamA.hullRatio().toFixed(4)),
-    barrierWasDisrupted: Number.isFinite(simulation.teamA.koizumiBarrier.disabledAt),
+    sawHitExhaustion,
+    sawRamDisruption,
   };
 }
 
@@ -445,7 +450,8 @@ assert(
     && barrierInfiltrationScenario.sawCommit
     && barrierInfiltrationScenario.maximumInsideCount >= 2
     && barrierInfiltrationScenario.defenderHullRatio < 0.9
-    && !barrierInfiltrationScenario.barrierWasDisrupted,
+    && barrierInfiltrationScenario.sawHitExhaustion
+    && !barrierInfiltrationScenario.sawRamDisruption,
   `无破盾阵容常规突入模拟失败：${JSON.stringify(barrierInfiltrationScenario)}`,
 );
 for (const characterId of ["haruhi", "tsuruya", "asakura"]) {

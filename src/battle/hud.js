@@ -110,7 +110,13 @@ export function updateSkillButtons(ui, own, opts = {}) {
     setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能"));
   } else if (flagMeta.type === "passive") {
     ui.flagshipBtn.disabled = true;
-    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix: t("（被动）") }));
+    const barrier = own.koizumiBarrier;
+    const suffix = barrier && flagMeta.id === "closed_space_barrier"
+      ? barrier.active
+        ? `（${t("护盾 {count}/{max}", { count: barrier.remainingHits, max: barrier.maxHits })}）`
+        : `（${t("修复{seconds}秒", { seconds: barrier.disabledRemaining.toFixed(1) })}）`
+      : t("（被动）");
+    setCooldownButtonLabel(ui.flagshipBtn, t("旗舰技能：{name}{suffix}", { name: flagMeta.name, suffix }));
   } else {
     const flagshipCooldown = cooldowns.flagship || 0;
     const flagshipSilenced = Boolean(mainShip?.silenced);

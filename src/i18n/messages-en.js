@@ -1,4 +1,6 @@
 export const EN_MESSAGES = {
+  "护盾 {count}/{max}": "Shield {count}/{max}",
+  "修复{seconds}秒": "Repair {seconds}s",
   "退出观战": "Leave",
   "全图": "Full map",
   "存活 {count}/3": "Alive {count}/3",
