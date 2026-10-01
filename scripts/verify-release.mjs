@@ -48,3 +48,5 @@ try {
   assert.throws(() => checkPromotion(base), /额外改动/);
   console.log('真实 Git 晋级校验通过：选择性择取、来源追踪及额外改动拒绝。');
 } finally { process.chdir(previousCwd); rmSync(directory, { recursive: true, force: true }); }
+
+await import("./verify-release-process.mjs");
