@@ -97,9 +97,9 @@ export function triangulatePolygon(source) {
 }
 
 export function sampleQuadratic(start, control, end) {
-  const approximateLength = Math.hypot(control.x - start.x, control.y - start.y)
-    + Math.hypot(end.x - control.x, end.y - control.y);
-  const segments = Math.max(4, Math.min(48, Math.ceil(approximateLength / 10)));
+  // 入参已变换为物理像素，按弦线误差取样，放大后仍保持平滑。
+  const curvature = Math.hypot(start.x - 2 * control.x + end.x, start.y - 2 * control.y + end.y);
+  const segments = Math.max(4, Math.min(512, Math.ceil(Math.sqrt(curvature / (4 * .35)))));
   const points = [];
   for (let index = 1; index <= segments; index += 1) {
     const t = index / segments;
@@ -137,10 +137,14 @@ export function sampleEllipse({
   transform,
 }) {
   const sweep = normalizedSweep(start, end, anticlockwise);
-  const radius = Math.max(Math.abs(rx), Math.abs(ry));
-  const segments = Math.max(8, Math.min(96, Math.ceil(Math.abs(sweep) * Math.max(2, radius / 7))));
   const cosRotation = Math.cos(rotation);
   const sinRotation = Math.sin(rotation);
+  const center = transform(cx, cy);
+  const axisX = transform(cx + rx * cosRotation, cy + rx * sinRotation);
+  const axisY = transform(cx - ry * sinRotation, cy + ry * cosRotation);
+  const radius = Math.hypot(axisX.x - center.x, axisX.y - center.y, axisY.x - center.x, axisY.y - center.y);
+  const step = 2 * Math.acos(Math.max(-1, Math.min(1, 1 - .35 / Math.max(.35, radius))));
+  const segments = Math.max(8, Math.min(1024, Math.ceil(Math.abs(sweep) / step)));
   const points = [];
   for (let index = 0; index <= segments; index += 1) {
     const angle = start + sweep * (index / segments);

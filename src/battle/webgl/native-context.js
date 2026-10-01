@@ -11,6 +11,7 @@ import {
   copyMatrix,
   identityMatrix,
   matrixScale,
+  matrixMaxScale,
   multiplyMatrix,
   transformPoint,
 } from "./matrix.js";
@@ -159,6 +160,7 @@ export class NativeBattleContext {
   set shadowBlur(value) { this.state.shadowBlur = Math.max(0, Number(value) || 0); }
 
   beginFrame({ skipDriver = false } = {}) {
+    this.textCache.beginFrame();
     this.commands.length = 0;
     this.path.length = 0;
     this.currentSubpath = null;
@@ -169,6 +171,7 @@ export class NativeBattleContext {
 
   present() {
     this.driver.present(this.commands);
+    this.textCache.endFrame();
     this.frameStats = { ...this.driver.stats };
   }
 
@@ -361,15 +364,7 @@ export class NativeBattleContext {
     const tangentA = { x: corner.x + first.x * tangentLength, y: corner.y + first.y * tangentLength };
     const tangentB = { x: corner.x + second.x * tangentLength, y: corner.y + second.y * tangentLength };
     this.currentSubpath.points.push(tangentA);
-    const steps = 5;
-    for (let index = 1; index <= steps; index += 1) {
-      const t = index / steps;
-      const rest = 1 - t;
-      this.currentSubpath.points.push({
-        x: rest * rest * tangentA.x + 2 * rest * t * corner.x + t * t * tangentB.x,
-        y: rest * rest * tangentA.y + 2 * rest * t * corner.y + t * t * tangentB.y,
-      });
-    }
+    this.currentSubpath.points.push(...sampleQuadratic(tangentA, corner, tangentB));
   }
 
   closePath() {
@@ -533,7 +528,15 @@ export class NativeBattleContext {
           styleColorAt(this.state.shadowColor, 0, 0, this.state.globalAlpha * 0.22),
         );
       }
-      this.pushTexturedQuad(this.discTexture, this.path[0].ellipseQuad, color);
+      const corners = this.path[0].ellipseQuad;
+      const diameter = Math.max(Math.hypot(corners[1].x - corners[0].x, corners[1].y - corners[0].y), Math.hypot(corners[3].x - corners[0].x, corners[3].y - corners[0].y));
+      if (diameter > 64) {
+        // 大光球直接生成最终像素，避免把小圆盘纹理放大成模糊边缘。
+        const center = polygonCenter(corners);
+        const points = this.path[0].points;
+        const triangles = points.slice(1).map((point, index) => [center, points[index], point]);
+        this.pushTriangles(triangles, this.state.fillStyle);
+      } else this.pushTexturedQuad(this.discTexture, corners, color);
       return;
     }
     const triangles = [];
@@ -663,6 +666,7 @@ export class NativeBattleContext {
       letterSpacing: this.state.letterSpacing,
       shadowColor: this.state.shadowColor,
       shadowBlur: this.state.shadowBlur,
+      scale: matrixMaxScale(this.state.transform),
     });
     const { left, top } = this.textTopLeft(entry, x, y);
     const topLeft = this.point(left, top);

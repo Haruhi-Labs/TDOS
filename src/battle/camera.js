@@ -8,6 +8,7 @@
 //   onZoomChanged()     → 缩放变化后的 HUD 同步(单人=updateUi,在线=updateBattleStatus)
 import { DEFAULT_WORLD_SIZE, clamp } from "../../shared/game-core.js";
 import { createDirectorCamera, DIRECTOR_ZOOM_MAX } from "./director-camera.js";
+import { observeCanvasResolution } from "./canvas-resolution.js";
 
 const LOGICAL = DEFAULT_WORLD_SIZE;
 
@@ -28,7 +29,9 @@ export function createBattleCamera({
   directorMode = () => false,
   getTrackedShip = () => null,
   onZoomChanged = () => {},
+  maxCanvasDimension = Infinity,
 }) {
+  const resolution = observeCanvasResolution(canvas, { maxDimension: maxCanvasDimension });
   let centerX = LOGICAL * 0.5;
   let centerY = LOGICAL * 0.5;
   let zoomRatio = 1;
@@ -201,22 +204,7 @@ export function createBattleCamera({
     centerY = clamp(centerY + (targetY - centerY) * 0.14, 0, LOGICAL);
   }
 
-  // 把 backing store(画布物理像素)对齐到显示区域的设备像素,告别固定缓冲被放大产生的模糊。
-  function resizeCanvas() {
-    if (!canvas) {
-      return;
-    }
-    const rect = canvas.getBoundingClientRect();
-    const cssW = rect.width || canvas.clientWidth || LOGICAL;
-    // 画布 CSS 强制 1:1 方形,故宽高同值即可。按设备像素铺满,夹在 [LOGICAL, 2880]:
-    // 不低于原始逻辑尺寸(绝不劣化),不超 2880(控住超大屏/高 DPR 的内存与填充开销)。
-    const dpr = Math.min(window.devicePixelRatio || 1, 2.5);
-    const backing = Math.max(LOGICAL, Math.min(Math.round(cssW * dpr), 2880));
-    if (canvas.width !== backing) {
-      canvas.width = backing;
-      canvas.height = backing;
-    }
-  }
+  const resizeCanvas = resolution.sync;
 
   function reset({ x, y } = {}) {
     director.reset();
@@ -253,6 +241,7 @@ export function createBattleCamera({
     adjustCameraZoom,
     updateCamera,
     resizeCanvas,
+    destroy: resolution.destroy,
     reset,
     // 切回桌面布局时解除"手动镜头保持",恢复自动跟随/居中
     releaseManual() {
