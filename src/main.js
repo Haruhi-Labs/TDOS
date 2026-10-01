@@ -13,6 +13,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import "../styles.css";
+import "./character-select/skill-details.css";
 import { initI18n } from "./i18n.js";
 import { installInteractionFeedback } from "./interaction-feedback.js";
 import { createRouter } from "./router.js";
