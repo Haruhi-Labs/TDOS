@@ -261,6 +261,7 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0, options = {}) {
   const reducedMotion = reducedMotionRequested();
   const pulse = reducedMotion ? 0.5 : 0.5 + Math.sin(elapsed * 2.7 + Number(main.id || 0) * 0.13) * 0.5;
   const recoveryAge = Math.max(0, Number(barrier.recoveryAge) || 0);
+  const strength = clamp((Number(barrier.remainingHits) || 0) / (Number(barrier.maxHits) || 15), 0, 1);
 
   ctx.save();
   ctx.strokeStyle = RED;
@@ -302,14 +303,14 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0, options = {}) {
   // 用两层普通描边替代大半径阴影。视觉仍保留柔和能量辉光，但不会让移动端
   // Canvas 每帧为整个视野圆做昂贵的阴影模糊。
   ctx.strokeStyle = "rgba(255,53,95,0.15)";
-  ctx.globalAlpha = (0.45 + pulse * 0.08) * rebuild;
+  ctx.globalAlpha = (0.25 + strength * 0.2 + pulse * 0.08) * rebuild;
   ctx.lineWidth = 5.2;
   ctx.beginPath();
   traceRingArcs(ctx, x, y, radius, visibleArcs);
   ctx.stroke();
 
   ctx.strokeStyle = RED;
-  ctx.globalAlpha = (0.3 + pulse * 0.06) * rebuild;
+  ctx.globalAlpha = (0.18 + strength * 0.12 + pulse * 0.06) * rebuild;
   ctx.lineWidth = 1.15;
   ctx.beginPath();
   traceRingArcs(ctx, x, y, radius, visibleArcs);
@@ -327,13 +328,14 @@ export function drawKoizumiBarrier(ctx, team, elapsed = 0, options = {}) {
     visibleArcs,
   );
 
-  // 少量沿圆周缓慢游走的能量节点，让护盾有生命感，但不盖住视野圈本身。
-  const nodes = 4;
+  // 固定15个节点直观表达次数；仍按真实视野圆弧裁切，避免泄露完整敌盾。
+  const nodes = Number(barrier.maxHits) || 15;
   ctx.fillStyle = HOT;
   ctx.globalAlpha = (0.35 + pulse * 0.15) * rebuild;
   ctx.beginPath();
   for (let index = 0; index < nodes; index += 1) {
-    const angle = index * TAU / nodes - (reducedMotion ? 0 : elapsed * 0.22);
+    if (index >= (Number(barrier.remainingHits) || 0)) continue;
+    const angle = index * TAU / nodes;
     if (!angleIsVisible(angle, visibleArcs)) continue;
     const nodePulse = 0.65 + Math.sin(elapsed * 3.1 + index * 1.7) * 0.25;
     ctx.moveTo(x + Math.cos(angle) * radius + nodePulse * 1.5, y + Math.sin(angle) * radius);
@@ -488,7 +490,7 @@ function drawBarrierImpact(ctx, impact) {
   if (progress >= 1) {
     return;
   }
-  const ram = impact.kind === "ram";
+  const ram = impact.kind === "ram" || impact.kind === "break";
   const beam = impact.kind === "beam";
   const strength = ram ? 1.45 : beam ? 1.18 : 1;
   const visible = ram
@@ -510,7 +512,7 @@ function drawBarrierImpact(ctx, impact) {
   drawImpactSparks(ctx, impact, progress, ram ? 9 : beam ? 6 : 4, strength);
 
   if (ram) {
-    drawRamSignature(ctx, impact, progress);
+    if (impact.kind === "ram") drawRamSignature(ctx, impact, progress);
     const collapse = clamp(progress / 0.78, 0, 1);
     ctx.strokeStyle = "rgba(255,53,95,0.2)";
     ctx.globalAlpha = 1 - collapse;

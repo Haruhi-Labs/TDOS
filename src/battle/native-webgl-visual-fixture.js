@@ -113,6 +113,8 @@ export function createNativeBattleVisualFixture() {
 
   teamA.koizumiBarrier = {
     active: true,
+    remainingHits: 15,
+    maxHits: 15,
     x: teamA.ships.main.x,
     y: teamA.ships.main.y,
     radius: 210,

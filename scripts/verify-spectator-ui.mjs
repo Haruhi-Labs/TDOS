@@ -149,6 +149,7 @@ try {
   // 可用态矩阵使用同一展示模块，覆盖真实对局难以稳定触发的异常与零能量边界。
   const states = await page.evaluate(async () => {
     const { spectatorSkillState, createSpectatorView } = await import("/src/online/spectator-view.js");
+    const { updateSkillButtons } = await import("/src/battle/hud.js");
     const ship = { alive: true, canControl: true, attached: false, fleetEnergy: 100, energy: 100 };
     const status = (team, changes, slot = "sub1", id = "haruhi") => spectatorSkillState(team, { ...ship, ...changes }, slot, id).status;
     const container = document.createElement("div");
@@ -156,15 +157,24 @@ try {
     const view = createSpectatorView(container);
     view.update({ active: true, room: { players: [] }, state: { teams: { A: { ships: { main: { ...ship, hp: 100, maxHp: 100, fleetEnergy: 0, fleetMaxEnergy: 100, characterId: "haruhi" } } } } } });
     const zeroGauge = container.querySelector('.spectator-team[data-seat="A"] [data-gauge="energy"] strong').textContent;
+    const hud = Object.fromEntries(["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn"].map((key) => [key, document.createElement("button")]));
+    const koizumiTeam = { loadout: { main: "koizumi" }, ships: { main: ship }, koizumiBarrier: { active: true, remainingHits: 7, maxHits: 15 } };
+    updateSkillButtons(hud, koizumiTeam);
+    const playerCharges = hud.flagshipBtn.textContent;
+    koizumiTeam.koizumiBarrier = { active: false, disabledRemaining: 3 };
+    updateSkillButtons(hud, koizumiTeam);
+    const playerRepair = hud.flagshipBtn.textContent;
     return {
       ready: status({}, {}), attached: status({}, { attached: true }), energy: status({}, { fleetEnergy: 0 }),
       silenced: status({}, { silenced: true }), sealed: status({ skillsDisabled: true }, {}), dead: status({}, { alive: false }),
       stunned: status({}, { stunRemaining: 1, canControl: false }),
       cooldown: status({ cooldowns: { sub1: 4.2 } }, {}), passive: status({}, {}, "main", "yuki"),
-      barrier: status({ koizumiBarrier: { disabledRemaining: 3 } }, {}, "main", "koizumi"), zeroGauge,
+      barrier: status({ koizumiBarrier: { active: false, disabledRemaining: 3 } }, {}, "main", "koizumi"), zeroGauge,
+      charges: status({ koizumiBarrier: { active: true, remainingHits: 7, maxHits: 15 } }, {}, "main", "koizumi"),
+      playerCharges, playerRepair,
     };
   });
-  assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "恢复3.0秒", zeroGauge: "0%" });
+  assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "修复3.0秒", zeroGauge: "0%", charges: "护盾 7/15", playerCharges: "旗舰技能：超能力屏障（护盾 7/15）", playerRepair: "旗舰技能：超能力屏障（修复3.0秒）" });
   for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [320, 568], [844, 390]]) await assertLayout(page, width, height);
   await page.locator('[data-camera="in"]').click();
   assert.equal(await page.locator('[data-camera="reset"]').textContent(), "120%");

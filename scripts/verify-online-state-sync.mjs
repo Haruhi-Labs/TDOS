@@ -99,6 +99,8 @@ nextState.teams.A.extraShips[0].x = 36;
 previousState.teams.A.haruhiFlagship.esperOrb = { x: 30, y: 40, angle: 6.1, radius: 10, absorbRadius: 20 };
 nextState.teams.A.haruhiFlagship.esperOrb = { x: 50, y: 60, angle: 0.1, radius: 10, absorbRadius: 20 };
 previousState.teams.A.koizumiBarrier = {
+  remainingHits: 0,
+  maxHits: 15,
   x: 10,
   y: 20,
   radius: 150,
@@ -108,6 +110,8 @@ previousState.teams.A.koizumiBarrier = {
   recoveryAge: 0,
 };
 nextState.teams.A.koizumiBarrier = {
+  remainingHits: 15,
+  maxHits: 15,
   x: 30,
   y: 20,
   radius: 170,
@@ -141,6 +145,7 @@ assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.x, 40, "春日超能�
 assert.equal(interpolated.teams.A.haruhiFlagship.esperOrb.y, 50, "春日超能力者光球纵坐标未平滑插值");
 assert.equal(interpolated.teams.A.koizumiBarrier.radius, 160, "古泉能量圈半径未平滑插值");
 assert.equal(interpolated.teams.A.koizumiBarrier.active, true, "古泉能量圈生效状态没有采用最新权威帧");
+assert.equal(interpolated.teams.A.koizumiBarrier.remainingHits, 15, "次数盾剩余次数应直接采用最新权威帧，不能插值为小数");
 assert(
   Math.abs(interpolated.koizumiBarrierImpacts[0].life - 0.6) < 1e-9,
   "古泉能量圈受击动画寿命未平滑插值",

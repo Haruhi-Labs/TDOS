@@ -49,6 +49,8 @@ function createCountingContext() {
 const team = {
   koizumiBarrier: {
     active: true,
+    remainingHits: 15,
+    maxHits: 15,
     radius: 180,
     recoveryAge: 0,
   },
@@ -68,6 +70,12 @@ assert.equal(drawKoizumiBarrier(active.context, team, 2), true, "屏幕内古泉
 assert.equal(active.counts.gradient, 0, "古泉能量圈重新引入了逐帧径向渐变");
 assert.equal(active.counts.blurredFrames, 0, "古泉能量圈重新引入了大范围阴影模糊");
 assert.ok(active.counts.stroke <= 4, "古泉能量圈的分段没有批量绘制");
+assert.equal(active.counts.arcRanges.filter(([radius]) => radius < 2).length, 15, "完整次数盾没有绘制15个节点");
+team.koizumiBarrier.remainingHits = 7;
+const depleted = createCountingContext();
+drawKoizumiBarrier(depleted.context, team, 2);
+assert.equal(depleted.counts.arcRanges.filter(([radius]) => radius < 2).length, 7, "剩余7次护盾没有同步减少节点");
+team.koizumiBarrier.remainingHits = 15;
 
 const offscreen = createCountingContext();
 team.ships.main.x = 2200;
