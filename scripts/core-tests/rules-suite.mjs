@@ -2,7 +2,6 @@ import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
   CHARACTER_DEFS,
   ENERGY_GEAR_PROFILES,
-  EMERGENCY_BRAKE_COST,
   MANUAL_SCOUT_COOLDOWN,
   MatchSimulation,
   THROTTLE_GEAR_VALUES,
@@ -217,26 +216,23 @@ function boundaryRouteThrottleCheck() {
   );
 }
 
-function emergencyBrakeCheck() {
+function removedBrakeCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
-  const teamA = sim.teamA;
-  const main = teamA.ships.main;
-
-  main.angle = 0;
-  main.speed = main.effectiveSpeed();
-  main.command.x = main.x + 420;
-  main.command.y = main.y;
-  main.route = null;
-
-  const beforeEnergy = teamA.availableEnergyForShip(main);
-  const ok = sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" });
-  assert(ok, "急刹动作触发失败");
-  assert(teamA.availableEnergyForShip(main) <= beforeEnergy - EMERGENCY_BRAKE_COST + 0.01, "急刹未正确扣除能量");
-  assert(main.speed < main.effectiveSpeed() * 0.4, "急刹未立即显著压低速度");
-
-  runSteps(sim, 0.4);
-  assert(main.speed < 6, "急刹持续期内减速仍不明显");
-  assert(main.effects.brakeCooldownUntil > sim.elapsed, "急刹未进入冷却");
+  const ship = sim.teamA.ships.main;
+  ship.speed = ship.effectiveSpeed();
+  ship.command = { x: ship.x + 420, y: ship.y };
+  const before = JSON.stringify(sim.serializeState());
+  assert(!sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" }), "移除后旧急刹动作必须被拒绝");
+  assert(JSON.stringify(sim.serializeState()) === before, "旧急刹动作不能扣能量、减速或写入冷却");
+  assert(typeof sim.teamA.emergencyBrake === "undefined", "权威队伍不应残留急刹接口");
+  for (const state of Object.values(sim.serializeState().teams.A.ships)) {
+    assert(!("braking" in state) && !("brakeCooldown" in state), "公开快照不应残留急刹状态");
+  }
+  assert(!("brakeUntil" in ship.effects) && !("brakeCooldownUntil" in ship.effects), "舰船不应残留急刹计时器");
+  assert(sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 0 }), "移除急刹后 P 档必须仍然可用");
+  ship.update(0.1);
+  assert(ship.speed > 0 && ship.speed < ship.effectiveSpeed(), "P 档应沿原推进逻辑自然减速");
+  assert(sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "main", throttle: 1 }), "前进档位必须仍可恢复");
 }
 
 function autoScoutCheck() {
@@ -2055,8 +2051,6 @@ function asakuraAllyCleanseCheck() {
       ship.collisionSlowUntil = 5;
       ship.clawMarks = { sourceSeat: seat === "A" ? "B" : "A", stacks: 3, expiresAt: 8 };
       ship.effects.reliableUntil = 10;
-      ship.effects.brakeUntil = 3;
-      ship.effects.brakeCooldownUntil = 12;
     }
     // 沉默期间不能主动施法，此处只激活波纹以验证已经发出的波的驱散行为。
     source.effects.silencedUntil = 0;
@@ -2067,7 +2061,7 @@ function asakuraAllyCleanseCheck() {
     assert(!ally.isSilenced() && ally.heroPowerShock.recoveryUntil === 0, "波带没有驱散友军沉默、震慑、减速与易伤");
     assert(ally.collisionSlowUntil === 0 && ally.clawMarks.stacks === 0, "波带没有驱散碰撞减速与猫爪印记");
     assert(distant.isSilenced() && distant.clawMarks.stacks === 3, "尚未被波带扫到的友军被提前驱散");
-    assert(ally.hasEffect("reliableUntil") && ally.hasEffect("brakeUntil") && ally.effects.brakeCooldownUntil === 12, "驱散误清除了正面增益或主动急刹状态");
+    assert(ally.hasEffect("reliableUntil"), "驱散误清除了正面增益");
     assert(sim.floatingTexts.some((item) => item.textKey === "净化"), "友军驱散没有显示反馈");
   }
 }
@@ -2442,7 +2436,7 @@ export function runRulesSuite() {
   speedAndEnergyRuleCheck();
   throttleGearCheck();
   boundaryRouteThrottleCheck();
-  emergencyBrakeCheck();
+  removedBrakeCheck();
   autoScoutCheck();
   yukiBurstScoutStabilityCheck();
   yukiFlagshipCombatScoutCheck();

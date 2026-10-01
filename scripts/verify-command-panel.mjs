@@ -31,6 +31,10 @@ try {
   await page.locator("#battleView").waitFor({ state: "visible" });
   await page.waitForFunction(() => document.querySelector('.fleet-row[data-ship="main"]').getAttribute("aria-pressed") === "true");
   assert.equal(await page.locator("#shipQuickSwitch").isVisible(), false, "重复选舰按钮应收起");
+  assert.equal(await page.locator("#brakeBtn, #mobileBrakeBtn").count(), 0, "急刹入口必须从桌面和移动端移除");
+  const beforeBrakeKey = await page.locator("#powerValue").textContent();
+  await page.keyboard.press("b");
+  assert.equal(await page.locator("#powerValue").textContent(), beforeBrakeKey, "移除后的 B 键不可改变推进档位");
   assert.equal(await page.locator(".command-portrait img").count(), 3, "三舰均需展示头像");
   assert.equal(await page.locator('.fleet-row[data-ship="sub1"]').isDisabled(), true, "编队中的副舰不可直接操控");
   await page.locator("#splitOneBtn").click();
@@ -59,7 +63,7 @@ try {
     const hud = await import("/src/battle/hud.js");
     const { MatchSimulation } = await import("/shared/game-core.js");
     document.querySelector("#app").innerHTML = battleViewTemplate();
-    const ids = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "brakeBtn", "powerValue", "mobileBattleHud", "mobileBattleSummary", "mobileBattleHint", "splitOneBtn", "splitTwoBtn", "mobileSplitOneBtn", "mobileSplitTwoBtn", "mobileFlagshipBtn", "mobileSubSkillBtn", "mobileScoutBtn", "mobileAutoScoutBtn", "mobileBrakeBtn"];
+    const ids = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn", "powerValue", "mobileBattleHud", "mobileBattleSummary", "mobileBattleHint", "splitOneBtn", "splitTwoBtn", "mobileSplitOneBtn", "mobileSplitTwoBtn", "mobileFlagshipBtn", "mobileSubSkillBtn", "mobileScoutBtn", "mobileAutoScoutBtn"];
     const ui = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
     ui.mobileShipButtons = [...document.querySelectorAll(".mobile-ship-btn")];
     ui.fleetRows = [...document.querySelectorAll(".fleet-row")].map((row) => ({ row, key: row.dataset.ship, name: row.querySelector(".fleet-name"), state: row.querySelector(".fleet-state"), hullFill: row.querySelector(".fleet-fill-hull"), enFill: row.querySelector(".fleet-fill-energy"), hullPct: row.querySelector(".fleet-pct-hull"), enPct: row.querySelector(".fleet-pct-energy") }));
@@ -97,6 +101,7 @@ try {
       return { panel: rect(".battle-panel"), map: rect("#gameCanvas"), hud: rect("#mobileBattleHud"), hint: rect("#mobileBattleHint"), scrollWidth: document.documentElement.scrollWidth, panelOverflow: panel.scrollHeight - panel.clientHeight, buttons: [...document.querySelectorAll(".mobile-action-grid > button")].map((button) => { const r = button.getBoundingClientRect(); return { x: r.x, right: r.right, bottom: r.bottom }; }) };
     });
     if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `battle-${width}x${height}.png`) });
+    assert.equal(await page.locator("#brakeBtn, #mobileBrakeBtn").count(), 0, "所有视口均不可出现急刹入口");
     assert.ok(boxes.scrollWidth <= width, `${width}×${height} 不可横向溢出`);
     assert.ok(Math.abs(boxes.map.width - boxes.map.height) < 2, "战场应保持正方形");
     if (width > 980) assert.ok(boxes.panelOverflow <= 2, `${width}×${height} 常用操作应无需滚动，当前溢出 ${boxes.panelOverflow}px`);

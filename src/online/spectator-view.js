@@ -30,7 +30,6 @@ function shipState(ship, team, slot) {
   if (ship.silenced) return t("沉默");
   if (ship.koizumiOrb?.active) return ship.koizumiOrb.phase === "returning" ? t("自动归航") : t("光球形态");
   if (slot === "main" && team.future1096Form) return t(`${team.future1096Form}形态`);
-  if (ship.braking) return t("急刹中");
   const inFormation = ship.attached || (slot === "main" && SLOTS.some((key) => team.ships?.[key]?.alive && team.ships[key].attached));
   return inFormation ? t("编队") : t("独立编队");
 }

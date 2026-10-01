@@ -696,13 +696,12 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
   gap: 7px;
 }
 
-/* 技能：2 列网格，整行按钮用 .span-2 */
+/* 技能：2 列网格 */
 .battle-panel .btn-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 7px;
 }
-.battle-panel .btn-grid .span-2 { grid-column: 1 / -1; }
 
 /* 全队舰况 — 吃掉日志腾出的高度；每艘舰一张铜牌（血/能量条 + 状态） */
 .battle-panel .fleet-section {
@@ -949,9 +948,11 @@ input[type="range"]::-webkit-slider-thumb { background: var(--gilt); }
 
 .mobile-action-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
 }
+.mobile-action-grid > button { grid-column: span 2; }
+.mobile-action-grid > .mobile-zoom-btn { grid-column: span 3; }
 .mobile-action-grid > button,
 .mobile-throttle-row { min-height: 42px; }
 

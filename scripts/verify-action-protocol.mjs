@@ -21,7 +21,6 @@ const actions = [
   matchActions.split(1),
   matchActions.launchScout({ shipKey: "sub1", zoneId: 3 }),
   matchActions.configureAutoScout({ enabled: true, zoneId: 4 }),
-  matchActions.emergencyBrake("main"),
   matchActions.castFlagshipSkill(5),
   matchActions.castSubSkill({ shipKey: "sub1", targetX: 700, targetY: 800 }),
 ];
@@ -31,10 +30,8 @@ for (const action of actions) {
   assert.equal(isMatchAction(action), true, `构造器生成了非法动作：${action.type}`);
 }
 assert.deepEqual(matchActions.split(2), { type: "split", level: 2 }, "分离动作协议发生变化");
-assert.deepEqual(matchActions.emergencyBrake("sub1"), {
-  type: "emergency_brake",
-  shipKey: "sub1",
-}, "急刹动作协议发生变化");
+assert.equal(validateMatchAction({ type: "emergency_brake", shipKey: "main" }).ok, false, "旧急刹动作必须被协议层拒绝");
+assert.equal("emergencyBrake" in matchActions, false, "动作构造器不应再提供急刹");
 assert.equal(validateMatchAction({ type: "set_route", endX: "无效", endY: 0 }).ok, false, "非法航线应被协议层拒绝");
 assert.equal(validateMatchAction({ type: "split", level: 3 }).ok, false, "非法分离等级应被协议层拒绝");
 assert.equal(validateMatchAction({ type: "未来动作" }).ok, false, "未知动作类型应被协议层拒绝");

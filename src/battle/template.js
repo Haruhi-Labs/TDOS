@@ -101,7 +101,6 @@ ${fleetRowHTML("sub2", t("副二"))}
               ${commandButtonHTML("subSkillBtn", t("分舰技能"), "V")}
               ${commandButtonHTML("scoutBtn", t("侦察"), "X")}
               ${commandButtonHTML("autoScoutBtn", t("自动侦察"), "Z")}
-              ${commandButtonHTML("brakeBtn", t("急刹"), "B", "span-2")}
             </div>
             <p class="command-context-hint" id="commandContextHint"></p>
           </section>
@@ -134,7 +133,6 @@ ${fleetRowHTML("sub2", t("副二"))}
           <div class="mobile-action-grid">
             <button id="mobileSplitOneBtn" type="button">${t("分离1")}</button>
             <button id="mobileSplitTwoBtn" type="button">${t("分离2")}</button>
-            ${commandButtonHTML("mobileBrakeBtn", t("急刹"), "B")}
             ${commandButtonHTML("mobileFlagshipBtn", t("旗舰技"), "C")}
             <button id="mobileScoutBtn" type="button" class="mobile-scout-control" aria-pressed="false" aria-label="${t("侦察：点击释放到中央战区，拖向八个方向选择外围战区")}"><span class="mobile-scout-label cooldown-button-label">${t("侦察")}</span></button>
             ${commandButtonHTML("mobileSubSkillBtn", t("分舰技"), "V")}

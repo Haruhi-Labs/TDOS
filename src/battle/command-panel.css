@@ -57,7 +57,6 @@
 .command-action-cost { color: #8b9aab; white-space: nowrap; }
 .command-action[data-ready="true"] .command-action-state { color: #abd0b6; }
 .battle-shell kbd { border: 1px solid #c9af7640; border-radius: 2px; padding: 1px 3px; color: #abacaa; font: .62rem var(--font-engrave); box-shadow: 0 1px #0006; }
-.battle-shell .command-action.span-2 { min-height: 43px; grid-template-columns: 1fr 1fr; gap: 16px; }
 .command-context-hint { margin: 9px 0 0; color: #e4c994; font: .74rem/1.5 var(--font-cn); }
 .command-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px; margin-top: auto !important; padding-top: 10px; border-top: 1px solid #a6864938; }
 .command-help { flex: 1; min-width: 80px; font: .7rem var(--font-cn); color: var(--text-muted); }
@@ -103,7 +102,6 @@
   .command-fleet-content { gap: 5px; }
   .battle-shell .battle-panel #battleControls { gap: 10px; }
   .battle-shell .command-action { min-height: 52px; padding: 7px 8px; }
-  .battle-shell .command-action.span-2 { min-height: 37px; }
 }
 @media (max-width: 980px) {
   .battle-shell .mobile-throttle-wrap .throttle-gear-btn { background: #111d30; border-color: #a6864944; box-shadow: none; color: #a6b1c1; }
