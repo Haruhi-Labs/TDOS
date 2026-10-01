@@ -21,7 +21,7 @@ function fleetRowHTML(slotKey, label) {
                 <span class="fleet-gauge"><span class="fleet-glabel">${t("舰体")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-hull"></i></span><span class="fleet-pct fleet-pct-hull">100%</span></span>
                 <span class="fleet-gauge"><span class="fleet-glabel">${t("能量")}</span><span class="fleet-bar"><i class="fleet-fill fleet-fill-energy"></i></span><span class="fleet-pct fleet-pct-energy">100%</span></span>
               </span></span><kbd aria-hidden="true">${{ main: 1, sub1: 2, sub2: 3 }[slotKey]}</kbd>
-            </button><div class="status-effects" hidden></div></div>`;
+            </button><div class="status-effects"></div></div>`;
 }
 
 function throttleGearButtonsHTML(buttonClass = "") {

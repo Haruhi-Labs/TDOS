@@ -141,14 +141,34 @@ try {
     assert.match(await page.locator(".status-effect-tooltip p").textContent(), /2\/4/);
     await page.keyboard.press("Escape");
   }
-  for (const [width, height] of [[1440, 900], [1280, 720], [390, 844], [390, 540], [844, 390]]) for (const spectator of [false, true]) {
+  for (const [width, height] of [[1440, 900], [1280, 720], [1280, 600], [390, 844], [390, 540], [844, 390]]) for (const spectator of [false, true]) {
     await page.setViewportSize({ width, height });
     await page.evaluate((spectator) => window.statusFixture.refresh(spectator), spectator);
+    const layouts = await page.evaluate((spectator) => {
+      const f = window.statusFixture;
+      const ship = f.state.teams.A.ships.main;
+      const effects = ship.statusEffects;
+      const panel = document.querySelector(spectator ? '.spectator-team[data-seat="A"] .spectator-ship[data-slot="main"]' : '.fleet-card:has(.fleet-row[data-ship="main"])');
+      const following = document.querySelector(spectator ? '.spectator-team[data-seat="A"] .spectator-ship[data-slot="sub1"]' : '.fleet-card:has(.fleet-row[data-ship="sub1"])');
+      const slot = panel.querySelector(".status-effects");
+      const snapshots = [];
+      for (const statuses of [[], effects.slice(0, 1), effects, []]) {
+        ship.statusEffects = statuses;
+        f.refresh(spectator);
+        snapshots.push({ cardHeight: panel.getBoundingClientRect().height, slotHeight: slot.getBoundingClientRect().height, followingY: following.getBoundingClientRect().y, controlsY: document.querySelector("#battleControls").getBoundingClientRect().y });
+      }
+      ship.statusEffects = effects;
+      f.refresh(spectator);
+      return snapshots;
+    }, spectator);
+    for (const layout of layouts.slice(1)) assert.deepEqual(layout, layouts[0], `${spectator ? "观战" : "对战"} ${width}×${height}：无状态、单个、多状态和清空后，角色卡与后续内容不能跳动`);
     if (width <= 980) {
+      assert.equal(layouts[0].slotHeight, 0, "移动端不能为隐藏的 buff 栏留空");
       for (const icon of await page.locator(".status-effect").all()) assert.equal(await icon.isVisible(), false, "移动端的对战和观战都不显示 buff 图标");
       if (screenshots) await page.screenshot({ path: join(screenshots, `${spectator ? "spectator" : "battle"}-${width}x${height}.png`) });
       continue;
     }
+    assert.ok(layouts[0].slotHeight > 0, "桌面角色卡无状态时也必须预留 buff 栏");
     const icons = page.locator(spectator ? '.spectator-team[data-seat="B"] .status-effect' : ".fleet-card .status-effect");
     const icon = icons.last();
     await icon.click();
@@ -185,5 +205,5 @@ try {
   for (const icon of await touchPage.locator(".status-effect").all()) assert.equal(await icon.isVisible(), false, "宽屏触摸设备也不能显示 buff 图标");
   await touchContext.close();
   assert.deepEqual(errors, [], "状态展示不能引发浏览器异常");
-  console.log(`状态图标检查通过：${examples.size}种状态、权威寿命与净化、续期与插值、桌面对战/观战一致、悬停/键盘/点按、移动端隐藏、五种视口及卸载清理。`);
+  console.log(`状态图标检查通过：${examples.size}种状态、权威寿命与净化、续期与插值、桌面对战/观战一致、悬停/键盘/点按、移动端隐藏、六种视口的空栏与状态变化布局稳定及卸载清理。`);
 } finally { await browser.close(); await vite.close(); }

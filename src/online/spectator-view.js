@@ -19,7 +19,7 @@ function teamHTML(seat) {
       <div class="spectator-ship-head"><span class="spectator-portrait"><img alt="" draggable="false"></span>
         <div class="spectator-identity"><span class="spectator-role">${slotLabel(slot, "short")}</span><h3>—</h3><span class="spectator-ship-state">—</span></div></div>
       <div class="spectator-gauges">${gaugeHTML("hull", t("舰体"))}${gaugeHTML("energy", t("能量"))}</div>
-      <div class="status-effects" hidden></div>
+      <div class="status-effects"></div>
       <div class="spectator-skill"><button type="button" class="spectator-skill-name" disabled>—</button><span class="spectator-skill-readout"><span class="spectator-mobile-state" hidden></span><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
     </article>`).join("")}</div>
   </aside>`;
