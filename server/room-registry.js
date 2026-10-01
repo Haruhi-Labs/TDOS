@@ -189,6 +189,8 @@ export function createRoomRegistry({
         capacity: ROOM_CAPACITY,
         spectatorCount: spectatorCount(room),
         hostName: host ? host.name : resultHost ? resultHost.name : "未知",
+        // 大厅只公开双方昵称与席位，不传播身份或统计字段。
+        combatants: displayPlayerRows(room).map(({ seat, name, isBot }) => ({ seat, name, isBot })),
         createdAt: room.createdAt,
       });
     }

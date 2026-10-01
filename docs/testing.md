@@ -16,6 +16,8 @@
 
 既有细分命令保留。`test:ui:cooldown`、`test:ui:koizumi` 和 `test:mobile:scout` 实际是 Node 逻辑/绘制调用检查，归入 `test:logic`，不能因名称含 UI/mobile 就算浏览器或真机证据。
 
+`test:ui:spectator` 自建回环 WebSocket 服务与临时统计目录，以两位玩家和 Chromium 观众验证进入前双方昵称、首快照前阵容、实时冷却、五种视口、退出和玩家模式恢复；身份接口使用游客夹具。异常技能状态与零能量另用构造数据验证。可设置 `SPECTATOR_SCREENSHOT_DIR` 保存画面，仍不代表远程多端或物理设备验收。
+
 `test:all` 按静态、逻辑、AI 模拟、浏览器、网络集成顺序执行，首个失败即停止。后续未执行项目应明确标注；修复后先重跑失败及受影响检查，发布前补齐完整候选结果。
 
 ## 按改动选择

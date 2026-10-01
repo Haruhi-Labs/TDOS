@@ -113,8 +113,12 @@ function roomRegistryCheck() {
     capacity: 2,
     spectatorCount: 1,
     hostName: "玩家甲",
+    combatants: [
+      { seat: "A", name: "玩家甲", isBot: false },
+      { seat: "B", name: "玩家乙", isBot: false },
+    ],
     createdAt: 1234,
-  }, "大厅公开字段应保持现有协议");
+  }, "大厅应公开双方席位昵称，同时隔离身份和统计字段");
 }
 
 function roomLifecycleCheck() {
