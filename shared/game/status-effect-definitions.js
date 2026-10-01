@@ -4,11 +4,11 @@ const negative = (name, icon, description, persistent = "持续至被驱散或�
 // 展示目录不决定战斗结果。新增状态在这里定义身份与说明，在 status-effects.js 提供权威寿命。
 export const STATUS_EFFECT_DEFS = Object.freeze({
   reliable: positive("靠谱的普通人", "shield", "转向提高28%，航速与伤害提高8%，加速提高12%，受到伤害降低16%。"),
-  blade_queen: positive("刀锋女王", "blade", "航速提高45%，加速提高26%，转向提高12%；穿过敌舰并造成随航速提升的接触伤害，刀锋半径扩大25%。"),
+  blade_queen: positive("刀锋女王", "blade", "航速提高45%，加速提高26%，转向提高12%；至少保持强化后的三档满能量航速，受控时沿当前朝向续飞，仍不能操作。可穿舰，刀锋半径扩大25%，接触伤害固定为目标最大生命的15%，持续重叠每秒结算一次。"),
   cat_paw: positive("猫爪乱舞", "paw", "射速提高15%，发射猫爪子弹；连续命中叠加抓痕，达到4层额外造成80伤害。"),
   next_shot: positive("超能力", "spark", "下一发舰炮伤害变为{multiplier}倍，开火后消耗。", "持续至下一次开火或被涤除"),
-  esper_orb: positive("超能力粒子", "orb", "高速光球形态，免疫伤害；撞击击飞并沉默敌舰，能量波造成眩晕。期间无法射击。"),
-  esper_return: positive("超能力粒子·归航", "return", "保持光球形态与伤害免疫，自动返回战场中央；无法射击或手动操控。", "归航完成后结束"),
+  esper_orb: positive("超能力粒子", "orb", "高速光球形态，免疫伤害与控制；撞击击飞并沉默敌舰，能量波造成眩晕。期间无法射击，敌方净化可直接解除形态。"),
+  esper_return: positive("超能力粒子·归航", "return", "保持光球形态与伤害、控制免疫，自动返回战场中央；无法射击或手动操控，敌方净化可直接解除形态。", "归航完成后结束"),
   sponsor: positive("神秘赞助人", "plus", "全队技能冷却流逝速度翻倍，每秒回复1%最大生命。"),
   vision_wave: positive("资讯压制", "radar", "每秒发射视野波，获得波带覆盖区域的真实视野；扫过友军驱散负面状态，扫过敌军涤除主动技能增益。"),
   haruhi_boost: positive("我在这里！", "star", "航速、转向、加速、射程、视野、伤害与射速提高15%，受到伤害降低15%。"),

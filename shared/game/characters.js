@@ -53,7 +53,7 @@ export const CHARACTER_DEFS = {
     subSkill: {
       id: "esper", name: "超能力粒子", type: "active", cooldown: 15, cost: 50,
       duration: 8, silenceDuration: 5, stunDuration: 1, target: "none",
-      description: "化作高速红色光球8秒，无法射击且不会被射击；撞击令敌舰向侧面击飞并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。结束后保持光球形态自动归航战场中央。",
+      description: "化作高速红色光球8秒，无法射击；可被攻击但免疫伤害与眩晕、沉默、击退、震慑减速等控制。撞击沿碰撞方向击飞敌舰并沉默5秒，不造成伤害；撞击时发出一圈能量波，波及的敌舰眩晕1秒。到期后保持光球形态自动归航战场中央，归航期间继续免控；敌方净化类技能可直接驱散光球形态。",
     },
   },
   yuki: {
@@ -161,7 +161,9 @@ export const CHARACTER_DEFS = {
     subSkill: {
       id: "blade_queen", name: "刀锋女王", type: "active", cooldown: 20,
       cost: 52, duration: 10, target: "none",
-      description: "10秒内航速×1.45（加速×1.26、转向×1.12）并无视碰撞体积（可径直穿过敌舰）；刀锋作用半径扩大25%，接触及持续重叠时每秒按实际航速造成伤害：二档及以下为5%最大生命值、三档13%、四档20%，档位速度之间线性变化。",
+      speedMultiplier: 1.45, accelerationMultiplier: 1.26, turnMultiplier: 1.12,
+      minimumGear: 3, damageRatio: 0.15, hitInterval: 1, rangeMultiplier: 1.25,
+      description: "10秒内航速×1.45（加速×1.26、转向×1.12），航速不低于技能强化后的三档满能量航速；低档、能量耗尽、减速或受控也保持飞行，受控时沿当前朝向续飞且仍不能操作。无视碰撞体积，可穿过敌舰，刀锋作用半径扩大25%；接触时造成目标最大生命值15%的伤害，持续重叠时每秒结算一次，与航速无关。",
     },
   },
   shamisen: {

@@ -6,7 +6,6 @@ import {
   shortestAngleDelta,
 } from "./math.js";
 import { createExpandingWave, expandingWaveCoversEntity } from "./vision-wave.js";
-import { haruhiHeroPowerSpeedFactor } from "./haruhi-hero-power.js";
 
 const ORB_BASE_CRUISE_SPEED = 164;
 const ORB_SPEED_MULTIPLIER = 4.45;
@@ -104,6 +103,14 @@ export function beginKoizumiOrbReturn(ship) {
   return transitionToReturn(ship);
 }
 
+export function dispelKoizumiOrb(ship) {
+  if (!ship?.koizumiOrb) return false;
+  // 净化直接解除形态，不触发归航或瞬移；当前位置与已有航向继续交给普通推进。
+  ship.koizumiOrb = null;
+  ship.speed = Math.min(ship.speed, ship.effectiveSpeed());
+  return true;
+}
+
 export function activateKoizumiOrb(ship, duration = 8) {
   if (!ship?.alive || ship.characterId !== "koizumi" || ship.koizumiOrb) {
     return false;
@@ -123,7 +130,7 @@ export function activateKoizumiOrb(ship, duration = 8) {
   };
   // 从既有航速连续加速，既不会瞬移，也能在半秒内形成明确的高速感。
   ship.speed = Math.max(ship.speed, cruiseSpeed * 0.46);
-  ship.collisionSlowUntil = 0;
+  ship.clearControlEffects();
   ship.team.match.spawnBurst(ship.x, ship.y, "#ff405f", 14);
   ship.team.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "超能力粒子", {}, "#ff8da1");
   return true;
@@ -192,7 +199,6 @@ export function updateKoizumiOrb(ship, dt) {
 
   const turnLoad = clamp(Math.abs(state.angularVelocity) / Math.max(0.01, maximumTurnRate), 0, 1);
   let targetSpeed = state.cruiseSpeed * (1 - (1 - ORB_MIN_TURN_SPEED_RATIO) * turnLoad);
-  targetSpeed *= haruhiHeroPowerSpeedFactor(ship, now);
   if (returning && centerDistance < 230) {
     // 末段仍显著快于普通舰，但收一点速度，避免围绕中心形成不自然的无限小圆。
     targetSpeed *= clamp(0.58 + centerDistance / 520, 0.58, 1);
@@ -291,6 +297,7 @@ function applyCollisionKnockback(match, source, contactTarget, direction) {
   const fleet = contactTarget.team.fleetMembersForShip(contactTarget);
 
   for (const ship of fleet) {
+    if (ship.isControlImmune() || ship.minimumFlightSpeed() > 0) continue;
     const destination = actualKnockbackDistance(match, ship, direction.x, direction.y, knockbackDistance);
     ship.forcedKnockback = {
       startedAt,
@@ -333,11 +340,13 @@ export function resolveKoizumiOrbContacts(match) {
         wave.hitShipIds = new Set();
         team.koizumiImpactWaves.push(wave);
         applyCollisionKnockback(match, source, target, direction);
-        target.effects.silencedUntil = Math.max(
-          Number(target.effects.silencedUntil) || 0,
-          match.elapsed + ORB_SILENCE_DURATION,
-        );
-        match.spawnFloatingTextKey(target.x + 12, target.y - 18, "沉默", {}, "#ff8fb5");
+        if (!target.isControlImmune()) {
+          target.effects.silencedUntil = Math.max(
+            Number(target.effects.silencedUntil) || 0,
+            match.elapsed + ORB_SILENCE_DURATION,
+          );
+          match.spawnFloatingTextKey(target.x + 12, target.y - 18, "沉默", {}, "#ff8fb5");
+        }
         match.spawnBurst(target.x, target.y, "#ff4168", 13);
       }
     }
@@ -354,8 +363,9 @@ export function updateKoizumiImpactWaves(match) {
         if (!expandingWaveCoversEntity(wave, target, match.elapsed)) continue;
         // 一圈波对每艘敌舰只施加一次，避免宽波带每帧续期眩晕。
         wave.hitShipIds.add(target.id);
+        if (target.isControlImmune()) continue;
         target.effects.stunnedUntil = Math.max(target.effects.stunnedUntil || 0, match.elapsed + 1);
-        target.speed = 0;
+        target.applyControlSpeedLimit();
         match.spawnFloatingTextKey(target.x + 10, target.y - 14, "眩晕", {}, "#ff9bad");
       }
     }

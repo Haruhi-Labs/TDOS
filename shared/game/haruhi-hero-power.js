@@ -16,10 +16,12 @@ export function createHaruhiHeroPowerShockState() {
 }
 
 export function isHaruhiHeroPowerControlLocked(ship, now = ship?.team?.match?.elapsed || 0) {
+  if (ship?.isControlImmune?.()) return false;
   return Boolean(ship?.heroPowerShock && Number(ship.heroPowerShock.lockUntil) > now);
 }
 
 export function haruhiHeroPowerSpeedFactor(ship, now = ship?.team?.match?.elapsed || 0) {
+  if (ship?.isControlImmune?.()) return 1;
   const shock = ship?.heroPowerShock;
   if (!shock || Number(shock.recoveryUntil) <= now) {
     return 1;
@@ -41,7 +43,7 @@ export function haruhiHeroPowerDamageTakenMultiplier(
 }
 
 export function applyHaruhiHeroPowerShock(ship, now, options = {}) {
-  if (!ship?.alive) {
+  if (!ship?.alive || ship.isControlImmune()) {
     return false;
   }
   const lockDuration = Math.max(0, Number(options.lockDuration) || HARUHI_HERO_POWER_LOCK_SECONDS);
@@ -51,7 +53,7 @@ export function applyHaruhiHeroPowerShock(ship, now, options = {}) {
     lockUntil: now + lockDuration,
     recoveryUntil: now + lockDuration + recoveryDuration,
   };
-  ship.speed = 0;
+  ship.applyControlSpeedLimit();
   return true;
 }
 
