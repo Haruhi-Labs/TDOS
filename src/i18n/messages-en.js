@@ -9,7 +9,7 @@ export const EN_MESSAGES = {
   "主持人开赛后，3秒倒计时进入战斗": "The host starts a 3-second countdown",
   "保存阵容": "Save fleet",
   "更换阵容": "Change fleet",
-  "就绪": "Ready",
+  "设为就绪": "Ready",
   "取消就绪": "Cancel ready",
   "已就绪": "Ready",
   "未就绪": "Not ready",
