@@ -68,15 +68,15 @@ async function assertLayout(page, width, height) {
       a: bounds('.spectator-team[data-seat="A"]'), b: bounds('.spectator-team[data-seat="B"]'),
       map: bounds("#gameCanvas"), mapSpace: bounds(".game-wrap"), toolbar: bounds(".spectator-toolbar"),
       scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight,
-      mobile: matchMedia("(max-width: 980px), (pointer: coarse)").matches,
       panels: [...document.querySelectorAll(".spectator-team")].map((panel) => ({ overflow: panel.scrollHeight - panel.clientHeight })),
       namesFit: [...document.querySelectorAll(".spectator-identity h3")].every((name) => name.scrollWidth <= name.clientWidth + 1),
-      content: [...document.querySelectorAll(".spectator-ship, .spectator-skill-name, .spectator-gauge")].map((node) => {
+      content: [...document.querySelectorAll(".spectator-ship, .spectator-skill-name, .spectator-gauge, .spectator-ship > .status-effects")].map((node) => {
         const rect = node.getBoundingClientRect();
         return { x: rect.x, y: rect.y, right: rect.right, bottom: rect.bottom };
       }),
     };
   });
+  if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `spectator-${width}x${height}.png`), fullPage: true });
   assert.ok(boxes.scrollWidth <= width, `${width}×${height} 不应横向溢出`);
   assert.ok(Math.abs(boxes.map.width - boxes.map.height) < 2, "观战地图必须保持正方形");
   if (width <= 760 && height > width) {
@@ -86,19 +86,16 @@ async function assertLayout(page, width, height) {
     assert.ok(boxes.a.right <= boxes.map.x && boxes.map.right <= boxes.b.x, "双方展板应夹住中央地图");
     assert.ok(boxes.map.width >= 240, "横屏地图不应被展板挤成细缝");
   }
-  if (boxes.mobile) {
-    assert.ok(boxes.scrollHeight <= height + 1, `${width}×${height} 观战内容必须一屏显示，不应出现页面滚动`);
-    for (const box of [boxes.toolbar, boxes.a, boxes.b, ...boxes.content]) {
-      assert.ok(box.x >= 0 && box.y >= 0 && box.right <= width + 1 && box.bottom <= height + 1, `${width}×${height} 双方完整舰况和技能按钮不可被裁剪`);
-    }
-    assert.ok(boxes.panels.every((panel) => panel.overflow <= 1), "移动端双方展板不可依靠内部滚动隐藏舰船");
-    assert.ok(boxes.namesFit, `${width}×${height} 六舰角色名应完整可读`);
-    assert.ok(boxes.map.width >= Math.min(boxes.mapSpace.width, boxes.mapSpace.height) - 2, "地图须利用舰况之外的可用空间");
+  assert.ok(boxes.scrollHeight <= height + 1, `${width}×${height} 观战内容必须一屏显示，不应出现页面滚动（实际高度 ${boxes.scrollHeight}）`);
+  for (const box of [boxes.toolbar, boxes.a, boxes.b, ...boxes.content]) {
+    assert.ok(box.x >= 0 && box.y >= 0 && box.right <= width + 1 && box.bottom <= height + 1, `${width}×${height} 双方完整舰况和技能按钮不可被裁剪`);
   }
+  assert.ok(boxes.panels.every((panel) => panel.overflow <= 1), "双方展板不可依靠内部滚动隐藏舰船");
+  assert.ok(boxes.namesFit, `${width}×${height} 六舰角色名应完整可读`);
+  assert.ok(boxes.map.width >= Math.min(boxes.mapSpace.width, boxes.mapSpace.height) - 2, "地图须利用舰况之外的可用空间");
   for (const side of ["A", "B"]) {
     assert.equal(await page.locator(`.spectator-team[data-seat="${side}"] .spectator-ship`).count(), 3, "双方均须保留完整三舰阵容");
   }
-  if (screenshotDir) await page.screenshot({ path: join(screenshotDir, `spectator-${width}x${height}.png`), fullPage: true });
 }
 
 try {
@@ -238,7 +235,7 @@ try {
     };
   });
   assert.deepEqual(states, { ready: "就绪", attached: "待分离", energy: "能量不足", silenced: "沉默", sealed: "已封印", dead: "已击沉", stunned: "眩晕", cooldown: "4.2s", passive: "被动", barrier: "修复3.0秒", zeroGauge: "0%", charges: "护盾 7/15", playerCharges: "旗舰技能：超能力屏障（护盾 7/15）", playerRepair: "旗舰技能：超能力屏障（修复3.0秒）" });
-  for (const [width, height] of [[1440, 900], [1024, 768], [390, 844], [390, 540], [320, 568], [320, 480], [844, 390], [640, 360], [568, 320]]) {
+  for (const [width, height] of [[1920, 1080], [1440, 900], [1280, 720], [1280, 600], [1024, 768], [390, 844], [390, 540], [320, 568], [320, 480], [844, 390], [640, 360], [568, 320]]) {
     await assertLayout(page, width, height);
     for (const side of ["A", "B"]) {
       await page.locator(`.spectator-team[data-seat="${side}"] .spectator-skill-name`).last().click();
@@ -357,7 +354,7 @@ try {
     await page.close();
     await video.saveAs(join(videoDir, "spectator-camera.webm"));
   }
-  console.log("观战界面检查通过：本地真实多客户端、首帧双方阵容、技能状态、九种视口、手机/平板一屏六舰与触屏说明、平滑镜头、退出和玩家模式恢复。");
+  console.log("观战界面检查通过：本地真实多客户端、首帧双方阵容、技能状态、十二种视口、桌面/手机/平板一屏六舰与触屏说明、平滑镜头、退出和玩家模式恢复。");
 } finally {
   await browser?.close();
   for (const client of clients) client.terminate();
