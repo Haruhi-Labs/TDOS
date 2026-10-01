@@ -98,7 +98,55 @@ try {
     result.cache = { stableBucket: first === same, protectedDuringFrame: deleted.length === 0 };
     cache.endFrame();
     result.cache.boundedAfterFrame = cache.bytes <= 1000;
+    // 零度量必须保留；旧浏览器缺少度量时按字号回退，不能读取前置字重。
+    const nativeMeasure = cache.measureContext.measureText.bind(cache.measureContext);
+    cache.measureContext.measureText = () => ({ width: 12, actualBoundingBoxAscent: 0, actualBoundingBoxDescent: 0 });
+    const zeroMetrics = cache.measure(" ", "700 76px sans-serif");
+    cache.measureContext.measureText = () => ({ width: 12 });
+    const missingMetrics = cache.measure("1", "700 76px sans-serif");
+    cache.measureContext.measureText = nativeMeasure;
+    result.metrics = { zeroMetrics, missingMetrics };
     cache.clear();
+    // 用实际像素复现无下伸部数字上移，逐帧切换三拍倒计时并核对视觉中心。
+    const { drawBattleCountdown } = await import("/src/battle/render.js");
+    const { DEFAULT_WORLD_SIZE } = await import("/shared/game-core.js");
+    result.countdown = {};
+    for (const mode of ["webgl2", "webgl1", "canvas2d"]) {
+      const size = 720;
+      const canvas = document.createElement("canvas"); canvas.width = size; canvas.height = size;
+      const renderer = createNativeBattleRenderer(canvas, { forceMode: mode });
+      const bounds = [];
+      for (const remaining of [3000, 2000, 1000]) {
+        renderer.beginFrame();
+        renderer.ctx.setTransform(size / DEFAULT_WORLD_SIZE, 0, 0, size / DEFAULT_WORLD_SIZE, 0, 0);
+        drawBattleCountdown(renderer.ctx, remaining);
+        renderer.present();
+        let data;
+        if (mode === "canvas2d") data = renderer.ctx.getImageData(0, 0, size, size).data;
+        else {
+          const gl = canvas.getContext(mode === "webgl2" ? "webgl2" : "webgl");
+          const raw = new Uint8Array(size * size * 4);
+          gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, raw);
+          data = new Uint8Array(raw.length);
+          for (let y = 0; y < size; y++) data.set(raw.subarray(y * size * 4, (y + 1) * size * 4), (size - y - 1) * size * 4);
+        }
+        let top = size, bottom = -1;
+        for (let y = size / 2 - 100; y < size / 2 + 70; y++) for (let x = size / 2 - 50; x < size / 2 + 50; x++) {
+          const i = (y * size + x) * 4;
+          if (data[i] > 230 && data[i + 1] > 235 && data[i + 2] > 240) {
+            top = Math.min(top, y); bottom = Math.max(bottom, y);
+          }
+        }
+        bounds.push({ count: remaining / 1000, top, bottom, center: (top + bottom) / 2 });
+        if (capture) {
+          const image = document.createElement("canvas"); image.width = size; image.height = size;
+          image.getContext("2d").putImageData(new ImageData(new Uint8ClampedArray(data), size, size), 0, 0);
+          result.images[`countdown-${mode}-${remaining / 1000}`] = image.toDataURL();
+        }
+      }
+      result.countdown[mode] = bounds;
+      renderer.destroy();
+    }
     return result;
   }, Boolean(screenshotDir));
   if (pixels.images) {
@@ -112,7 +160,15 @@ try {
     assert.ok(pixels[mode].error < 2 && pixels[mode].error < pixels[mode].oldError * .6, `${mode}高倍文字必须明显接近直接原生绘制：${JSON.stringify(pixels[mode])}`);
   }
   assert.deepEqual(pixels.cache, { stableBucket: true, protectedDuringFrame: true, boundedAfterFrame: true });
-  console.log("八倍文字像素误差：", JSON.stringify(pixels));
+  assert.deepEqual(pixels.metrics.zeroMetrics, { width: 12, ascent: 0, descent: 0 }, "正常零字形边距不能被兜底替换");
+  assert.equal(pixels.metrics.missingMetrics.ascent, 76 * .82, "缺少度量时按76px字号回退");
+  assert.equal(pixels.metrics.missingMetrics.descent, 76 * .22, "兜底边距不能读取前置700字重");
+  console.log("字形与倒计时像素：", JSON.stringify(pixels));
+  for (const [mode, bounds] of Object.entries(pixels.countdown)) {
+    assert.ok(bounds.every((digit) => digit.bottom >= digit.top), `${mode} 的三个倒计时数字均须实际绘出`);
+    const centers = bounds.map((digit) => digit.center);
+    assert.ok(Math.max(...centers) - Math.min(...centers) <= 1, `${mode} 的 3、2、1 视觉中心不能跳动：${JSON.stringify(bounds)}`);
+  }
   await fixturePage.close();
 
   const loadout = { main: "haruhi", sub1: "kyon", sub2: "koizumi" };
