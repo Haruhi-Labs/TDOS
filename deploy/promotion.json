@@ -1,10 +1,12 @@
 {
   "kind": "hotfix",
-  "baseMain": "fc9c8fd0eee446b13d90560acb6a1c39b226d543",
-  "sourceDev": "f5170254d9c52ffd7ea84733891fb71538c1c47e",
+  "baseMain": "4210389372b274b263c18ae41ce590504ebd84d2",
+  "sourceDev": "b1f55e82c3199f6297c7f0b3b54285681f311165",
   "commits": [
-    "f5170254d9c52ffd7ea84733891fb71538c1c47e"
+    "3d7f6a15140bd7594b9296cb765f1fc6bf75794b",
+    "4ac048f09fcc352f3329a6235b11611338ec153d",
+    "b1f55e82c3199f6297c7f0b3b54285681f311165"
   ],
-  "scope": "web",
-  "evaluation": "维护者明确授权直接推 dev/main 并正式热更新，全程不走 PR；追加修正六舰同时受控并显示冷却时的矮屏溢出，状态与冷却并排。首轮 fc9c8fd 已通过正式部署及公开验收；本次沿用其 main 基线，仅择取 dev 独立修正。十二视口观战、组合状态、固定状态栏与构建已本地通过；晋级前须通过 dev 完整 CI 与测试服构建验证，正式工作流执行精确候选完整门禁。范围仅 web，保持 v0.4、规则与日志，不重启正式联机服务。dev CI：https://github.com/Haruhi-Labs/TDOS/actions/runs/36816101481"
+  "scope": "full",
+  "evaluation": "dev 4ac048f 已通过完整 CI 与双基路径构建：https://github.com/Haruhi-Labs/TDOS/actions/runs/36857873908；测试服前端和联机 SHA、v0.4、规则版本及比赛房能力握手已验证。晋级比赛房间与倒计时修复，不修改公开版本和日志；full 正式部署需独立授权，替换联机服务会短暂中断在途对局，并保留不可变目录回滚。 补充比赛就绪翻译键修复，PR #25 完整测试和双基路径构建通过：https://github.com/Haruhi-Labs/TDOS/actions/runs/36863028363；本地四客户端比赛房流程与中日英初始/更新按钮及技能可用状态回归通过。"
 }

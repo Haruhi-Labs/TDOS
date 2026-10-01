@@ -4,6 +4,7 @@ import {
   MAX_SPECTATORS_PER_ROOM,
   MAX_STREAM_CAPACITY_UNITS,
 } from "./config.js";
+import { normalizeLoadout, DEFAULT_TEAM_LOADOUT } from "../shared/game-core.js";
 import { messageCode } from "./protocol.js";
 
 export function createRoomLifecycle({
@@ -67,6 +68,11 @@ export function createRoomLifecycle({
       return;
     }
 
+    if (room.kind === "tournament" && room.ownerId === player.id) {
+      closeRoom(oldRoomId, "主持人离开，比赛房间已关闭");
+      return;
+    }
+
     if (player.spectating) {
       if (room.spectators) {
         room.spectators.delete(player.id);
@@ -105,6 +111,13 @@ export function createRoomLifecycle({
       return;
     }
 
+    if (room.kind === "tournament") {
+      room.ready = { A: false, B: false };
+      sendRoomStateToMembers(room);
+      broadcastLobby();
+      return;
+    }
+
     if (room.seats.A === null && room.seats.B) {
       const moved = getPlayerById(room.seats.B);
       room.seats.A = room.seats.B;
@@ -122,11 +135,14 @@ export function createRoomLifecycle({
     broadcastLobby();
   }
 
-  function createRoom(player, visibility, mode) {
+  function createRoom(player, visibility, mode, kind = "standard") {
     if (player.roomId) {
       return { ok: false, message: "你已经在房间中" };
     }
     const safeMode = mode === "ai" ? "ai" : "pvp";
+    if (safeMode === "pvp" && kind === "tournament" && !player.supportsTournamentRooms) {
+      return { ok: false, message: "客户端不支持比赛房间，请刷新页面" };
+    }
     if (rooms.size >= MAX_ROOMS) {
       return { ok: false, message: "服务器房间数已满" };
     }
@@ -137,9 +153,14 @@ export function createRoomLifecycle({
       return { ok: false, message: "服务器实时流容量已满" };
     }
 
-    const room = createRoomRecord(visibility, safeMode);
+    const room = createRoomRecord(visibility, safeMode, Date.now(), kind);
     rooms.set(room.id, room);
-    assignPlayerToRoom(player, room, "A");
+    if (room.kind === "tournament") {
+      room.ownerId = player.id;
+      assignSpectatorToRoom(player, room);
+    } else {
+      assignPlayerToRoom(player, room, "A");
+    }
     if (room.mode === "ai") {
       startMatch(room);
     } else {
@@ -156,11 +177,23 @@ export function createRoomLifecycle({
     if (player.roomId) {
       return { ok: false, message: "你已经在房间中" };
     }
+    if (room.kind === "tournament" && !player.supportsTournamentRooms) {
+      return { ok: false, message: "客户端不支持比赛房间，请刷新页面" };
+    }
     if (room.mode !== "pvp") {
       return { ok: false, message: "该房间不接受玩家加入" };
     }
     if (room.status !== "waiting") {
       return { ok: false, message: "房间不在等待状态" };
+    }
+    if (room.kind === "tournament") {
+      const seat = ["A", "B"].find((key) => !room.seats[key]);
+      if (!seat) return { ok: false, message: "房间已满或不可加入" };
+      assignPlayerToRoom(player, room, seat);
+      room.ready[seat] = false;
+      sendRoomStateToMembers(room);
+      broadcastLobby();
+      return { ok: true };
     }
     if (!room.seats.A || room.seats.B) {
       return { ok: false, message: "房间已满或不可加入" };
@@ -186,16 +219,20 @@ export function createRoomLifecycle({
     if (player.roomId) {
       return { ok: false, message: "你已经在房间中" };
     }
+    if (room.kind === "tournament" && !player.supportsTournamentRooms) {
+      return { ok: false, message: "客户端不支持比赛房间，请刷新页面" };
+    }
     if (room.visibility !== "public") {
       return { ok: false, message: "该房间不接受观战" };
     }
-    if (room.status !== "running" || !room.match) {
+    const preparing = room.kind === "tournament" && ["waiting", "countdown"].includes(room.status);
+    if (!preparing && (room.status !== "running" || !room.match)) {
       return { ok: false, message: "房间不在对战状态" };
     }
     if (spectatorCount(room) >= MAX_SPECTATORS_PER_ROOM) {
       return { ok: false, message: "该房间观战人数已满" };
     }
-    if (streamCapacityUnits() + 1 > MAX_STREAM_CAPACITY_UNITS) {
+    if (room.status !== "waiting" && streamCapacityUnits() + 1 > MAX_STREAM_CAPACITY_UNITS) {
       return { ok: false, message: "服务器实时流容量已满" };
     }
 
@@ -205,5 +242,53 @@ export function createRoomLifecycle({
     return { ok: true };
   }
 
-  return { closeRoom, createRoom, joinRoom, leaveRoom, spectateRoom };
+  function updateLoadout(player, loadout) {
+    const room = rooms.get(player.roomId);
+    if (room?.kind === "tournament" && !player.spectating && room.status !== "waiting") {
+      return { ok: false, message: "比赛开始后不能更换阵容" };
+    }
+    const next = normalizeLoadout(loadout || {}, DEFAULT_TEAM_LOADOUT);
+    const changed = JSON.stringify(player.loadout) !== JSON.stringify(next);
+    player.loadout = next;
+    if (room?.status === "waiting") {
+      if (changed && room.kind === "tournament" && player.seat) room.ready[player.seat] = false;
+      sendRoomStateToMembers(room);
+    }
+    broadcastLobby();
+    return { ok: true };
+  }
+
+  function setPlayerReady(player, ready) {
+    const room = rooms.get(player.roomId);
+    if (!room || room.kind !== "tournament" || player.spectating || !player.seat || room.seats[player.seat] !== player.id) {
+      return { ok: false, message: "只有比赛选手可以设置就绪" };
+    }
+    if (room.status !== "waiting") return { ok: false, message: "房间不在等待状态" };
+    if (typeof ready !== "boolean") return { ok: false, message: "就绪状态无效" };
+    room.ready[player.seat] = ready;
+    sendRoomStateToMembers(room);
+    broadcastLobby();
+    return { ok: true };
+  }
+
+  function startTournament(player) {
+    const room = rooms.get(player.roomId);
+    if (!room || room.kind !== "tournament" || room.ownerId !== player.id) {
+      return { ok: false, message: "只有主持人可以开始比赛" };
+    }
+    if (room.status !== "waiting") return { ok: false, message: "房间不在等待状态" };
+    if (!["A", "B"].every((seat) => room.seats[seat] && room.ready[seat])) {
+      return { ok: false, message: "双方选手就绪后才能开始比赛" };
+    }
+    if (activeRoomCount() >= MAX_ACTIVE_ROOMS) return { ok: false, message: "服务器活跃对局已满" };
+    // 准备阶段没有快照流，开赛时为两名选手及所有观众统一核算容量。
+    if (streamCapacityUnits() + 4 + spectatorCount(room) > MAX_STREAM_CAPACITY_UNITS) {
+      return { ok: false, message: "服务器实时流容量已满" };
+    }
+    startMatch(room);
+    broadcastLobby();
+    return { ok: true };
+  }
+
+  return { closeRoom, createRoom, joinRoom, leaveRoom, spectateRoom, updateLoadout, setPlayerReady, startTournament };
 }

@@ -133,6 +133,7 @@ assert.deepEqual(sentMessages.at(-1), {
   type: "protocol_hello",
   protocolVersion: 2,
   rulesetVersion: RULESET_VERSION,
+  roomKinds: ["standard", "tournament"],
 });
 
 transport.handleConnected({
