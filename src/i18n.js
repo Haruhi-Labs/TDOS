@@ -1,6 +1,7 @@
 import { gameStorageKey } from "./deployment.js";
 import { CHARACTER_DEFS } from "../shared/game-core.js";
 import { CHARACTER_TEXT, MESSAGES } from "./i18n/catalog.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
 
 const STORAGE_KEY = gameStorageKey("haruhi-locale-v1");
 
@@ -100,7 +101,8 @@ export function skillText(characterId, mode = "flagship", field = "name") {
   const localized = CHARACTER_TEXT[locale]?.[characterId] || CHARACTER_TEXT.zh[characterId];
   const zh = CHARACTER_TEXT.zh[characterId];
   const key = mode === "sub" ? "subSkill" : "flagshipSkill";
-  return localized?.[key]?.[field] || zh?.[key]?.[field] || "";
+  const text = localized?.[key]?.[field] || zh?.[key]?.[field] || "";
+  return characterId === "bunny_haruhi" ? interpolate(text, BUNNY_VIEW_PARAMS) : text;
 }
 
 export function applyCoreLocale(locale = getLocale()) {

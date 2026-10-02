@@ -3,6 +3,16 @@ import { COLLISION_SLOW_DURATION } from "./collision-system.js";
 import { HARUHI_SUPPORT_LABELS } from "./haruhi-flagship.js";
 import { serializeKoizumiBarrier } from "./koizumi-barrier.js";
 import { STATUS_EFFECT_DEFS } from "./status-effect-definitions.js";
+import { BUNNY_VIEW_PARAMS } from "./bunny-haruhi-view-params.js";
+import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
+import { bunnyStageEnabled, bunnyBroadcastsShip } from "./bunny-haruhi-runtime.js";
+import { bunnyCompanionForm, bunnyReliableState } from "./bunny-companion-runtime.js";
+
+// 只发送该图标需要的文案参数，避免覆盖 duration 等状态寿命字段。
+const BUNNY_STATUS_PARAMS = Object.fromEntries(Object.entries(STATUS_EFFECT_DEFS)
+  .filter(([id]) => id.startsWith("bunny_"))
+  .map(([id, definition]) => [id, Object.fromEntries([...definition.description.matchAll(/\{(\w+)\}/g)]
+    .map(([, key]) => [key, BUNNY_VIEW_PARAMS[key]]))]));
 
 export function statusEffectNames(effects) {
   return effects.map(({ id }) => STATUS_EFFECT_DEFS[id].name);
@@ -62,5 +72,38 @@ export function serializeShipStatusEffects(ship) {
     const barrier = serializeKoizumiBarrier(team);
     if (barrier.active) add("barrier", null, null, { stacks: barrier.remainingHits, required: barrier.maxHits });
   }
+  const form = ship.bunnyHaruhi || (ship.bunnyCompanion ? bunnyCompanionForm(ship) : null);
+  const enabled = !team.areSkillsDisabled();
+  const bunny = (id, end = null, duration = null) => add(id, end, duration, BUNNY_STATUS_PARAMS[id]);
+  if (form) {
+    if (form.form === "bless") {
+      if (enabled && !form.positiveSuppressed) bunny("bunny_bless");
+      bunny("bunny_vulnerable");
+    }
+    if (form.form === "knows") {
+      bunny("bunny_knows");
+      if (enabled) {
+        bunny("bunny_immunity", form.immunityUntil, C.knows.immunitySeconds);
+        if (ship.bunnyHaruhi) bunny("bunny_drain", form.drainUntil, C.knows.selfDrainSeconds);
+      }
+    }
+    if (ship.bunnyHaruhi && enabled && form.form === "encore") bunny("bunny_encore");
+    if (ship.bunnyHaruhi && ship.key !== "main" && enabled) {
+      for (const id of C.supportIds) if (form.support.supporters.has(id)) bunny(`bunny_${id}`);
+    }
+  }
+  const stage = ship.bunnyStageExposure;
+  if (stage && bunnyStageEnabled(ship)) {
+    if (stage.phase === "speechless") bunny("bunny_speechless", stage.enteredAt + C.stage.entranceSeconds, C.stage.entranceSeconds);
+    if (stage.phase === "entranced") bunny("bunny_entranced");
+    if (!ship.isControlImmune()) {
+      bunny("bunny_lock", stage.lockUntil, C.stage.lockSeconds);
+      if (now >= stage.lockUntil) bunny("bunny_recovery", stage.recoveryUntil, C.stage.recoverySeconds);
+    }
+  }
+  const reliable = ship.bunnyReliable && bunnyReliableState(ship);
+  if (enabled && reliable && !reliable.suppressed) bunny("bunny_reliable", reliable.until, C.companion.durationSeconds);
+  if (ship.bunnyCompanion?.convertedUntil > now) bunny("bunny_converted", ship.bunnyCompanion.convertedUntil, C.companion.bribeSeconds);
+  if (team.match.bunnyHaruhiActive && bunnyBroadcastsShip(team, ship)) bunny("bunny_broadcast");
   return statuses;
 }

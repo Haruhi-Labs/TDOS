@@ -67,6 +67,8 @@
 
 ## 测试环境与运行边界
 
+`test:ui:bunny-haruhi` 随浏览器层执行，专门验证尚未公开角色的权威摘要、差量与插值、三语单人/联机/观战HUD、桌面/窄屏锁档与舰况、原皮占位、迷雾、主图/小地图几何、WebGL2/WebGL1/Canvas2D及 `/game/` 素材缓存。自建回环Vite，API与WebSocket均由本地夹具接管，不访问现有游戏/身份/统计服务。设置 `BUNNY_VIEW_SCREENSHOT_DIR` 可保存审阅截图；公开选角仍不开放。
+
 - 从仓库根目录运行，依赖安装见[开发约定](development.md)。浏览器层需要 Playwright Chromium；缺少时运行 `npx playwright install chromium`。仅运行逻辑层无需安装浏览器。
 - 浏览器脚本通常自建回环地址 Vite 服务，并对部分接口使用夹具。Vite 仍含本地 API/WS 代理，所以不要把整套测试描述为完全离线或绝无外部访问。
 - `test:ui:interaction` 读取 `HARUHI_PREVIEW_URL`，会操作目标页面。普通本地回归保持该变量未设置；只有测试目标明确且已授权时才覆盖。

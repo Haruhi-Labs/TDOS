@@ -753,7 +753,8 @@ function syncPowerFromSelectedShip(team) {
   if (!ship) {
     return;
   }
-  const throttle = throttleCommandState.valueFor(app.selectedShipKey, ship.throttle);
+  const authority = getLatestOwnShip(app.selectedShipKey);
+  const throttle = authority?.bunnyHaruhi?.lockedGear != null ? authority.throttle : throttleCommandState.valueFor(app.selectedShipKey, ship.throttle);
   const gear = syncThrottleGearControls(ui, throttle);
   app.throttle = throttleValueForGear(gear);
 }
@@ -967,7 +968,10 @@ function sendAction(action) {
   // 指令权限只看最新权威快照，插值中的旧状态不能放行禁控动作或本地航线预测。
   if (SHIP_CONTROL_ACTIONS.has(action.type) && !getLatestOwnShip(action.shipKey || "main")?.canControl) return null;
   if (action.type === MATCH_ACTION_TYPES.CAST_FLAGSHIP_SKILL && !getLatestOwnShip("main")?.canControl) return null;
-  if (action.type === MATCH_ACTION_TYPES.LAUNCH_SCOUT && isShipControlLocked(getLatestOwnShip(action.shipKey || "main"))) return null;
+  if (action.type === MATCH_ACTION_TYPES.LAUNCH_SCOUT) {
+    const source = getLatestOwnShip(action.shipKey || "main");
+    if (isShipControlLocked(source) || source?.bunnyHaruhi?.scoutsDisabled) return null;
+  }
   return actionTransport ? actionTransport.send(action) : null;
 }
 
@@ -1148,6 +1152,8 @@ function pruneAckedOverrides(snapshotState) {
 
 function setThrottleGear(gear, shouldSend = true) {
   if (shouldSend && !getLatestOwnShip(app.selectedShipKey)?.canControl) return false;
+  const lockedGear = getLatestOwnShip(app.selectedShipKey)?.bunnyHaruhi?.lockedGear;
+  if (shouldSend && lockedGear != null && Number(gear) !== lockedGear) return false;
   const throttle = throttleValueForGear(gear);
   app.throttle = throttle;
   syncThrottleGearControls(ui, throttle);
@@ -1169,6 +1175,7 @@ function throttleForShipCommand(ship) {
   if (!ship) {
     return app.throttle;
   }
+  if (getLatestOwnShip(ship.key)?.bunnyHaruhi?.lockedGear != null) return getLatestOwnShip(ship.key).throttle;
   return throttleCommandState.valueFor(ship.key, ship.throttle);
 }
 
@@ -1384,6 +1391,7 @@ function useSubSkillOnline() {
   const own = teamBySeat(state, app.seat);
   const ship = own && own.ships ? own.ships[app.selectedShipKey] : null;
   const meta = currentSubMeta(ship);
+  if (ship?.bunnyHaruhi && !ship.bunnyHaruhi.canTransform) return;
   if (!ship?.canControl || !meta) {
     return;
   }

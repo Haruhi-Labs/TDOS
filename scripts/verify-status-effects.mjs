@@ -11,6 +11,7 @@ import { applyHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
 import { advanceStatusEffects, interpolateStatusEffects } from "../src/battle/status-effect-timing.js";
 import { EN_MESSAGES } from "../src/i18n/messages-en.js";
 import { JA_MESSAGES } from "../src/i18n/messages-ja.js";
+import { createBunnyViewFixture } from "./fixtures/bunny-haruhi-view.mjs";
 
 const examples = new Map();
 const collect = (ship) => { const effects = serializeShipStatusEffects(ship); for (const effect of effects) examples.set(effect.id, effect); return effects; };
@@ -64,6 +65,7 @@ for (const characterId of ["tsuruya", "asakura", "future1096", "koizumi", "kyon"
   const orb = Object.values(own.ships).find((ship) => ship.key !== "main" && ship.characterId === "koizumi");
   if (orb) { activateKoizumiOrb(orb); collect(orb); beginKoizumiOrbReturn(orb); collect(orb); }
 }
+createBunnyViewFixture(collect);
 assert.deepEqual([...examples.keys()].sort(), Object.keys(STATUS_EFFECT_DEFS).sort(), "所有状态定义必须有可序列化的来源与验收样例");
 for (const [id, definition] of Object.entries(STATUS_EFFECT_DEFS)) {
   for (const messages of [EN_MESSAGES, JA_MESSAGES]) for (const key of [definition.name, definition.description, definition.persistent]) assert.ok(messages[key], `${id} 的状态文字缺少翻译：${key}`);

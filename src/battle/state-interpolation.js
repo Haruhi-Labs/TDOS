@@ -64,17 +64,28 @@ function interpolateShip(previous, current, ratio) {
   }
 
   if (!previous.alive || !current.alive) {
+    if (current.bunnyHaruhi || current.bunnyCompanion || current.bunnyStageExposure || current.bunnyReliable
+      || previous.bunnyReliable) return current;
     return ratio < 0.5 ? previous : current;
   }
 
   return {
     ...current,
+    ...(current.bunnyHaruhi ? { bunnyHaruhi: {
+      ...current.bunnyHaruhi,
+      esperOrb: previous.bunnyHaruhi?.esperOrb && current.bunnyHaruhi.esperOrb ? {
+        ...current.bunnyHaruhi.esperOrb,
+        x: lerp(previous.bunnyHaruhi.esperOrb.x, current.bunnyHaruhi.esperOrb.x, ratio),
+        y: lerp(previous.bunnyHaruhi.esperOrb.y, current.bunnyHaruhi.esperOrb.y, ratio),
+        angle: previous.bunnyHaruhi.esperOrb.angle + shortestAngleDelta(previous.bunnyHaruhi.esperOrb.angle, current.bunnyHaruhi.esperOrb.angle) * ratio,
+      } : current.bunnyHaruhi.esperOrb,
+    } } : {}),
     x: lerp(previous.x, current.x, ratio),
     y: lerp(previous.y, current.y, ratio),
     angle: previous.angle + shortestAngleDelta(previous.angle, current.angle) * ratio,
     speed: lerp(previous.speed, current.speed, ratio),
     hp: lerp(previous.hp, current.hp, ratio),
-    throttle: lerp(previous.throttle, current.throttle, ratio),
+    throttle: current.bunnyHaruhi ? current.throttle : lerp(previous.throttle, current.throttle, ratio),
     statusEffects: interpolateStatusEffects(previous.statusEffects, current.statusEffects, ratio),
     route: interpolateRoute(previous.route, current.route, ratio),
   };
@@ -265,6 +276,12 @@ function interpolateTeam(previous, current, ratio, spanSeconds, elapsed) {
 
   return {
     ...current,
+    ...(current.bunnyStage ? { bunnyStage: previous.bunnyStage?.sourceShipId === current.bunnyStage.sourceShipId ? {
+      ...current.bunnyStage,
+      x: lerp(previous.bunnyStage.x, current.bunnyStage.x, ratio),
+      y: lerp(previous.bunnyStage.y, current.bunnyStage.y, ratio),
+      radius: lerp(previous.bunnyStage.radius, current.bunnyStage.radius, ratio),
+    } : current.bunnyStage } : {}),
     energy: lerp(previous.energy, current.energy, ratio),
     hullRatio: lerp(previous.hullRatio, current.hullRatio, ratio),
     autoScout: {

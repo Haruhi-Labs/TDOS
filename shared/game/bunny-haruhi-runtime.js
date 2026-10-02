@@ -8,6 +8,7 @@ import {
 } from "./bunny-haruhi.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
 import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.js";
+import { supportOrbGeometry, supportOtherworlderReady } from "./haruhi-support.js";
 
 // 仅供显式实验模拟构造使用，不能加入公开角色目录或随机池。
 export const BUNNY_HARUHI_CHARACTER = Object.freeze({
@@ -173,6 +174,10 @@ export function serializeBunnyShip(ship) {
   const fields = {};
   if (ship.bunnyHaruhi) {
     const state = ship.bunnyHaruhi;
+    const enabled = !ship.team.areSkillsDisabled() && ship.alive;
+    const source = bunnyHaruhiSupportSource(ship, enabled);
+    const companion = bunnyCompanions(ship.team.match).find((candidate) => candidate.id === state.companionId);
+    const blockReason = bunnyTransformBlockReason(ship);
     fields.bunnyHaruhi = {
       form: state.form, nextForm: nextBunnyForm(state), successfulCasts: state.successfulCasts,
       scoutsDisabled: state.scoutsDisabled, positiveSuppressed: state.positiveSuppressed,
@@ -180,13 +185,20 @@ export function serializeBunnyShip(ship) {
       drainRemaining: Math.max(0, state.drainUntil - now),
       broadcastRemaining: Math.max(0, state.broadcastUntil - now),
       supporters: C.supportIds.filter((id) => state.support.supporters.has(id)),
-      blockReason: bunnyTransformBlockReason(ship), companionId: state.companionId, companionSpawned: state.companionSpawned,
+      blockReason, canTransform: blockReason === null, enabled,
+      lockedGear: enabled && state.form === "encore" ? C.encore.lockedGear : null,
+      broadcasting: enabled && isBunnyBroadcasting(state, now),
+      esperOrb: supportOrbGeometry(source), otherworlderReady: supportOtherworlderReady(source, now),
+      companionId: state.companionId, companionSpawned: state.companionSpawned,
+      companion: companion ? { alive: companion.alive, teamSeat: companion.team.seat,
+        convertedRemaining: Math.max(0, companion.bunnyCompanion.convertedUntil - now) } : null,
     };
   }
   if (ship.bunnyStageExposure) {
     const state = ship.bunnyStageExposure;
     fields.bunnyStageExposure = {
       sourceShipId: state.sourceShipId, phase: state.phase, inside: state.inside,
+      controlLocked: !ship.isControlImmune() && isBunnyControlLocked(state, now, bunnyStageEnabled(ship)),
       lockRemaining: Math.max(0, state.lockUntil - now), recoveryRemaining: Math.max(0, state.recoveryUntil - now),
       entranceRemaining: state.inside ? Math.max(0, state.enteredAt + C.stage.entranceSeconds - now) : 0,
     };
