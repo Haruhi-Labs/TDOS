@@ -58,6 +58,7 @@ import {
   COLLISION_SLOW_DURATION,
   COLLISION_SLOW_FLOOR,
   resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts,
+  resolveBunnyOtherworlderContacts,
   resolveBladeQueenContacts as resolveMatchBladeQueenContacts,
   resolveScoutClashes as resolveMatchScoutClashes,
   resolveShipCollisions as resolveMatchShipCollisions,
@@ -141,6 +142,18 @@ import {
   shamisenHuntDamageMultiplier,
 } from "./game/shamisen-hunt.js";
 import { DAMAGE_KIND, normalizeDamageContext } from "./game/damage.js";
+import { bunnyTeamSupportSources } from "./game/bunny-haruhi-support.js";
+import { supportOrbGeometry } from "./game/haruhi-support.js";
+import {
+  createBunnyHaruhiState, bunnyStatMultiplier, bunnyDamageTakenMultiplier,
+  isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor,
+  cleanseBunnyStageControl, purgeBunnyForm, canBunnyLaunchScout, resolveBunnyThrottle, bunnyEnergyRate,
+} from "./game/bunny-haruhi.js";
+import {
+  BUNNY_HARUHI_CHARACTER, normalizeBunnyLoadout, bunnyStageEnabled, commitBunnyTransform,
+  resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, updateBunnyTeamSupports,
+  serializeBunnyShip, refreshBunnyVisibility,
+} from "./game/bunny-haruhi-runtime.js";
 import {
   createMatchTelemetry,
   recordTelemetryAction,
@@ -517,7 +530,8 @@ class Ship {
     this.key = key;
     this.slotKey = options.slotKey || key;
     this.characterId = options.characterId;
-    this.character = getCharacterDef(this.characterId);
+    this.character = team.match.allowExperimentalBunnyHaruhi && this.characterId === BUNNY_HARUHI_CHARACTER.id
+      ? BUNNY_HARUHI_CHARACTER : getCharacterDef(this.characterId);
     this.base = this.character.stats;
     this.isAuxiliary = Boolean(options.isAuxiliary);
     this.attachToMain = options.attachToMain !== false;
@@ -569,6 +583,16 @@ class Ship {
     // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
     // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
     this.activeSkillEffectStartedTicks = Object.create(null);
+    if (this.character === BUNNY_HARUHI_CHARACTER) {
+      this.bunnyHaruhi = createBunnyHaruhiState();
+      // 仅新角色拦截最终落值，覆盖动作、航线和AI直接赋值，不改旧舰船属性形态。
+      let throttle = this.throttle;
+      Object.defineProperty(this, "throttle", {
+        enumerable: true, configurable: true,
+        get: () => resolveBunnyThrottle(this.bunnyHaruhi, throttle, !this.team.areSkillsDisabled()),
+        set: (value) => { throttle = resolveBunnyThrottle(this.bunnyHaruhi, value, !this.team.areSkillsDisabled()); },
+      });
+    }
   }
 
   isAttached() {
@@ -614,11 +638,13 @@ class Ship {
   }
 
   isControlLocked() {
-    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this));
+    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this)
+      || isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)));
   }
 
   isSilenced() {
-    return !this.isControlImmune() && this.hasEffect("silencedUntil");
+    return !this.isControlImmune() && (this.hasEffect("silencedUntil")
+      || (this.bunnyStageExposure?.phase === "speechless" && bunnyStageEnabled(this)));
   }
 
   isControlImmune() {
@@ -631,6 +657,7 @@ class Ship {
     this.heroPowerShock = createHaruhiHeroPowerShockState();
     this.collisionSlowUntil = 0;
     this.forcedKnockback = null;
+    if (this.bunnyStageExposure) this.bunnyStageExposure = cleanseBunnyStageControl(this.bunnyStageExposure);
   }
 
   isKoizumiOrbActive() {
@@ -642,7 +669,8 @@ class Ship {
   }
 
   isDamageImmune() {
-    return this.isKoizumiOrbActive();
+    return this.isKoizumiOrbActive()
+      || isBunnyDamageImmune(this.bunnyHaruhi, this.team.match.elapsed, !this.team.areSkillsDisabled());
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -678,6 +706,9 @@ class Ship {
     value *= this.team.future1096StatMultiplier(statKey);
     value *= haruhiStatMultiplier(this.team, statKey);
 
+    if (this.bunnyHaruhi) value *= bunnyStatMultiplier({ form: this.bunnyHaruhi, enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
+    if (this.bunnyStageExposure) value *= bunnyStatMultiplier({ stage: this.bunnyStageExposure, enabled: bunnyStageEnabled(this) }, statKey, this.team.match.elapsed);
+
     return value;
   }
 
@@ -702,7 +733,9 @@ class Ship {
   }
 
   effectiveSpeed() {
-    return this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
+    const speed = this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
+    return this.bunnyStageExposure && !this.isControlImmune()
+      ? speed * bunnyStageSpeedFactor(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) : speed;
   }
 
   minimumFlightSpeed() {
@@ -714,6 +747,10 @@ class Ship {
   }
 
   applyControlSpeedLimit() {
+    if (isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) && !this.isControlImmune()) {
+      this.speed = 0;
+      return;
+    }
     const minimumSpeed = this.minimumFlightSpeed();
     this.speed = minimumSpeed > 0 ? Math.max(this.speed, minimumSpeed) : 0;
   }
@@ -788,6 +825,7 @@ class Ship {
     value *= this.team.future1096DamageTakenMultiplier();
     value *= haruhiDamageTakenMultiplier(this.team);
     value *= haruhiHeroPowerDamageTakenMultiplier(this);
+    if (this.bunnyHaruhi) value *= bunnyDamageTakenMultiplier(this.bunnyHaruhi);
     return value;
   }
 
@@ -797,6 +835,12 @@ class Ship {
 
   clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
     let cleared = false;
+    if (this.bunnyHaruhi) {
+      const old = this.bunnyHaruhi;
+      const next = purgeBunnyForm(old, preserveCurrentTick ? this.team.match.tick : -1);
+      if (next.positiveSuppressed !== old.positiveSuppressed || next.immunityUntil !== old.immunityUntil) cleared = true;
+      this.bunnyHaruhi = next;
+    }
     const canClear = (effectKey) => (
       !preserveCurrentTick
       || this.activeSkillEffectStartedTicks[effectKey] !== this.team.match.tick
@@ -835,6 +879,7 @@ class Ship {
     const cleared = this.isSilenced()
       || this.hasEffect("stunnedUntil")
       || this.heroPowerShock.recoveryUntil > now
+      || (this.bunnyStageExposure?.recoveryUntil || 0) > now
       || this.collisionSlowUntil > now
       || Boolean(this.forcedKnockback)
       || this.activeClawMarks().stacks > 0;
@@ -1422,6 +1467,7 @@ class Ship {
       nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
       buffs: statusEffectNames(statusEffects),
       statusEffects,
+      ...(this.bunnyHaruhi || this.bunnyStageExposure ? serializeBunnyShip(this) : {}),
       route: this.route
         ? {
             anchorToMain: this.route.anchorToMain,
@@ -1790,7 +1836,9 @@ class Team {
     this.name = name;
     this.color = TEAM_COLORS[seat];
     this.projectileColor = TEAM_PROJECTILE_COLORS[seat];
-    this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
+    this.loadout = match.allowExperimentalBunnyHaruhi
+      ? normalizeBunnyLoadout(options.loadout || DEFAULT_TEAM_LOADOUT)
+      : normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
     // 单人难度对本队的影响(仅当本队由AI控制时,由 BotController.setDifficulty 写入):
@@ -2347,7 +2395,9 @@ class Team {
         continue;
       }
       const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
-      const energyRate = energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
+      const energyRate = ship.bunnyStageExposure
+        ? bunnyEnergyRate(ship.bunnyStageExposure, ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle, bunnyStageEnabled(ship))
+        : energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
       ship.energy = clamp(ship.energy + energyRate * dt, 0, ship.maxEnergy);
     }
   }
@@ -2370,6 +2420,7 @@ class Team {
       launchAlienWingmen: (ship) => this.launchHaruhiAlienWingmen(ship),
       launchRandomBeam: (ship) => this.launchHaruhiRandomBeam(ship),
     });
+    if (this.match.bunnyHaruhiActive) updateBunnyTeamSupports(this, dt);
     updateTeamVisionWaveSkill(this);
     this.maybeAutoLaunchScout();
     for (const scout of this.scouts) {
@@ -2451,7 +2502,7 @@ class Team {
     }
     const source = (requested && requested.alive ? requested : null)
       || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
-    if (!source || source.isControlLocked()) {
+    if (!source || source.isControlLocked() || !canBunnyLaunchScout(source.bunnyHaruhi)) {
       return false;
     }
     if (!this.spendEnergyForShip(source.key || "main", cost)) {
@@ -2540,6 +2591,7 @@ class Team {
   }
 
   castFlagshipSkill(zoneId = 5) {
+    if (this.ships.main.bunnyHaruhi) return false;
     const characterId = this.loadout.main;
     const meta = skillMetaForCharacter(characterId, "flagship");
     if (!meta || meta.type !== "active") {
@@ -2629,6 +2681,7 @@ class Team {
 
   castSubSkill(shipKey, options = {}) {
     const ship = this.ships[shipKey];
+    if (ship?.bunnyHaruhi) return commitBunnyTransform(ship);
     if (!ship || !ship.alive || ship.isAttached() || !ship.canControl()) {
       return false;
     }
@@ -2913,7 +2966,8 @@ class Team {
       name: this.name,
       color: this.color,
       splitLevel: this.splitLevel,
-      loadout: cloneLoadout(this.loadout),
+      loadout: this.match.bunnyHaruhiActive ? { ...this.loadout } : cloneLoadout(this.loadout),
+      ...(this.ships.main.bunnyHaruhi ? { bunnyStage: this.bunnyStage ? { ...this.bunnyStage } : null } : {}),
       energy: this.fleetEnergyForShip("main").current,
       maxEnergy: this.fleetEnergyForShip("main").max,
       hullRatio: this.hullRatio(),
@@ -2991,6 +3045,7 @@ export class MatchSimulation {
 
     this.tick = 0;
     this.elapsed = 0;
+    if (options.allowExperimentalBunnyHaruhi === true) this.allowExperimentalBunnyHaruhi = true;
     this.phase = "running";
     this.winnerSeat = null;
 
@@ -3016,6 +3071,12 @@ export class MatchSimulation {
     this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
     this.floatingTexts = [];
     this.telemetry = createMatchTelemetry();
+    if ([...this.teamA.getPlayerShips(), ...this.teamB.getPlayerShips()].some((ship) => ship.bunnyHaruhi)) {
+      this.bunnyHaruhiActive = true;
+      this.bunnySustainAt = 0;
+      resolveBunnyStages(this);
+      refreshBunnyVisibility(this);
+    }
     this.teamA.ensureShamisenHuntTarget(this.teamB);
     this.teamB.ensureShamisenHuntTarget(this.teamA);
     this.bots = {};
@@ -3326,6 +3387,17 @@ export class MatchSimulation {
         this.spawnBurst(absorbedAt.x, absorbedAt.y, "#ff526f", 6);
         continue;
       }
+      if (this.bunnyHaruhiActive) {
+        const hit = bunnyTeamSupportSources(defendingTeam)
+          .map((source) => projectileAbsorptionPoint(projectile, dt, supportOrbGeometry(source)))
+          .filter(Boolean)
+          .sort((a, b) => distance(projectile.x, projectile.y, a.x, a.y) - distance(projectile.x, projectile.y, b.x, b.y))[0];
+        if (hit) {
+          projectile.alive = false;
+          this.spawnBurst(hit.x, hit.y, "#ff526f", 6);
+          continue;
+        }
+      }
       projectile.update(dt, this);
     }
     this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
@@ -3406,6 +3478,7 @@ export class MatchSimulation {
     const safeDt = clamp(dt, 0, 0.05);
     this.tick += 1;
     this.elapsed += safeDt;
+    if (this.bunnyHaruhiActive) advanceBunnyRules(this);
 
     this.refreshShamisenHunts();
 
@@ -3422,10 +3495,13 @@ export class MatchSimulation {
     this.resolveKoizumiOrbContacts();
     updateKoizumiImpactWaves(this);
     this.resolveHaruhiOtherworlderContacts();
+    if (this.bunnyHaruhiActive) resolveBunnyOtherworlderContacts(this);
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();
     this.resolveScoutClashes();
+    if (this.bunnyHaruhiActive) resolveBunnyStages(this);
     this.resolveVisionWavePurges();
+    if (this.bunnyHaruhiActive) cleanupBunnySources(this);
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
     this.teamA.updateRadarPassive(this.teamB, safeDt);
@@ -3437,6 +3513,11 @@ export class MatchSimulation {
     if (this.combatEnabled.B) this.teamB.stepCombat(this.teamA);
     this.updateProjectiles(safeDt);
     this.updateVisualEffects(safeDt);
+
+    if (this.bunnyHaruhiActive) {
+      cleanupBunnySources(this);
+      refreshBunnyVisibility(this);
+    }
 
     this.checkVictory();
   }

@@ -14,13 +14,20 @@ export function bunnyHaruhiSupportSource(ship, enabled) {
   return { sourceShip: ship, state: ship.bunnyHaruhi.support, enabled: Boolean(enabled) };
 }
 
+/** 仅新角色对局调用；固定ID次序使多来源消耗与几何判定可回放。 */
+export function bunnyTeamSupportSources(team) {
+  return [team.ships.sub1, team.ships.sub2]
+    .map((ship) => bunnyHaruhiSupportSource(ship, !team.areSkillsDisabled()))
+    .filter(Boolean).sort((a, b) => a.sourceShip.id - b.sourceShip.id);
+}
+
 /** 只由成功形态事务调用；穷尽三项池后不再消费随机数。 */
 export function unlockBunnyHaruhiSupport(source, now, random) {
   if (!source?.enabled || !source.sourceShip?.alive) return null;
   return unlockSupport(source.state, BUNNY_HARUHI_CONFIG.supportIds, now, random);
 }
 
-/** 此适配器尚未接入Team.update，不扫描队伍或改变旧旗舰调度。 */
+/** 由Team.update显式传入副舰来源，不改变旧旗舰的支援调度。 */
 export function updateBunnyHaruhiSupport(source, now, dt, hooks = {}) {
   if (!source) return;
   const { state } = source;
