@@ -1,5 +1,23 @@
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 
+export function isBunnyCompanion(ship) {
+  return ship?.entityRole === C.companionRole;
+}
+
+/** 旧额外舰船仍保留原资格，只排除专属伴随舰。 */
+export function countsForVictory(ship) {
+  return !isBunnyCompanion(ship);
+}
+
+export function isFleetParticipant(ship) {
+  return !isBunnyCompanion(ship);
+}
+
+/** 永久母舰不能伤害自己的伴随舰，实时阵营变化不得绕过此保护。 */
+export function bunnyOwnerDamageBlocked(source, target) {
+  return Boolean(isBunnyCompanion(target) && source?.id === target.bunnyCompanion?.ownerShipId);
+}
+
 /** 只从未加成基础值派生，不继承已算过的形态、难度或单飞加成。 */
 export function deriveBunnyCompanionBase(baseStats = C.baseStats) {
   const base = {};
@@ -41,7 +59,7 @@ export function createBunnyCompanionState(ownerShipId, ownerSeat, now) {
   };
 }
 
-/** 清理接收者和炮弹是未来适配器的职责，此处只返回事务意图。 */
+/** 清理接收者和炮弹是运行时适配器的职责，此处只返回事务意图。 */
 export function planBunnyCompanionConversion(state, now) {
   assertTime(now);
   return {

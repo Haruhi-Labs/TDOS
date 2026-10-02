@@ -149,8 +149,9 @@ function transformCheck() {
   sim.teamA.cooldowns.sub1 = 0;
   assert.equal(cast(sim), true);
   assert.equal(ship.bunnyHaruhi.form, "encore");
-  assert.equal(ship.bunnyHaruhi.companionSpawnPending, true);
-  assert.equal(ship.bunnyHaruhi.companionSpawned, false);
+  assert.equal(ship.bunnyHaruhi.companionSpawnPending, undefined);
+  assert.equal(ship.bunnyHaruhi.companionSpawned, true);
+  assert.equal(sim.teamA.extraShips[0].id, ship.bunnyHaruhi.companionId);
   assert.equal(ship.bunnyHaruhi.support.supporters.size, 3);
   ship.throttle = 0;
   assert.equal(ship.throttle, 1.4, "直接赋值也必须锁档");

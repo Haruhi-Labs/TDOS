@@ -16,6 +16,7 @@
     "test:core:bunny-haruhi": "node scripts/verify-core.mjs bunny-haruhi",
     "test:core:haruhi-support": "node scripts/verify-core.mjs haruhi-support",
     "test:core:bunny-haruhi-integration": "node scripts/verify-core.mjs bunny-haruhi-integration",
+    "test:core:bunny-companion": "node scripts/verify-core.mjs bunny-companion",
     "test:changelog": "node scripts/verify-changelog.mjs",
     "test:ai:simulation": "node scripts/simulate-ai-battles.mjs",
     "test:ai:shamisen": "node scripts/simulate-shamisen-balance.mjs",

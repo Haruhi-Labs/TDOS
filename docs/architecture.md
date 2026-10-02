@@ -86,7 +86,7 @@
 - `shared/game/throttle.js`：推进档位、档位归一化以及推进与能量收支的关系。
 - `shared/game/combat-rules.js`：火力方向、侦察消耗和雷达转速等独立规则。
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
-- `shared/game/bunny-haruhi-config.js`、`bunny-haruhi.js`、`bunny-haruhi-companion.js`：独立配置与纯规则；`bunny-haruhi-runtime.js` 协调已接入的舞台、变身、资源与公开摘要。仅显式内部模拟开关允许构造该角色，未加入公开目录/随机池；伴随舰实体仍未接入。接口与阶段边界见[兔女郎春日规则](bunny-haruhi-rules.md)。
+- `shared/game/bunny-haruhi-config.js`、`bunny-haruhi.js`、`bunny-haruhi-companion.js`：独立配置与纯规则；`bunny-haruhi-runtime.js` 协调舞台、变身、资源与公开摘要，`bunny-companion-runtime.js` 通过注入的Ship工厂接入阿虚实体、独立编队、自动技能、临时策反与来源清理。阿虚排除胜负/玩家舰损/猎杀资格，旧额外舰船资格不变；跨队归还在两队更新前处理。仅显式内部模拟开关允许构造新角色，未加入公开目录/随机池。接口与阶段边界见[兔女郎春日规则](bunny-haruhi-rules.md)。
 - `shared/game/haruhi-support.js`：支援状态、有限池抽取、节拍与来源几何；旧 `haruhi-flagship.js` 保持兼容包装。`bunny-haruhi-support.js` 提供显式副舰来源适配，新来源的调度、碰撞、破盾与吸弹只在包含新角色的模拟中执行，不改变旧旗舰身份与停用策略。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。

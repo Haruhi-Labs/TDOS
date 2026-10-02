@@ -1,11 +1,12 @@
 import { distance } from "./math.js";
+import { bunnyOwnerDamageBlocked } from "./bunny-haruhi-companion.js";
 
 export function fireCandidates(team, attacker, enemyTeam) {
   const range = attacker.attackRange || attacker.effectiveRange();
   const canArc = typeof attacker.broadsideMultiplier === "function";
   const candidates = [];
   for (const target of enemyTeam.getEntities()) {
-    if (!target.alive) continue;
+    if (!target.alive || bunnyOwnerDamageBlocked(attacker, target)) continue;
     if (typeof target.isTargetableByFire === "function" && !target.isTargetableByFire()) continue;
     const targetDistance = distance(attacker.x, attacker.y, target.x, target.y);
     if (targetDistance > range) continue;

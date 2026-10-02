@@ -5,6 +5,7 @@ import {
   supportOtherworlderReady, triggerSupportOtherworlder,
 } from "./haruhi-support.js";
 import { bunnyTeamSupportSources } from "./bunny-haruhi-support.js";
+import { bunnyOwnerDamageBlocked, isBunnyCompanion } from "./bunny-haruhi-companion.js";
 import {
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
@@ -39,7 +40,8 @@ export function resolveShipCollisions(match) {
       const right = ships[rightIndex];
       if (left.forcedKnockback || right.forcedKnockback) continue;
       if (isKoizumiOrbActive(left) || isKoizumiOrbActive(right)) continue;
-      if (left.team === right.team && (left.isAttached() || right.isAttached())) continue;
+      if (left.team === right.team && (left.isAttached() || right.isAttached())
+        && !isBunnyCompanion(left) && !isBunnyCompanion(right)) continue;
       if (left.hasEffect("bladeQueenUntil") || right.hasEffect("bladeQueenUntil")) continue;
 
       const deltaX = right.x - left.x;
@@ -72,6 +74,7 @@ export function resolveShipCollisions(match) {
 }
 
 function applyForcedKnockback(match, source, contactTarget, contact = null) {
+  if (bunnyOwnerDamageBlocked(source, contactTarget)) return;
   const targetTeam = contactTarget.team;
   const fleetKey = targetTeam.fleetKeyForShip(contactTarget);
   const fleet = targetTeam.fleetMembersByKey(fleetKey);
@@ -220,7 +223,7 @@ export function resolveBunnyOtherworlderContacts(match) {
       const source = support.sourceShip;
       let hit = null;
       for (const target of enemy.getAllShips()) {
-        if (!target.alive || target.forcedKnockback) continue;
+        if (!target.alive || target.forcedKnockback || bunnyOwnerDamageBlocked(source, target)) continue;
         const contact = haruhiOtherworlderAuraContact(source, target);
         if (contact && (!hit || contact.localX < hit.contact.localX)) hit = { target, contact };
       }

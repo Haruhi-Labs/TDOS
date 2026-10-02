@@ -15,9 +15,8 @@ import { createSupportState } from "./haruhi-support.js";
  * @property {number} immunityUntil
  * @property {number} drainUntil
  * @property {number} broadcastUntil
- * @property {number|null} companionId 由未来实体事务填写。
+ * @property {number|null} companionId 由实际实体生成事务填写，死亡后保留。
  * @property {boolean} companionSpawned 永久生成历史。
- * @property {boolean} [companionSpawnPending] encore后的待生成意图，默认不存在，死亡取消。
  * @property {Object} support 独立支援状态，由显式来源适配器解锁和推进。
  */
 

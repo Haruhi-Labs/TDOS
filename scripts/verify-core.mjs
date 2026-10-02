@@ -4,6 +4,7 @@ import { runTutorialSuite } from "./core-tests/tutorial-suite.mjs";
 import { runBunnyHaruhiSuite } from "./core-tests/bunny-haruhi-suite.mjs";
 import { runHaruhiSupportSuite } from "./core-tests/haruhi-support-suite.mjs";
 import { runBunnyHaruhiIntegrationSuite } from "./core-tests/bunny-haruhi-integration-suite.mjs";
+import { runBunnyCompanionSuite } from "./core-tests/bunny-companion-suite.mjs";
 
 const suites = new Map([
   ["rules", runRulesSuite],
@@ -12,6 +13,7 @@ const suites = new Map([
   ["bunny-haruhi", runBunnyHaruhiSuite],
   ["haruhi-support", runHaruhiSupportSuite],
   ["bunny-haruhi-integration", runBunnyHaruhiIntegrationSuite],
+  ["bunny-companion", runBunnyCompanionSuite],
 ]);
 const requestedSuites = process.argv.slice(2);
 const suiteNames = requestedSuites.length > 0 ? requestedSuites : [...suites.keys()];

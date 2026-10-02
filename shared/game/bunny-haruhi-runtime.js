@@ -7,6 +7,7 @@ import {
   resolveBunnyThrottle,
 } from "./bunny-haruhi.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
+import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.js";
 
 // 仅供显式实验模拟构造使用，不能加入公开角色目录或随机池。
 export const BUNNY_HARUHI_CHARACTER = Object.freeze({
@@ -59,11 +60,8 @@ export function commitBunnyTransform(ship) {
   const oldSpeed = ship.effectiveSpeed();
   const oldRate = ship.effectiveFireRate();
   const oldThrottle = ship.throttle;
-  // 本阶段不构造伴随舰；只保存待生成意图，不能把未生成实体标为已生成。
-  if (result.spawnCompanion) {
-    result.state.companionSpawned = false;
-    result.state.companionSpawnPending = true;
-  }
+  const companions = bunnyCompanions(match).filter((candidate) => candidate.alive && bunnyCompanionOwner(candidate) === ship && candidate.team === team)
+    .map((candidate) => ({ ship: candidate, speed: candidate.effectiveSpeed(), rate: candidate.effectiveFireRate() }));
   if (result.unlockSupport) {
     const source = { ...bunnyHaruhiSupportSource(ship, true), state: result.state.support };
     unlockBunnyHaruhiSupport(source, match.elapsed, Math.random);
@@ -74,6 +72,11 @@ export function commitBunnyTransform(ship) {
   ship.throttle = resolveBunnyThrottle(result.state, oldThrottle);
   if (oldSpeed > 0) ship.speed *= ship.effectiveSpeed() / oldSpeed;
   ship.cooldown *= oldRate / ship.effectiveFireRate();
+  for (const old of companions) {
+    if (old.speed > 0) old.ship.speed *= old.ship.effectiveSpeed() / old.speed;
+    old.ship.cooldown *= old.rate / old.ship.effectiveFireRate();
+  }
+  if (result.spawnCompanion) team.spawnBunnyCompanion(ship);
   team.cooldowns[ship.key] = result.cooldownSeconds;
   match.recordAction(team.seat, "sub_skill");
   team.revealCasterIfSeen(ship);
@@ -147,7 +150,6 @@ export function cleanupBunnySources(match) {
     for (const ship of team.getPlayerShips()) {
       if (ship.bunnyHaruhi && !ship.alive) {
         ship.bunnyHaruhi = clearBunnyFormWindows(ship.bunnyHaruhi);
-        if (ship.bunnyHaruhi.companionSpawnPending) ship.bunnyHaruhi.companionSpawnPending = false;
         ship.bunnyHaruhi.support.queuedBeamAt.length = 0;
       }
       if (ship.bunnyStageExposure?.inside && !bunnyStageEnabled(ship)) ship.bunnyStageExposure = leaveBunnyStage(ship.bunnyStageExposure);
@@ -178,7 +180,7 @@ export function serializeBunnyShip(ship) {
       drainRemaining: Math.max(0, state.drainUntil - now),
       broadcastRemaining: Math.max(0, state.broadcastUntil - now),
       supporters: C.supportIds.filter((id) => state.support.supporters.has(id)),
-      blockReason: bunnyTransformBlockReason(ship), companionSpawnPending: Boolean(state.companionSpawnPending),
+      blockReason: bunnyTransformBlockReason(ship), companionId: state.companionId, companionSpawned: state.companionSpawned,
     };
   }
   if (ship.bunnyStageExposure) {
