@@ -7,7 +7,7 @@ export const BUNNY_VIEW_PARAMS = Object.freeze({
   vulnerable: Math.round((C.bless.damageTakenMultiplier - 1) * 100),
   immunity: C.knows.immunitySeconds, drain: C.knows.selfDrainSeconds,
   drainRate: C.knows.hpDrainPerSecondRatio * 100, cooldown: C.form.cooldownSeconds,
-  heal: C.encore.healRatio * 100, gear: C.encore.lockedGear,
+  heal: C.encore.healRatio * 100, gear: C.encore.lockedGear, encoreDuration: C.encore.lockSeconds,
   entrance: C.stage.entranceSeconds, lock: C.stage.lockSeconds, recovery: C.stage.recoverySeconds,
   entryCooldown: C.stage.entryCooldownSeconds, stageHeal: C.stage.firstHealRatio * 100,
   stageRegen: C.stage.healPerSecondRatio * 100, stageBoost: Math.round((C.stage.entrancedMultiplier - 1) * 100),

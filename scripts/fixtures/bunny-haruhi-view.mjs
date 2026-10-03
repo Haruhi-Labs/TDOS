@@ -36,6 +36,8 @@ export function createBunnyViewFixture(collect = () => {}) {
     }
   }
   const companion = sim.teamA.extraShips[0];
+  resolveBunnyStages(sim);
+  states.encore = sim.serializeState();
   sim.elapsed = 24;
   sim.tick = 720;
   prepareBunnyCompanions(sim);
@@ -54,7 +56,7 @@ export function createBunnyViewFixture(collect = () => {}) {
   sim.elapsed = 34;
   resolveBunnyStages(sim);
   collect(target);
-  states.encore = sim.serializeState();
+  states.encoreExpired = sim.serializeState();
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
   assert.equal(sim.teamB.bribeZone(sim.teamB.ships.sub1, zone.id), true);
   collect(companion);

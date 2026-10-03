@@ -4,7 +4,7 @@ import {
   createBunnyStageExposure, resolveBunnyStageExposure, leaveBunnyStage,
   bunnySelfDrainAmount, bunnyStageHealAmount, clearBunnyFormWindows,
   planBunnyTransform, nextBunnyForm, isBunnyBroadcasting, isBunnyControlLocked,
-  resolveBunnyThrottle,
+  resolveBunnyThrottle, isBunnyEncoreLocked,
 } from "./bunny-haruhi.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
 import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.js";
@@ -51,7 +51,7 @@ export function commitBunnyTransform(ship) {
   ship.bunnyHaruhi = result.state;
   ship.hp = result.hp;
   ship.energy = result.energy;
-  ship.throttle = resolveBunnyThrottle(result.state, oldThrottle);
+  ship.throttle = resolveBunnyThrottle(result.state, oldThrottle, true, match.elapsed);
   if (oldSpeed > 0) ship.speed *= ship.effectiveSpeed() / oldSpeed;
   ship.cooldown *= oldRate / ship.effectiveFireRate();
   for (const old of companions) {
@@ -167,7 +167,7 @@ export function serializeBunnyShip(ship) {
       broadcastRemaining: Math.max(0, state.broadcastUntil - now),
       supporters: C.supportIds.filter((id) => state.support.supporters.has(id)),
       blockReason, canTransform: blockReason === null, enabled,
-      lockedGear: enabled && state.form === "encore" ? C.encore.lockedGear : null,
+      lockedGear: isBunnyEncoreLocked(state, now, enabled) ? C.encore.lockedGear : null,
       broadcasting: enabled && isBunnyBroadcasting(state, now),
       esperOrb: supportOrbGeometry(source), otherworlderReady: supportOtherworlderReady(source, now),
       companionId: state.companionId, companionSpawned: state.companionSpawned,

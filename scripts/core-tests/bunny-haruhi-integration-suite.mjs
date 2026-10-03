@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { MatchSimulation, __resetEntityIds, TICK_DT, CHARACTER_DEFS, CHARACTER_ORDER } from "../../shared/game-core.js";
+import { MatchSimulation, __resetEntityIds, TICK_DT, CHARACTER_DEFS, CHARACTER_ORDER, energyRateForThrottle } from "../../shared/game-core.js";
 import { normalizeLoadout } from "../../shared/game/characters.js";
 import { validateMatchAction } from "../../shared/protocol/match-actions.js";
 import { createInputQueue } from "../../server/input-queue.js";
@@ -175,6 +175,69 @@ function transformCheck() {
   assert.deepEqual(sim.serializeState().teams.A.loadout, sim.teamA.loadout);
 }
 
+function encoreMovementCheck() {
+  const sim = simulation();
+  const ship = sim.teamA.ships.sub1;
+  sim.elapsed = 90;
+  for (let i = 0; i < 4; i += 1) {
+    sim.teamA.cooldowns.sub1 = 0;
+    assert.equal(cast(sim), true);
+  }
+  const sampleSpeed = (target, energy) => {
+    target.x = 200;
+    target.y = 600;
+    target.angle = 0;
+    target.speed = 0;
+    target.route = null;
+    target.command = { x: 900, y: 600 };
+    target.throttle = 1.4;
+    target.energy = energy;
+    target.update(TICK_DT);
+    return target.speed;
+  };
+  const fullSpeed = sampleSpeed(ship, 100);
+  assert.ok(fullSpeed > 0);
+  near(sampleSpeed(ship, 0), fullSpeed);
+  ship.energy = 100;
+  const energyRate = energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), 1.4);
+  assert.ok(energyRate < 0);
+  sim.teamA.updateEnergy(TICK_DT);
+  near(ship.energy, 100 + energyRate * TICK_DT);
+  ship.energy = 0.001;
+  sim.teamA.updateEnergy(TICK_DT);
+  assert.equal(ship.energy, 0, "耗尽后能量钳到0，不停止4档移动");
+  near(sampleSpeed(ship, ship.energy), fullSpeed);
+  const companion = sim.teamA.extraShips[0];
+  const companionSpeed = sampleSpeed(companion, 100);
+  near(sampleSpeed(companion, 0), companionSpeed * 0.15);
+  ship.effects.stunnedUntil = 91;
+  assert.equal(sampleSpeed(ship, 0), 0, "激奏不免疫控制");
+  ship.effects.stunnedUntil = 0;
+  sim.teamA.forceCharacterSkillsDisabled = true;
+  near(sampleSpeed(ship, 0), fullSpeed * 0.15);
+  sim.teamA.forceCharacterSkillsDisabled = false;
+  sim.elapsed = 100 - TICK_DT;
+  near(sampleSpeed(ship, 0), fullSpeed);
+  const locked = ship.serialize();
+  assert.equal(locked.bunnyHaruhi.lockedGear, 4);
+  const effect = locked.statusEffects.find(({ id }) => id === "bunny_encore");
+  assert.equal(effect.duration, 10);
+  near(effect.remaining, TICK_DT);
+  sim.elapsed = 100;
+  near(sampleSpeed(ship, 0), fullSpeed * 0.15);
+  assert.equal(ship.throttle, 1.4, "到期保留当前档位");
+  assert.equal(ship.bunnyHaruhi.form, "encore", "到期不切形态或重置序列");
+  assert.equal(ship.bunnyHaruhi.successfulCasts, 4);
+  assert.equal(ship.serialize().bunnyHaruhi.lockedGear, null);
+  assert.equal(ship.serialize().statusEffects.some(({ id }) => id === "bunny_encore"), false);
+  sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "sub1", throttle: 0.4 });
+  assert.equal(ship.throttle, 0.4);
+  sim.teamA.forceCharacterSkillsDisabled = true;
+  sim.elapsed += TICK_DT;
+  sim.teamA.forceCharacterSkillsDisabled = false;
+  assert.equal(ship.throttle, 0.4, "封印解除不能补发已到期锁档");
+}
+
 function publicationAndBroadcastCheck() {
   assert.equal(CHARACTER_DEFS.bunny_haruhi.id, "bunny_haruhi");
   assert.equal(CHARACTER_ORDER.includes("bunny_haruhi"), true);
@@ -326,6 +389,7 @@ function authorityCheck() {
 export function runBunnyHaruhiIntegrationSuite() {
   exposureCheck();
   transformCheck();
+  encoreMovementCheck();
   publicationAndBroadcastCheck();
   tickOrderingCheck();
   supportIntegrationCheck();

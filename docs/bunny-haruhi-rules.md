@@ -1,6 +1,6 @@
 # 兔女郎春日：配置与纯规则
 
-当前完成配置与纯规则、支援有限抽取、舞台与变身、阿虚、共享视图、三语界面和指定阵容AI。角色已加入目录及选角；默认阵容不变，随机AI主/副舰池仍为原八角色。规则版本为 `ruleset-20261002-02`；公开版本和网络编码版本不变。没有新角色的对局继续沿用原行为和原快照字段。实际验收结果与限制见[本阶段验收记录](bunny-haruhi-acceptance.md)。
+当前完成配置与纯规则、支援有限抽取、舞台与变身、阿虚、共享视图、三语界面和指定阵容AI。角色已加入目录及选角；默认阵容不变，随机AI主/副舰池仍为原八角色。规则版本为 `ruleset-20261003-01`；公开版本和网络编码版本不变。没有新角色的对局继续沿用原行为和原快照字段。实际验收结果与限制见[本阶段验收记录](bunny-haruhi-acceptance.md)。
 
 ## 指定阵容AI与公开入口
 
@@ -22,7 +22,7 @@
 | --- | --- |
 | `canTransform` | boolean；权威不可施放原因为空时为真，客户端不根据平滑生命/CD自行解锁 |
 | `enabled` | boolean；来源存活且队伍未封印，剩余绝对时窗不代表当前生效 |
-| `lockedGear` | number或null；激奏且来源启用时为4，其他情况为null |
+| `lockedGear` | number或null；激奏开始后10秒内且来源启用时为4，其他情况为null |
 | `broadcasting` | boolean；本舰形态来源是否持续广播，不等于其他来源对本舰的广播 |
 | `esperOrb` | 既有支援几何对象或null；由显式副舰source产生，停用立即为null |
 | `otherworlderReady` | boolean；冲撞气场是否就绪，沿用共享命中/破盾冷却 |
@@ -82,7 +82,7 @@
 - 成功：`{ok:true, reason:null, state, hp, energy, cooldownSeconds, unlockSupport, spawnCompanion}`。
 - 失败：`{ok:false, reason:"dead"|"insufficient_hp"}`，无待提交状态或奖励。
 
-bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少80%；knows不支付即时生命，同样补能，创建4秒免伤、16秒自损及广播窗口；encore恢复20%最大生命，上限截断。已高于80%的能量不降低，零能量可生成成功方案。
+bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少80%；knows不支付即时生命，同样补能，创建4秒免伤、16秒自损及广播窗口；encore恢复20%最大生命，上限截断，并锁定4档10秒；期间正常耗能，零能量不触发0.15倍航速惩罚。已高于80%的能量不降低，零能量可生成成功方案。
 
 方案中的 `unlockSupport` 仅首次到达各形态为true，一共三次；提交层使用支援接口完成无放回抽取。`spawnCompanion` 表示首次encore生成意图；提交时实际构造阿虚，填写稳定 `companionId` 并保留永久 `companionSpawned=true`，死亡不重生。前一阶段的待生成占位标记已移除。
 
@@ -107,7 +107,7 @@ bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少
 
 `bunnyEnergyRate(stage,regen,moveDrain,throttle,enabled)` 在哑口无言时返回纯推进负收支，其他情况完整委托旧 `energyRateForThrottle`。不能只给旧函数传regen=0，因为旧函数仍保底每秒1.2回能。瞬间补能独立于这个查询。
 
-`canBunnyLaunchScout(form)` 只表达本角色的额外资格，其他侦察权限仍由原入口验证。`resolveBunnyThrottle(form,requestedThrottle,enabled)` 在encore时返回现有推进表中的4档1.4，否则返回输入；不改变实际航速、耗能或其他角色档位规则。不会新增规划旧文本提及、但当前项目已经移除的急刹功能。
+`canBunnyLaunchScout(form)` 只表达本角色的额外资格，其他侦察权限仍由原入口验证。`resolveBunnyThrottle(form,requestedThrottle,enabled,now)` 在encore开始后10秒内返回现有推进表中的4档1.4，否则返回输入；运行时必须传入当前模拟时间。`isBunnyEncoreLocked(form,now,enabled)` 统一判定该窗口，移动时仅本舰在窗口内免除零能量的0.15倍航速惩罚；耗能、转向、控制、碰撞和其他角色规则不变。到期不自动切形态、不重置序列，恢复换档和零能量减速。不会新增规划旧文本提及、但当前项目已经移除的急刹功能。
 
 `bunnySelfDrainAmount(form,{from,to,hp,maxHp,enabled})` 与 `bunnyStageHealAmount(stage,同参数)` 返回本区间的正扣血量/治疗量，不修改生命。按有效窗口交集积分：knows每秒最大生命0.5%，16秒总8%，最低1HP；入迷从 `enteredAt+10` 起每秒0.4%，不溢出、不复活。区间零长度返回0；跨截止点只算有效部分。
 
@@ -178,7 +178,7 @@ bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少
 
 入场锁在 `isControlLocked` 和移动限速入口生效，不能被编队跟随覆盖；沉默进入原主动技能校验，持续回能通过独立能量查询归零。沿用当前古泉光球免控规则，不让新增锁定绕过既有免控；形态2免伤仍不免控。目标的封印与来源的封印分别判断，目标封印不会关闭敌方舞台。
 
-变身只写本舰生命/能量，不调用伤害或共享能量消费入口；成功后按新旧有效航速比例调整当前速度、按旧/新射速比例调整炮击冷却。encore只在该角色实例上安装推进属性存取器，统一约束直接赋值、动作和航线落值；封印暂停锁档，恢复立即按4档读取，退出形态保留当时档位并允许换挡。普通舰船的推进字段仍是原数据属性。
+变身只写本舰生命/能量，不调用伤害或共享能量消费入口；成功后按新旧有效航速比例调整当前速度、按旧/新射速比例调整炮击冷却。encore只在该角色实例上安装推进属性存取器，统一约束直接赋值、动作和航线落值；锁档以形态开始时间加 `encore.lockSeconds=10` 为绝对截止点；封印暂停锁档及零能量减速豁免，恢复时只在未过期窗口内按4档读取，不补时。到期或退出形态保留当时档位并允许换挡。普通舰船的推进字段仍是原数据属性。
 
 公开摘要字段：舰船可选 `bunnyHaruhi` 包含形态/下一形态/次数、侦察资格、涤除标记、三个窗口剩余秒数、支援ID列表、不可施放原因及 `companionId/companionSpawned`；接触过舞台的目标可选 `bunnyStageExposure` 只含来源ID、在场/阶段、锁定/恢复/入迷剩余秒数。舞台主舰队伍可选 `bunnyStage={sourceShipId,seat,x,y,radius}|null`。剩余窗口表示绝对时间余量，是否生效还需结合存活、队伍封印和控制免疫；没有新角色的快照不添加空对象。`visitedForms`、首次治疗历史、待发队列及内部对象引用不进入协议。
 

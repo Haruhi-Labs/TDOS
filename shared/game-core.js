@@ -152,7 +152,7 @@ import { supportOrbGeometry } from "./game/haruhi-support.js";
 import {
   createBunnyHaruhiState, bunnyStatMultiplier, bunnyDamageTakenMultiplier,
   isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor,
-  cleanseBunnyStageControl, purgeBunnyForm, canBunnyLaunchScout, resolveBunnyThrottle, bunnyEnergyRate,
+  cleanseBunnyStageControl, purgeBunnyForm, canBunnyLaunchScout, resolveBunnyThrottle, isBunnyEncoreLocked, bunnyEnergyRate,
 } from "./game/bunny-haruhi.js";
 import {
   BUNNY_HARUHI_CHARACTER, bunnyStageEnabled, commitBunnyTransform,
@@ -595,8 +595,8 @@ class Ship {
       let throttle = this.throttle;
       Object.defineProperty(this, "throttle", {
         enumerable: true, configurable: true,
-        get: () => resolveBunnyThrottle(this.bunnyHaruhi, throttle, !this.team.areSkillsDisabled()),
-        set: (value) => { throttle = resolveBunnyThrottle(this.bunnyHaruhi, value, !this.team.areSkillsDisabled()); },
+        get: () => resolveBunnyThrottle(this.bunnyHaruhi, throttle, !this.team.areSkillsDisabled(), this.team.match.elapsed),
+        set: (value) => { throttle = resolveBunnyThrottle(this.bunnyHaruhi, value, !this.team.areSkillsDisabled(), this.team.match.elapsed); },
       });
     }
   }
@@ -1225,7 +1225,8 @@ class Ship {
     const turnRate = this.effectiveTurnRate() * (0.22 + this.throttle * 0.4) * turnBoost;
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
 
-    const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
+    const throttlePenalty = this.team.availableEnergyForShip(this) <= 0
+      && !isBunnyEncoreLocked(this.bunnyHaruhi, match.elapsed, !this.team.areSkillsDisabled()) ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
     const minimumSpeed = this.minimumFlightSpeed();
     const targetSpeed = Math.max(minimumSpeed, dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor());

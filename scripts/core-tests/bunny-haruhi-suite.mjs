@@ -170,8 +170,12 @@ function multiplierAndPurgeCheck() {
   assert.equal(canBunnyLaunchScout(), true);
   assert.equal(canBunnyLaunchScout(purged), false);
   assert.equal(resolveBunnyThrottle(undefined, 0.7), 0.7);
-  assert.equal(resolveBunnyThrottle({ form: "encore" }, 0), 1.4);
-  assert.equal(resolveBunnyThrottle({ form: "encore" }, 0.7, false), 0.7);
+  const encore = { form: "encore", formStartedAt: 90 };
+  assert.equal(resolveBunnyThrottle(encore, 0, true, 90), 1.4);
+  assert.equal(resolveBunnyThrottle(encore, 0.7, false, 99.99), 0.7);
+  assert.equal(resolveBunnyThrottle(encore, 0.7, true, 99.99), 1.4);
+  assert.equal(resolveBunnyThrottle(encore, 0.7, true, 100), 0.7);
+  assert.equal(resolveBunnyThrottle(encore, 0.7, true, 100.01), 0.7);
   assert.deepEqual({ bless, knows, stage, reliable }, queryInputs, "查询与涤除方案不得写回输入状态");
 }
 

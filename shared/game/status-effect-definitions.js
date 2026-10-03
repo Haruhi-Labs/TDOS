@@ -8,7 +8,7 @@ export const STATUS_EFFECT_DEFS = Object.freeze({
   bunny_knows: negative("防御形态减益", "slow", "机动、射程、视野降至{guardMove}%，伤害和射速降至{guardAttack}%。", "切换形态后结束"),
   bunny_immunity: positive("形态免伤", "shield", "暂时免疫外部伤害，不免疫控制与驱散。"),
   bunny_drain: negative("形态自损", "broken_shield", "每秒消耗{drainRate}%最大生命，最低保留1生命。"),
-  bunny_encore: positive("激奏", "lock", "推进固定为{gear}档，低能量与控制仍会降低实际航速。", "切换形态后结束"),
+  bunny_encore: positive("激奏", "lock", "推进固定为{gear}档，持续{encoreDuration}秒；正常耗能，能量耗尽仍能按该档移动，控制仍会降低实际航速。"),
   bunny_speechless: negative("哑口无言", "silence", "沉默、航速与射速降低{speechlessSlow}%，停止自然回能。", "离开舞台后结束"),
   bunny_entranced: positive("入迷", "plus", "战斗属性提高{stageBoost}%，每秒恢复{stageRegen}%最大生命。", "离开舞台后结束"),
   bunny_lock: negative("舞台禁控", "lock", "暂时失去操控与射击能力。"),

@@ -87,7 +87,9 @@ export function serializeShipStatusEffects(ship) {
         if (ship.bunnyHaruhi) bunny("bunny_drain", form.drainUntil, C.knows.selfDrainSeconds);
       }
     }
-    if (ship.bunnyHaruhi && enabled && form.form === "encore") bunny("bunny_encore");
+    if (ship.bunnyHaruhi && enabled && form.form === "encore") {
+      bunny("bunny_encore", form.formStartedAt + C.encore.lockSeconds, C.encore.lockSeconds);
+    }
     if (ship.bunnyHaruhi && ship.key !== "main" && enabled) {
       for (const id of C.supportIds) if (form.support.supporters.has(id)) bunny(`bunny_${id}`);
     }

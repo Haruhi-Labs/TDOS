@@ -41,7 +41,7 @@ export const BUNNY_HARUHI_CONFIG = freezeTree({
       vision: 0.8, damage: 0.7, fireRate: 0.7,
     },
   },
-  encore: { healRatio: 0.2, lockedGear: 4 },
+  encore: { healRatio: 0.2, lockedGear: 4, lockSeconds: 10 },
   companion: {
     baseRatios: {
       hp: 0.35, energy: 0.5, damage: 0.4, fireRate: 0.6,

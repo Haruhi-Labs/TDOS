@@ -145,7 +145,7 @@ try {
       await page.waitForFunction((selector) => { const image = document.querySelector(selector); return image?.complete && image.naturalWidth > 0; }, mode === "spectator" ? '.spectator-team[data-seat="A"] [data-slot="sub1"] img' : '.fleet-row[data-ship="sub1"] img');
       if (screenshots) await page.screenshot({ path: join(screenshots, `${mode}-${locale}-${mobile ? "mobile" : "desktop"}.png`) });
       await details.locator(mode === "spectator" ? ".bunny-readout-close" : "summary").click();
-      for (const name of ["neutral", "attached", "bless", "knows", "knowsExpired", "converted", "companionDead", "lock", "recovery"]) {
+      for (const name of ["encoreExpired", "neutral", "attached", "bless", "knows", "knowsExpired", "converted", "companionDead", "lock", "recovery"]) {
         await publish(states[name]);
         if (mode !== "spectator") {
           if (name === "attached") {
@@ -155,6 +155,9 @@ try {
           const selected = name === "lock" || name === "recovery" ? "sub2" : "sub1";
           await page.locator(mobile ? `.mobile-ship-btn[data-ship="${selected}"]` : `.fleet-row[data-ship="${selected}"]`).click();
           if (mode === "online") await publish(states[name]);
+          if (name === "encoreExpired") {
+            assert.equal(await page.locator(mobile ? '.mobile-throttle-btn[data-gear="1"]' : '#powerGearControl [data-gear="1"]').isDisabled(), false, "激奏10秒到期后恢复换档");
+          }
           if (name === "neutral") {
             assert.equal(await page.locator(mobile ? "#mobileSubSkillBtn" : "#subSkillBtn").isDisabled(), false, "变身无能耗，零能量时仍应显示可施放");
             assert.match(await page.locator(mobile ? '.mobile-throttle-btn[data-gear="1"]' : '#powerGearControl [data-gear="1"]').getAttribute("title"), /Shift\+1/, "退出锁档应恢复原档位提示");

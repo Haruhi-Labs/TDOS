@@ -236,8 +236,12 @@ export function canBunnyLaunchScout(state) {
   return !state?.scoutsDisabled;
 }
 
-export function resolveBunnyThrottle(state, requestedThrottle, enabled = true) {
-  return enabled && state?.form === "encore" ? throttleForGear(C.encore.lockedGear) : requestedThrottle;
+export function isBunnyEncoreLocked(state, now, enabled = true) {
+  return Boolean(enabled && state?.form === "encore" && now < state.formStartedAt + C.encore.lockSeconds);
+}
+
+export function resolveBunnyThrottle(state, requestedThrottle, enabled = true, now = 0) {
+  return isBunnyEncoreLocked(state, now, enabled) ? throttleForGear(C.encore.lockedGear) : requestedThrottle;
 }
 
 /** 绕过普通回能的最低值保护，只去掉自然恢复，不改变推进耗能。 */
