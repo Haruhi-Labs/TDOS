@@ -27,6 +27,7 @@ import {
   drawAsakuraVisionWavesMinimap,
 } from "./render/vision-wave.js";
 import { drawKoizumiOrb } from "./render/koizumi-orb.js";
+import { drawBunnyStages, drawBunnyMarkers, bunnyShipVisible } from "./render/bunny-haruhi.js";
 import {
   drawKoizumiBarrier,
   drawKoizumiBarrierImpacts,
@@ -306,7 +307,7 @@ export function drawBladeQueenAura(ctx, ship) {
 
 // 异世界人支援可触发时，以舰首为尖端展开约五个舰体面积的弧形气场；冷却期间完全熄灭。
 function drawHaruhiImpactReadyAura(ctx, ship) {
-  const now = performance.now();
+  const now = ship.bunnyHaruhi ? 0 : performance.now();
   const pulse = 0.5 + Math.sin(now * 0.0045 + (ship.id || 0)) * 0.5;
   const radius = Math.max(7, Number(ship.radius) || 9);
   const forward = radius * HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER;
@@ -350,11 +351,11 @@ function drawHaruhiImpactReadyAura(ctx, ship) {
   ctx.restore();
 }
 
-function drawHaruhiEsperOrb(ctx, orb) {
+function drawHaruhiEsperOrb(ctx, orb, still = false) {
   if (!orb) {
     return;
   }
-  const now = performance.now();
+  const now = still ? 0 : performance.now();
   const pulse = 0.5 + Math.sin(now * 0.006) * 0.5;
   const radius = Math.max(7, Number(orb.radius) || 9);
   const gradient = ctx.createRadialGradient(
@@ -393,7 +394,7 @@ export function drawShipNameLabel(ctx, ship, accent) {
   if (!name) {
     return;
   }
-  const label = String(name).toUpperCase();
+  const label = String(ship.bunnyCompanion ? `${name} · ${t("伴随舰")}` : name).toUpperCase();
   const cx = ship.x;
   const topY = ship.y + ship.radius + 9; // 舰体正下方,避开上方血条/能量条
   const fontSize = 12;
@@ -478,7 +479,7 @@ function drawClawMarkCounter(ctx, ship) {
 
 function drawSilenceIndicator(ctx, ship) {
   if (!ship?.silenced) return;
-  const now = performance.now();
+  const now = ship.bunnyStageExposure?.inside ? 0 : performance.now();
   const pulse = 0.5 + Math.sin(now * 0.007 + Number(ship.id || 0)) * 0.5;
   ctx.save();
   ctx.translate(ship.x, ship.y);
@@ -511,7 +512,7 @@ export function drawShip(ctx, ship, color, selected, attached, isEnemy = false, 
   if (ship.bladeQueen) {
     drawBladeQueenAura(ctx, ship);
   }
-  if (ship.haruhiImpactReady) {
+  if (ship.haruhiImpactReady || ship.bunnyHaruhi?.otherworlderReady) {
     drawHaruhiImpactReadyAura(ctx, ship);
   }
 
@@ -962,6 +963,7 @@ export function drawMinimap(ctx, frame, rect, view) {
     Number(state.world?.size) || LOGICAL,
   );
   drawYukiRadarMinimap(ctx, frame, rect);
+  drawBunnyStages(ctx, frame, rect);
 
   const plotShip = (ship, color) => {
     if (!ship || !ship.alive) {
@@ -988,6 +990,7 @@ export function drawMinimap(ctx, frame, rect, view) {
   }
 
   // 小地图只补猎杀图标，不把目标加入敌舰点集合，保持“可追踪但没有真实视野”的语义。
+  drawBunnyMarkers(ctx, frame, rect);
   drawShamisenHuntMarkersMinimap(
     ctx,
     frame,
@@ -1106,6 +1109,7 @@ export function drawBattleWorld(ctx, frame) {
 
   drawBackground(ctx, frame.stars, elapsed);
   drawZones(ctx, state, frame.selectedZoneId);
+  drawBunnyStages(ctx, frame);
   drawAsakuraVisionWaves(
     ctx,
     [state.teams?.A, state.teams?.B],
@@ -1192,6 +1196,11 @@ export function drawBattleWorld(ctx, frame) {
   }
 
   drawHaruhiEsperOrb(ctx, ownTeam?.haruhiFlagship?.esperOrb);
+  for (const team of Object.values(state.teams || {})) {
+    for (const ship of Object.values(team.ships || {})) {
+      if (ship.bunnyHaruhi?.esperOrb && bunnyShipVisible(frame, team, ship)) drawHaruhiEsperOrb(ctx, ship.bunnyHaruhi.esperOrb, true);
+    }
+  }
   const enemyMainId = enemyTeam?.ships?.main?.id;
   if (spectating || (enemyMainId && enemyVisible(enemyMainId))) {
     drawHaruhiEsperOrb(ctx, enemyTeam?.haruhiFlagship?.esperOrb);
@@ -1218,6 +1227,7 @@ export function drawBattleWorld(ctx, frame) {
   }
 
   // 猎杀方与被猎杀方都能看见目标标记；迷雾中只画标记，不会补画敌方舰体或名字。
+  drawBunnyMarkers(ctx, frame);
   drawShamisenHuntMarkers(ctx, frame);
 
   for (const scout of ownTeam?.scouts || []) {

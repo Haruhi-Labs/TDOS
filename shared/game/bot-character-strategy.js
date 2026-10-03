@@ -29,6 +29,10 @@ export function snapshotVisibleCharacterTactics(entity, now) {
     ? koizumiBarrierGeometry(entity.team)
     : null;
   return {
+    ...(entity?.bunnyStageExposure?.inside ? { bunnyStagePhase: entity.bunnyStageExposure.phase } : {}),
+    ...(entity?.slotKey === "main" && entity.characterId === "bunny_haruhi"
+      ? { bunnyStageRadius: entity.team.areSkillsDisabled() ? 0 : entity.effectiveVision() }
+      : {}),
     bladeQueenRemaining: remaining(entity?.effects?.bladeQueenUntil, now),
     catPawRemaining: remaining(entity?.effects?.catPawUntil, now),
     koizumiOrbRemaining: orb

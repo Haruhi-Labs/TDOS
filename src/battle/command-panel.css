@@ -109,3 +109,13 @@
   .battle-shell .mobile-throttle-wrap .throttle-gear-btn:hover:not(:disabled) { color: #fff0c9; background: #3d3b36; }
   .battle-shell .mobile-battle-hint { font-style: normal; }
 }
+/* 原有命令区内可展开的只读舰况，触屏与键盘均可查看。 */
+.bunny-details { min-width: 0; color: #e3dfce; font: .74rem/1.65 var(--font-cn); }
+.bunny-details[hidden] { display: none; }
+.bunny-details summary { cursor: pointer; color: #f0d488; overflow-wrap: anywhere; }
+.bunny-details summary:focus-visible { outline: 2px solid #f0d488; outline-offset: 2px; }
+.bunny-readout { margin: 6px 0; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; }
+.mobile-battle-hud .bunny-details { grid-column: 1 / -1; padding: 0 8px; font-size: .68rem; }
+.mobile-battle-hud .bunny-readout { max-height: 90px; }
+.battle-shell .bunny-transform .command-action-detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
+.battle-shell .bunny-transform .command-action-cost { white-space: normal; overflow-wrap: anywhere; }

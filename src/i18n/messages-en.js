@@ -1,4 +1,6 @@
+import { BUNNY_MESSAGES } from "./bunny-haruhi-text.js";
 export const EN_MESSAGES = {
+  ...BUNNY_MESSAGES.en,
   "比赛房间": "Tournament room",
   "创建比赛房间": "Create tournament room",
   "比赛准备": "Match preparation",

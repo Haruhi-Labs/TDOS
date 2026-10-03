@@ -45,7 +45,7 @@ const ROMAN = ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 // 立绘是否真实存在（CHARACTER_THEMES 里 tsuruya/asakura 暂无图）
 const HAS_PORTRAIT = new Set([
-  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura", "shamisen",
+  "haruhi", "koizumi", "yuki", "future1096", "kyon", "tsuruya", "asakura", "shamisen", "bunny_haruhi",
 ]);
 
 // 把单页内容渲染为 HTML 字符串（base 与 flipper 共享同一份模板）

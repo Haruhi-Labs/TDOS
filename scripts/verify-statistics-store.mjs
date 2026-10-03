@@ -171,7 +171,35 @@ try {
   }
   assert.ok((await readFile(logPath, "utf8")).startsWith(beforeRestore), "新增对局只能追加，不覆盖历史内容");
 
-  console.log("胜率统计存储校验通过：去重、匿名化、持久化恢复、单人/多人聚合与公开字段隔离均正常。");
+  const bunnyStore = createStatisticsStore({ dataDir: join(dataDir, "bunny"), currentVersion: GAME_VERSION, now: () => time });
+  await bunnyStore.ready();
+  for (const id of ["bunny_haruhi", "haruhi"]) {
+    const sim = new MatchSimulation({ mode: "pvp", aiSeats: [], teamLoadouts: { A: { main: "kyon", sub1: id, sub2: "yuki" } } });
+    sim.teamA.splitLevel = 2;
+    if (id === "bunny_haruhi") for (let i = 0; i < 4; i++) {
+      sim.teamA.cooldowns.sub1 = 0;
+      assert.equal(sim.teamA.castSubSkill("sub1"), true);
+    }
+    sim.elapsed = 120;
+    sim.tick = 3600;
+    sim.winnerSeat = "A";
+    const entry = buildServerMatchStatisticsRecord({
+      room: { id, mode: "pvp", seats: { A: "a", B: "b" }, startedAt: time - 120000, match: sim },
+      getPlayerById: (key) => ({ id: key }), now: time,
+    });
+    assert.deepEqual(Object.keys(entry.participants[0].loadout), ["main", "sub1", "sub2"], "伴随舰不能进入阵容 key");
+    assert.equal(entry.participants[0].loadout.sub1, id);
+    assert.equal(Object.hasOwn(sim.serializeState(), "telemetry"), false);
+    assert.equal((await bunnyStore.record(entry, { trusted: true })).accepted, true);
+  }
+  const bunnyLineups = bunnyStore.publicLeaderboard().modes.multiplayer.lineups;
+  assert.equal(bunnyLineups.find((row) => row.lineup.sub1 === "bunny_haruhi").games, 1);
+  assert.equal(bunnyLineups.find((row) => row.lineup.sub1 === "haruhi").games, 1, "新旧春日不得合并归档");
+  await bunnyStore.flush();
+  const bunnyReload = createStatisticsStore({ dataDir: join(dataDir, "bunny"), currentVersion: GAME_VERSION, now: () => time });
+  await bunnyReload.ready();
+  assert.deepEqual(bunnyReload.publicLeaderboard().modes, bunnyStore.publicLeaderboard().modes);
+  console.log("胜率统计存储校验通过：去重、匿名化、恢复、新旧春日独立归档及伴随舰阵容排除。");
 } finally {
   await rm(dataDir, { recursive: true, force: true });
 }

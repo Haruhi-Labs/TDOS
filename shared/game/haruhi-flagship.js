@@ -1,39 +1,29 @@
-import { clamp, distance, linePointDistance, normalizeAngle } from "./math.js";
+import { distance, linePointDistance } from "./math.js";
+import {
+  HARUHI_SUPPORTS, createSupportState, unlockSupport, tickSupportSource,
+  supportOrbGeometry, supportOtherworlderReady, triggerSupportOtherworlder,
+} from "./haruhi-support.js";
 
-export const HARUHI_SUPPORTS = Object.freeze([
-  "alien",
-  "time_traveler",
-  "otherworlder",
-  "esper",
-]);
-
-export const HARUHI_SUPPORT_LABELS = Object.freeze({
-  alien: "宇宙人",
-  time_traveler: "未来人",
-  otherworlder: "异世界人",
-  esper: "超能力者",
-});
+// 保留旧导入路径和导出集合，调用方无需随内部抽取改动。
+export {
+  HARUHI_SUPPORTS, HARUHI_SUPPORT_LABELS, HARUHI_ALIEN_INTERVAL,
+  HARUHI_TIME_TRAVELER_INTERVAL, HARUHI_TIME_TRAVELER_BEAM_GAP,
+  HARUHI_OTHERWORLDER_COOLDOWN, HARUHI_OTHERWORLDER_DAMAGE_RATIO,
+  HARUHI_OTHERWORLDER_KNOCKBACK_DURATION, HARUHI_ESPER_ORBIT_SPEED,
+  HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER,
+} from "./haruhi-support.js";
 
 export const HARUHI_BOOST_MULTIPLIER = 1.15;
 export const HARUHI_DAMAGE_TAKEN_MULTIPLIER = 0.85;
-export const HARUHI_ALIEN_INTERVAL = 6;
-export const HARUHI_TIME_TRAVELER_INTERVAL = 10;
-export const HARUHI_TIME_TRAVELER_BEAM_GAP = 0.3;
-export const HARUHI_OTHERWORLDER_COOLDOWN = 8;
-export const HARUHI_OTHERWORLDER_DAMAGE_RATIO = 0.15;
-export const HARUHI_OTHERWORLDER_KNOCKBACK_DURATION = 0.85;
-export const HARUHI_ESPER_ORBIT_SPEED = 1.44;
-export const HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER = 3;
 
 export function createHaruhiFlagshipState(initialAngle = 0) {
-  return {
-    supporters: new Set(),
-    alienNextAt: 0,
-    timeTravelerNextAt: 0,
-    queuedBeamAt: [],
-    otherworlderReadyAt: 0,
-    esperAngle: normalizeAngle(initialAngle),
-  };
+  return createSupportState(initialAngle);
+}
+
+function flagshipSupportSource(team) {
+  if (!team || team.mainCharacterId() !== "haruhi") return null;
+  // 普通春日沿用原存活判断；不附加新角色的封印/恢复语义。
+  return { sourceShip: team.ships.main, state: team.haruhiFlagship, enabled: true };
 }
 
 export function hasHaruhiSupport(team, supportId) {
@@ -51,21 +41,7 @@ export function activateHaruhiFlagship(team, duration, random = Math.random) {
   team.effects.haruhiBoostUntil = now + Math.max(0, Number(duration) || 0);
   team.markActiveSkillEffectStarted("haruhiBoostUntil");
 
-  const remaining = HARUHI_SUPPORTS.filter((id) => !team.haruhiFlagship.supporters.has(id));
-  if (remaining.length === 0) {
-    return null;
-  }
-  const roll = clamp(Number(random()) || 0, 0, 0.999999);
-  const supportId = remaining[Math.floor(roll * remaining.length)];
-  team.haruhiFlagship.supporters.add(supportId);
-  if (supportId === "alien") {
-    team.haruhiFlagship.alienNextAt = now + HARUHI_ALIEN_INTERVAL;
-  } else if (supportId === "time_traveler") {
-    team.haruhiFlagship.timeTravelerNextAt = now + HARUHI_TIME_TRAVELER_INTERVAL;
-  } else if (supportId === "otherworlder") {
-    team.haruhiFlagship.otherworlderReadyAt = now;
-  }
-  return supportId;
+  return unlockSupport(team.haruhiFlagship, HARUHI_SUPPORTS, now, random);
 }
 
 export function haruhiBoostActive(team) {
@@ -89,78 +65,25 @@ export function haruhiDamageTakenMultiplier(team) {
 }
 
 export function updateHaruhiFlagship(team, hooks = {}) {
-  if (!team || team.mainCharacterId() !== "haruhi") {
-    return;
-  }
-  const main = team.ships.main;
-  const state = team.haruhiFlagship;
-  const now = team.match.elapsed;
-  if (!main?.alive) {
-    state.queuedBeamAt.length = 0;
-    return;
-  }
-
-  if (hasHaruhiSupport(team, "alien")) {
-    while (state.alienNextAt > 0 && now + 1e-9 >= state.alienNextAt) {
-      hooks.launchAlienWingmen?.(main);
-      state.alienNextAt += HARUHI_ALIEN_INTERVAL;
-    }
-  }
-
-  if (hasHaruhiSupport(team, "time_traveler")) {
-    while (state.timeTravelerNextAt > 0 && now + 1e-9 >= state.timeTravelerNextAt) {
-      state.queuedBeamAt.push(
-        state.timeTravelerNextAt,
-        state.timeTravelerNextAt + HARUHI_TIME_TRAVELER_BEAM_GAP,
-        state.timeTravelerNextAt + HARUHI_TIME_TRAVELER_BEAM_GAP * 2,
-      );
-      state.timeTravelerNextAt += HARUHI_TIME_TRAVELER_INTERVAL;
-    }
-    while (state.queuedBeamAt.length > 0 && now + 1e-9 >= state.queuedBeamAt[0]) {
-      state.queuedBeamAt.shift();
-      hooks.launchRandomBeam?.(main);
-    }
-  }
-
-  if (hasHaruhiSupport(team, "esper")) {
-    state.esperAngle = normalizeAngle(state.esperAngle + HARUHI_ESPER_ORBIT_SPEED * (Number(hooks.dt) || 0));
-  }
+  const source = flagshipSupportSource(team);
+  if (source) tickSupportSource(source, team.match.elapsed, hooks.dt, hooks);
 }
 
 export function haruhiEsperOrb(team) {
-  if (!hasHaruhiSupport(team, "esper")) {
-    return null;
-  }
-  const main = team.ships.main;
-  if (!main?.alive) {
-    return null;
-  }
-  const orbitRadius = main.effectiveVision();
-  const radius = Math.max(8, main.radius * 0.92);
-  return {
-    x: main.x + Math.cos(team.haruhiFlagship.esperAngle) * orbitRadius,
-    y: main.y + Math.sin(team.haruhiFlagship.esperAngle) * orbitRadius,
-    angle: team.haruhiFlagship.esperAngle,
-    orbitRadius,
-    radius,
-    absorbRadius: radius * HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER,
-  };
+  if (!hasHaruhiSupport(team, "esper")) return null;
+  return supportOrbGeometry(flagshipSupportSource(team));
 }
 
 export function haruhiOtherworlderReady(team) {
-  return Boolean(
-    hasHaruhiSupport(team, "otherworlder")
-      && team.ships.main?.alive
-      && team.match.elapsed + 1e-9 >= team.haruhiFlagship.otherworlderReadyAt,
-  );
+  if (!hasHaruhiSupport(team, "otherworlder")) return false;
+  return supportOtherworlderReady(flagshipSupportSource(team), team.match.elapsed);
 }
 
 export function triggerHaruhiOtherworlder(team) {
   if (!haruhiOtherworlderReady(team)) {
     return false;
   }
-  team.haruhiFlagship.otherworlderReadyAt = team.match.elapsed + HARUHI_OTHERWORLDER_COOLDOWN;
-  return true;
+  return triggerSupportOtherworlder(flagshipSupportSource(team), team.match.elapsed);
 }
 
 export function projectileAbsorptionPoint(projectile, dt, orb) {

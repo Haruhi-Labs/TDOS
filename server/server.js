@@ -610,6 +610,8 @@ wss.on("connection", (ws) => {
       player.rulesetVersion = String(data.rulesetVersion || "").trim();
       const rulesetCompatibility = evaluateRulesetCompatibility(player.rulesetVersion);
       player.rulesetCompatible = rulesetCompatibility.compatible;
+      const currentRoom = rooms.get(player.roomId);
+      if (!player.rulesetVersion && currentRoom?.match?.bunnyHaruhiActive) player.rulesetCompatible = false;
       if (!player.rulesetCompatible) {
         sendRulesetMismatch(player);
       }

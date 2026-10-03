@@ -5,8 +5,11 @@ import { chromium } from "playwright";
 import { createServer } from "vite";
 import { CHARACTER_ORDER, MatchSimulation, skillMetaForCharacter } from "../shared/game-core.js";
 import { setLocale, skillText } from "../src/i18n.js";
-import { CHARACTER_TEXT } from "../src/i18n/character-text.js";
+import { CHARACTER_TEXT } from "../src/i18n/catalog.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
 import { skillDetailRows, skillOverview } from "../src/character-select/skill-presentation.js";
+const onlyCharacter = process.argv.find((arg) => arg.startsWith("--character="))?.slice("--character=".length);
+if (onlyCharacter) assert.ok(CHARACTER_ORDER.includes(onlyCharacter), "未知的定向视觉角色");
 
 // 校验指定技能文案与参数分层，并用真实规则对象核对展示层未公开常量的关键数值。
 for (const locale of ["zh", "en", "ja"]) {
@@ -14,9 +17,14 @@ for (const locale of ["zh", "en", "ja"]) {
   for (const character of CHARACTER_ORDER) for (const mode of ["flagship", "sub"]) {
     assert.ok(skillOverview(character, mode), `${locale} ${character} ${mode} 缺少简介`);
     const text = CHARACTER_TEXT[locale][character][mode === "sub" ? "subSkill" : "flagshipSkill"];
-    assert.equal(skillOverview(character, mode), text.overview, "选角说明应完整使用指定技能文案");
-    if (locale === "zh") assert.equal(text.overview, text.description, "中文选角与技能提示应使用同一份原文");
+    const expected = character === "bunny_haruhi" ? text.overview.replace(/\{(\w+)\}/g, (_, key) => BUNNY_VIEW_PARAMS[key]) : text.overview;
+    assert.equal(skillOverview(character, mode), expected, "选角说明应完整使用指定技能文案");
+    if (locale === "zh" && character !== "bunny_haruhi") assert.equal(text.overview, text.description, "既有中文选角与技能提示应使用同一份原文");
     const rows = skillDetailRows(character, mode);
+    if (character === "bunny_haruhi") {
+      assert.ok(rows.some((row) => row.value === skillText(character, mode, "description")), "新角色长规则必须完整保留在可滚动详情中，简介不代替规则");
+      assert.ok(!rows.some((row) => /\{\w+\}|undefined/.test(row.value)), "新角色所有参数必须可解析");
+    }
     assert.ok(rows.length >= 4 && rows.every((row) => row.label && row.value), "详细参数应有完整的逐项标签和值");
     assert.equal(new Set(rows.map((row) => row.label)).size, rows.length, "同一技能不应重复参数项目");
     if (locale === "en") assert.equal(rows.some((row) => /[\u4e00-\u9fff]/u.test(row.label)), false, "英文参数不应回退为中文标签");
@@ -106,6 +114,7 @@ try {
     const { context, page } = await enter(viewport, mobile, "zh-CN");
     const prefix = mobile ? ".csm .cs-skill-trigger" : ".cs-book > .cs-page-right .cs-skill-trigger";
     for (let i = 0; i < CHARACTER_ORDER.length; i++) {
+      if (onlyCharacter && CHARACTER_ORDER[i] !== onlyCharacter) continue;
       if (i > 0) {
         await page.locator(mobile ? ".csm-dot" : ".cs-tab").nth(i).click();
         if (!mobile) await page.locator(".cs-page-flipper").waitFor({ state: "detached" });
@@ -124,7 +133,7 @@ try {
         await verifyGeometry(page, viewport);
         await page.keyboard.press("ArrowRight");
         assert.equal(await button.getAttribute("data-character"), CHARACTER_ORDER[i], "阅读浮窗时不可翻到另一角色");
-        if (screenshotDir && i < 2 && skill === 0) await page.screenshot({ path: join(screenshotDir, `${mobile ? "mobile" : "desktop"}-${CHARACTER_ORDER[i]}.png`) });
+        if (screenshotDir && (i < 2 || CHARACTER_ORDER[i] === "bunny_haruhi")) await page.screenshot({ path: join(screenshotDir, `${mobile ? "mobile" : "desktop"}-${CHARACTER_ORDER[i]}-${mode}.png`) });
         await page.keyboard.press("Escape");
         await page.locator(".cs-skill-popover").waitFor({ state: "detached" });
         await page.waitForFunction((element) => element === document.activeElement, await button.elementHandle());
@@ -179,9 +188,9 @@ try {
     [{ width: 844, height: 390 }, true, "ja-JP", 6],
   ]) {
     const { context, page } = await enter(viewport, mobile, locale);
-    await page.locator(mobile ? ".csm-dot" : ".cs-tab").nth(index).click();
+    await page.locator(mobile ? ".csm-dot" : ".cs-tab").nth(onlyCharacter ? CHARACTER_ORDER.indexOf(onlyCharacter) : index).click();
     if (!mobile) await page.locator(".cs-page-flipper").waitFor({ state: "detached" });
-    await page.locator(mobile ? ".csm .cs-skill-trigger" : ".cs-book > .cs-page-right .cs-skill-trigger").first().click();
+    await page.locator(mobile ? ".csm .cs-skill-trigger" : ".cs-book > .cs-page-right .cs-skill-trigger").nth(onlyCharacter && viewport.height === 540 ? 1 : 0).click();
     await page.locator(".cs-skill-popover[data-open=true]").waitFor();
     const geometry = await verifyGeometry(page, viewport);
     if (viewport.height === 540) {
@@ -218,5 +227,5 @@ try {
     await context.close();
   }
   assert.deepEqual(errors, [], "技能详情与选角交互不应产生浏览器异常");
-  console.log("技能轻量浮窗检查通过：八角色十六技能、三语言、参数核对、入口定位、无模态遮罩、键盘/外部关闭、非约束焦点、卸载与矮屏滚动。");
+  console.log(`技能轻量浮窗检查通过：全角色参数核对，浏览器${onlyCharacter ? `定向${onlyCharacter}` : `${CHARACTER_ORDER.length}角色${CHARACTER_ORDER.length * 2}技能`}、三语言、入口定位、键盘/外部关闭、非约束焦点、卸载与矮屏滚动。`);
 } finally { await browser.close(); await vite.close(); }

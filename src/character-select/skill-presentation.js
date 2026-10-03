@@ -5,6 +5,8 @@ import { HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER } from "../../shared/game/har
 import { YUKI_RADAR_ROTATION_SECONDS } from "../../shared/game/combat-rules.js";
 import { SHAMISEN_HUNT_DAMAGE_MULTIPLIER } from "../../shared/game/shamisen-hunt.js";
 import { skillText, t } from "../i18n.js";
+import { BUNNY_VIEW_PARAMS } from "../../shared/game/bunny-haruhi-view-params.js";
+import { BUNNY_HARUHI_CONFIG as BUNNY } from "../../shared/game/bunny-haruhi-config.js";
 
 const number = (value) => String(Math.round(Number(value) * 1000) / 1000);
 const seconds = (value) => t("{value}秒", { value: number(value) });
@@ -30,6 +32,21 @@ export function skillDetailRows(characterId, mode) {
     if (meta.target === "zone") row("释放方式", t("选择目标战区"));
   }
   switch (meta.id) {
+    case "lost_my_music":
+    case "god_knows":
+      row("作用说明", skillText(characterId, mode, "description"));
+      if (mode === "flagship") {
+        row("失速与禁控", seconds(BUNNY.stage.lockSeconds));
+        row("航速恢复", seconds(BUNNY.stage.recoverySeconds));
+        row("舞台入迷等待", seconds(BUNNY.stage.entranceSeconds));
+        row("舞台再入控制间隔", seconds(BUNNY.stage.entryCooldownSeconds));
+      }
+      if (mode === "sub") {
+        row("God bless…", t("生命需高于{cost}%上限", BUNNY_VIEW_PARAMS));
+        row("攻击形态强化", t("航速+{assaultSpeed}%，转向与加速+{assaultManeuver}%，射程与视野+{assaultRange}%，伤害+{assaultDamage}%，射速+{assaultRate}%。", BUNNY_VIEW_PARAMS));
+        row("防御形态减益", t("机动、射程、视野降至{guardMove}%，伤害和射速降至{guardAttack}%。", BUNNY_VIEW_PARAMS));
+      }
+      break;
     case "im_here":
       row("强化对象", t("全舰队"));
       for (const label of ["航速提升", "转向提升", "加速提升", "射程提升", "视野提升", "伤害提升", "射速提升"]) row(label, percent(HARUHI_BOOST_MULTIPLIER - 1));

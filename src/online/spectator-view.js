@@ -1,4 +1,5 @@
-import { clamp, skillMetaForCharacter } from "../../shared/game-core.js";
+import { clamp } from "../../shared/game-core.js";
+import { battleSkillMeta as skillMetaForCharacter, bunnyBlockLabel, bunnyFormLabel, renderBunnyReadout } from "../battle/bunny-haruhi-view.js";
 import { characterName, skillText, slotLabel, splitLabel, t, translateServerText } from "../i18n.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";
 import { renderStatusEffects } from "../battle/status-effects.js";
@@ -20,6 +21,7 @@ function teamHTML(seat) {
         <div class="spectator-identity"><span class="spectator-role">${slotLabel(slot, "short")}</span><h3>—</h3><span class="spectator-ship-state">—</span></div></div>
       <div class="spectator-gauges">${gaugeHTML("hull", t("舰体"))}${gaugeHTML("energy", t("能量"))}</div>
       <div class="status-effects"></div>
+      <details class="bunny-details" name="bunny-spectator-readout" hidden><summary></summary><div class="bunny-readout-panel"><button type="button" class="bunny-readout-close">${t("关闭舰况")}</button><p class="bunny-readout"></p></div></details>
       <div class="spectator-skill"><button type="button" class="spectator-skill-name" disabled>—</button><span class="spectator-skill-readout"><span class="spectator-mobile-state" hidden></span><strong class="spectator-skill-state">—</strong><span class="spectator-cooldown" hidden></span></span><span class="spectator-skill-track"><i></i></span></div>
     </article>`).join("")}</div>
   </aside>`;
@@ -28,6 +30,8 @@ function teamHTML(seat) {
 function shipState(ship, team, slot) {
   if (!ship) return "—";
   if (!ship.alive) return t("已击沉");
+  if (ship.bunnyStageExposure?.controlLocked) return t("舞台禁控");
+  if (ship.bunnyHaruhi) return slot === "main" ? t("舞台·被动") : bunnyFormLabel(ship.bunnyHaruhi.form);
   if (ship.stunRemaining > 0) return t("眩晕");
   if (ship.silenced) return t("沉默");
   if (ship.koizumiOrb?.active) return ship.koizumiOrb.phase === "returning" ? t("自动归航") : t("光球形态");
@@ -43,6 +47,10 @@ export function spectatorSkillState(team, ship, slot, characterId) {
   const progress = !ship?.alive ? 0 : meta?.cooldown ? clamp(1 - remaining / meta.cooldown, 0, 1) : 1;
   let status = "—";
   let tone = "waiting";
+  if (ship?.bunnyHaruhi) return {
+    status: !ship.alive ? t("已击沉") : team.skillsDisabled ? t("已封印") : slot === "main" ? t("舞台·被动") : bunnyBlockLabel(ship, team),
+    tone: slot === "main" ? "passive" : ship.bunnyHaruhi.canTransform ? "ready" : "waiting", remaining, progress,
+  };
   if (ship) {
     if (!ship.alive) status = t("已击沉");
     else if (team.skillsDisabled) status = t("已封印");
@@ -88,6 +96,13 @@ export function createSpectatorView(battleView) {
   const tooltipDescription = tooltip.querySelector("p");
   const tooltipEvents = new AbortController();
   const eventOptions = { signal: tooltipEvents.signal };
+  battleView.addEventListener("click", (event) => {
+    const close = event.target.closest(".bunny-readout-close");
+    if (!close) return;
+    const details = close.closest("details");
+    details.open = false;
+    details.querySelector("summary").focus();
+  }, eventOptions);
   let tooltipTrigger = null;
   let tooltipPinned = false;
   let tooltipTimer = 0;
@@ -226,6 +241,7 @@ export function createSpectatorView(battleView) {
         const stateText = shipState(ship, team, slot);
         stateLabel.textContent = stateText;
         renderStatusEffects(row.querySelector(".status-effects"), ship);
+        renderBunnyReadout(row.querySelector(".bunny-readout"), ship);
         updateGauge(hull, ship?.alive ? ship.hp : 0, ship?.maxHp, Boolean(ship));
         updateGauge(energy, ship?.alive ? ship.fleetEnergy ?? ship.energy : 0, ship?.fleetMaxEnergy ?? ship?.maxEnergy, Boolean(ship));
         const info = spectatorSkillState(team, ship, slot, characterId);

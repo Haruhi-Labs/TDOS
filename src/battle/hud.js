@@ -5,7 +5,6 @@ import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
   MANUAL_SCOUT_COOLDOWN,
   SCOUT_LAUNCH_COST,
-  skillMetaForCharacter,
 } from "../../shared/game-core.js";
 import { shipCharacterName, slotLabel as localizedSlotLabel, t } from "../i18n.js";
 import {
@@ -18,8 +17,10 @@ import { mirrorCommandButton, renderCommandPanel, renderCommandShip } from "./co
 import { syncThrottleGearControls, throttleLabelForValue } from "./throttle.js";
 import { isShipControlLocked, isShipSelectable } from "./ship-selection.js";
 import { renderStatusEffects } from "./status-effects.js";
+import { battleSkillMeta as skillMetaForCharacter, bunnyBlockLabel, bunnyFormLabel } from "./bunny-haruhi-view.js";
 
 const DESKTOP_COOLDOWN_BUTTON_KEYS = ["flagshipBtn", "subSkillBtn", "scoutBtn", "autoScoutBtn"];
+const throttleTitles = new WeakMap();
 
 function scoutCooldownDuration(remaining) {
   return remaining > MANUAL_SCOUT_COOLDOWN + 0.05
@@ -81,8 +82,18 @@ function updateSkillAvailability(ui, own, opts = {}) {
   const scoutEnergy = selected && selected.alive ? (Number(selected.fleetEnergy) || 0) : mainEnergy;
 
   const scoutLocked = own.skillsDisabled;
-  ui.scoutBtn.disabled = scoutLocked || isShipControlLocked(selected || mainShip) || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
-  for (const button of [...(ui.powerGearButtons || []), ...(ui.mobileThrottleButtons || [])]) button.disabled = !selected?.canControl;
+  ui.scoutBtn.disabled = scoutLocked || Boolean(selected?.bunnyHaruhi?.scoutsDisabled) || isShipControlLocked(selected || mainShip) || (cooldowns.scout || 0) > 0 || scoutEnergy < SCOUT_LAUNCH_COST;
+  for (const button of [...(ui.powerGearButtons || []), ...(ui.mobileThrottleButtons || [])]) {
+    const lockedGear = selected?.bunnyHaruhi?.lockedGear;
+    button.disabled = !selected?.canControl || (lockedGear != null && Number(button.dataset.gear) !== lockedGear);
+    if (lockedGear != null) {
+      if (!throttleTitles.has(button)) throttleTitles.set(button, button.title);
+      button.title = `${throttleTitles.get(button)} · ${t("{gear}档锁定", { gear: lockedGear })}`;
+    } else if (throttleTitles.has(button)) {
+      button.title = throttleTitles.get(button);
+      throttleTitles.delete(button);
+    }
+  }
   setCooldownButtonLabel(ui.scoutBtn, scoutLocked
     ? t("派出侦查机（已被封印）")
     : (cooldowns.scout || 0) > 0
@@ -165,6 +176,12 @@ function updateSkillAvailability(ui, own, opts = {}) {
 
   const skillEnergy = Number(selected.fleetEnergy) || 0;
   const cooldown = Number(cooldowns[selected.key] || 0);
+  if (selected.bunnyHaruhi) {
+    ui.subSkillBtn.disabled = !selected.bunnyHaruhi.canTransform;
+    setCooldownButtonLabel(ui.subSkillBtn, `${bunnyFormLabel(selected.bunnyHaruhi.nextForm)} · ${bunnyBlockLabel(selected, own)}`);
+    setCooldownProgress(ui.subSkillBtn, cooldown, subMeta.cooldown, `${selected.key}:${subMeta.id}`);
+    return;
+  }
   const detached = !selected.attached && selected.canControl;
   const disabled = own.skillsDisabled || selected.silenced || selected.koizumiOrb?.active || !detached || cooldown > 0 || skillEnergy < (subMeta.cost || 0);
 
@@ -203,7 +220,7 @@ export function syncMobileHud(ui, own, opts = {}) {
   const shipName = selected ? shipCharacterName(selected) : t("无");
   const energyPercent = energyPercentForShip(selected);
   ui.mobileBattleSummary.textContent = `${shipName} · ${t("区")}${selectedZoneId} · ${t("能量")}${energyPercent}% · ${throttleLabelForValue(selected?.throttle)}`;
-  const hintText = pendingSubSkillAim
+  const hintText = selected?.bunnyHaruhi ? bunnyBlockLabel(selected, own) : pendingSubSkillAim
     ? t("技能瞄准中：点战场确认，点右上小地图先挪镜头")
     : t("点舰船切换 · 点战场下航线 · 拖侦察选择战区");
   if (ui.mobileBattleHint.textContent !== hintText) ui.mobileBattleHint.textContent = hintText;

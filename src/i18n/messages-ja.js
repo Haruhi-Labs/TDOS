@@ -1,4 +1,6 @@
+import { BUNNY_MESSAGES } from "./bunny-haruhi-text.js";
 export const JA_MESSAGES = {
+  ...BUNNY_MESSAGES.ja,
   "比赛房间": "大会ルーム",
   "创建比赛房间": "大会ルームを作成",
   "比赛准备": "試合準備",

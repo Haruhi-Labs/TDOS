@@ -210,6 +210,27 @@ async function rulesetHandshakeCheck() {
   await terminateClients();
 }
 
+async function bunnyRulesetRoomCheck() {
+  const host = await new GuardClient().open();
+  const legacy = await new GuardClient().open();
+  const observer = await new GuardClient().open();
+  host.send({ type: "protocol_hello", protocolVersion: 2, rulesetVersion: RULESET_VERSION });
+  host.send({ type: "set_loadout", loadout: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" } });
+  host.send({ type: "create_room", visibility: "public", mode: "pvp" });
+  const waiting = await host.waitFor((message) => message.type === "room_state" && message.room?.status === "waiting");
+  legacy.send({ type: "join_room", roomId: waiting.room.roomId });
+  await legacy.waitFor((message) => message.type === "error" && message.code === "bunny_ruleset_required");
+  legacy.send({ type: "protocol_hello", protocolVersion: 2, rulesetVersion: RULESET_VERSION });
+  legacy.send({ type: "join_room", roomId: waiting.room.roomId });
+  await legacy.waitFor((message) => message.type === "room_state" && message.room?.status === "running");
+  observer.send({ type: "spectate_room", roomId: waiting.room.roomId });
+  await observer.waitFor((message) => message.type === "error" && message.code === "bunny_ruleset_required");
+  observer.send({ type: "protocol_hello", protocolVersion: 2, rulesetVersion: RULESET_VERSION });
+  observer.send({ type: "spectate_room", roomId: waiting.room.roomId });
+  await observer.waitFor((message) => message.type === "room_state" && message.self?.spectating === true);
+  await terminateClients();
+}
+
 async function yukiRadarPrivacyCheck() {
   const host = await new GuardClient().open();
   const guest = await new GuardClient().open();
@@ -372,6 +393,7 @@ try {
   await heartbeatCheck();
   await connectionLimitCheck();
   await rulesetHandshakeCheck();
+  await bunnyRulesetRoomCheck();
   await yukiRadarPrivacyCheck();
   await spectatorLimitCheck();
   await activeRoomLimitCheck();
