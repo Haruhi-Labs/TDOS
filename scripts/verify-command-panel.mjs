@@ -54,12 +54,10 @@ try {
   await page.locator(".command-help summary").click();
   await page.keyboard.press("1");
   await page.locator("#flagshipBtn").click();
+  // 操作台只验证施放结果；浮层交互与说明内容由状态卡专项覆盖。
   await page.locator('.fleet-card [data-effect="haruhi_boost"]').first().waitFor();
   await page.locator('.fleet-card [data-effect="broadcast"]').first().waitFor();
-  await page.locator('.fleet-card [data-effect="haruhi_boost"]').first().hover();
-  await page.locator(".status-effect-tooltip:visible").waitFor();
-  assert.match(await page.locator(".status-effect-tooltip p").textContent(), /伤害与射速提高15%/);
-  await page.keyboard.press("Escape");
+  assert.equal(await page.locator("#flagshipBtn").isDisabled(), true, "施放后应进入冷却，不能立即重复释放");
   if (screenshotDir) await page.screenshot({ path: join(screenshotDir, "battle-desktop.png") });
 
   // 构造权威快照的边界状态，验证信息呈现，不向真实模拟写回数据。
@@ -128,5 +126,5 @@ try {
     }
   }
   assert.deepEqual(errors, [], "对战面板操作不应产生浏览器异常");
-  console.log("对战操作台检查通过：真实单人切舰、分离、换挡、键盘帮助；技能限制、冷却、瞄准与零能量；五种视口。");
+  console.log("对战操作台检查通过：真实单人切舰、分离、换挡、键盘帮助与技能施放；技能限制、冷却、瞄准与零能量；五种视口。");
 } finally { await browser.close(); await vite.close(); }
