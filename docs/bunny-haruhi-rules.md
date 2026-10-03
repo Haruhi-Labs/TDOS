@@ -1,6 +1,6 @@
 # 兔女郎春日：配置与纯规则
 
-当前完成配置与纯规则、支援有限抽取、舞台与变身、阿虚、共享视图、三语界面和指定阵容AI。角色已加入目录及选角；默认阵容不变，随机AI主/副舰池仍为原八角色。规则版本为 `ruleset-20261003-01`；公开版本和网络编码版本不变。没有新角色的对局继续沿用原行为和原快照字段。实际验收结果与限制见[本阶段验收记录](bunny-haruhi-acceptance.md)。
+当前完成配置与纯规则、支援有限抽取、舞台与变身、阿虚、共享视图、三语界面和指定阵容AI。角色已加入目录及选角；默认阵容不变，随机AI主/副舰池仍为原八角色。规则版本为 `ruleset-20261003-01`；公开版本和网络编码版本不变
 
 ## 指定阵容AI与公开入口
 
@@ -18,15 +18,15 @@
 
 `serializeBunnyShip()` 在既有可选 `bunnyHaruhi` 内追加以下只读字段：
 
-| 字段 | 类型与含义 |
-| --- | --- |
-| `canTransform` | boolean；权威不可施放原因为空时为真，客户端不根据平滑生命/CD自行解锁 |
-| `enabled` | boolean；来源存活且队伍未封印，剩余绝对时窗不代表当前生效 |
-| `lockedGear` | number或null；激奏开始后10秒内且来源启用时为4，其他情况为null |
-| `broadcasting` | boolean；本舰形态来源是否持续广播，不等于其他来源对本舰的广播 |
-| `esperOrb` | 既有支援几何对象或null；由显式副舰source产生，停用立即为null |
-| `otherworlderReady` | boolean；冲撞气场是否就绪，沿用共享命中/破盾冷却 |
-| `companion` | `{alive,teamSeat,convertedRemaining}`或null；跨两队按稳定ID查找阿虚，母舰可读其策反状态，不附送隐藏敌舰资料 |
+| 字段                | 类型与含义                                                                                                  |
+| ------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `canTransform`      | boolean；权威不可施放原因为空时为真，客户端不根据平滑生命/CD自行解锁                                        |
+| `enabled`           | boolean；来源存活且队伍未封印，剩余绝对时窗不代表当前生效                                                   |
+| `lockedGear`        | number或null；激奏开始后10秒内且来源启用时为4，其他情况为null                                               |
+| `broadcasting`      | boolean；本舰形态来源是否持续广播，不等于其他来源对本舰的广播                                               |
+| `esperOrb`          | 既有支援几何对象或null；由显式副舰source产生，停用立即为null                                                |
+| `otherworlderReady` | boolean；冲撞气场是否就绪，沿用共享命中/破盾冷却                                                            |
+| `companion`         | `{alive,teamSeat,convertedRemaining}`或null；跨两队按稳定ID查找阿虚，母舰可读其策反状态，不附送隐藏敌舰资料 |
 
 舞台接触摘要追加 `controlLocked:boolean`，合并舞台来源资格与控制免疫；不改写旧的 `stunRemaining`。新增16种 `bunny_*` 状态卡区分攻击强化/易伤、防御减益/免伤/自损、激奏、舞台阶段/禁控/恢复、可靠、广播、策反与三种支援。寿命读取权威截止点，正面状态遵守封印/涤除；每卡仅携带自身文案需要的数值，不覆盖 `duration`。普通舰无新机制时不产生额外字段或状态。
 
@@ -42,16 +42,16 @@
 
 ## 模块与调用边界
 
-| 文件 | 职责 |
-| --- | --- |
-| `shared/game/bunny-haruhi-config.js` | 深冻结的独立基础值、技能ID、三项支援池、形态/舞台枚举、所有新倍率和时长 |
-| `shared/game/bunny-haruhi.js` | 状态工厂、成功施放序列、资源方案、舞台状态转换、纯属性查询、持续区间计算 |
-| `shared/game/bunny-haruhi-companion.js` | 伴随舰基础值派生、独立状态、可靠技能周期、策反/归还/退场意图及接收者生命周期 |
-| `shared/game/haruhi-support.js` | 共用支援状态、有限池抽取、旧节拍调度、光球几何与碰撞冷却 |
-| `shared/game/bunny-haruhi-support.js` | 显式副舰来源、三项池以及新来源封印/恢复策略 |
-| `shared/game/bunny-haruhi-runtime.js` | 内部构造定义、施放提交、舞台采样、持续资源、广播、来源清理及白名单摘要 |
-| `shared/game/bunny-companion-runtime.js` | 注入实体工厂、跟随、死亡清理、自动技能、临时换队、母舰形态查询及公开摘要 |
-| `scripts/core-tests/bunny-haruhi-suite.mjs` | 上述规则的边界测试，默认随 `test:core` 执行 |
+| 文件                                        | 职责                                                                         |
+| ------------------------------------------- | ---------------------------------------------------------------------------- |
+| `shared/game/bunny-haruhi-config.js`        | 深冻结的独立基础值、技能ID、三项支援池、形态/舞台枚举、所有新倍率和时长      |
+| `shared/game/bunny-haruhi.js`               | 状态工厂、成功施放序列、资源方案、舞台状态转换、纯属性查询、持续区间计算     |
+| `shared/game/bunny-haruhi-companion.js`     | 伴随舰基础值派生、独立状态、可靠技能周期、策反/归还/退场意图及接收者生命周期 |
+| `shared/game/haruhi-support.js`             | 共用支援状态、有限池抽取、旧节拍调度、光球几何与碰撞冷却                     |
+| `shared/game/bunny-haruhi-support.js`       | 显式副舰来源、三项池以及新来源封印/恢复策略                                  |
+| `shared/game/bunny-haruhi-runtime.js`       | 内部构造定义、施放提交、舞台采样、持续资源、广播、来源清理及白名单摘要       |
+| `shared/game/bunny-companion-runtime.js`    | 注入实体工厂、跟随、死亡清理、自动技能、临时换队、母舰形态查询及公开摘要     |
+| `scripts/core-tests/bunny-haruhi-suite.mjs` | 上述规则的边界测试，默认随 `test:core` 执行                                  |
 
 纯规则依赖仅为配置、共用支援及已有推进/数学叶模块。运行时适配层可读取角色目录、调用注入的Ship工厂，但不反向导入战斗入口、服务端或显示模块，不新增依赖包。配置完全独立于普通春日，不能通过修改旧角色对象构造变体。普通春日和兔女郎的状态工厂调用同一个 `createSupportState`，各自持有独立容器。
 
@@ -63,13 +63,13 @@
 
 状态工厂与源文件 JSDoc 是实际字段定义；以下说明字段的归属和寿命。
 
-| 状态 | 字段及用途 |
-| --- | --- |
-| `BunnyHaruhiState` | `form=neutral`，`successfulCasts=0`，`formStartedAt=0`、`formStartedTick=-1`；`visitedForms` 为首次奖励 Set；`scoutsDisabled`、`positiveSuppressed` 初始 false；`immunityUntil/drainUntil/broadcastUntil` 初始0；`companionId=null`、`companionSpawned=false`；独立 `support` |
-| `support` | `supporters` 空 Set，`queuedBeamAt` 空数组，`alienNextAt/timeTravelerNextAt/otherworlderReadyAt/esperAngle` 初始0。保留未来与旧支援工厂统一的结构，不代表新角色可获得宇宙人 |
-| `BunnyStageExposure` | `sourceShipId/enteredAt=null`、`inside=false`、`phase=none`、`phaseStartedTick=-1`；`nextEntryControlAt=0`、`firstEntranceHealConsumed=false` 属于整局历史；锁定和恢复的三个时间字段初始0 |
-| `BunnyCompanionState` | 永久 `ownerShipId/ownerSeat`；`convertedUntil=0`；出生 `nextReliableAt=now+20`；`reliableUntil=0`、`reliableStartedTick=-1`；独立 `followOffset={forward:-28,lateral:24}`，距离使用世界单位 |
-| 接收者可靠技能状态 | `sourceCompanionId`、`until=now+6`、`startedTick`、`suppressed=false`；母舰和阿虚分别创建，周期只归伴随舰状态管理 |
+| 状态                  | 字段及用途                                                                                                                                                                                                                                                                    |
+| --------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `BunnyHaruhiState`    | `form=neutral`，`successfulCasts=0`，`formStartedAt=0`、`formStartedTick=-1`；`visitedForms` 为首次奖励 Set；`scoutsDisabled`、`positiveSuppressed` 初始 false；`immunityUntil/drainUntil/broadcastUntil` 初始0；`companionId=null`、`companionSpawned=false`；独立 `support` |
+| `support`             | `supporters` 空 Set，`queuedBeamAt` 空数组，`alienNextAt/timeTravelerNextAt/otherworlderReadyAt/esperAngle` 初始0。保留未来与旧支援工厂统一的结构，不代表新角色可获得宇宙人                                                                                                   |
+| `BunnyStageExposure`  | `sourceShipId/enteredAt=null`、`inside=false`、`phase=none`、`phaseStartedTick=-1`；`nextEntryControlAt=0`、`firstEntranceHealConsumed=false` 属于整局历史；锁定和恢复的三个时间字段初始0                                                                                     |
+| `BunnyCompanionState` | 永久 `ownerShipId/ownerSeat`；`convertedUntil=0`；出生 `nextReliableAt=now+20`；`reliableUntil=0`、`reliableStartedTick=-1`；独立 `followOffset={forward:-28,lateral:24}`，距离使用世界单位                                                                                   |
+| 接收者可靠技能状态    | `sourceCompanionId`、`until=now+6`、`startedTick`、`suppressed=false`；母舰和阿虚分别创建，周期只归伴随舰状态管理                                                                                                                                                             |
 
 已由 `serializeBunnyShip` 提供白名单摘要；成功施放“序列函数”仍指形态次序，不是将 Set 或私有奖励历史直接发往客户端。没有新来源或接触历史的旧角色不创建新字段，具体公开字段见下文。
 
@@ -145,13 +145,13 @@ bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少
 
 `haruhi-flagship.js` 保留全部24个旧导出、普通春日旗舰身份判断、主动增益、吸弹线段算法及原快照结构。仅把状态工厂、池抽取、定时调度、环绕几何和异世界人冷却委托给 `haruhi-support.js`。旧 `hasHaruhiSupport` 不识别兔女郎，不替换 `team.haruhiFlagship`，不改旧碰撞/屏障调用方。
 
-| 接口 | 输入、更新与边界 |
-| --- | --- |
-| `createSupportState(initialAngle=0)` | 保持原六字段及顺序，规范化初始角度；没有额外随机数或新字段 |
-| `unlockSupport(state,eligibleIds,now,random)` | 从可信配置提供的有序、无重复池排除已解锁项；实际解锁取一次显式RNG，穷尽取零次；原地保存支援及对应首次时间 |
-| `tickSupportSource(source,now,dt,hooks)` | `source={sourceShip,state,enabled}`；按旧顺序补处理宇宙人、排未来人三束光线、逐束回调、转动光球；只由发射回调消费发射随机数 |
-| `supportOrbGeometry(source)` | 使用实际来源坐标、半径和有效视野；未启用、死亡、未解锁时返回null，无状态写回 |
-| `supportOtherworlderReady(source,now)` / `triggerSupportOtherworlder(source,now)` | 读取/消耗此来源独立8秒冷却；是否实际命中、方向门槛和伤害仍由碰撞层负责 |
+| 接口                                                                              | 输入、更新与边界                                                                                                            |
+| --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `createSupportState(initialAngle=0)`                                              | 保持原六字段及顺序，规范化初始角度；没有额外随机数或新字段                                                                  |
+| `unlockSupport(state,eligibleIds,now,random)`                                     | 从可信配置提供的有序、无重复池排除已解锁项；实际解锁取一次显式RNG，穷尽取零次；原地保存支援及对应首次时间                   |
+| `tickSupportSource(source,now,dt,hooks)`                                          | `source={sourceShip,state,enabled}`；按旧顺序补处理宇宙人、排未来人三束光线、逐束回调、转动光球；只由发射回调消费发射随机数 |
+| `supportOrbGeometry(source)`                                                      | 使用实际来源坐标、半径和有效视野；未启用、死亡、未解锁时返回null，无状态写回                                                |
+| `supportOtherworlderReady(source,now)` / `triggerSupportOtherworlder(source,now)` | 读取/消耗此来源独立8秒冷却；是否实际命中、方向门槛和伤害仍由碰撞层负责                                                      |
 
 旧旗舰适配器保持原生命周期：只在来源死亡时清待发光线，不新增技能封印检查或恢复重排。定时检查继续使用原 `now+1e-9` 容差，追帧次序与状态数组顺序不变。新逻辑不能顺带修正这些历史语义，否则会改变旧回放。
 
