@@ -1,4 +1,4 @@
-import { CHARACTER_DEFS, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "./characters.js";
+import { CHARACTER_DEFS } from "./characters.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 import {
   createBunnyStageExposure, resolveBunnyStageExposure, leaveBunnyStage,
@@ -10,26 +10,7 @@ import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSu
 import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.js";
 import { supportOrbGeometry, supportOtherworlderReady } from "./haruhi-support.js";
 
-// 仅供显式实验模拟构造使用，不能加入公开角色目录或随机池。
-export const BUNNY_HARUHI_CHARACTER = Object.freeze({
-  id: C.characterId, name: "兔女郎春日", stats: C.baseStats,
-  flagshipSkill: Object.freeze({ id: C.flagshipSkillId, type: "passive", cost: 0 }),
-  subSkill: Object.freeze({ id: C.subSkillId, type: "active", cost: 0, cooldown: C.form.cooldownSeconds, target: "none" }),
-});
-
-export function normalizeBunnyLoadout(input = {}) {
-  if (!Object.values(input).includes(C.characterId)) return normalizeLoadout(input);
-  const used = new Set();
-  const result = {};
-  for (const slot of ["main", "sub1", "sub2"]) {
-    const id = input[slot];
-    const selected = (id === C.characterId || Object.hasOwn(CHARACTER_DEFS, id)) && !used.has(id)
-      ? id : Object.values(DEFAULT_TEAM_LOADOUT).find((candidate) => !used.has(candidate));
-    result[slot] = selected;
-    used.add(selected);
-  }
-  return result;
-}
+export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
 
 /** 光环取来源的开关；目标自己的技能封印不能关闭敌方光环。 */
 export function bunnyStageEnabled(ship) {

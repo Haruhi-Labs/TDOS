@@ -1,3 +1,5 @@
+import { BUNNY_HARUHI_CONFIG as BUNNY } from "./bunny-haruhi-config.js";
+
 const SHIP_HULL_SIZE_SCALE = 1.28;
 
 export const CHARACTER_ORDER = [
@@ -9,9 +11,23 @@ export const CHARACTER_ORDER = [
   "tsuruya",
   "asakura",
   "shamisen",
+  "bunny_haruhi",
 ];
 
 export const CHARACTER_DEFS = {
+  bunny_haruhi: {
+    id: BUNNY.characterId, name: "兔女郎春日", shortName: "兔女郎春日",
+    title: "舞台与变身支援舰", flavor: "让整个战场听见这首歌", stats: BUNNY.baseStats,
+    flagshipSkill: {
+      id: BUNNY.flagshipSkillId, name: "Lost my music", type: "passive", cost: 0,
+      description: "以视野为舞台，入场敌舰先受压制，久留后获得强化。",
+    },
+    subSkill: {
+      id: BUNNY.subSkillId, name: "God knows…", type: "active",
+      cost: BUNNY.form.energyCost, cooldown: BUNNY.form.cooldownSeconds, target: BUNNY.form.target,
+      description: "按固定次序变身并解锁支援，激奏首次召唤阿虚。",
+    },
+  },
   haruhi: {
     id: "haruhi",
     name: "凉宫春日",
@@ -207,7 +223,8 @@ export const DEFAULT_AI_LOADOUT = Object.freeze({
 const AI_MAIN_EXCLUDE = new Set(["tsuruya"]);
 
 export function randomAiLoadout() {
-  const pool = [...CHARACTER_ORDER];
+  // 首版只开放显式阵容；主、副舰共用旧池，顺序及随机数消费与旧版一致。
+  const pool = CHARACTER_ORDER.filter((id) => id !== "bunny_haruhi");
   const mainPool = pool.filter((id) => !AI_MAIN_EXCLUDE.has(id));
   const main = mainPool[Math.floor(Math.random() * mainPool.length)];
   const rest = pool.filter((id) => id !== main);

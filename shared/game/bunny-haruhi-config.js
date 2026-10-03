@@ -1,4 +1,4 @@
-// 本模块只保存候选规则；角色注册、随机池及技能入口另行接入。
+// 独立规则配置；角色注册、随机池与技能入口不在配置模块内执行。
 function freezeTree(value) {
   for (const child of Object.values(value)) {
     if (child && typeof child === "object") freezeTree(child);

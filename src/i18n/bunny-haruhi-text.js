@@ -20,6 +20,9 @@ export const BUNNY_CHARACTER_TEXT = {
 export const BUNNY_MESSAGES = {
   en: {
     "关闭舰况": "Close status",
+    "作用说明": "Effect",
+    "舞台入迷等待": "Time until Entranced", "舞台再入控制间隔": "Stage re-entry control cooldown",
+    "兔女郎春日阵容需要所有玩家及观众刷新到当前规则版本": "Bunny Haruhi lineups require all players and spectators to refresh to the current ruleset.",
     "未变身": "Untransformed", "激奏": "Encore", "舞台·被动": "Stage · Passive",
     "当前：{form}；下次：{next}": "Now: {form}; next: {next}", "原皮立绘占位": "Original portrait placeholder",
     "生命需高于{cost}%上限": "HP must exceed {cost}% of max", "支付{cost}%最大生命 · 补能至{energy}%": "Pay {cost}% max HP · refill to {energy}%",
@@ -54,6 +57,9 @@ export const BUNNY_MESSAGES = {
   },
   ja: {
     "关闭舰况": "艦況を閉じる",
+    "作用说明": "効果",
+    "舞台入迷等待": "夢中になるまで", "舞台再入控制间隔": "再入場時の拘束間隔",
+    "兔女郎春日阵容需要所有玩家及观众刷新到当前规则版本": "バニーハルヒを含む編成には、全参加者と観戦者が最新ルールへ更新する必要があります。",
     "未变身": "未変身", "激奏": "アンコール", "舞台·被动": "舞台・常時発動",
     "当前：{form}；下次：{next}": "現在：{form}／次：{next}", "原皮立绘占位": "通常衣装の仮立ち絵",
     "生命需高于{cost}%上限": "最大HPの{cost}%超が必要", "支付{cost}%最大生命 · 补能至{energy}%": "最大HP{cost}%消費・エネルギー{energy}%まで回復",

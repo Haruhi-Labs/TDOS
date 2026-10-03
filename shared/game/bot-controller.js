@@ -1,4 +1,5 @@
 import { TICK_DT } from "./constants.js";
+import { bunnyStageRoute, shouldTransformBunny } from "./bot-bunny-haruhi-strategy.js";
 import { SCOUT_LAUNCH_COST, fireArcDensityMultiplier } from "./combat-rules.js";
 import {
   buildScoutRetaskOrders,
@@ -3166,6 +3167,7 @@ export class BotController {
     if (!ship || !ship.alive) {
       return false;
     }
+    if (ship.characterId === "bunny_haruhi") return shouldTransformBunny(ship, estimate, context);
     const meta = skillMetaForCharacter(ship.characterId, "sub");
     if (this.shouldDelaySubBuff(ship, meta)) {
       return false;
@@ -3537,6 +3539,11 @@ export class BotController {
   issueShipRoute(ship, targetX, targetY, throttle, padding = this.team.match.mapPadding) {
     if (!ship || !ship.alive || !ship.canControl()) {
       return null;
+    }
+    if (this.team.match.bunnyHaruhiActive) {
+      const target = bunnyStageRoute(ship, { x: targetX, y: targetY }, this.currentContext?.focus, this.team.match.elapsed);
+      targetX = target.x;
+      targetY = target.y;
     }
     const tx = this.team.match.clampX(targetX, padding);
     const ty = this.team.match.clampY(targetY, padding);

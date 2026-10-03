@@ -37,9 +37,9 @@ function configAndFactoryCheck() {
   assert.throws(() => { C.bless.multipliers.damage = 4; }, TypeError);
   assert.deepEqual(C.supportIds, ["time_traveler", "otherworlder", "esper"]);
   assert.equal(C.form.energyCost, 0);
-  assert.equal(CHARACTER_DEFS.bunny_haruhi, undefined);
-  assert.equal(CHARACTER_ORDER.includes("bunny_haruhi"), false);
-  assert.equal(Object.values(normalizeLoadout({ main: "bunny_haruhi" })).includes("bunny_haruhi"), false);
+  assert.equal(CHARACTER_DEFS.bunny_haruhi.stats, C.baseStats);
+  assert.equal(CHARACTER_ORDER.includes("bunny_haruhi"), true);
+  assert.equal(normalizeLoadout({ main: "bunny_haruhi" }).main, "bunny_haruhi");
   const a = createBunnyHaruhiState();
   const b = createBunnyHaruhiState();
   a.visitedForms.add("bless");

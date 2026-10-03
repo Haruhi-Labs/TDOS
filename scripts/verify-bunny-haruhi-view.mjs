@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
@@ -145,9 +145,13 @@ try {
       await page.waitForFunction((selector) => { const image = document.querySelector(selector); return image?.complete && image.naturalWidth > 0; }, mode === "spectator" ? '.spectator-team[data-seat="A"] [data-slot="sub1"] img' : '.fleet-row[data-ship="sub1"] img');
       if (screenshots) await page.screenshot({ path: join(screenshots, `${mode}-${locale}-${mobile ? "mobile" : "desktop"}.png`) });
       await details.locator(mode === "spectator" ? ".bunny-readout-close" : "summary").click();
-      for (const name of ["neutral", "bless", "knows", "converted", "lock", "recovery"]) {
+      for (const name of ["neutral", "attached", "bless", "knows", "knowsExpired", "converted", "companionDead", "lock", "recovery"]) {
         await publish(states[name]);
         if (mode !== "spectator") {
+          if (name === "attached") {
+            assert.equal(await page.locator(mobile ? '.mobile-ship-btn[data-ship="sub1"]' : '.fleet-row[data-ship="sub1"]').isDisabled(), true);
+            continue;
+          }
           const selected = name === "lock" || name === "recovery" ? "sub2" : "sub1";
           await page.locator(mobile ? `.mobile-ship-btn[data-ship="${selected}"]` : `.fleet-row[data-ship="${selected}"]`).click();
           if (mode === "online") await publish(states[name]);
@@ -169,6 +173,15 @@ try {
           }
         }
       }
+      await publish(states.finished);
+      await page.locator("#resultCard").waitFor({ state: "visible" });
+      await page.waitForFunction(() => [...document.querySelectorAll("#resultVersus img")].every((img) => img.complete && img.naturalWidth > 0));
+      await page.waitForFunction(() => [...document.querySelectorAll("#resultVersus .rl-card")].every((card) => Number(getComputedStyle(card).opacity) > 0.99));
+      for (const source of await page.locator("#resultVersus img").evaluateAll((images) => images.map((image) => image.src))) {
+        assert.ok(!source.includes("bunny_haruhi"), "单人、联机与观战终局都必须复用原皮素材");
+      }
+      assert.ok((await page.locator("#resultVersus").innerText()).includes(locale === "zh-CN" ? "兔女郎春日" : locale === "en-US" ? "Bunny Haruhi" : "バニーハルヒ"));
+      if (screenshots && locale === "zh-CN") await page.screenshot({ path: join(screenshots, `result-${mode}-${mobile ? "mobile" : "desktop"}.png`) });
     }
     assert.deepEqual(missingAssets, [], "占位美术不得产生404");
     await context.close();
@@ -212,11 +225,30 @@ try {
       }
       let visible = 0;
       for (let i = 0; i < pixels.length; i += 4) if (pixels[i] > 70 && pixels[i + 1] > 70) visible++;
-      results.push({ mode: renderer.mode, expected: mode, visible });
+      const initial = renderer.getStats();
+      const cacheSize = ctx.textCache?.entries.size || 0;
+      for (let tick = 0; tick < 120; tick++) {
+        frame.state.elapsed += 1 / 30;
+        renderer.beginFrame();
+        ctx.fillStyle = "#06121f"; ctx.fillRect(0, 0, 360, 360);
+        ctx.save(); ctx.scale(0.25, 0.25);
+        drawBunnyStages(ctx, frame); drawBunnyMarkers(ctx, frame); ctx.restore();
+        drawBunnyStages(ctx, frame, { x: 220, y: 220, width: 120, height: 120 });
+        drawBunnyMarkers(ctx, frame, { x: 220, y: 220, width: 120, height: 120 });
+        renderer.present();
+      }
+      const stats = renderer.getStats();
+      results.push({ mode: renderer.mode, expected: mode, visible, initial, stats, cacheSize, finalCacheSize: ctx.textCache?.entries.size || 0 });
     }
     return results;
   }, states.encore);
-  for (const result of renderResults) { assert.equal(result.mode, result.expected); assert.ok(result.visible > 100, `${result.mode} 舞台/形态/伴随舰图元必须真实绘制`); }
+  for (const result of renderResults) {
+    assert.equal(result.mode, result.expected);
+    assert.ok(result.visible > 100, `${result.mode} 舞台/形态/伴随舰图元必须真实绘制`);
+    assert.equal(result.finalCacheSize, result.cacheSize, "倒计时变化不得持续增加字形缓存");
+    assert.equal(result.stats.textureUploads, 0, "预热后不应重复上传舞台纹理");
+  }
+  if (screenshots) await writeFile(join(screenshots, "render-stats.json"), JSON.stringify(renderResults, null, 2));
   if (screenshots) await renderPage.screenshot({ path: join(screenshots, "renderers.png") });
   await renderPage.close();
   // 独立验证部署前缀与红蓝占位资源，共用原皮缓存，不能生成 bunny_haruhi.webp 请求。
@@ -237,6 +269,27 @@ try {
     for (const asset of assets) { assert.match(asset.url, /^\/game\/assets\/portraits\/(red|blue)\/haruhi\.webp$/); assert.ok(asset.loaded && asset.shared); }
     await page.close();
   } finally { await prefixed.close(); }
+  const failed = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await failed.route("**/api/**", (route) => route.fulfill({ contentType: "application/json", body: '{"authenticated":false,"items":[]}' }));
+  let failedRequests = 0;
+  await failed.route("**/assets/portraits/**", (route) => { failedRequests++; return route.fulfill({ status: 404, body: "" }); });
+  await failed.goto(vite.resolvedUrls.local[0], { waitUntil: "networkidle" });
+  await failed.evaluate(async () => {
+    const portraits = await import("/src/character-select/portraits.js");
+    if (await portraits.loadPortraitImage("bunny_haruhi", "blue") !== null) throw new Error("404应使用占位图");
+    document.body.replaceChildren(portraits.getPortrait("bunny_haruhi", 300, 600, "blue"));
+  });
+  const attempts = failedRequests;
+  await failed.evaluate(async () => {
+    const portraits = await import("/src/character-select/portraits.js");
+    for (let frame = 0; frame < 120; frame++) {
+      await portraits.loadPortraitImage("bunny_haruhi", "blue");
+      portraits.getPortrait("bunny_haruhi", 300, 600, "blue");
+    }
+  });
+  assert.equal(failedRequests, attempts, "加载失败缓存不能每帧重试");
+  if (screenshots) await failed.screenshot({ path: join(screenshots, "failed-portrait.png") });
+  await failed.close();
   assert.deepEqual(errors, [], "浏览器不应出现运行错误");
 } finally {
   await browser.close();

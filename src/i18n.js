@@ -196,6 +196,7 @@ export function translateServerText(text, code = "") {
     room_not_running: "房间不在对战状态",
     room_full: "房间已满或不可加入",
     tournament_client_unsupported: "客户端不支持比赛房间，请刷新页面",
+    bunny_ruleset_required: "兔女郎春日阵容需要所有玩家及观众刷新到当前规则版本",
     tournament_host_left: "主持人离开，比赛房间已关闭",
     tournament_loadout_locked: "比赛开始后不能更换阵容",
     tournament_player_only: "只有比赛选手可以设置就绪",

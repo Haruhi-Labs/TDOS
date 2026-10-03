@@ -176,10 +176,11 @@ function transformCheck() {
 }
 
 function publicationAndBroadcastCheck() {
-  assert.equal(CHARACTER_DEFS.bunny_haruhi, undefined);
-  assert.equal(CHARACTER_ORDER.includes("bunny_haruhi"), false);
-  assert.equal(Object.values(normalizeLoadout({ sub1: "bunny_haruhi" })).includes("bunny_haruhi"), false);
-  const old = simulation(false, false);
+  assert.equal(CHARACTER_DEFS.bunny_haruhi.id, "bunny_haruhi");
+  assert.equal(CHARACTER_ORDER.includes("bunny_haruhi"), true);
+  assert.equal(normalizeLoadout({ sub1: "bunny_haruhi" }).sub1, "bunny_haruhi");
+  assert.ok(simulation(false, false).teamA.ships.sub1.bunnyHaruhi, "公开阵容不再依赖实验开关");
+  const old = new MatchSimulation({ mode: "pvp", aiSeats: [] });
   assert.equal(old.bunnyHaruhiActive, undefined);
   assert.equal(old.teamA.ships.sub1.bunnyHaruhi, undefined);
   assert.equal(Object.hasOwn(old.teamA.ships.main.serialize(), "bunnyHaruhi"), false);

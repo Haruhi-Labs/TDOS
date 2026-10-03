@@ -155,7 +155,7 @@ import {
   cleanseBunnyStageControl, purgeBunnyForm, canBunnyLaunchScout, resolveBunnyThrottle, bunnyEnergyRate,
 } from "./game/bunny-haruhi.js";
 import {
-  BUNNY_HARUHI_CHARACTER, normalizeBunnyLoadout, bunnyStageEnabled, commitBunnyTransform,
+  BUNNY_HARUHI_CHARACTER, bunnyStageEnabled, commitBunnyTransform,
   resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, updateBunnyTeamSupports,
   serializeBunnyShip, refreshBunnyVisibility,
 } from "./game/bunny-haruhi-runtime.js";
@@ -536,8 +536,7 @@ class Ship {
     this.key = key;
     this.slotKey = options.slotKey || key;
     this.characterId = options.characterId;
-    this.character = team.match.allowExperimentalBunnyHaruhi && this.characterId === BUNNY_HARUHI_CHARACTER.id
-      ? BUNNY_HARUHI_CHARACTER : getCharacterDef(this.characterId);
+    this.character = getCharacterDef(this.characterId);
     this.base = options.baseStats || this.character.stats;
     if (options.entityRole) this.entityRole = options.entityRole;
     this.isAuxiliary = Boolean(options.isAuxiliary);
@@ -646,7 +645,7 @@ class Ship {
 
   isControlLocked() {
     return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this)
-      || isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)));
+      || Boolean(this.bunnyStageExposure && isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this))));
   }
 
   isSilenced() {
@@ -677,7 +676,8 @@ class Ship {
 
   isDamageImmune() {
     return this.isKoizumiOrbActive()
-      || isBunnyDamageImmune(this.bunnyHaruhi || bunnyCompanionForm(this), this.team.match.elapsed, !this.team.areSkillsDisabled());
+      || Boolean((this.bunnyHaruhi || this.bunnyCompanion)
+        && isBunnyDamageImmune(this.bunnyHaruhi || bunnyCompanionForm(this), this.team.match.elapsed, !this.team.areSkillsDisabled()));
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -756,7 +756,7 @@ class Ship {
   }
 
   applyControlSpeedLimit() {
-    if (isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) && !this.isControlImmune()) {
+    if (this.bunnyStageExposure && isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) && !this.isControlImmune()) {
       this.speed = 0;
       return;
     }
@@ -1858,9 +1858,7 @@ class Team {
     this.name = name;
     this.color = TEAM_COLORS[seat];
     this.projectileColor = TEAM_PROJECTILE_COLORS[seat];
-    this.loadout = match.allowExperimentalBunnyHaruhi
-      ? normalizeBunnyLoadout(options.loadout || DEFAULT_TEAM_LOADOUT)
-      : normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
+    this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
     // 单人难度对本队的影响(仅当本队由AI控制时,由 BotController.setDifficulty 写入):
@@ -3080,7 +3078,6 @@ export class MatchSimulation {
 
     this.tick = 0;
     this.elapsed = 0;
-    if (options.allowExperimentalBunnyHaruhi === true) this.allowExperimentalBunnyHaruhi = true;
     this.phase = "running";
     this.winnerSeat = null;
 

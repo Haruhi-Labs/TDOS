@@ -1,4 +1,5 @@
 import { BUNNY_HARUHI_CONFIG } from "../shared/game/bunny-haruhi-config.js";
+import { getPortraitAssetUrl } from "./character-select/portraits.js";
 import {
   DEFAULT_WORLD_SIZE,
   MatchSimulation,
@@ -697,11 +698,10 @@ function difficultyMeta() {
 
 // 一侧阵容(主舰高亮 + 两副舰):头像取该阵营立绘,头部偏上裁切
 function resultSideHTML(loadout, faction, sideLabel, sideClass) {
-  const base = import.meta.env.BASE_URL;
   const cards = ["main", "sub1", "sub2"]
     .map((slot, i) => {
       const id = loadout[slot];
-      const src = `${base}assets/portraits/${faction}/${id}.webp`;
+      const src = getPortraitAssetUrl(id, faction);
       const role = localizedSlotLabel(slot, "short");
       const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
       return (
