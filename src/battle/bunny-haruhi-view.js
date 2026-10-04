@@ -12,7 +12,7 @@ export function battleSkillMeta(id, mode) {
 }
 
 export function bunnyFormLabel(form) {
-  return ({ neutral: t("未变身"), bless: "God bless…", knows: "God Knows…", encore: t("激奏") })[form] || t("未变身");
+  return ({ neutral: t("未变身"), bless: "God bless", knows: "God Knows", encore: t("激奏") })[form] || t("未变身");
 }
 
 export function bunnyBlockLabel(ship, team) {
