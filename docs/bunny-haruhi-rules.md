@@ -99,7 +99,7 @@ bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少
 - 哑口无言：航速和射速各0.9，自然回能为0；入迷：七项战斗属性各1.2，恢复自然回能。
 - 可靠技能：转向1.2、航速/伤害1.06、加速1.1，其余1；不附带普通阿虚的减伤。
 
-`bunnyDamageTakenMultiplier(form)` 只返回bless的1.2易伤或中性1；`isBunnyDamageImmune(form,now,enabled)` 只判断knows剩余窗口，不代表免控。现已接入 `Ship.isDamageImmune`，在分摊前返回。`isBunnyBroadcasting` 表示bless持续广播或knows的16秒广播；均只广播己方存活玩家舰位。主舰舞台额外广播其圆内己方玩家舰位，包括源主舰，不广播召唤物。
+`bunnyDamageTakenMultiplier(form)` 只返回bless的1.2易伤或中性1；`isBunnyDamageImmune(form,now,enabled)` 只判断knows剩余窗口，不代表免控。现已接入 `Ship.isDamageImmune`，在分摊前返回。`isBunnyBroadcasting` 表示bless持续广播或knows的16秒广播；bless广播己方存活玩家舰位，knows仅广播来源自身。主舰舞台额外广播其圆内己方玩家舰位，包括源主舰，不广播召唤物。
 
 `enabled=false` 暂停形态正倍率、舞台效果、可靠增益、免伤、广播及encore锁档；bless易伤和knows降属性保留。自损与治疗区间查询也显式传该开关，封印期间不结算，解除后不补过期时间。永久侦察资格不因封印恢复。
 

@@ -42,7 +42,7 @@ export function skillDetailRows(characterId, mode) {
         row("舞台再入控制间隔", seconds(BUNNY.stage.entryCooldownSeconds));
       }
       if (mode === "sub") {
-        row("God bless…", t("生命需高于{cost}%上限", BUNNY_VIEW_PARAMS));
+        row("God bless", t("生命需高于{cost}%上限", BUNNY_VIEW_PARAMS));
         row("攻击形态强化", t("航速+{assaultSpeed}%，转向与加速+{assaultManeuver}%，射程与视野+{assaultRange}%，伤害+{assaultDamage}%，射速+{assaultRate}%。", BUNNY_VIEW_PARAMS));
         row("防御形态减益", t("机动、射程、视野降至{guardMove}%，伤害和射速降至{guardAttack}%。", BUNNY_VIEW_PARAMS));
       }

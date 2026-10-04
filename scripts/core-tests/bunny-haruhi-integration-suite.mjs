@@ -251,6 +251,10 @@ function publicationAndBroadcastCheck() {
   assert.equal(cast(sim), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.main.id), true);
+  sim.teamA.cooldowns.sub1 = 0;
+  assert.equal(cast(sim), true);
+  assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), true);
+  assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.main.id), false, "knows仅广播自身");
   sim.teamA.forceSkillsDisabled = true;
   refreshBunnyVisibility(sim);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), false);

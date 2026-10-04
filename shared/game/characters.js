@@ -23,7 +23,7 @@ export const CHARACTER_DEFS = {
       description: "以视野为舞台，入场敌舰先受压制，久留后获得强化。",
     },
     subSkill: {
-      id: BUNNY.subSkillId, name: "God knows…", type: "active",
+      id: BUNNY.subSkillId, name: "God knows", type: "active",
       cost: BUNNY.form.energyCost, cooldown: BUNNY.form.cooldownSeconds, target: BUNNY.form.target,
       description: "按固定次序变身并解锁支援，激奏首次召唤阿虚。",
     },

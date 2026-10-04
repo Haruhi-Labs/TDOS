@@ -146,8 +146,10 @@ export function bunnyBroadcastsShip(team, ship) {
   const main = team.ships.main;
   if (main.bunnyHaruhi && main.alive
     && (ship.x - main.x) ** 2 + (ship.y - main.y) ** 2 <= main.effectiveVision() ** 2 + 1e-9) return true;
+  // knows只广播来源自身；bless仍广播己方全部玩家舰位。
   return team.getPlayerShips().some((source) => source.alive
-    && isBunnyBroadcasting(source.bunnyHaruhi, team.match.elapsed));
+    && isBunnyBroadcasting(source.bunnyHaruhi, team.match.elapsed)
+    && (source === ship || source.bunnyHaruhi.form !== "knows"));
 }
 
 /** 只输出白名单摘要，不暴露Set、首次领取历史、支援队列或可写实体引用。 */
