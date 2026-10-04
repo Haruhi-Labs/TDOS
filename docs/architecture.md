@@ -95,7 +95,8 @@
 - `shared/game/ai/actions.js`：AI 的动作词表。标准动作复用 `shared/protocol/match-actions.js`；带寻的点的侦察机发射与侦察机重编组是 AI 扩展动作，不进入对局动作协议，网络输入校验会拒绝它们。
 - `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，也是 AI 侧唯一持有实时舰队的位置。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作默认经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；`direct` 模式保留改造前的直接调用路径，只用于行为对照。
 - `shared/game/ai/bridge/runner.js`：为每个 AI 席位创建端口与策略，并在每个逻辑帧驱动一次。
-- `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。只通过端口读取观测、提交动作，不持有双方舰队引用。对外是一层门面：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
+- `shared/game/ai/params/`：AI 参数层。`default.js` 是默认参数（等于极限难度的行为），按决策阶段分节；`difficulty.js` 把单人难度拆成决策参数的覆盖层和规则层的让分表（数值缩放、集火残血），让分由 `MatchSimulation` 写入 AI 所控舰队；`presets.js` 提供 `legacy` 旧版对照预设；`index.js` 的 `resolveAiParams({ difficulty, preset, overrides })` 按「默认、难度、预设、覆盖」的顺序合并并深冻结，未知键或类型不符直接报错。`MatchSimulation` 的 `aiParams` 选项可按席位指定预设与覆盖。走位候选点几何与三个策略模块里的数值尚未外提，用 `node scripts/ai/list-literals.mjs` 查看剩余的内联数值。
+- `shared/game/bot-controller.js`：AI 决策与能量管理，数值读取参数表。只通过端口读取观测、提交动作，不持有双方舰队引用。对外是一层门面：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/bot-character-strategy.js`：角色针对性战术层，负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
 - `shared/game/bot-shamisen-strategy.js`：三味线“猫爪印记”的攻守编队层，负责无视野追踪、分阶段突破、防线识别、追击收束，以及被猎杀舰的战线外撤游与护卫屏障；猎杀标记不会在此被提升为真实视野。
@@ -184,6 +185,7 @@
 | 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
 | 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game-core.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js`、核心 AI 测试 |
+| AI 的权重、阈值、计时区间与难度 | `shared/game/ai/params/` | `shared/game/bot-controller.js`、`test:core:ai-params`；改默认值属于规则变更 |
 | AI 角色识别与针对性反制 | `shared/game/bot-character-strategy.js` | `shared/game/bot-controller.js`、角色技能叶模块、核心 AI 测试 |
 | 三味线猎杀攻守编队 | `shared/game/bot-shamisen-strategy.js` | `shared/game/bot-controller.js`、`shared/game/shamisen-hunt.js`、核心 AI 测试 |
 | 侦察战区规划与长门僚机编组 | `shared/game/bot-scout-strategy.js` | `shared/game/bot-controller.js`、`shared/game-core.js` |

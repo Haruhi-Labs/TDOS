@@ -53,6 +53,7 @@ import {
 import { createAmbientRng, createSeededRng, rngFor } from "./game/rng.js";
 import { BotController } from "./game/bot-controller.js";
 import { createAiRunner } from "./game/ai/bridge/runner.js";
+import { aiHandicapFor } from "./game/ai/params/index.js";
 import { applyMatchAction } from "./game/action-dispatcher.js";
 import { serializeShipStatusEffects, statusEffectNames } from "./game/status-effects.js";
 import {
@@ -1869,7 +1870,7 @@ class Team {
     this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
-    // 单人难度对本队的影响(仅当本队由AI控制时,由 BotController.setDifficulty 写入):
+    // 单人难度对本队的影响(仅当本队由AI控制时,由 MatchSimulation 按难度让分表写入):
     //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
     //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
     // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
@@ -3131,14 +3132,26 @@ export class MatchSimulation {
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
     // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
     const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats);
-    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
+    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态)
     for (const seat of this.aiSeats) {
-      const runner = createAiRunner(this, seat, { actionMode: options.aiActionMode });
+      // aiParams 可按席位指定预设与参数覆盖：{ A: { preset, overrides } }。
+      const seatParams = options.aiParams?.[seat] || {};
+      const runner = createAiRunner(this, seat, {
+        actionMode: options.aiActionMode,
+        params: {
+          difficulty: aiDifficulty,
+          preset: legacyAiSeats.includes(seat) ? "legacy" : seatParams.preset ?? null,
+          overrides: seatParams.overrides ?? null,
+        },
+      });
       this.aiRunners[seat] = runner;
-      const bot = runner.policy;
-      bot.legacy = legacyAiSeats.includes(seat);
-      bot.setDifficulty(aiDifficulty);
-      this.bots[seat] = bot;
+      this.bots[seat] = runner.policy;
+      // 难度让分属于规则层：数值缩放与集火残血直接写入 AI 所控舰队，不经过 AI 决策。
+      const handicap = aiHandicapFor(aiDifficulty);
+      const team = this.teamBySeat(seat);
+      team.aiFocusLowHp = handicap.focusLowHp;
+      team.applyAiStatMult(handicap.statMult);
+      runner.port.invalidate();
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;

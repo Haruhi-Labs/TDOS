@@ -1,5 +1,6 @@
 import { TICK_DT } from "./constants.js";
 import { aiActions } from "./ai/actions.js";
+import { normalizeAiDifficulty, resolveAiParams } from "./ai/params/index.js";
 import { snapshotVisibleCharacterTactics } from "./ai/bridge/observation.js";
 import { bunnyStageRoute, shouldTransformBunny } from "./bot-bunny-haruhi-strategy.js";
 import { SCOUT_LAUNCH_COST, fireArcDensityMultiplier } from "./combat-rules.js";
@@ -39,55 +40,10 @@ import {
   zoneContains,
 } from "./math.js";
 
-const POKE_VISION_MULT = 1.7;
-const HARUHI_FLAGSHIP_ENERGY_RESERVE_WINDOW = 3;
-
-const HARD_AI_PROFILE = Object.freeze({
-  initialScoutTimer: 1.55,
-  initialFlagshipTimer: 5.6,
-  initialSubTimers: {
-    sub1: 10.5,
-    sub2: 12.5,
-  },
-  moveReplanMin: 1.35,
-  moveReplanMax: 2.15,
-  stuckTrigger: 0.9,
-  searchAdvanceWindow: 4.6,
-  searchArrivalRadius: 120,
-  reactionScale: 0.46,
-  reactionMin: 0.03,
-  reactionMax: 0.16,
-  memoryLeadMultiplier: 1.28,
-  probeDistanceMultiplier: 1.24,
-  aggressiveScoutWindow: 0.45,
-});
-
-// AI 推进的能量护栏。前进4档只在能量充裕时启动，并用不同的启动/退出阈值避免
-// 3、4档在临界值附近反复切换；低能量时仍保持航行，但强制降档回能。
-const AI_ENERGY_GEAR_POLICY = Object.freeze({
-  criticalRatio: 0.14,
-  lowRatio: 0.32,
-  overdriveStartRatio: 0.72,
-  overdriveStopRatio: 0.52,
-});
-
-// 单人难度:四档同时调三件事——
-//  reactionMult 放大感知延迟(perceptionDelayFor):AI 看到/响应玩家动作更慢;
-//  replanMult   放大改航间隔(moveReplan):AI 调整走位更不勤;
-//  statMult     敌方舰队数值缩放(血量+伤害):简单0.8 / 普通1.0 / 困难1.2 / 极限1.2;
-//  focusLowHp   极限专属:开火锁定射程内血量最低的敌人(收残血)。其余三档与玩家同规则"取最近"。
-// 注:极限(=满状态AI,也是 benchmark/默认席位)的锁血是经用户明确要求开放的"最高难度"特性,
-//  与历史上被移除的"全AI默认偷偷锁血"作弊不同——此处仅在玩家主动选择极限档时生效。
-const AI_DIFFICULTY = Object.freeze({
-  easy: { reactionMult: 9.0, replanMult: 2.4, statMult: 0.8, focusLowHp: false }, // 反应~0.75s/峰值~1.4s,改航~3.2-5.2s + 数值×0.8:既迟钝又脆
-  normal: { reactionMult: 4.5, replanMult: 1.7, statMult: 1.0, focusLowHp: false }, // 反应~0.37s,改航~2.3-3.7s,数值×1.0
-  hard: { reactionMult: 2.2, replanMult: 1.25, statMult: 1.2, focusLowHp: false }, // 反应~0.18s + 数值×1.2:更肉更痛
-  master: { reactionMult: 1.0, replanMult: 1.0, statMult: 1.2, focusLowHp: true }, // 满状态AI:反应最快 + 数值×1.2(与困难持平) + 智能集火残血:无可争议最难
-});
-
 export class BotController {
   // port 是 AI 与对局之间的唯一通道：port.observe() 读取观测，port.submit(action) 提交动作。
-  constructor(port, { rng } = {}) {
+  // params 指定难度、预设与覆盖：{ difficulty, preset, overrides }。
+  constructor(port, { rng, params } = {}) {
     this.port = port;
     this.seat = port.seat;
     this.indexedObservation = null;
@@ -96,16 +52,9 @@ export class BotController {
     this.entryGuards = new Map();
     // 每席 AI 使用对局分配的随机流；未带种子的对局里它就是环境随机源。
     this.rng = rng;
-    this.profile = HARD_AI_PROFILE;
-    // 旧版AI开关：true 时关闭全部升级(集火/视野收尾/收尾压制)，行为回到升级前的基线AI。
-    // 用于 AI推演里「对手用旧AI」对照展示，无需打包冻结副本。
-    this.legacy = false;
-    // 单人难度(默认 master=满状态)。reactionMult/replanMult 放大反应延迟与改航间隔;
-    // statMult/focusLowHp 在 setDifficulty 中写入本队(数值缩放 + 极限锁血)。
-    this.difficulty = "master";
-    this.reactionMult = 1;
-    this.replanMult = 1;
-    this.focusLowHp = false;
+    // 决策用到的全部数值都来自参数表；难度与旧版对照是其上的覆盖层。
+    this.paramSpec = { difficulty: "master", preset: null, overrides: null, ...(params || {}) };
+    this.applyParamSpec();
 
     this.moveTimer = 0;
     this.koizumiOrbSteerTimer = 0;
@@ -640,23 +589,50 @@ export class BotController {
     return value - Math.floor(value);
   }
 
+  applyParamSpec() {
+    this.params = resolveAiParams(this.paramSpec);
+    this.profile = this.params.profile;
+    this.difficulty = normalizeAiDifficulty(this.paramSpec.difficulty);
+    this.reactionMult = this.params.difficulty.reactionMult;
+    this.replanMult = this.params.difficulty.replanMult;
+  }
+
+  // 只切换 AI 决策参数的难度覆盖层；数值缩放等让分由对局在构造时写入舰队。
   setDifficulty(level) {
-    const d = AI_DIFFICULTY[level] || AI_DIFFICULTY.master;
-    this.difficulty = AI_DIFFICULTY[level] ? level : "master";
-    this.reactionMult = d.reactionMult;
-    this.replanMult = d.replanMult;
-    this.focusLowHp = !!d.focusLowHp;
-    // 把"数值缩放"与"极限锁血"落到本AI所控舰队上(玩家队无 bot,不受影响)
-    this.port.team.aiFocusLowHp = this.focusLowHp;
-    this.port.team.applyAiStatMult(d.statMult);
-    this.port.invalidate();
+    this.paramSpec = { ...this.paramSpec, difficulty: level };
+    this.applyParamSpec();
     return this;
   }
 
+  // 旧版 AI 对照：等价于启用 legacy 预设。
+  get legacy() {
+    return this.paramSpec.preset === "legacy";
+  }
+
+  set legacy(value) {
+    this.paramSpec = { ...this.paramSpec, preset: value ? "legacy" : null };
+    this.applyParamSpec();
+  }
+
+  // 控制变量对照：关闭间接情报。
+  get noIndirectIntel() {
+    return !this.params.features.indirectIntel;
+  }
+
+  set noIndirectIntel(value) {
+    const overrides = this.paramSpec.overrides || {};
+    this.paramSpec = {
+      ...this.paramSpec,
+      overrides: { ...overrides, features: { ...overrides.features, indirectIntel: !value } },
+    };
+    this.applyParamSpec();
+  }
+
   perceptionDelayFor(entity) {
-    const base = entity.kind === "ship" ? 0.14 : entity.kind === "wingman" ? 0.1 : 0.08;
-    const roleBias = entity.slotKey === "main" ? -0.02 : 0;
-    const jitter = this.stableNoise(entity.id, 3) * 0.08;
+    const P = this.params.perception;
+    const base = entity.kind === "ship" ? P.shipDelay : entity.kind === "wingman" ? P.wingmanDelay : P.otherDelay;
+    const roleBias = entity.slotKey === "main" ? P.mainBias : 0;
+    const jitter = this.stableNoise(entity.id, 3) * P.jitter;
     const mult = this.reactionMult || 1; // 难度:放大反应时间(感知延迟),不改任何能力
     return clamp(
       (base + roleBias + jitter) * this.profile.reactionScale * mult,
@@ -861,11 +837,12 @@ export class BotController {
   }
 
   projectContact(contact, maxLead = 2.4) {
+    const I = this.params.intel.projection;
     if (!contact) {
       return null;
     }
     const age = Math.max(0, this.obs.time - contact.seenAt);
-    const lead = contact.source === "spawn" ? 0 : Math.min(age * this.profile.memoryLeadMultiplier, Math.max(maxLead, 0)) * 0.78;
+    const lead = contact.source === "spawn" ? 0 : Math.min(age * this.profile.memoryLeadMultiplier, Math.max(maxLead, 0)) * I.leadFactor;
     const padding = this.safeRoutePadding();
     const worldSize = this.obs.world.size;
     const travel = this.predictEnemyVector(contact);
@@ -877,30 +854,30 @@ export class BotController {
     let radarDerived = false;
     if (source === "radar") {
       radarDerived = true;
-      const freshDuration = Math.max(0.8, (contact.radarExpiresAt || contact.seenAt + 3) - contact.seenAt);
+      const freshDuration = Math.max(I.radarFreshMin, (contact.radarExpiresAt || contact.seenAt + I.radarDefaultLife) - contact.seenAt);
       source = age <= freshDuration ? "radar" : "memory";
-      confidence = clamp((contact.confidence ?? 0.42) - age * 0.055, 0.12, 0.88);
+      confidence = clamp((contact.confidence ?? I.radarDefaultConfidence) - age * I.radarConfidenceDecay, I.radarConfidenceMin, I.radarConfidenceMax);
     } else if (source === "spawn") {
-      confidence = clamp(0.42 - age * 0.028, 0.14, 0.42);
+      confidence = clamp(I.spawnConfidence - age * I.spawnConfidenceDecay, I.spawnConfidenceMin, I.spawnConfidence);
     } else if (age > TICK_DT * 1.5) {
       source = "memory";
-      confidence = clamp(0.88 - age * 0.05, 0.18, 0.88);
+      confidence = clamp(I.memoryConfidence - age * I.memoryConfidenceDecay, I.memoryConfidenceMin, I.memoryConfidence);
     }
 
     let uncertainty = 0;
     if (radarDerived) {
-      uncertainty = clamp((contact.uncertainty || 60) + age * 16, 8, 280);
+      uncertainty = clamp((contact.uncertainty || I.radarDefaultUncertainty) + age * I.radarUncertaintyGrowth, I.radarUncertaintyMin, I.radarUncertaintyMax);
     } else if (source === "spawn") {
-      uncertainty = clamp(90 + age * 20, 90, 230);
+      uncertainty = clamp(I.spawnUncertainty + age * I.spawnUncertaintyGrowth, I.spawnUncertainty, I.spawnUncertaintyMax);
     } else if (source === "memory") {
-      uncertainty = clamp(14 + age * 28 + (1 - confidence) * 75, 14, 210);
+      uncertainty = clamp(I.memoryUncertainty + age * I.memoryUncertaintyGrowth + (1 - confidence) * I.memoryUncertaintyConfidence, I.memoryUncertainty, I.memoryUncertaintyMax);
     }
 
     if (uncertainty > 0 && !radarDerived) {
       const seed = contact.id * 97 + Math.round(contact.seenAt * 10);
       const sideAngle = travel.angle + Math.PI * 0.5;
-      const forwardDrift = uncertainty * (0.24 + this.stableNoise(seed, 11) * 0.32);
-      const lateralDrift = uncertainty * (this.stableNoise(seed, 7) - 0.5) * 0.78;
+      const forwardDrift = uncertainty * (I.forwardDriftBase + this.stableNoise(seed, 11) * I.forwardDriftNoise);
+      const lateralDrift = uncertainty * (this.stableNoise(seed, 7) - 0.5) * I.lateralDrift;
       x = clamp(x + Math.cos(travel.angle) * forwardDrift + Math.cos(sideAngle) * lateralDrift, padding, worldSize - padding);
       y = clamp(y + Math.sin(travel.angle) * forwardDrift + Math.sin(sideAngle) * lateralDrift, padding, worldSize - padding);
     }
@@ -1023,7 +1000,7 @@ export class BotController {
 
     // ── 间接情报(很关键:敌舰本体多数时间在视野外，靠"看到的子弹/敌侦察机"反推敌方范围) ──
     // noIndirectIntel=true 时整体跳过(用于控制变量对照实验)
-    if (!this.noIndirectIntel) {
+    if (this.params.features.indirectIntel) {
       // (a) 敌方子弹:朝我方飞来→开火的敌舰在其"逆飞行方向"、射程之内。只用我方能感知到的子弹(公平)。
       {
         for (const p of this.obs.enemy.projectiles) {
@@ -1254,99 +1231,105 @@ export class BotController {
   }
 
   contactHpRatio(contact) {
+    const V = this.params.value;
     const hp = Number(contact?.hp);
     const maxHp = Number(contact?.maxHp);
     if (Number.isFinite(hp) && Number.isFinite(maxHp) && maxHp > 0) {
-      return clamp(hp / maxHp, 0.08, 1);
+      return clamp(hp / maxHp, V.contactHpMin, 1);
     }
-    return contact?.kind === "scout" ? 0.4 : contact?.kind === "wingman" ? 0.8 : 0.82;
+    return contact?.kind === "scout" ? V.unknownScoutHp : contact?.kind === "wingman" ? V.unknownWingmanHp : V.unknownShipHp;
   }
 
   contactCombatValue(contact) {
+    const V = this.params.value;
     if (!contact) {
       return 0;
     }
-    const confidence = clamp(contact.confidence ?? 1, 0.2, 1);
+    const confidence = clamp(contact.confidence ?? 1, V.contactConfidenceMin, 1);
     if (contact.kind === "scout") {
-      const baseValue = contact.combatCapable ? 0.21 : 0.08;
-      return baseValue * confidence * (contact.visible ? 1 : 0.75);
+      const baseValue = contact.combatCapable ? V.combatScout : V.scout;
+      return baseValue * confidence * (contact.visible ? 1 : V.scoutHiddenFactor);
     }
     if (contact.kind === "wingman") {
-      return 0.42 * this.contactHpRatio(contact) * confidence * (contact.visible ? 1 : 0.86);
+      return V.wingman * this.contactHpRatio(contact) * confidence * (contact.visible ? 1 : V.wingmanHiddenFactor);
     }
 
     const stats = CHARACTER_DEFS[contact.characterId]?.stats || null;
-    const roleFactor = contact.slotKey === "main" ? 1.28 : 0.98;
-    const rangeFactor = stats ? clamp(stats.range / 520, 0.84, 1.18) : 1;
-    const dpsFactor = stats ? clamp((stats.damage / Math.max(stats.fireRate, 0.22)) / 58, 0.78, 1.32) : 1;
-    return roleFactor * rangeFactor * dpsFactor * (0.34 + 0.66 * this.contactHpRatio(contact)) * confidence * (contact.visible ? 1 : 0.92);
+    const roleFactor = contact.slotKey === "main" ? V.contactMainRole : V.contactSubRole;
+    const rangeFactor = stats ? clamp(stats.range / V.rangeRef, V.rangeFactorMin, V.contactRangeFactorMax) : 1;
+    const dpsFactor = stats ? clamp((stats.damage / Math.max(stats.fireRate, V.fireRateFloor)) / V.contactDpsRef, V.dpsFactorMin, V.contactDpsFactorMax) : 1;
+    return roleFactor * rangeFactor * dpsFactor * (V.contactHpBase + V.contactHpWeight * this.contactHpRatio(contact)) * confidence * (contact.visible ? 1 : V.shipHiddenFactor);
   }
 
   shipCombatValue(ship) {
+    const V = this.params.value;
     if (!ship || !ship.alive) {
       return 0;
     }
-    const hpRatio = clamp(ship.hp / Math.max(ship.maxHp, 1), 0.08, 1);
+    const hpRatio = clamp(ship.hp / Math.max(ship.maxHp, 1), V.shipHpMin, 1);
     const energyRatio = clamp(ship.energy / Math.max(ship.maxEnergy, 1), 0, 1);
-    const roleFactor = ship.key === "main" ? 1.24 : ship.isAuxiliary ? 0.72 : 1;
-    const rangeFactor = clamp(ship.stats.range / 520, 0.84, 1.2);
-    const dpsFactor = clamp((ship.stats.damage / Math.max(ship.stats.fireRate, 0.22)) / 60, 0.78, 1.34);
-    return roleFactor * rangeFactor * dpsFactor * (0.38 + 0.62 * hpRatio) * (0.48 + 0.52 * energyRatio);
+    const roleFactor = ship.key === "main" ? V.shipMainRole : ship.isAuxiliary ? V.shipAuxRole : 1;
+    const rangeFactor = clamp(ship.stats.range / V.rangeRef, V.rangeFactorMin, V.shipRangeFactorMax);
+    const dpsFactor = clamp((ship.stats.damage / Math.max(ship.stats.fireRate, V.fireRateFloor)) / V.shipDpsRef, V.dpsFactorMin, V.shipDpsFactorMax);
+    return roleFactor * rangeFactor * dpsFactor * (V.shipHpBase + V.shipHpWeight * hpRatio) * (V.shipEnergyBase + V.shipEnergyWeight * energyRatio);
   }
 
   friendlyPowerAround(x, y, radius = 320) {
+    const V = this.params.value;
     let total = 0;
     for (const ship of this.ownShips()) {
       if (!ship.alive) {
         continue;
       }
       const d = distance(ship.x, ship.y, x, y);
-      if (d > radius * 1.2) {
+      if (d > radius * V.friendlyReach) {
         continue;
       }
-      total += this.shipCombatValue(ship) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.25, 1);
+      total += this.shipCombatValue(ship) * clamp(1 - d / Math.max(radius * V.friendlyReach, 1), V.friendlyShipFalloffMin, 1);
     }
     for (const wingman of this.obs.self.wingmen) {
       if (!wingman.alive) {
         continue;
       }
       const d = distance(wingman.x, wingman.y, x, y);
-      if (d > radius * 1.2) {
+      if (d > radius * V.friendlyReach) {
         continue;
       }
-      total += 0.36 * clamp(wingman.hp / Math.max(wingman.maxHp, 1), 0.2, 1) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
+      total += V.friendlyWingman * clamp(wingman.hp / Math.max(wingman.maxHp, 1), V.friendlyWingmanHpMin, 1) * clamp(1 - d / Math.max(radius * V.friendlyReach, 1), V.friendlyAircraftFalloffMin, 1);
     }
     for (const scout of this.obs.self.scouts) {
       if (!scout.alive || !scout.combatCapable) {
         continue;
       }
       const d = distance(scout.x, scout.y, x, y);
-      if (d > radius * 1.2) {
+      if (d > radius * V.friendlyReach) {
         continue;
       }
-      total += 0.21 * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
+      total += V.friendlyCombatScout * clamp(1 - d / Math.max(radius * V.friendlyReach, 1), V.friendlyAircraftFalloffMin, 1);
     }
     return total;
   }
 
   enemyThreatAround(x, y, radius = 320, maxAge = 8) {
+    const V = this.params.value;
     let total = 0;
     for (const contact of this.knownEnemyContacts({ maxAge })) {
       const d = distance(contact.x, contact.y, x, y);
-      if (d > radius * 1.25) {
+      if (d > radius * V.enemyReach) {
         continue;
       }
-      total += this.contactCombatValue(contact) * clamp(1 - d / Math.max(radius * 1.25, 1), 0.22, 1);
+      total += this.contactCombatValue(contact) * clamp(1 - d / Math.max(radius * V.enemyReach, 1), V.enemyFalloffMin, 1);
     }
     return total;
   }
 
   enemyIsolationScore(contact, maxAge = 6) {
+    const V = this.params.value;
     if (!contact) {
       return 0;
     }
-    const nearbyThreat = this.enemyThreatAround(contact.x, contact.y, 240, maxAge) - this.contactCombatValue(contact);
-    return clamp(1.2 - nearbyThreat, -0.4, 1.1);
+    const nearbyThreat = this.enemyThreatAround(contact.x, contact.y, V.isolationRadius, maxAge) - this.contactCombatValue(contact);
+    return clamp(V.isolationBase - nearbyThreat, V.isolationMin, V.isolationMax);
   }
 
   estimateVisionRange(contact) {
@@ -1368,6 +1351,7 @@ export class BotController {
   }
 
   shipVitality(ship) {
+    const V = this.params.value;
     if (!ship || !ship.alive) {
       return {
         hpRatio: 0,
@@ -1379,17 +1363,18 @@ export class BotController {
     }
     const hpRatio = clamp(ship.hp / Math.max(ship.maxHp, 1), 0, 1);
     const energyRatio = clamp(ship.energy / Math.max(ship.maxEnergy, 1), 0, 1);
-    const value = hpRatio * 0.7 + energyRatio * 0.3;
+    const value = hpRatio * V.vitalityHp + energyRatio * V.vitalityEnergy;
     return {
       hpRatio,
       energyRatio,
       value,
-      fragile: hpRatio < 0.4 || energyRatio < 0.18,
-      healthy: hpRatio >= 0.7 && energyRatio >= 0.34,
+      fragile: hpRatio < V.fragileHp || energyRatio < V.fragileEnergy,
+      healthy: hpRatio >= V.healthyHp && energyRatio >= V.healthyEnergy,
     };
   }
 
   shipThreatSnapshot(ship, maxAge = 7) {
+    const V = this.params.value;
     if (!ship || !ship.alive) {
       return {
         sources: 0,
@@ -1407,26 +1392,26 @@ export class BotController {
         continue;
       }
       const range = contact.kind === "ship"
-        ? ((CHARACTER_DEFS[contact.characterId]?.stats?.range || 500) + 70)
+        ? ((CHARACTER_DEFS[contact.characterId]?.stats?.range || V.threatDefaultRange) + V.threatRangeMargin)
         : contact.combatCapable
-          ? CHARACTER_DEFS.yuki.stats.range + 70
-          : 300;
+          ? CHARACTER_DEFS.yuki.stats.range + V.threatRangeMargin
+          : V.threatAircraftRange;
       const d = distance(ship.x, ship.y, contact.x, contact.y);
       if (d > range) {
         continue;
       }
       sources += 1;
-      pressure += this.contactCombatValue(contact) * clamp(1 - d / Math.max(range, 1), 0.24, 1);
+      pressure += this.contactCombatValue(contact) * clamp(1 - d / Math.max(range, 1), V.threatFalloffMin, 1);
     }
 
-    const friendlySupport = Math.max(0.1, this.friendlyPowerAround(ship.x, ship.y, 250) - this.shipCombatValue(ship) * 0.22);
+    const friendlySupport = Math.max(V.supportFloor, this.friendlyPowerAround(ship.x, ship.y, V.supportRadius) - this.shipCombatValue(ship) * V.supportSelfDiscount);
     const danger = pressure / friendlySupport;
     return {
       sources,
       pressure,
       friendlySupport,
       danger,
-      overwhelmed: sources >= 2 && danger > 0.96,
+      overwhelmed: sources >= 2 && danger > V.overwhelmedDanger,
     };
   }
 
@@ -1470,20 +1455,21 @@ export class BotController {
   }
 
   splitUtilityForShip(ship, context) {
+    const SU = this.params.split.utility;
     if (!ship || !ship.alive || !context) {
       return 0;
     }
     const vitality = this.shipVitality(ship);
-    const visionEdge = clamp((ship.stats.vision - this.estimateVisionRange(context.focus)) / 52, -0.18, 0.7);
+    const visionEdge = clamp((ship.stats.vision - this.estimateVisionRange(context.focus)) / SU.visionEdgeScale, SU.visionEdgeMin, SU.visionEdgeMax);
     const characterBias = ship.characterId === "yuki"
-      ? 0.46
+      ? SU.yukiBias
       : ship.characterId === "future1096"
-        ? 0.28
+        ? SU.future1096Bias
         : ship.characterId === "asakura"
-          ? 0.24
+          ? SU.asakuraBias
           : ship.characterId === "shamisen"
-            ? 0.22
-          : 0.12;
+            ? SU.shamisenBias
+          : SU.otherBias;
     return vitality.value + visionEdge + characterBias;
   }
 
@@ -1507,29 +1493,29 @@ export class BotController {
       moveLoad,
       sustainCruise,
       sustainRecover,
-      high: ratio >= 0.7,
-      low: ratio <= 0.32,
-      critical: ratio <= 0.16,
+      high: ratio >= this.params.energy.profile.highRatio,
+      low: ratio <= this.params.energy.profile.lowRatio,
+      critical: ratio <= this.params.energy.profile.criticalRatio,
     };
   }
 
   energyThrottleGearCap(shipOrKey) {
     const profile = this.energyProfile(shipOrKey);
     const ship = typeof shipOrKey === "string" ? this.obs.self.ships[shipOrKey] : shipOrKey;
-    if (profile.ratio <= AI_ENERGY_GEAR_POLICY.criticalRatio) {
+    if (profile.ratio <= this.params.energy.gear.criticalRatio) {
       return 1;
     }
     // 刀锋期间优先以四档迅速穿入敌阵；接触伤害固定，危险能量线前仍降档保留后续机动。
     if (this.hasEffect(ship, "bladeQueenUntil")) {
       return 4;
     }
-    if (profile.ratio <= AI_ENERGY_GEAR_POLICY.lowRatio) {
+    if (profile.ratio <= this.params.energy.gear.lowRatio) {
       return 2;
     }
     const currentGear = throttleGearForValue(ship?.throttle);
     const overdriveThreshold = currentGear === 4
-      ? AI_ENERGY_GEAR_POLICY.overdriveStopRatio
-      : AI_ENERGY_GEAR_POLICY.overdriveStartRatio;
+      ? this.params.energy.gear.overdriveStopRatio
+      : this.params.energy.gear.overdriveStartRatio;
     return profile.ratio >= overdriveThreshold ? 4 : 3;
   }
 
@@ -1573,9 +1559,9 @@ export class BotController {
     const afterRatio = this.energyRatioAfterSpend(shipOrKey, cost);
     const floor = context?.emergencyCommit
       ? emergencyFloor
-      : context?.energyRecoveryNeed > 0.62
+      : context?.energyRecoveryNeed > this.params.energy.commit.conserveAbove
         ? conserveFloor
-        : normalFloor - Math.min(0.08, (context?.energySurplus || 0) * 0.1);
+        : normalFloor - Math.min(this.params.energy.commit.surplusDiscountMax, (context?.energySurplus || 0) * this.params.energy.commit.surplusDiscount);
     return afterRatio >= floor || profile.high;
   }
 
@@ -1663,7 +1649,8 @@ export class BotController {
   }
 
   selectEnemyFocus(main) {
-    const contacts = this.knownEnemyContacts({ maxAge: 8 });
+    const F = this.params.focus;
+    const contacts = this.knownEnemyContacts({ maxAge: F.maxAge });
     if (contacts.length === 0) {
       return this.primaryEnemyEstimate();
     }
@@ -1675,28 +1662,28 @@ export class BotController {
         continue;
       }
       const dist = distance(main.x, main.y, contact.x, contact.y);
-      const proximity = clamp(1 - dist / Math.max(main.stats.range * 2.4, 1), -0.18, 0.95);
-      const freshness = clamp(1 - contact.age / 8, 0, 1);
+      const proximity = clamp(1 - dist / Math.max(main.stats.range * F.proximityRangeMult, 1), F.proximityMin, F.proximityMax);
+      const freshness = clamp(1 - contact.age / F.freshnessWindow, 0, 1);
       const vulnerability = 1 - this.contactHpRatio(contact);
-      const isolation = this.enemyIsolationScore(contact, 6);
+      const isolation = this.enemyIsolationScore(contact, F.isolationMaxAge);
       const overwhelmOpportunity = clamp(
-        (this.friendlyPowerAround(contact.x, contact.y, 300) + 0.2) / Math.max(this.enemyThreatAround(contact.x, contact.y, 280, 6) + 0.2, 0.2) - 1,
-        -0.2,
-        1.4,
+        (this.friendlyPowerAround(contact.x, contact.y, F.overwhelmFriendlyRadius) + 0.2) / Math.max(this.enemyThreatAround(contact.x, contact.y, F.overwhelmEnemyRadius, 6) + 0.2, 0.2) - 1,
+        F.overwhelmMin,
+        F.overwhelmMax,
       );
-      const typeBias = contact.slotKey === "main" ? 1.28 : contact.kind === "ship" ? 0.9 : 0.32;
-      const visibleBias = contact.visible ? 0.82 : 0.3;
-      const huntBias = contact.source === "hunt" ? 3.2 : 0;
-      const uncertaintyPenalty = clamp((contact.uncertainty || 0) / 240, 0, 1.4);
+      const typeBias = contact.slotKey === "main" ? F.typeMain : contact.kind === "ship" ? F.typeShip : F.typeOther;
+      const visibleBias = contact.visible ? F.visible : F.hidden;
+      const huntBias = contact.source === "hunt" ? F.hunt : 0;
+      const uncertaintyPenalty = clamp((contact.uncertainty || 0) / F.uncertaintyScale, 0, F.uncertaintyMax);
       const score = typeBias
         + proximity
-        + freshness * 0.82
-        + vulnerability * 1.08
-        + isolation * 0.82
-        + overwhelmOpportunity * 0.92
+        + freshness * F.freshness
+        + vulnerability * F.vulnerability
+        + isolation * F.isolation
+        + overwhelmOpportunity * F.overwhelm
         + visibleBias
         + huntBias
-        + (this.legacy ? 0 : characterTargetPriorityBonus(contact, this.obs.time))
+        + (this.params.features.characterPriority ? characterTargetPriorityBonus(contact, this.obs.time) : 0)
         - uncertaintyPenalty;
       if (score > bestScore) {
         bestScore = score;
@@ -1707,6 +1694,7 @@ export class BotController {
   }
 
   buildTacticalContext(main, focus) {
+    const X = this.params.context;
     const fleetEnergy = this.energyProfile("main");
     const rangeRef = main.stats.range;
     const dist = distance(main.x, main.y, focus.x, focus.y);
@@ -1714,16 +1702,16 @@ export class BotController {
     const mainEnergyRatio = clamp(main.energy / Math.max(main.maxEnergy, 1), 0, 1);
     const fleetHull = this.obs.self.hullRatio;
     const energyRatio = fleetEnergy.ratio;
-    const friendlyLocal = this.friendlyPowerAround(focus.x, focus.y, 330);
-    const friendlyEscort = this.friendlyPowerAround(main.x, main.y, 240);
-    const enemyLocal = this.enemyThreatAround(focus.x, focus.y, 330, 8);
-    const localAdvantage = (friendlyLocal + friendlyEscort * 0.34 + 0.25) / Math.max(enemyLocal + 0.25, 0.25);
+    const friendlyLocal = this.friendlyPowerAround(focus.x, focus.y, X.localRadius);
+    const friendlyEscort = this.friendlyPowerAround(main.x, main.y, X.escortRadius);
+    const enemyLocal = this.enemyThreatAround(focus.x, focus.y, X.localRadius, X.localMaxAge);
+    const localAdvantage = (friendlyLocal + friendlyEscort * X.escortWeight + X.advantageBias) / Math.max(enemyLocal + X.advantageBias, X.advantageBias);
     const shamisenHunt = buildShamisenHuntTactics({
       obs: this.obs,
       ships: this.ownShips(),
       main,
       focus,
-      knownContacts: this.knownEnemyContacts({ maxAge: 8 }),
+      knownContacts: this.knownEnemyContacts({ maxAge: X.huntContactMaxAge }),
       localAdvantage,
     });
     const hiddenHuntTarget = Boolean(
@@ -1734,15 +1722,15 @@ export class BotController {
     const intelSolid = focus.visible || (
       focus.source !== "spawn"
       && focus.source !== "hunt"
-      && focus.age <= 5.5
-      && focus.confidence >= 0.42
+      && focus.age <= X.solidMaxAge
+      && focus.confidence >= X.solidMinConfidence
     );
-    const searchRequired = hiddenHuntTarget || focus.source === "spawn" || focus.age > 9 || focus.confidence < 0.26;
-    const killWindow = this.contactHpRatio(focus) < 0.44 && dist < rangeRef * 1.75;
-    const broadsideWindow = dist > rangeRef * 0.58 && dist < rangeRef * 1.2 && intelSolid;
+    const searchRequired = hiddenHuntTarget || focus.source === "spawn" || focus.age > X.searchAgeAbove || focus.confidence < X.searchConfidenceBelow;
+    const killWindow = this.contactHpRatio(focus) < X.killHpBelow && dist < rangeRef * X.killRange;
+    const broadsideWindow = dist > rangeRef * X.broadsideMinRange && dist < rangeRef * X.broadsideMaxRange && intelSolid;
     const detachedShips = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
     const detachedSpread = detachedShips.reduce((max, ship) => Math.max(max, distance(ship.x, ship.y, main.x, main.y)), 0);
-    const overextended = detachedSpread > 320 && localAdvantage < 0.92;
+    const overextended = detachedSpread > X.overextendedSpread && localAdvantage < X.overextendedAdvantage;
     const shipThreats = new Map();
     let maxShipThreat = 0;
     let overwhelmedShipKey = null;
@@ -1756,80 +1744,80 @@ export class BotController {
         overwhelmedShipKey = ship.key;
       }
     }
-    const defensivePressure = (localAdvantage < 0.72 && dist < rangeRef * 1.22)
-      || mainHull < 0.28
-      || Boolean(shamisenHunt.defense?.active && shamisenHunt.defense.huntedHpRatio < 0.62);
+    const defensivePressure = (localAdvantage < X.defensiveAdvantage && dist < rangeRef * X.defensiveRange)
+      || mainHull < X.defensiveHull
+      || Boolean(shamisenHunt.defense?.active && shamisenHunt.defense.huntedHpRatio < X.defensiveHuntedHp);
     const flankSign = this.preferredFlankSign(main, focus);
     const ownArcDensity = this.arcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, this.obs.self.flags.kyonFlagship);
     const enemyArcDensity = this.arcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, this.obs.privileged.enemyHasKyonFlagship);
     const arcAdvantage = ownArcDensity - enemyArcDensity;
-    const enemyBroadsideRisk = enemyArcDensity >= 1.45;
+    const enemyBroadsideRisk = enemyArcDensity >= X.broadsideRiskDensity;
     const safeExchange = enemyArcDensity <= 1 && ownArcDensity >= 1;
-    const focusFreshness = clamp(1 - focus.age / 10, 0, 1);
-    const trackableIntel = !intelSolid && focus.source !== "spawn" && focus.age <= 13 && focus.confidence >= 0.16;
-    const intelUrgency = focus.visible ? 0.08 : focus.source === "spawn" ? 1.28 : clamp(0.52 + focus.age / 9 + (1 - focus.confidence) * 0.78, 0.3, 1.6);
-    const isolatedTargetScore = clamp(this.enemyIsolationScore(focus, 6) + Math.max(0, localAdvantage - 0.92) * 0.65, -0.25, 1.5);
+    const focusFreshness = clamp(1 - focus.age / X.freshnessWindow, 0, 1);
+    const trackableIntel = !intelSolid && focus.source !== "spawn" && focus.age <= X.trackableMaxAge && focus.confidence >= X.trackableMinConfidence;
+    const intelUrgency = focus.visible ? X.intelUrgencyVisible : focus.source === "spawn" ? X.intelUrgencySpawn : clamp(X.intelUrgencyBase + focus.age / X.intelUrgencyAgeScale + (1 - focus.confidence) * X.intelUrgencyConfidence, X.intelUrgencyMin, X.intelUrgencyMax);
+    const isolatedTargetScore = clamp(this.enemyIsolationScore(focus, X.isolationMaxAge) + Math.max(0, localAdvantage - X.isolationAdvantageFloor) * X.isolationAdvantageWeight, X.isolatedMin, X.isolatedMax);
     const combatUrgency = clamp(
-      (focus.visible ? 0.38 : 0.12)
-      + (dist < rangeRef * 1.08 ? 0.32 : 0)
-      + (killWindow ? 0.38 : 0)
-      + (enemyLocal > friendlyLocal * 0.9 && dist < rangeRef * 1.32 ? 0.12 : 0)
-      + (trackableIntel ? 0.22 : 0)
-      + Math.max(0, maxShipThreat - 0.88) * 0.36
-      + isolatedTargetScore * 0.18,
+      (focus.visible ? X.combatUrgency.visible : X.combatUrgency.hidden)
+      + (dist < rangeRef * X.combatUrgency.inRangeRatio ? X.combatUrgency.inRange : 0)
+      + (killWindow ? X.combatUrgency.killWindow : 0)
+      + (enemyLocal > friendlyLocal * X.combatUrgency.pressuredRatio && dist < rangeRef * X.combatUrgency.pressuredRange ? X.combatUrgency.pressured : 0)
+      + (trackableIntel ? X.combatUrgency.trackableIntel : 0)
+      + Math.max(0, maxShipThreat - X.combatUrgency.threatFloor) * X.combatUrgency.threat
+      + isolatedTargetScore * X.combatUrgency.isolatedTarget,
       0,
-      1.55,
+      X.combatUrgency.max,
     );
-    const counterCollapse = clamp(maxShipThreat - 0.82, 0, 1.1) * clamp(localAdvantage, 0.6, 1.4);
+    const counterCollapse = clamp(maxShipThreat - X.counterCollapseThreatFloor, 0, X.counterCollapseMax) * clamp(localAdvantage, X.counterCollapseAdvantageMin, X.counterCollapseAdvantageMax);
     const emergencyCommit = killWindow
-      || maxShipThreat > 0.96
-      || (focus.visible && (combatUrgency > 0.68 || dist < rangeRef * 0.92))
-      || (trackableIntel && !hiddenHuntTarget && dist < rangeRef * 0.82 && localAdvantage > 1.12);
-    const energySurplus = clamp((energyRatio - 0.58) / 0.42, 0, 1);
-    const energyRecoveryNeed = clamp((0.46 - energyRatio) / 0.46, 0, 1) * (emergencyCommit ? 0.18 : 0.82);
-    const conserveEnergy = energyRecoveryNeed > 0.78 && !emergencyCommit && !trackableIntel;
-    const mobilityBias = clamp(0.88 + energySurplus * 0.34 + (emergencyCommit ? 0.26 : 0) - energyRecoveryNeed * 0.24, 0.62, 1.34);
+      || maxShipThreat > X.emergencyThreat
+      || (focus.visible && (combatUrgency > X.emergencyUrgency || dist < rangeRef * X.emergencyVisibleRange))
+      || (trackableIntel && !hiddenHuntTarget && dist < rangeRef * X.emergencyTrackableRange && localAdvantage > X.emergencyTrackableAdvantage);
+    const energySurplus = clamp((energyRatio - X.surplusFloor) / X.surplusSpan, 0, 1);
+    const energyRecoveryNeed = clamp((X.recoveryCeiling - energyRatio) / X.recoveryCeiling, 0, 1) * (emergencyCommit ? X.recoveryEmergencyFactor : X.recoveryFactor);
+    const conserveEnergy = energyRecoveryNeed > X.conserveAbove && !emergencyCommit && !trackableIntel;
+    const mobilityBias = clamp(X.mobilityBase + energySurplus * X.mobilitySurplus + (emergencyCommit ? X.mobilityEmergency : 0) - energyRecoveryNeed * X.mobilityRecovery, X.mobilityMin, X.mobilityMax);
     const skillAggression = clamp(
-      0.38
-      + energySurplus * 0.84
-      + combatUrgency * 0.72
-      + (trackableIntel ? 0.24 : 0)
-      + isolatedTargetScore * 0.18
-      - energyRecoveryNeed * 0.28,
+      X.skillAggression.base
+      + energySurplus * X.skillAggression.energySurplus
+      + combatUrgency * X.skillAggression.combatUrgency
+      + (trackableIntel ? X.skillAggression.trackableIntel : 0)
+      + isolatedTargetScore * X.skillAggression.isolatedTarget
+      - energyRecoveryNeed * X.skillAggression.energyRecoveryNeed,
       0,
-      1.8,
+      X.skillAggression.max,
     );
     const scoutPriority = clamp(
-      intelUrgency * 0.94
-      + (searchRequired ? 0.34 : 0)
-      + (trackableIntel ? 0.34 : 0)
-      + (hiddenHuntTarget ? 0.42 : 0)
-      + Math.max(0, maxShipThreat - 0.9) * 0.45
-      - combatUrgency * 0.22
-      - energyRecoveryNeed * 0.28,
+      intelUrgency * X.scoutPriority.intelUrgency
+      + (searchRequired ? X.scoutPriority.searchRequired : 0)
+      + (trackableIntel ? X.scoutPriority.trackableIntel : 0)
+      + (hiddenHuntTarget ? X.scoutPriority.hiddenHuntTarget : 0)
+      + Math.max(0, maxShipThreat - X.scoutPriority.threatFloor) * X.scoutPriority.threat
+      - combatUrgency * X.scoutPriority.combatUrgency
+      - energyRecoveryNeed * X.scoutPriority.energyRecoveryNeed,
       0,
-      1.8,
+      X.scoutPriority.max,
     );
     const encirclePressure = clamp(
-      0.82
-      + focusFreshness * 0.46
-      + (trackableIntel ? 0.42 : 0)
-      + (searchRequired ? 0.32 : 0)
-      + isolatedTargetScore * 0.24,
-      0.6,
-      1.65,
+      X.encirclePressure.base
+      + focusFreshness * X.encirclePressure.freshness
+      + (trackableIntel ? X.encirclePressure.trackableIntel : 0)
+      + (searchRequired ? X.encirclePressure.searchRequired : 0)
+      + isolatedTargetScore * X.encirclePressure.isolatedTarget,
+      X.encirclePressure.min,
+      X.encirclePressure.max,
     );
-    const pressureDrive = clamp(localAdvantage - 0.76, 0, 1.1) * 1.34
-      + energySurplus * 0.78
-      + clamp(focusFreshness - 0.18, 0, 0.82) * 0.74
-      + (killWindow ? 0.82 : 0)
-      + (trackableIntel ? 0.64 : 0)
-      + (emergencyCommit ? 0.28 : 0)
-      + counterCollapse * 0.22
-      + isolatedTargetScore * 0.26
-      + (shamisenHunt.attack?.targetVisible && !shamisenHunt.attack.overcommitRisk ? 0.62 : 0)
-      - (shamisenHunt.attack?.overcommitRisk ? 0.7 : 0)
-      - energyRecoveryNeed * 0.32;
+    const pressureDrive = clamp(localAdvantage - X.pressureDrive.advantageFloor, 0, X.pressureDrive.advantageMax) * X.pressureDrive.advantage
+      + energySurplus * X.pressureDrive.energySurplus
+      + clamp(focusFreshness - X.pressureDrive.freshnessFloor, 0, X.pressureDrive.freshnessMax) * X.pressureDrive.freshness
+      + (killWindow ? X.pressureDrive.killWindow : 0)
+      + (trackableIntel ? X.pressureDrive.trackableIntel : 0)
+      + (emergencyCommit ? X.pressureDrive.emergencyCommit : 0)
+      + counterCollapse * X.pressureDrive.counterCollapse
+      + isolatedTargetScore * X.pressureDrive.isolatedTarget
+      + (shamisenHunt.attack?.targetVisible && !shamisenHunt.attack.overcommitRisk ? X.pressureDrive.huntTargetVisible : 0)
+      - (shamisenHunt.attack?.overcommitRisk ? X.pressureDrive.huntOvercommit : 0)
+      - energyRecoveryNeed * X.pressureDrive.energyRecoveryNeed;
 
     // 收尾判断：是否占优(领先) + 是否到了该收尾的窗口(敌方濒临覆灭)。
     // 领先时不应因自身低血/低能转入防守，而应压制收尾——破解"双方都低血同时转防守"的平局僵局。
@@ -1837,19 +1825,19 @@ export class BotController {
     const ownHullTeam = this.obs.self.hullRatio;
     const enemyAliveCount = this.obs.privileged.enemyAliveCount;
     const ownAliveCount = this.ownShips().filter((s) => s && s.alive).length;
-    const winning = this.legacy ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + 0.08);
-    const closeoutWindow = this.legacy ? false : (enemyAliveCount > 0
-      && (enemyAliveCount < ownAliveCount || enemyHullTeam < 0.3 || (killWindow && winning)));
-    const enemyMainContact = this.projectContact(this.enemyIntel.main, 1.2);
+    const winning = !this.params.features.closeout ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + X.winningHullLead);
+    const closeoutWindow = !this.params.features.closeout ? false : (enemyAliveCount > 0
+      && (enemyAliveCount < ownAliveCount || enemyHullTeam < X.closeoutEnemyHull || (killWindow && winning)));
+    const enemyMainContact = this.projectContact(this.enemyIntel.main, X.enemyMainLead);
     const advancedCounterplay = this.usesAdvancedSkillCounterplay();
     const barrierTactics = buildKoizumiBarrierTactics({
       obs: this.obs,
       ships: this.ownShips(),
       enemyMainContact,
       main,
-      enemyContacts: this.knownEnemyContacts({ maxAge: 4.5 }),
+      enemyContacts: this.knownEnemyContacts({ maxAge: X.barrierContactMaxAge }),
       now: this.obs.time,
-      legacy: this.legacy,
+      legacy: !this.params.features.barrierTactics,
       advanced: advancedCounterplay,
     });
 
@@ -1906,6 +1894,7 @@ export class BotController {
   }
 
   shouldSplit(level, context, elapsed) {
+    const SP = this.params.split;
     if (!context) {
       return false;
     }
@@ -1914,7 +1903,7 @@ export class BotController {
       huntSplitNeeded
       && (
         context.shamisenHunt?.defense?.active
-        || (context.fleetHull > 0.34 && context.energyRatio > 0.1)
+        || (context.fleetHull > SP.huntMinHull && context.energyRatio > SP.huntMinEnergy)
       )
     ) {
       return true;
@@ -1930,27 +1919,27 @@ export class BotController {
           ["asakura", "koizumi"].includes(ship.characterId)
           || context.barrierTactics.infiltration?.splitShipKeys?.includes(ship.key)
         )
-        && elapsed > 4
-        && context.fleetHull > 0.54
+        && elapsed > SP.level1.barrierAfter
+        && context.fleetHull > SP.level1.barrierMinHull
       ) {
         return true;
       }
       const splitUtility = this.splitUtilityForShip(ship, context);
-      if ((context.mainHull < 0.32 && context.mainEnergyRatio < 0.18) || context.fleetHull < 0.42 || context.energyRatio < 0.14 || (context.defensivePressure && context.maxShipThreat > 1.15)) {
-        return elapsed > 30 && context.dist > context.rangeRef * 1.5;
+      if ((context.mainHull < SP.level1.weakMainHull && context.mainEnergyRatio < SP.level1.weakMainEnergy) || context.fleetHull < SP.level1.weakFleetHull || context.energyRatio < SP.level1.weakEnergy || (context.defensivePressure && context.maxShipThreat > SP.level1.weakThreat)) {
+        return elapsed > SP.level1.weakAfter && context.dist > context.rangeRef * SP.level1.weakMinRange;
       }
-      if (context.searchRequired && elapsed < (splitUtility > 1.3 ? 10 : 14) && !context.trackableIntel) {
+      if (context.searchRequired && elapsed < (splitUtility > SP.level1.searchUtility ? SP.level1.searchHoldHigh : SP.level1.searchHoldLow) && !context.trackableIntel) {
         return false;
       }
-      const earlyWindow = splitUtility > 1.34 ? 6.2 : splitUtility > 1.08 ? 7.8 : 9.2;
+      const earlyWindow = splitUtility > SP.level1.earlyUtilityHigh ? SP.level1.earlyHigh : splitUtility > SP.level1.earlyUtilityMid ? SP.level1.earlyMid : SP.level1.earlyLow;
       return elapsed > earlyWindow && (
         context.killWindow
         || context.trackableIntel
         || context.intelSolid
-        || context.isolatedTargetScore > 0.34
-        || context.focusFreshness > 0.44
-        || context.localAdvantage > (splitUtility > 1.08 ? 0.72 : 0.82)
-        || context.dist < context.rangeRef * 1.9
+        || context.isolatedTargetScore > SP.level1.isolated
+        || context.focusFreshness > SP.level1.freshness
+        || context.localAdvantage > (splitUtility > SP.level1.advantageUtility ? SP.level1.advantageHigh : SP.level1.advantageLow)
+        || context.dist < context.rangeRef * SP.level1.range
       );
     }
     if (level === 2) {
@@ -1964,27 +1953,27 @@ export class BotController {
           ["asakura", "koizumi"].includes(ship.characterId)
           || context.barrierTactics.infiltration?.splitShipKeys?.includes(ship.key)
         )
-        && elapsed > 8
-        && context.fleetHull > 0.58
+        && elapsed > SP.level2.barrierAfter
+        && context.fleetHull > SP.level2.barrierMinHull
         && !context.overextended
       ) {
         return true;
       }
       const splitUtility = this.splitUtilityForShip(ship, context);
-      if ((context.mainHull < 0.38 && context.mainEnergyRatio < 0.22) || context.fleetHull < 0.5 || context.energyRatio < 0.2 || context.overextended || (context.defensivePressure && context.maxShipThreat > 1.08)) {
-        return elapsed > 58 && context.localAdvantage > 0.9;
+      if ((context.mainHull < SP.level2.weakMainHull && context.mainEnergyRatio < SP.level2.weakMainEnergy) || context.fleetHull < SP.level2.weakFleetHull || context.energyRatio < SP.level2.weakEnergy || context.overextended || (context.defensivePressure && context.maxShipThreat > SP.level2.weakThreat)) {
+        return elapsed > SP.level2.weakAfter && context.localAdvantage > SP.level2.weakAdvantage;
       }
-      if (!context.intelSolid && !context.trackableIntel && elapsed < (splitUtility > 1.18 ? 22 : 30)) {
+      if (!context.intelSolid && !context.trackableIntel && elapsed < (splitUtility > SP.level2.intelUtility ? SP.level2.intelHoldHigh : SP.level2.intelHoldLow)) {
         return false;
       }
-      const earlyWindow = splitUtility > 1.28 ? 13.5 : splitUtility > 1.04 ? 16.5 : 18.5;
+      const earlyWindow = splitUtility > SP.level2.earlyUtilityHigh ? SP.level2.earlyHigh : splitUtility > SP.level2.earlyUtilityMid ? SP.level2.earlyMid : SP.level2.earlyLow;
       return elapsed > earlyWindow && (
         context.killWindow
         || context.trackableIntel
         || context.intelSolid
-        || context.isolatedTargetScore > 0.42
-        || context.localAdvantage > (splitUtility > 1.12 ? 0.86 : 0.98)
-        || context.dist < context.rangeRef * 1.35
+        || context.isolatedTargetScore > SP.level2.isolated
+        || context.localAdvantage > (splitUtility > SP.level2.advantageUtility ? SP.level2.advantageHigh : SP.level2.advantageLow)
+        || context.dist < context.rangeRef * SP.level2.range
       );
     }
     return false;
@@ -2154,6 +2143,7 @@ export class BotController {
   }
 
   shouldLaunchScout(context = this.currentContext, scoutPlan = null) {
+    const SL = this.params.scout.launch;
     if (this.shouldReserveEnergyForHaruhiFlagship()) {
       return false;
     }
@@ -2166,29 +2156,29 @@ export class BotController {
     }
     if (this.obs.self.flags.yukiFlagship) {
       const activeScouts = this.obs.self.scouts.filter((item) => item.alive && item.combatCapable).length;
-      const desiredActive = scoutPlan?.desiredActive || 4;
-      const maxActive = scoutPlan?.maxActive || 6;
+      const desiredActive = scoutPlan?.desiredActive || SL.yukiDesiredActive;
+      const maxActive = scoutPlan?.maxActive || SL.yukiMaxActive;
       if (activeScouts >= maxActive) {
         return false;
       }
-      if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < 0.24 && activeScouts >= 2) {
+      if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < SL.yukiEmergencyEnergy && activeScouts >= 2) {
         return false;
       }
       if (context.conserveEnergy && activeScouts >= 2 && !context.searchRequired && !context.trackableIntel) {
         return false;
       }
       return activeScouts < desiredActive
-        || context.scoutPriority > 0.82
+        || context.scoutPriority > SL.yukiPriority
         || context.trackableIntel
-        || context.maxShipThreat > 0.92;
+        || context.maxShipThreat > SL.yukiThreat;
     }
-    if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < 0.34) {
+    if (context.emergencyCommit && context.intelSolid && fleetEnergy.ratio < SL.emergencyEnergy) {
       return false;
     }
     if (context.conserveEnergy && !context.searchRequired && !context.trackableIntel) {
       return false;
     }
-    return context.scoutPriority > 0.12;
+    return context.scoutPriority > SL.priority;
   }
 
   shouldReserveEnergyForHaruhiFlagship() {
@@ -2202,7 +2192,7 @@ export class BotController {
       Number(this.obs.self.cooldowns.flagship) || 0,
       Number(this.flagshipTimer) || 0,
     );
-    if (readyIn > HARUHI_FLAGSHIP_ENERGY_RESERVE_WINDOW) {
+    if (readyIn > this.params.skills.haruhiFlagship.energyReserveWindow) {
       return false;
     }
     const energy = this.energyProfile("main");
@@ -2236,6 +2226,7 @@ export class BotController {
   }
 
   update(dt, elapsed) {
+    const ST = this.params.scout.timers;
     this.moveTimer -= dt;
     this.koizumiOrbSteerTimer -= dt;
     this.scoutTimer -= dt;
@@ -2260,14 +2251,14 @@ export class BotController {
     );
     if (shouldRefreshScoutPlan) {
       this.currentScoutPlan = this.planScoutDeployment(this.currentContext);
-      this.scoutPlanRefreshAt = this.obs.time + 0.4;
+      this.scoutPlanRefreshAt = this.obs.time + ST.planRefresh;
     }
     const scoutPlan = this.currentScoutPlan;
     const retaskedScouts = this.retaskYukiCombatScouts(scoutPlan);
 
     if (
       this.currentContext
-      && this.currentContext.intelUrgency > 0.88
+      && this.currentContext.intelUrgency > ST.urgentIntel
       && this.obs.self.scouts.filter((item) => item.alive).length === 0
     ) {
       this.scoutTimer = Math.min(this.scoutTimer, this.profile.aggressiveScoutWindow);
@@ -2275,7 +2266,7 @@ export class BotController {
 
     if (
       this.currentContext
-      && this.currentContext.maxShipThreat > 0.94
+      && this.currentContext.maxShipThreat > ST.urgentThreat
       && this.obs.self.scouts.filter((item) => item.alive).length <= 1
     ) {
       this.scoutTimer = Math.min(this.scoutTimer, this.profile.aggressiveScoutWindow);
@@ -2301,8 +2292,8 @@ export class BotController {
         // 侦察机也必须纳入能量预算。尤其是分离副舰，不能只因刚好攒够28点就立即花光，
         // 否则下一秒既无法机动，也无法使用自保技能。
         const scoutEnergyFloors = this.obs.self.flags.yukiFlagship
-          ? { emergencyFloor: 0.08, normalFloor: 0.12, conserveFloor: 0.2 }
-          : { emergencyFloor: 0.12, normalFloor: 0.18, conserveFloor: 0.28 };
+          ? { emergencyFloor: ST.yukiEmergencyFloor, normalFloor: ST.yukiNormalFloor, conserveFloor: ST.yukiConserveFloor }
+          : { emergencyFloor: ST.emergencyFloor, normalFloor: ST.normalFloor, conserveFloor: ST.conserveFloor };
         const hasScoutReserve = this.allowEnergyCommit(
           scoutSourceKey,
           SCOUT_LAUNCH_COST,
@@ -2335,21 +2326,21 @@ export class BotController {
         if (launched) {
           if (scoutPlan) {
             this.scoutTimer = this.rng.range(scoutPlan.cadenceMin, scoutPlan.cadenceMax);
-          } else if (this.currentContext?.scoutPriority > 1.05 || this.currentContext?.searchRequired || this.currentContext?.maxShipThreat > 0.92) {
-            this.scoutTimer = this.rng.range(3.1, 4.8);
+          } else if (this.currentContext?.scoutPriority > ST.highPriority || this.currentContext?.searchRequired || this.currentContext?.maxShipThreat > ST.highThreat) {
+            this.scoutTimer = this.rng.range(ST.launchedUrgent[0], ST.launchedUrgent[1]);
           } else if (this.currentContext?.trackableIntel) {
-            this.scoutTimer = this.rng.range(3.6, 5.4);
+            this.scoutTimer = this.rng.range(ST.launchedTrackable[0], ST.launchedTrackable[1]);
           } else if (this.currentContext?.conserveEnergy) {
-            this.scoutTimer = this.rng.range(5.2, 7.4);
+            this.scoutTimer = this.rng.range(ST.launchedConserve[0], ST.launchedConserve[1]);
           } else {
-            this.scoutTimer = this.rng.range(4.5, 6.8);
+            this.scoutTimer = this.rng.range(ST.launched[0], ST.launched[1]);
           }
         } else {
           this.scoutTimer = !hasScoutReserve
-            ? this.obs.self.flags.yukiFlagship ? this.rng.range(1.2, 2.2) : this.rng.range(2.2, 3.8)
+            ? this.obs.self.flags.yukiFlagship ? this.rng.range(ST.noEnergyYuki[0], ST.noEnergyYuki[1]) : this.rng.range(ST.noEnergy[0], ST.noEnergy[1])
             : this.currentContext?.emergencyCommit
-              ? this.rng.range(0.9, 1.8)
-              : this.rng.range(1.4, 2.8);
+              ? this.rng.range(ST.rejectedEmergency[0], ST.rejectedEmergency[1])
+              : this.rng.range(ST.rejected[0], ST.rejected[1]);
         }
       } else {
         this.lastScoutDecision = {
@@ -2365,8 +2356,8 @@ export class BotController {
           at: this.obs.time,
         };
         this.scoutTimer = this.obs.self.flags.yukiFlagship
-          ? this.currentContext?.conserveEnergy ? this.rng.range(1.4, 2.2) : this.rng.range(0.8, 1.4)
-          : this.currentContext?.conserveEnergy ? this.rng.range(2.2, 3.4) : this.rng.range(1.2, 2.2);
+          ? this.currentContext?.conserveEnergy ? this.rng.range(ST.holdYukiConserve[0], ST.holdYukiConserve[1]) : this.rng.range(ST.holdYuki[0], ST.holdYuki[1])
+          : this.currentContext?.conserveEnergy ? this.rng.range(ST.holdConserve[0], ST.holdConserve[1]) : this.rng.range(ST.hold[0], ST.hold[1]);
       }
     }
 
@@ -2378,6 +2369,7 @@ export class BotController {
   }
 
   tryFlagshipSkill(context = this.currentContext) {
+    const T = this.params.skills.flagshipTimers;
     if (this.flagshipTimer > 0) {
       return;
     }
@@ -2392,12 +2384,12 @@ export class BotController {
         target: this.debugContact(estimate),
       };
       this.flagshipTimer = isHaruhi
-        ? this.rng.range(0.25, 0.45)
+        ? this.rng.range(T.haruhiHold[0], T.haruhiHold[1])
         : context?.conserveEnergy
-          ? this.rng.range(1.8, 3.2)
-          : context?.skillAggression > 0.95
-            ? this.rng.range(0.45, 0.9)
-            : this.rng.range(1.2, 2.4);
+          ? this.rng.range(T.conserveHold[0], T.conserveHold[1])
+          : context?.skillAggression > T.aggressiveAbove
+            ? this.rng.range(T.aggressiveHold[0], T.aggressiveHold[1])
+            : this.rng.range(T.hold[0], T.hold[1]);
       return;
     }
     const ok = this.writeFlagshipSkill();
@@ -2410,18 +2402,19 @@ export class BotController {
     this.flagshipTimer = ok
       ? isHaruhi
         // 与真实冷却对齐；两者每帧同步递减，冷却归零的同一帧立即进入下一次施放判断。
-        ? Math.max(0.15, Number(this.obs.self.cooldowns.flagship) || 0)
-        : (context?.skillAggression > 0.95 ? this.rng.range(12, 17) : this.rng.range(14, 20))
+        ? Math.max(T.haruhiMinInterval, Number(this.obs.self.cooldowns.flagship) || 0)
+        : (context?.skillAggression > T.aggressiveAbove ? this.rng.range(T.aggressiveCooldown[0], T.aggressiveCooldown[1]) : this.rng.range(T.cooldown[0], T.cooldown[1]))
       : isHaruhi
-        ? this.rng.range(0.18, 0.35)
+        ? this.rng.range(T.haruhiRetry[0], T.haruhiRetry[1])
         : context?.conserveEnergy
-          ? this.rng.range(4.8, 7.4)
-          : context?.skillAggression > 0.95
-            ? this.rng.range(1, 2.1)
-            : this.rng.range(2.8, 5.6);
+          ? this.rng.range(T.conserveRetry[0], T.conserveRetry[1])
+          : context?.skillAggression > T.aggressiveAbove
+            ? this.rng.range(T.aggressiveRetry[0], T.aggressiveRetry[1])
+            : this.rng.range(T.retry[0], T.retry[1]);
   }
 
   trySubSkill(shipKey, context = this.currentContext) {
+    const T = this.params.skills.subTimers;
     if (this.subTimers[shipKey] > 0) {
       return;
     }
@@ -2433,7 +2426,7 @@ export class BotController {
         at: this.obs.time,
         target: null,
       };
-      this.subTimers[shipKey] = this.rng.range(4, 7);
+      this.subTimers[shipKey] = this.rng.range(T.unavailable[0], T.unavailable[1]);
       return;
     }
 
@@ -2446,10 +2439,10 @@ export class BotController {
         target: this.debugContact(estimate),
       };
       this.subTimers[shipKey] = context?.conserveEnergy
-        ? this.rng.range(2, 3.6)
-        : context?.skillAggression > 1
-          ? this.rng.range(0.45, 1.1)
-          : this.rng.range(0.9, 1.8);
+        ? this.rng.range(T.conserveHold[0], T.conserveHold[1])
+        : context?.skillAggression > T.aggressiveAbove
+          ? this.rng.range(T.aggressiveHold[0], T.aggressiveHold[1])
+          : this.rng.range(T.hold[0], T.hold[1]);
       return;
     }
     let ok = false;
@@ -2458,7 +2451,7 @@ export class BotController {
       // 避免高难度 AI 仍把固定射线瞄在移动目标的旧位置。
       const aim = predictCharacterSkillAim(
         estimate,
-        this.legacy ? 0 : 1.05,
+        this.params.features.skillAimLead ? T.future1096AimLead : 0,
         this.obs.world.size,
         this.safeRoutePadding(4),
       );
@@ -2489,13 +2482,13 @@ export class BotController {
     }
     this.subTimers[shipKey] = ok
       ? ship.characterId === "haruhi"
-        ? Math.max(0.15, Number(this.obs.self.cooldowns[shipKey]) || 0)
-        : (context?.skillAggression > 1 ? this.rng.range(12, 18) : this.rng.range(15, 22))
+        ? Math.max(T.haruhiMinInterval, Number(this.obs.self.cooldowns[shipKey]) || 0)
+        : (context?.skillAggression > T.aggressiveAbove ? this.rng.range(T.aggressiveCooldown[0], T.aggressiveCooldown[1]) : this.rng.range(T.cooldown[0], T.cooldown[1]))
       : context?.conserveEnergy
-        ? this.rng.range(4.6, 7.8)
-        : context?.skillAggression > 1
-          ? this.rng.range(1.1, 2.2)
-          : this.rng.range(2.8, 5.4);
+        ? this.rng.range(T.conserveRetry[0], T.conserveRetry[1])
+        : context?.skillAggression > T.aggressiveAbove
+          ? this.rng.range(T.aggressiveRetry[0], T.aggressiveRetry[1])
+          : this.rng.range(T.retry[0], T.retry[1]);
   }
 
   updateStuckState(dt) {
@@ -2520,6 +2513,7 @@ export class BotController {
   }
 
   scoreMode(mode, context) {
+    const S = this.params.mode.scores;
     const rangeRatio = context.dist / Math.max(context.rangeRef, 1);
     const ownBarrier = context.barrierTactics?.own;
     const enemyBarrier = context.barrierTactics?.enemy;
@@ -2537,110 +2531,111 @@ export class BotController {
       && context.barrierTactics?.infiltration?.shipKeys?.length,
     );
     if (mode === "recover") {
-      return context.edgePressure * 5 + (context.mainHull < 0.22 ? 1.8 : 0);
+      return context.edgePressure * S.recover.edgePressure + (context.mainHull < S.recover.lowHullBelow ? S.recover.lowHull : 0);
     }
     if (mode === "harvest") {
-      return context.energyRecoveryNeed * 3.2
-        + (context.emergencyCommit ? -3.2 : 0.3)
-        + (context.dist > context.rangeRef * 1.04 ? 0.24 : -0.42)
-        + (context.intelSolid ? -0.55 : 0.08)
-        - context.pressureDrive * 0.45
-        - context.isolatedTargetScore * 0.24;
+      return context.energyRecoveryNeed * S.harvest.energyRecoveryNeed
+        + (context.emergencyCommit ? S.harvest.emergencyCommit : S.harvest.noEmergency)
+        + (context.dist > context.rangeRef * S.harvest.farRangeRatio ? S.harvest.far : S.harvest.near)
+        + (context.intelSolid ? S.harvest.intelSolid : S.harvest.intelWeak)
+        - context.pressureDrive * S.harvest.pressureDrive
+        - context.isolatedTargetScore * S.harvest.isolatedTarget;
     }
     if (mode === "search") {
-      return (context.searchRequired ? (context.focus.source === "spawn" ? 4.8 : 2.8) : -0.8)
-        + (context.intelSolid ? -1.05 : 0.72)
-        + (context.trackableIntel ? 0.4 : 0)
-        + context.encirclePressure * 0.34
-        - context.energyRecoveryNeed * 0.26;
+      return (context.searchRequired ? (context.focus.source === "spawn" ? S.search.spawn : S.search.required) : S.search.notRequired)
+        + (context.intelSolid ? S.search.intelSolid : S.search.intelWeak)
+        + (context.trackableIntel ? S.search.trackableIntel : 0)
+        + context.encirclePressure * S.search.encirclePressure
+        - context.energyRecoveryNeed * S.search.energyRecoveryNeed;
     }
     if (mode === "regroup") {
-      return (context.overextended ? 2.1 : 0)
-        + (context.defensivePressure ? 1.2 : 0)
-        + (ownBarrier && !ownBarrier.active ? 1.9 : 0)
-        + (context.barrierTactics?.incoming ? 1.45 : 0)
-        + (context.energyRatio < 0.16 ? 1.1 : 0)
-        + (context.enemyBroadsideRisk ? 0.8 : 0)
-        + context.energyRecoveryNeed * 0.52
-        - context.counterCollapse * 0.4;
+      return (context.overextended ? S.regroup.overextended : 0)
+        + (context.defensivePressure ? S.regroup.defensivePressure : 0)
+        + (ownBarrier && !ownBarrier.active ? S.regroup.ownBarrierDown : 0)
+        + (context.barrierTactics?.incoming ? S.regroup.incomingBreaker : 0)
+        + (context.energyRatio < S.regroup.lowEnergyBelow ? S.regroup.lowEnergy : 0)
+        + (context.enemyBroadsideRisk ? S.regroup.enemyBroadsideRisk : 0)
+        + context.energyRecoveryNeed * S.regroup.energyRecoveryNeed
+        - context.counterCollapse * S.regroup.counterCollapse;
     }
     if (mode === "kite") {
-      return (context.defensivePressure ? 2.1 : 0)
-        + (ownBarrier && !ownBarrier.active ? 2.35 : 0)
-        + (context.barrierTactics?.incoming ? 1.8 : 0)
-        + (rangeRatio < 1.06 ? 0.95 : 0)
-        + (context.localAdvantage < 0.78 ? 1.1 : 0)
-        + (context.enemyArcDensity > 1 ? 0.9 : 0)
-        + context.maxShipThreat * 0.18
-        + context.energyRecoveryNeed * 0.24;
+      return (context.defensivePressure ? S.kite.defensivePressure : 0)
+        + (ownBarrier && !ownBarrier.active ? S.kite.ownBarrierDown : 0)
+        + (context.barrierTactics?.incoming ? S.kite.incomingBreaker : 0)
+        + (rangeRatio < S.kite.closeRangeBelow ? S.kite.closeRange : 0)
+        + (context.localAdvantage < S.kite.outnumberedBelow ? S.kite.outnumbered : 0)
+        + (context.enemyArcDensity > 1 ? S.kite.enemyArc : 0)
+        + context.maxShipThreat * S.kite.maxShipThreat
+        + context.energyRecoveryNeed * S.kite.energyRecoveryNeed;
     }
     if (mode === "collapse") {
-      return (context.killWindow ? 3.4 : 0)
-        + (barrierBreachWindow ? 2.3 : 0)
-        + (organizedBreach ? 0.9 : 0)
-        + (context.barrierTactics?.infiltration?.phase === "commit" ? 1.05 : 0)
-        - (enemyBarrier?.active && !organizedBreach && !organizedInfiltration ? 1.15 : 0)
-        + (context.localAdvantage > 1 ? 1.9 : 0)
-        + (context.closeoutWindow ? 1.6 : 0) // 收尾窗口：强力倾向冲杀残敌
-        + (context.intelSolid ? 1 : -0.55)
-        + (context.safeExchange ? 0.72 : 0)
-        + context.isolatedTargetScore * 0.92
-        + context.counterCollapse * 0.68
-        + (context.pressureDrive > 0.85 ? 0.55 : 0)
-        + context.energySurplus * 0.48
-        - context.energyRecoveryNeed * (context.closeoutWindow ? 0.12 : 0.55); // 收尾时不为省能放弃击杀
+      return (context.killWindow ? S.collapse.killWindow : 0)
+        + (barrierBreachWindow ? S.collapse.barrierBreachWindow : 0)
+        + (organizedBreach ? S.collapse.organizedBreach : 0)
+        + (context.barrierTactics?.infiltration?.phase === "commit" ? S.collapse.infiltrationCommit : 0)
+        - (enemyBarrier?.active && !organizedBreach && !organizedInfiltration ? S.collapse.enemyBarrierUp : 0)
+        + (context.localAdvantage > 1 ? S.collapse.advantage : 0)
+        + (context.closeoutWindow ? S.collapse.closeoutWindow : 0) // 收尾窗口：强力倾向冲杀残敌
+        + (context.intelSolid ? S.collapse.intelSolid : S.collapse.intelWeak)
+        + (context.safeExchange ? S.collapse.safeExchange : 0)
+        + context.isolatedTargetScore * S.collapse.isolatedTarget
+        + context.counterCollapse * S.collapse.counterCollapse
+        + (context.pressureDrive > S.collapse.pressureDriveAbove ? S.collapse.pressureDrive : 0)
+        + context.energySurplus * S.collapse.energySurplus
+        - context.energyRecoveryNeed * (context.closeoutWindow ? S.collapse.energyRecoveryCloseout : S.collapse.energyRecoveryNeed); // 收尾时不为省能放弃击杀
     }
     if (mode === "broadside") {
-      return (context.broadsideWindow ? 2.4 : -0.45)
-        + (ownBarrier?.active ? 0.72 : 0)
-        + (barrierBreachWindow ? 0.48 : 0)
-        - (enemyBarrier?.active && !organizedBreach ? 0.55 : 0)
-        + (context.localAdvantage > 0.9 ? 0.82 : 0)
-        + (context.killWindow ? 0.55 : 0)
-        + (context.arcAdvantage < 0.2 ? 1 : 0)
-        + (context.enemyBroadsideRisk ? 0.9 : 0)
-        + context.energySurplus * 0.24
-        - context.energyRecoveryNeed * 0.42;
+      return (context.broadsideWindow ? S.broadside.window : S.broadside.noWindow)
+        + (ownBarrier?.active ? S.broadside.ownBarrierUp : 0)
+        + (barrierBreachWindow ? S.broadside.barrierBreachWindow : 0)
+        - (enemyBarrier?.active && !organizedBreach ? S.broadside.enemyBarrierUp : 0)
+        + (context.localAdvantage > S.broadside.advantageAbove ? S.broadside.advantage : 0)
+        + (context.killWindow ? S.broadside.killWindow : 0)
+        + (context.arcAdvantage < S.broadside.arcDeficitBelow ? S.broadside.arcDeficit : 0)
+        + (context.enemyBroadsideRisk ? S.broadside.enemyBroadsideRisk : 0)
+        + context.energySurplus * S.broadside.energySurplus
+        - context.energyRecoveryNeed * S.broadside.energyRecoveryNeed;
     }
     if (mode === "cutoff") {
-      return (context.intelSolid ? 1.3 : -0.2)
-        + (context.barrierTactics?.infiltration?.phase === "stage" ? 1.35 : 0)
-        + (context.barrierTactics?.infiltration?.phase === "commit" ? 0.72 : 0)
-        + (organizedBreach ? 0.58 : 0)
-        + (rangeRatio > 0.86 && rangeRatio < 1.95 ? 1 : 0)
-        + (context.localAdvantage > 0.9 ? 0.58 : 0)
-        + (context.enemyArcDensity > 1.2 ? 0.44 : 0)
-        + (context.trackableIntel ? 0.96 : 0)
-        + context.isolatedTargetScore * 0.34
-        + context.energySurplus * 0.3
-        - context.energyRecoveryNeed * 0.28;
+      return (context.intelSolid ? S.cutoff.intelSolid : S.cutoff.intelWeak)
+        + (context.barrierTactics?.infiltration?.phase === "stage" ? S.cutoff.infiltrationStage : 0)
+        + (context.barrierTactics?.infiltration?.phase === "commit" ? S.cutoff.infiltrationCommit : 0)
+        + (organizedBreach ? S.cutoff.organizedBreach : 0)
+        + (rangeRatio > S.cutoff.rangeMin && rangeRatio < S.cutoff.rangeMax ? S.cutoff.inRange : 0)
+        + (context.localAdvantage > S.cutoff.advantageAbove ? S.cutoff.advantage : 0)
+        + (context.enemyArcDensity > S.cutoff.enemyArcAbove ? S.cutoff.enemyArc : 0)
+        + (context.trackableIntel ? S.cutoff.trackableIntel : 0)
+        + context.isolatedTargetScore * S.cutoff.isolatedTarget
+        + context.energySurplus * S.cutoff.energySurplus
+        - context.energyRecoveryNeed * S.cutoff.energyRecoveryNeed;
     }
     if (mode === "press") {
-      return 1.55
-        + (barrierBreachWindow ? 1.85 : 0)
-        + (organizedBreach ? 0.72 : 0)
-        + (context.barrierTactics?.infiltration?.phase === "commit" ? 0.88 : 0)
-        - (enemyBarrier?.active && !organizedBreach && !organizedInfiltration ? 0.82 : 0)
-        + (context.closeoutWindow ? 1.3 : 0) // 收尾窗口：维持压制把残敌打死
-        + (rangeRatio > 1.08 ? 0.92 : 0)
-        + (context.localAdvantage > 0.9 ? 0.72 : 0)
-        - (context.defensivePressure && !context.winning ? 1.05 : 0) // 占优时防御压力不削弱压制
-        - (context.enemyBroadsideRisk ? 0.78 : 0)
-        + (context.arcAdvantage > 0.2 ? 0.36 : 0)
-        + context.pressureDrive * 1.08
-        + (context.trackableIntel ? 0.82 : 0)
-        + context.counterCollapse * 0.34
-        + context.energySurplus * 0.34
-        - context.energyRecoveryNeed * (context.emergencyCommit || context.closeoutWindow ? 0.08 : 0.34);
+      return S.press.base
+        + (barrierBreachWindow ? S.press.barrierBreachWindow : 0)
+        + (organizedBreach ? S.press.organizedBreach : 0)
+        + (context.barrierTactics?.infiltration?.phase === "commit" ? S.press.infiltrationCommit : 0)
+        - (enemyBarrier?.active && !organizedBreach && !organizedInfiltration ? S.press.enemyBarrierUp : 0)
+        + (context.closeoutWindow ? S.press.closeoutWindow : 0) // 收尾窗口：维持压制把残敌打死
+        + (rangeRatio > S.press.farRangeAbove ? S.press.farRange : 0)
+        + (context.localAdvantage > S.press.advantageAbove ? S.press.advantage : 0)
+        - (context.defensivePressure && !context.winning ? S.press.defensivePressure : 0) // 占优时防御压力不削弱压制
+        - (context.enemyBroadsideRisk ? S.press.enemyBroadsideRisk : 0)
+        + (context.arcAdvantage > S.press.arcAdvantageAbove ? S.press.arcAdvantage : 0)
+        + context.pressureDrive * S.press.pressureDrive
+        + (context.trackableIntel ? S.press.trackableIntel : 0)
+        + context.counterCollapse * S.press.counterCollapse
+        + context.energySurplus * S.press.energySurplus
+        - context.energyRecoveryNeed * (context.emergencyCommit || context.closeoutWindow ? S.press.energyRecoveryCommitted : S.press.energyRecoveryNeed);
     }
     return 0;
   }
 
   chooseMode(context) {
+    const C = this.params.mode.choose;
     const ownBarrier = context.barrierTactics?.own;
-    const forcedMode = context.edgePressure > 0.34
+    const forcedMode = context.edgePressure > C.recoverEdgePressure
       ? "recover"
-      : ownBarrier && !ownBarrier.active && context.dist < context.rangeRef * 1.42 && !context.winning
+      : ownBarrier && !ownBarrier.active && context.dist < context.rangeRef * C.ownBarrierDownRange && !context.winning
         ? context.detachedCount > 0 ? "regroup" : "kite"
       : context.barrierTactics?.incoming && !context.killWindow
         ? "kite"
@@ -2648,10 +2643,10 @@ export class BotController {
         && !context.barrierTactics.enemy.active
         && context.barrierTactics.enemy.disabledRemaining > 0
         && context.intelSolid
-        && context.mainHull > 0.32
+        && context.mainHull > C.breachCollapseMinHull
         ? "collapse"
       // 收尾窗口下不强制去充能(harvest)——该把残局打完，否则双方都去充能拖成平局
-      : (context.energyRecoveryNeed >= 0.78 || context.energyRatio < 0.12) && !context.emergencyCommit && !context.closeoutWindow && !context.focus.visible && context.dist > context.rangeRef * 0.84
+      : (context.energyRecoveryNeed >= C.harvestRecoveryNeed || context.energyRatio < C.harvestEnergyBelow) && !context.emergencyCommit && !context.closeoutWindow && !context.focus.visible && context.dist > context.rangeRef * C.harvestMinRange
         ? "harvest"
       : context.shamisenHunt?.attack?.active
         && context.shamisenHunt.attack.isFocus
@@ -2662,19 +2657,19 @@ export class BotController {
         : null;
     if (forcedMode) {
       this.mode = forcedMode;
-      this.modeTimer = this.rng.range(1.2, forcedMode === "search" ? 2.8 : forcedMode === "harvest" ? 3.2 : 2.2);
+      this.modeTimer = this.rng.range(C.forcedHoldMin, forcedMode === "search" ? C.forcedHoldSearch : forcedMode === "harvest" ? C.forcedHoldHarvest : C.forcedHoldOther);
       return this.mode;
     }
 
     // 低血转防守——但若正占优(领先/敌濒覆灭)则不退，继续压制把对手打死，避免领先方陪跑成平局
-    if (context.mainHull < 0.26 && context.dist < context.rangeRef * 1.22 && !context.winning) {
+    if (context.mainHull < C.lowHullBelow && context.dist < context.rangeRef * C.lowHullRange && !context.winning) {
       this.mode = context.detachedCount > 0 ? "regroup" : "kite";
-      this.modeTimer = this.rng.range(1.6, 2.8);
+      this.modeTimer = this.rng.range(C.lowHullHold[0], C.lowHullHold[1]);
       return this.mode;
     }
-    if ((context.focus.visible || context.maxShipThreat > 0.7) && context.energyRatio < 0.12 && context.dist < context.rangeRef * 0.96 && !context.winning) {
+    if ((context.focus.visible || context.maxShipThreat > C.lowEnergyThreat) && context.energyRatio < C.lowEnergyBelow && context.dist < context.rangeRef * C.lowEnergyRange && !context.winning) {
       this.mode = "regroup";
-      this.modeTimer = this.rng.range(1.8, 3);
+      this.modeTimer = this.rng.range(C.lowEnergyHold[0], C.lowEnergyHold[1]);
       return this.mode;
     }
 
@@ -2694,8 +2689,8 @@ export class BotController {
     }
     this.mode = bestMode;
     this.modeTimer = this.rng.range(
-      bestMode === "collapse" || bestMode === "kite" || bestMode === "cutoff" ? 1.2 : 1.8,
-      bestMode === "regroup" || bestMode === "harvest" ? 3.2 : 2.8,
+      bestMode === "collapse" || bestMode === "kite" || bestMode === "cutoff" ? C.holdMinShort : C.holdMinLong,
+      bestMode === "regroup" || bestMode === "harvest" ? C.holdMaxLong : C.holdMaxShort,
     );
     return this.mode;
   }
@@ -2781,6 +2776,7 @@ export class BotController {
   }
 
   chooseDetachedIntelLead(detachedShips, enemyEstimate, context) {
+    const D = this.params.detached.intelLead;
     if (!enemyEstimate || !detachedShips.length) {
       return null;
     }
@@ -2794,35 +2790,36 @@ export class BotController {
       }
       const visionMargin = ship.stats.vision - enemyVision;
       const score = vitality.value
-        + clamp(visionMargin / 55, -0.2, 0.85)
-        + clamp((ship.stats.vision - 160) / 70, 0, 0.65)
-        + clamp((ship.stats.baseSpeed - 33) / 8, -0.1, 0.3)
-        + (ship.characterId === "yuki" ? 0.9 : 0)
-        + (ship.characterId === "asakura" ? 0.32 : 0)
-        + (ship.characterId === "future1096" ? 0.18 : 0)
-        + (context?.searchRequired || context?.trackableIntel ? 0.18 : 0);
+        + clamp(visionMargin / D.visionMarginScale, D.visionMarginMin, D.visionMarginMax)
+        + clamp((ship.stats.vision - D.visionBase) / D.visionScale, 0, D.visionMax)
+        + clamp((ship.stats.baseSpeed - D.speedBase) / D.speedScale, D.speedMin, D.speedMax)
+        + (ship.characterId === "yuki" ? D.yukiBias : 0)
+        + (ship.characterId === "asakura" ? D.asakuraBias : 0)
+        + (ship.characterId === "future1096" ? D.future1096Bias : 0)
+        + (context?.searchRequired || context?.trackableIntel ? D.searchBias : 0);
       if (score > bestScore) {
         bestScore = score;
         best = ship;
       }
     }
-    return bestScore > 1 ? best : null;
+    return bestScore > D.minScore ? best : null;
   }
 
   detachedRetreatNeed(ship, enemyEstimate, context) {
+    const D = this.params.detached.retreat;
     if (!ship || !ship.alive || !enemyEstimate || !context) {
       return 0;
     }
     const vitality = this.shipVitality(ship);
     const dist = distance(ship.x, ship.y, enemyEstimate.x, enemyEstimate.y);
     return clamp(
-      (0.48 - vitality.hpRatio) * 2.4
-      + (0.26 - vitality.energyRatio) * 1.8
-      + (dist < ship.stats.range * 0.92 ? 0.22 : 0)
-      + (context.enemyBroadsideRisk ? 0.16 : 0)
-      + (context.defensivePressure ? 0.14 : 0),
+      (D.hpCeiling - vitality.hpRatio) * D.hpWeight
+      + (D.energyCeiling - vitality.energyRatio) * D.energyWeight
+      + (dist < ship.stats.range * D.closeRange ? D.close : 0)
+      + (context.enemyBroadsideRisk ? D.enemyBroadsideRisk : 0)
+      + (context.defensivePressure ? D.defensivePressure : 0),
       0,
-      1.8,
+      D.max,
     );
   }
 
@@ -3152,7 +3149,7 @@ export class BotController {
   }
 
   usesAdvancedSkillCounterplay() {
-    return !this.legacy && (this.difficulty === "hard" || this.difficulty === "master");
+    return this.params.features.advancedCounterplay;
   }
 
   incomingVisionWaveWillPurge(ships, buffDuration) {
@@ -3221,6 +3218,7 @@ export class BotController {
   }
 
   shouldCastFlagshipSkill(estimate, context = this.currentContext) {
+    const K = this.params.skills.flagship;
     const main = this.obs.self.ships.main;
     const characterId = this.obs.self.loadout.main;
     if (!estimate || !main.alive) {
@@ -3234,8 +3232,8 @@ export class BotController {
       return false;
     }
     const energyFloors = characterId === "haruhi"
-      ? { emergencyFloor: 0.03, normalFloor: 0.05, conserveFloor: 0.08 }
-      : { emergencyFloor: 0.1, normalFloor: 0.16, conserveFloor: 0.26 };
+      ? { emergencyFloor: K.haruhiEmergencyFloor, normalFloor: K.haruhiNormalFloor, conserveFloor: K.haruhiConserveFloor }
+      : { emergencyFloor: K.emergencyFloor, normalFloor: K.normalFloor, conserveFloor: K.conserveFloor };
     if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, energyFloors)) {
       return false;
     }
@@ -3252,18 +3250,18 @@ export class BotController {
       if (!form) {
         return Boolean(
           estimate.source !== "spawn"
-          && (estimate.visible || estimate.age <= 3)
-          && hull > 0.58
-          && (aggression > 0.18 || context?.trackableIntel),
+          && (estimate.visible || estimate.age <= K.future1096OpenAge)
+          && hull > K.future1096OpenHull
+          && (aggression > K.future1096OpenAggression || context?.trackableIntel),
         );
       }
       if (form === "A") {
-        return hull < 0.62 || pressure > 0.58 || this.mode === "recover";
+        return hull < K.future1096DefendHull || pressure > K.future1096DefendPressure || this.mode === "recover";
       }
-      return hull > 0.48 && pressure < 0.42 && aggression > 0.46;
+      return hull > K.future1096AttackHull && pressure < K.future1096AttackPressure && aggression > K.future1096AttackAggression;
     }
     if (characterId === "tsuruya") {
-      return this.obs.self.hullRatio < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;
+      return this.obs.self.hullRatio < K.tsuruyaHull || (context?.skillAggression || 0) > K.tsuruyaAggression || (context?.combatUrgency || 0) > K.tsuruyaUrgency;
     }
     if (characterId === "asakura") {
       const now = this.obs.time;
@@ -3282,19 +3280,19 @@ export class BotController {
             visibleBuffRemaining,
             Number(ship.effects.reliableUntil || 0) - now,
             Number(ship.effects.bladeQueenUntil || 0) - now,
-            ship.effects.nextShotDamageMultiplier > 1 ? 6 : 0,
+            ship.effects.nextShotDamageMultiplier > 1 ? K.asakuraChargedShotSeconds : 0,
           );
         }
       }
 
-      const waveArrivalSeconds = dist / 480;
-      const canPurgeBeforeExpiry = visibleBuffRemaining > waveArrivalSeconds + 0.2;
+      const waveArrivalSeconds = dist / K.asakuraWaveSpeed;
+      const canPurgeBeforeExpiry = visibleBuffRemaining > waveArrivalSeconds + K.asakuraPurgeMargin;
       const hasHiddenEnemyShip = this.obs.privileged.hasHiddenEnemyShip;
       const usefulSearchPulse = hasHiddenEnemyShip && Boolean(
         estimate.source === "radar"
-        || (!estimate.visible && estimate.source !== "spawn" && estimate.age <= 7)
+        || (!estimate.visible && estimate.source !== "spawn" && estimate.age <= K.asakuraSearchAge)
         || context?.trackableIntel
-        || (this.mode === "search" && (context?.searchRequired || context?.intelUrgency > 0.82)),
+        || (this.mode === "search" && (context?.searchRequired || context?.intelUrgency > K.asakuraSearchUrgency)),
       );
       return canPurgeBeforeExpiry || usefulSearchPulse;
     }
@@ -3302,6 +3300,7 @@ export class BotController {
   }
 
   shouldCastSubSkill(ship, estimate, context = this.currentContext) {
+    const K = this.params.skills.sub;
     if (!ship || !ship.alive) {
       return false;
     }
@@ -3310,7 +3309,7 @@ export class BotController {
     if (this.shouldDelaySubBuff(ship, meta)) {
       return false;
     }
-    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: 0.08, normalFloor: 0.14, conserveFloor: 0.24 })) {
+    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: K.emergencyFloor, normalFloor: K.normalFloor, conserveFloor: K.conserveFloor })) {
       return false;
     }
     const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
@@ -3322,9 +3321,9 @@ export class BotController {
     const breachDistance = enemyBarrier
       ? distance(ship.x, ship.y, enemyBarrier.x, enemyBarrier.y)
       : dist;
-    const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, 4);
+    const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, K.barrierBlockMargin);
     if (ship.characterId === "haruhi") {
-      const shockRadius = this.obs.world.size / 6;
+      const shockRadius = this.obs.world.size / K.haruhiShockRadiusDivisor;
       const visibleEnemyShips = this.obs.enemy.visible.filter((enemyShip) => (
         enemyShip.kind === "ship"
         && distance(ship.x, ship.y, enemyShip.x, enemyShip.y) <= shockRadius + enemyShip.radius
@@ -3340,13 +3339,13 @@ export class BotController {
       const focusWillStayInRange = Boolean(
         estimate
         && estimate.source !== "spawn"
-        && (estimate.visible || estimate.age <= 1.2)
-        && dist <= shockRadius * 0.9,
+        && (estimate.visible || estimate.age <= K.haruhiFocusAge)
+        && dist <= shockRadius * K.haruhiFocusRange,
       );
       const worthwhileAircraftPurge = visibleEnemyAircraft.length >= Math.max(2, ownAircraftAtRisk + 1);
       return Boolean(
         (focusWillStayInRange || visibleEnemyShips.length >= 2 || worthwhileAircraftPurge)
-        && (((context?.skillAggression) || 0) > 0.12 || this.energyProfile(ship).high),
+        && (((context?.skillAggression) || 0) > K.haruhiAggression || this.energyProfile(ship).high),
       );
     }
     if (ship.characterId === "koizumi") {
@@ -3355,17 +3354,17 @@ export class BotController {
           estimate
           && !ship.koizumiOrbActive
           && estimate.source !== "spawn"
-          && (estimate.visible || estimate.age <= 4.2)
-          && breachDistance <= ship.stats.range * 1.75,
+          && (estimate.visible || estimate.age <= K.koizumiBreachAge)
+          && breachDistance <= ship.stats.range * K.koizumiBreachRange,
         );
       }
       return Boolean(
         estimate
         && !ship.koizumiOrbActive
         && estimate.source !== "spawn"
-        && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel)
-        && dist <= ship.stats.range * 1.55
-        && (((context?.skillAggression) || 0) > 0.14 || this.energyProfile(ship).high),
+        && (estimate.visible || estimate.age <= K.koizumiAge || context?.trackableIntel)
+        && dist <= ship.stats.range * K.koizumiRange
+        && (((context?.skillAggression) || 0) > K.koizumiAggression || this.energyProfile(ship).high),
       );
     }
     if (ship.characterId === "future1096") {
@@ -3375,37 +3374,37 @@ export class BotController {
       return Boolean(
         estimate
         && estimate.source !== "spawn"
-        && (estimate.visible || estimate.age <= 1.6)
-        && (((context?.skillAggression) || 0) > 0.18 || context?.emergencyCommit),
+        && (estimate.visible || estimate.age <= K.future1096Age)
+        && (((context?.skillAggression) || 0) > K.future1096Aggression || context?.emergencyCommit),
       );
     }
     if (ship.characterId === "kyon") {
-      return ship.hp / Math.max(1, ship.maxHp) < 0.84 || Boolean(estimate && dist <= ship.stats.range * 1.18);
+      return ship.hp / Math.max(1, ship.maxHp) < K.kyonHull || Boolean(estimate && dist <= ship.stats.range * K.kyonRange);
     }
     if (ship.characterId === "tsuruya") {
       return Boolean(
         estimate
-        && (estimate.visible || estimate.age <= 7)
-        && (((context?.skillAggression) || 0) > 0.08 || (context?.trackableIntel)),
+        && (estimate.visible || estimate.age <= K.tsuruyaAge)
+        && (((context?.skillAggression) || 0) > K.tsuruyaAggression || (context?.trackableIntel)),
       );
     }
     if (ship.characterId === "yuki") {
-      return (((context?.scoutPriority) || 0) > 0.28 || this.energyProfile(ship).high)
-        && (!estimate || !estimate.visible || estimate.age > 2.5 || this.obs.self.scouts.length < 3);
+      return (((context?.scoutPriority) || 0) > K.yukiScoutPriority || this.energyProfile(ship).high)
+        && (!estimate || !estimate.visible || estimate.age > K.yukiVisibleAge || this.obs.self.scouts.length < K.yukiMinScouts);
     }
     if (ship.characterId === "asakura") {
       if (assignedToBreach) {
         return Boolean(
           estimate
-          && (estimate.visible || estimate.age <= 4.2)
-          && breachDistance <= ship.stats.range * 1.5,
+          && (estimate.visible || estimate.age <= K.asakuraBreachAge)
+          && breachDistance <= ship.stats.range * K.asakuraBreachRange,
         );
       }
       return Boolean(
         estimate
-        && (estimate.visible || estimate.age <= 2.4)
-        && dist <= ship.stats.range * 0.95
-        && (((context?.skillAggression) || 0) > 0.14 || context?.killWindow || context?.combatUrgency > 0.5),
+        && (estimate.visible || estimate.age <= K.asakuraAge)
+        && dist <= ship.stats.range * K.asakuraRange
+        && (((context?.skillAggression) || 0) > K.asakuraAggression || context?.killWindow || context?.combatUrgency > K.asakuraUrgency),
       );
     }
     if (ship.characterId === "shamisen") {
@@ -3414,9 +3413,9 @@ export class BotController {
       }
       return Boolean(
         estimate
-        && (estimate.visible || estimate.age <= 2.2)
-        && dist <= ship.stats.range * 1.12
-        && (((context?.skillAggression) || 0) > 0.12 || context?.killWindow || this.energyProfile(ship).high),
+        && (estimate.visible || estimate.age <= K.shamisenAge)
+        && dist <= ship.stats.range * K.shamisenRange
+        && (((context?.skillAggression) || 0) > K.shamisenAggression || context?.killWindow || this.energyProfile(ship).high),
       );
     }
     return true;
@@ -3616,7 +3615,7 @@ export class BotController {
   // 双方互相失明便不开火、拖成平局。此处在进攻意图下把落点从盲区沿原方向(保留侧舷角)
   // 拉进视野距离，使舰真正夺取目标并持续开火。仅作用于进攻模式+愿意交战时。
   engageTarget(ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
-    if (this.legacy) return target; // 旧版AI：不做视野收尾压近
+    if (!this.params.features.visionEngage) return target; // 旧版AI：不做视野收尾压近
     if (!target || !enemy || !ship) return target;
     // 情报前探、后卫和侧翼已有各自的距离契约；通用交火收尾只能改写正面火力角色，
     // 否则会把长门前探从视野边缘推回普通射击距离，反而丢失情报价值。
@@ -3633,7 +3632,7 @@ export class BotController {
       // 站在敌视野之外打：交火距离取"敌方视野×POKE_VISION_MULT"(刚好够不到我)，clamp 在射程内。
       // 比满射程远吊更靠前→火力更集中/压制更强，又仍在敌视野外→不挨打。
       const enemyVis = this.estimateVisionRange(enemy);
-      const pokeR = clamp(enemyVis * POKE_VISION_MULT, enemyVis + 30, ship.stats.range * 0.95);
+      const pokeR = clamp(enemyVis * this.params.movement.engage.pokeVisionMult, enemyVis + 30, ship.stats.range * 0.95);
       const px = target.x - enemy.x;
       const py = target.y - enemy.y;
       const pOff = Math.hypot(px, py);
@@ -3994,7 +3993,7 @@ export class BotController {
       );
       // 编队凝聚(反孤立)：交战角色的分离舰不得离主力太远，避免被各个击破，并让火力自然汇聚到同一片战区
       // (公平的"集中兵力"——靠站位凝聚，而非锁定目标)。后撤/侦察/逃逸不受此限。
-      if (!huntPoint && !this.legacy && (role === "fire" || role === "flank" || role === "front") && main.alive) {
+      if (!huntPoint && this.params.features.formationLeash && (role === "fire" || role === "flank" || role === "front") && main.alive) {
         const leash = clamp(main.stats.range * 0.40, 150, 235);
         const dxm = directive.target.x - main.x;
         const dym = directive.target.y - main.y;

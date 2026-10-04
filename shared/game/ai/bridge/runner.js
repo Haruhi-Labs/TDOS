@@ -2,9 +2,9 @@
 import { BotController } from "../../bot-controller.js";
 import { createActionPort } from "./action-port.js";
 
-export function createAiRunner(match, seat, { actionMode } = {}) {
+export function createAiRunner(match, seat, { actionMode, params } = {}) {
   const port = createActionPort(match, seat, actionMode ? { mode: actionMode } : undefined);
-  const policy = new BotController(port, { rng: match.aiRng[seat] });
+  const policy = new BotController(port, { rng: match.aiRng[seat], params });
   return {
     seat,
     port,
