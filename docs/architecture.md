@@ -92,7 +92,10 @@
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/rng.js`：对局级随机源。`MatchSimulation` 传入整数 `seed` 时规则与各席 AI 使用互不干扰的种子随机流，实体 ID 也改为对局内计数，整局可复现；未传时每次取值读取调用时刻的 `Math.random`，取值顺序不变。对局内规则与 AI 不直接调用 `Math.random`；种子不进入快照。
 - `shared/game/ai/bridge/observation.js`：规则层到 AI 的唯一读取出口。`buildObservation(match, seat)` 把实时对局翻译成该席位有权知道的纯数据（己方完整状态、视野内敌方实体及其公开技能状态、长门雷达接触、猫爪标记、可感知弹体与公开波纹）；现状中未经迷雾过滤的四项读取集中在 `privileged`。时间字段保留绝对时间戳，观测可 JSON 往返。
-- `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。决策只读取观测，不持有敌方舰队引用；对己方舰队的写入集中在 `legacyWrite` 与一组 `write*` 方法，写入后观测失效重建。对外是一层门面：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
+- `shared/game/ai/actions.js`：AI 的动作词表。标准动作复用 `shared/protocol/match-actions.js`；带寻的点的侦察机发射与侦察机重编组是 AI 扩展动作，不进入对局动作协议，网络输入校验会拒绝它们。
+- `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，也是 AI 侧唯一持有实时舰队的位置。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作默认经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；`direct` 模式保留改造前的直接调用路径，只用于行为对照。
+- `shared/game/ai/bridge/runner.js`：为每个 AI 席位创建端口与策略，并在每个逻辑帧驱动一次。
+- `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。只通过端口读取观测、提交动作，不持有双方舰队引用。对外是一层门面：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
 - `shared/game/bot-character-strategy.js`：角色针对性战术层，负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
 - `shared/game/bot-shamisen-strategy.js`：三味线“猫爪印记”的攻守编队层，负责无视野追踪、分阶段突破、防线识别、追击收束，以及被猎杀舰的战线外撤游与护卫屏障；猎杀标记不会在此被提升为真实视野。
@@ -101,7 +104,7 @@
 - `shared/game/koizumi-orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。
 - `shared/game/koizumi-barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
 - `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
-- `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法。
+- `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法；AI 经动作端口进入同一条执行链。
 - `shared/game/collision-system.js`：舰船碰撞、侦察机相撞和刀锋女王接触结算。
 - `shared/game/match-telemetry.js`：对局内常数级动作、攻击、伤害和损失计数；只由结算摘要读取，不进入显示状态或网络快照。
 

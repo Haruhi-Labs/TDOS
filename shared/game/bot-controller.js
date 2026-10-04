@@ -1,10 +1,6 @@
 import { TICK_DT } from "./constants.js";
-import {
-  buildObservation,
-  observeEnemyEntity,
-  observeEnemySpawn,
-  snapshotVisibleCharacterTactics,
-} from "./ai/bridge/observation.js";
+import { aiActions } from "./ai/actions.js";
+import { snapshotVisibleCharacterTactics } from "./ai/bridge/observation.js";
 import { bunnyStageRoute, shouldTransformBunny } from "./bot-bunny-haruhi-strategy.js";
 import { SCOUT_LAUNCH_COST, fireArcDensityMultiplier } from "./combat-rules.js";
 import {
@@ -30,10 +26,8 @@ import {
   predictCharacterSkillAim,
 } from "./bot-character-strategy.js";
 import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
-import { rngFor } from "./rng.js";
 import {
   energyRateForThrottle,
-  normalizeThrottleToGear,
   throttleForGear,
   throttleGearForValue,
 } from "./throttle.js";
@@ -92,20 +86,16 @@ const AI_DIFFICULTY = Object.freeze({
 });
 
 export class BotController {
-  constructor(team) {
-    this.match = team.match;
-    this.seat = team.seat;
-    // 决策只读取观测；对实时对象的写入集中在 legacyWrite，待动作层接管。
-    this.legacyWrite = { team };
-    this.observation = null;
-    this.observationStale = true;
+  // port 是 AI 与对局之间的唯一通道：port.observe() 读取观测，port.submit(action) 提交动作。
+  constructor(port, { rng } = {}) {
+    this.port = port;
+    this.seat = port.seat;
+    this.indexedObservation = null;
     this.observationIndex = null;
-    // 校验用：观测先经 JSON 往返再交给决策，证明决策没有依赖实时对象引用或非纯数据值。
-    this.strictObservation = false;
     this.entryDepth = 0;
     this.entryGuards = new Map();
     // 每席 AI 使用对局分配的随机流；未带种子的对局里它就是环境随机源。
-    this.rng = team.match.aiRng?.[team.seat] || rngFor(team.match);
+    this.rng = rng;
     this.profile = HARD_AI_PROFILE;
     // 旧版AI开关：true 时关闭全部升级(集火/视野收尾/收尾压制)，行为回到升级前的基线AI。
     // 用于 AI推演里「对手用旧AI」对照展示，无需打包冻结副本。
@@ -138,7 +128,7 @@ export class BotController {
     };
     this.stuckTimer = 0;
 
-    const enemyMain = observeEnemySpawn(this.match, this.seat);
+    const enemyMain = this.port.enemySpawn();
     const spawnZone = this.zoneForPoint(enemyMain.x, enemyMain.y);
     this.searchOrder = [5, 2, 8, 4, 6, 1, 7, 3, 9];
     this.searchCursor = 0;
@@ -228,7 +218,7 @@ export class BotController {
     if (!guard) {
       guard = (...args) => {
         if (this.entryDepth > 0) return method.apply(this, args);
-        this.observationStale = true;
+        this.port.invalidate();
         this.entryDepth = 1;
         try {
           return method.apply(this, args.map((arg) => this.observeArgument(arg)));
@@ -242,31 +232,31 @@ export class BotController {
   }
 
   observeArgument(arg) {
-    const liveTeam = arg && typeof arg === "object" ? arg.team : null;
-    if (!liveTeam || liveTeam.match !== this.match) return arg;
-    if (liveTeam.seat === this.seat) return this.ownShipById(arg.id) || arg;
-    const entity = observeEnemyEntity(arg, this.match.elapsed);
-    return this.strictObservation ? JSON.parse(JSON.stringify(entity)) : entity;
+    return this.port.observeLive(arg, (id) => this.ownShipById(id));
   }
 
   get obs() {
-    if (this.observationStale || !this.observation) {
-      const observation = buildObservation(this.match, this.seat);
-      this.observation = this.strictObservation ? JSON.parse(JSON.stringify(observation)) : observation;
-      this.observationStale = false;
-      this.observationIndex = null;
-    }
-    return this.observation;
+    return this.port.observe();
   }
 
   // 兼容外部读取；决策代码不得使用。
   get team() {
-    return this.legacyWrite.team;
+    return this.port.team;
+  }
+
+  get strictObservation() {
+    return this.port.strict;
+  }
+
+  set strictObservation(value) {
+    this.port.strict = Boolean(value);
+    this.port.invalidate();
   }
 
   indexObservation() {
     const obs = this.obs;
-    if (!this.observationIndex) {
+    if (this.indexedObservation !== obs) {
+      this.indexedObservation = obs;
       const self = obs.self;
       const ships = [self.ships.main, self.ships.sub1, self.ships.sub2, ...self.extraShips];
       this.observationIndex = {
@@ -324,52 +314,37 @@ export class BotController {
     return this.obs.world.zones.find((zone) => zone.id === safeId) || this.obs.world.zones[4];
   }
 
+  // 以下方法把决策结果表达为动作并提交；返回值是动作是否被接受。
   writeSplit(level) {
-    const ok = this.legacyWrite.team.split(level);
-    this.observationStale = true;
-    return ok;
+    return this.port.submit(aiActions.split(level));
   }
 
   writeThrottle(shipKey, throttle) {
-    this.legacyWrite.team.ships[shipKey].throttle = throttle;
-    this.observationStale = true;
+    return this.port.submit(aiActions.setThrottle({ shipKey, throttle }));
   }
 
   writeRoute(shipKey, endX, endY, throttle) {
-    this.legacyWrite.team.ships[shipKey].setBezierRoute(undefined, undefined, endX, endY, throttle, false);
-    this.observationStale = true;
+    return this.port.submit(aiActions.setRoute({ shipKey, endX, endY, throttle }));
   }
 
   writeRouteEndpoint(shipKey, endX, endY) {
-    this.legacyWrite.team.ships[shipKey].setRouteEndpoint(endX, endY, false);
-    this.observationStale = true;
+    return this.port.submit(aiActions.routeEnd({ shipKey, endX, endY }));
   }
 
-  writeLaunchScout(zoneId, options) {
-    const ok = this.legacyWrite.team.launchScout(zoneId, options);
-    this.observationStale = true;
-    return ok;
+  writeLaunchScout(zoneId, { fromShipKey, ...orders }) {
+    return this.port.submit(aiActions.launchScout({ zoneId, shipKey: fromShipKey, ...orders }));
   }
 
-  writeScoutMission(scoutId, options) {
-    const team = this.legacyWrite.team;
-    const scout = team.scouts.find((item) => item.id === scoutId && item.alive);
-    const ok = Boolean(scout) && team.assignScoutMission(scout, options);
-    this.observationStale = true;
-    return ok;
+  writeScoutMission(scoutId, orders) {
+    return this.port.submit(aiActions.retaskScout({ scoutId, ...orders }));
   }
 
   writeFlagshipSkill() {
-    const ok = this.legacyWrite.team.castFlagshipSkill();
-    this.observationStale = true;
-    return ok;
+    return this.port.submit(aiActions.castFlagshipSkill());
   }
 
-  writeSubSkill(shipKey, options) {
-    const team = this.legacyWrite.team;
-    const ok = options === undefined ? team.castSubSkill(shipKey) : team.castSubSkill(shipKey, options);
-    this.observationStale = true;
-    return ok;
+  writeSubSkill(shipKey, target = {}) {
+    return this.port.submit(aiActions.castSubSkill({ shipKey, ...target }));
   }
 
   debugPoint(point) {
@@ -672,9 +647,9 @@ export class BotController {
     this.replanMult = d.replanMult;
     this.focusLowHp = !!d.focusLowHp;
     // 把"数值缩放"与"极限锁血"落到本AI所控舰队上(玩家队无 bot,不受影响)
-    this.legacyWrite.team.aiFocusLowHp = this.focusLowHp;
-    this.legacyWrite.team.applyAiStatMult(d.statMult);
-    this.observationStale = true;
+    this.port.team.aiFocusLowHp = this.focusLowHp;
+    this.port.team.applyAiStatMult(d.statMult);
+    this.port.invalidate();
     return this;
   }
 
@@ -3730,7 +3705,7 @@ export class BotController {
       this.writeRoute(ship.key, tx, ty, th);
       update = "reset";
     } else {
-      this.writeThrottle(ship.key, normalizeThrottleToGear(th, ship.throttle));
+      this.writeThrottle(ship.key, th);
       this.writeRouteEndpoint(ship.key, tx, ty);
       update = "retarget";
     }

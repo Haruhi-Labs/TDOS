@@ -20,6 +20,7 @@
     "test:core:bunny-ai": "node scripts/verify-core.mjs bunny-ai",
     "test:core:rng": "node scripts/verify-core.mjs rng",
     "test:core:ai-observation": "node scripts/verify-core.mjs ai-observation",
+    "test:core:ai-actions": "node scripts/verify-core.mjs ai-actions",
     "test:ai:bunny-haruhi": "node scripts/measure-bunny-haruhi.mjs --balance",
     "test:perf:bunny-haruhi": "node scripts/measure-bunny-haruhi.mjs --performance",
     "test:changelog": "node scripts/verify-changelog.mjs",

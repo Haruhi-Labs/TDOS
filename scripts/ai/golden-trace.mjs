@@ -7,6 +7,7 @@
 //   node scripts/ai/golden-trace.mjs --dump=<名称>:<tick>   输出该场景运行到指定 tick 后的完整状态
 //   node scripts/ai/golden-trace.mjs --perf                记录 tick 耗时基线
 //   node scripts/ai/golden-trace.mjs --strict-observation  观测经 JSON 往返后再交给 AI，结果仍须与基线一致
+//   node scripts/ai/golden-trace.mjs --action-mode=direct|dispatch  指定 AI 动作执行路径，并在分歧时给出权限校验拒绝的归因
 //   --baseline=<路径>  指定基线文件；--out=<路径>  指定录制或耗时输出文件；--force  忽略环境不符
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
@@ -29,12 +30,13 @@ const WORLD_SIZE = 1440;
 const CHECKPOINT_TICKS = 30;
 
 function parseArgs(argv) {
-  const args = { record: false, perf: false, force: false, strictObservation: false, scenario: null, dump: null, baseline: null, out: null };
+  const args = { record: false, perf: false, force: false, strictObservation: false, actionMode: null, scenario: null, dump: null, baseline: null, out: null };
   for (const item of argv) {
     if (item === "--record") args.record = true;
     else if (item === "--perf") args.perf = true;
     else if (item === "--force") args.force = true;
     else if (item === "--strict-observation") args.strictObservation = true;
+    else if (item.startsWith("--action-mode=")) args.actionMode = item.slice("--action-mode=".length);
     else if (item.startsWith("--scenario=")) args.scenario = item.slice("--scenario=".length);
     else if (item.startsWith("--dump=")) args.dump = item.slice("--dump=".length);
     else if (item.startsWith("--baseline=")) args.baseline = item.slice("--baseline=".length);
@@ -312,13 +314,16 @@ function checkpoint(simulation, random) {
   };
 }
 
-function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false } = {}) {
+function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false, actionMode = null } = {}) {
   const originalRandom = Math.random;
   const random = seededRandom(scenario.seed);
   __resetEntityIds(1);
   Math.random = random;
   try {
     const simulation = scenario.build();
+    if (actionMode) {
+      for (const runner of Object.values(simulation.aiRunners)) runner.port.mode = actionMode;
+    }
     if (strictObservation) {
       for (const bot of Object.values(simulation.bots)) bot.strictObservation = true;
     }
@@ -348,12 +353,14 @@ function runScenario(scenario, { dumpTick = null, digest = true, timings = null,
         ticks: simulation.tick,
         phase: simulation.phase,
         winnerSeat: simulation.winnerSeat,
-        durationSeconds: Number(simulation.elapsed.toFixed(3)),
         randomCalls: random.calls,
       },
       light,
       checkpoints,
       final,
+      permissionRejections: Object.fromEntries(
+        Object.entries(simulation.aiRunners).map(([seat, runner]) => [seat, runner.port.permissionRejections]),
+      ),
     };
   } finally {
     Math.random = originalRandom;
@@ -395,8 +402,11 @@ function compareScenario(expected, actual) {
         + `（随机数消费：基线 ${before.randomCalls}，当前 ${after.randomCalls}）`;
     }
   }
-  if (JSON.stringify(expected.result) !== JSON.stringify(actual.result)) {
-    return `结局不同：基线 ${JSON.stringify(expected.result)}，当前 ${JSON.stringify(actual.result)}`;
+  // 对局时间已包含在世界摘要里，结局只比较离散量。
+  for (const key of ["ticks", "phase", "winnerSeat", "randomCalls"]) {
+    if (expected.result[key] !== actual.result[key]) {
+      return `结局不同：基线 ${JSON.stringify(expected.result)}，当前 ${JSON.stringify(actual.result)}`;
+    }
   }
   if (JSON.stringify(expected.final) !== JSON.stringify(actual.final)) {
     return `终局检查点不同（第 ${expected.final.tick} tick）`;
@@ -457,7 +467,10 @@ if (args.dump) {
     format: 1,
     checkpointTicks: CHECKPOINT_TICKS,
     environment: environment(),
-    scenarios: scenarios.map((scenario) => runScenario(scenario)),
+    scenarios: scenarios.map((scenario) => {
+      const { permissionRejections, ...recorded } = runScenario(scenario, { actionMode: args.actionMode });
+      return recorded;
+    }),
   };
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, `${JSON.stringify(baseline)}\n`);
@@ -489,8 +502,15 @@ if (args.dump) {
       failures.push(`${scenario.name}：基线中没有该场景`);
       continue;
     }
-    const difference = compareScenario(expected, runScenario(scenario, { strictObservation: args.strictObservation }));
-    if (difference) failures.push(`${scenario.name}：${difference}`);
+    const actual = runScenario(scenario, { strictObservation: args.strictObservation, actionMode: args.actionMode });
+    const difference = compareScenario(expected, actual);
+    const rejected = Object.values(actual.permissionRejections).filter((item) => item.count > 0);
+    const rejectionNote = rejected.length > 0
+      ? `；权限校验拒绝 ${rejected.reduce((sum, item) => sum + item.count, 0)} 次`
+        + `（其中禁控 ${rejected.reduce((sum, item) => sum + item.controlLocked, 0)} 次，首次在第 ${Math.min(...rejected.map((item) => item.firstTick))} tick）`
+      : "";
+    if (difference) failures.push(`${scenario.name}：${difference}${rejectionNote}`);
+    else if (rejectionNote && args.actionMode) console.log(`${scenario.name}：与基线一致${rejectionNote}`);
   }
   const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   if (failures.length > 0) {

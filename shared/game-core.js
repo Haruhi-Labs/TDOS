@@ -52,6 +52,7 @@ import {
 } from "./game/math.js";
 import { createAmbientRng, createSeededRng, rngFor } from "./game/rng.js";
 import { BotController } from "./game/bot-controller.js";
+import { createAiRunner } from "./game/ai/bridge/runner.js";
 import { applyMatchAction } from "./game/action-dispatcher.js";
 import { serializeShipStatusEffects, statusEffectNames } from "./game/status-effects.js";
 import {
@@ -3126,12 +3127,15 @@ export class MatchSimulation {
     this.teamA.ensureShamisenHuntTarget(this.teamB);
     this.teamB.ensureShamisenHuntTarget(this.teamA);
     this.bots = {};
+    this.aiRunners = {};
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
     // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
     const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats);
     const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
     for (const seat of this.aiSeats) {
-      const bot = new BotController(this.teamBySeat(seat));
+      const runner = createAiRunner(this, seat, { actionMode: options.aiActionMode });
+      this.aiRunners[seat] = runner;
+      const bot = runner.policy;
       bot.legacy = legacyAiSeats.includes(seat);
       bot.setDifficulty(aiDifficulty);
       this.bots[seat] = bot;
@@ -3530,8 +3534,8 @@ export class MatchSimulation {
 
     this.refreshShamisenHunts();
 
-    for (const [seat, bot] of Object.entries(this.bots)) {
-      if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
+    for (const [seat, runner] of Object.entries(this.aiRunners)) {
+      if (this.aiEnabled[seat] !== false) runner.update(safeDt, this.elapsed);
     }
 
     this.teamA.update(safeDt);
