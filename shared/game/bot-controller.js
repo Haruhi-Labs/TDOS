@@ -25,6 +25,7 @@ import {
   snapshotVisibleCharacterTactics,
 } from "./bot-character-strategy.js";
 import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
+import { rngFor } from "./rng.js";
 import {
   energyRateForThrottle,
   normalizeThrottleToGear,
@@ -35,7 +36,6 @@ import {
   clamp,
   distance,
   lerp,
-  randomInRange,
   shortestAngleDelta,
   zoneContains,
 } from "./math.js";
@@ -90,6 +90,8 @@ export class BotController {
   constructor(team, enemy) {
     this.team = team;
     this.enemy = enemy;
+    // 每席 AI 使用对局分配的随机流；未带种子的对局里它就是环境随机源。
+    this.rng = team.match.aiRng?.[team.seat] || rngFor(team.match);
     this.profile = HARD_AI_PROFILE;
     // 旧版AI开关：true 时关闭全部升级(集火/视野收尾/收尾压制)，行为回到升级前的基线AI。
     // 用于 AI推演里「对手用旧AI」对照展示，无需打包冻结副本。
@@ -2142,7 +2144,7 @@ export class BotController {
 
     if (this.moveTimer <= 0 || this.stuckTimer > this.profile.stuckTrigger) {
       this.issueMovement(this.currentContext);
-      this.moveTimer = randomInRange(this.profile.moveReplanMin, this.profile.moveReplanMax) * (this.replanMult || 1);
+      this.moveTimer = this.rng.range(this.profile.moveReplanMin, this.profile.moveReplanMax) * (this.replanMult || 1);
       this.stuckTimer = 0;
     }
     this.steerActiveKoizumiOrbs(this.currentContext);
@@ -2193,22 +2195,22 @@ export class BotController {
         };
         if (launched) {
           if (scoutPlan) {
-            this.scoutTimer = randomInRange(scoutPlan.cadenceMin, scoutPlan.cadenceMax);
+            this.scoutTimer = this.rng.range(scoutPlan.cadenceMin, scoutPlan.cadenceMax);
           } else if (this.currentContext?.scoutPriority > 1.05 || this.currentContext?.searchRequired || this.currentContext?.maxShipThreat > 0.92) {
-            this.scoutTimer = randomInRange(3.1, 4.8);
+            this.scoutTimer = this.rng.range(3.1, 4.8);
           } else if (this.currentContext?.trackableIntel) {
-            this.scoutTimer = randomInRange(3.6, 5.4);
+            this.scoutTimer = this.rng.range(3.6, 5.4);
           } else if (this.currentContext?.conserveEnergy) {
-            this.scoutTimer = randomInRange(5.2, 7.4);
+            this.scoutTimer = this.rng.range(5.2, 7.4);
           } else {
-            this.scoutTimer = randomInRange(4.5, 6.8);
+            this.scoutTimer = this.rng.range(4.5, 6.8);
           }
         } else {
           this.scoutTimer = !hasScoutReserve
-            ? this.team.hasYukiFlagship() ? randomInRange(1.2, 2.2) : randomInRange(2.2, 3.8)
+            ? this.team.hasYukiFlagship() ? this.rng.range(1.2, 2.2) : this.rng.range(2.2, 3.8)
             : this.currentContext?.emergencyCommit
-              ? randomInRange(0.9, 1.8)
-              : randomInRange(1.4, 2.8);
+              ? this.rng.range(0.9, 1.8)
+              : this.rng.range(1.4, 2.8);
         }
       } else {
         this.lastScoutDecision = {
@@ -2224,8 +2226,8 @@ export class BotController {
           at: this.team.match.elapsed,
         };
         this.scoutTimer = this.team.hasYukiFlagship()
-          ? this.currentContext?.conserveEnergy ? randomInRange(1.4, 2.2) : randomInRange(0.8, 1.4)
-          : this.currentContext?.conserveEnergy ? randomInRange(2.2, 3.4) : randomInRange(1.2, 2.2);
+          ? this.currentContext?.conserveEnergy ? this.rng.range(1.4, 2.2) : this.rng.range(0.8, 1.4)
+          : this.currentContext?.conserveEnergy ? this.rng.range(2.2, 3.4) : this.rng.range(1.2, 2.2);
       }
     }
 
@@ -2251,12 +2253,12 @@ export class BotController {
         target: this.debugContact(estimate),
       };
       this.flagshipTimer = isHaruhi
-        ? randomInRange(0.25, 0.45)
+        ? this.rng.range(0.25, 0.45)
         : context?.conserveEnergy
-          ? randomInRange(1.8, 3.2)
+          ? this.rng.range(1.8, 3.2)
           : context?.skillAggression > 0.95
-            ? randomInRange(0.45, 0.9)
-            : randomInRange(1.2, 2.4);
+            ? this.rng.range(0.45, 0.9)
+            : this.rng.range(1.2, 2.4);
       return;
     }
     const ok = this.team.castFlagshipSkill();
@@ -2270,14 +2272,14 @@ export class BotController {
       ? isHaruhi
         // 与真实冷却对齐；两者每帧同步递减，冷却归零的同一帧立即进入下一次施放判断。
         ? Math.max(0.15, Number(this.team.cooldowns.flagship) || 0)
-        : (context?.skillAggression > 0.95 ? randomInRange(12, 17) : randomInRange(14, 20))
+        : (context?.skillAggression > 0.95 ? this.rng.range(12, 17) : this.rng.range(14, 20))
       : isHaruhi
-        ? randomInRange(0.18, 0.35)
+        ? this.rng.range(0.18, 0.35)
         : context?.conserveEnergy
-          ? randomInRange(4.8, 7.4)
+          ? this.rng.range(4.8, 7.4)
           : context?.skillAggression > 0.95
-            ? randomInRange(1, 2.1)
-            : randomInRange(2.8, 5.6);
+            ? this.rng.range(1, 2.1)
+            : this.rng.range(2.8, 5.6);
   }
 
   trySubSkill(shipKey, context = this.currentContext) {
@@ -2292,7 +2294,7 @@ export class BotController {
         at: this.team.match.elapsed,
         target: null,
       };
-      this.subTimers[shipKey] = randomInRange(4, 7);
+      this.subTimers[shipKey] = this.rng.range(4, 7);
       return;
     }
 
@@ -2305,10 +2307,10 @@ export class BotController {
         target: this.debugContact(estimate),
       };
       this.subTimers[shipKey] = context?.conserveEnergy
-        ? randomInRange(2, 3.6)
+        ? this.rng.range(2, 3.6)
         : context?.skillAggression > 1
-          ? randomInRange(0.45, 1.1)
-          : randomInRange(0.9, 1.8);
+          ? this.rng.range(0.45, 1.1)
+          : this.rng.range(0.9, 1.8);
       return;
     }
     let ok = false;
@@ -2349,12 +2351,12 @@ export class BotController {
     this.subTimers[shipKey] = ok
       ? ship.characterId === "haruhi"
         ? Math.max(0.15, Number(this.team.cooldowns[shipKey]) || 0)
-        : (context?.skillAggression > 1 ? randomInRange(12, 18) : randomInRange(15, 22))
+        : (context?.skillAggression > 1 ? this.rng.range(12, 18) : this.rng.range(15, 22))
       : context?.conserveEnergy
-        ? randomInRange(4.6, 7.8)
+        ? this.rng.range(4.6, 7.8)
         : context?.skillAggression > 1
-          ? randomInRange(1.1, 2.2)
-          : randomInRange(2.8, 5.4);
+          ? this.rng.range(1.1, 2.2)
+          : this.rng.range(2.8, 5.4);
   }
 
   updateStuckState(dt) {
@@ -2521,19 +2523,19 @@ export class BotController {
         : null;
     if (forcedMode) {
       this.mode = forcedMode;
-      this.modeTimer = randomInRange(1.2, forcedMode === "search" ? 2.8 : forcedMode === "harvest" ? 3.2 : 2.2);
+      this.modeTimer = this.rng.range(1.2, forcedMode === "search" ? 2.8 : forcedMode === "harvest" ? 3.2 : 2.2);
       return this.mode;
     }
 
     // 低血转防守——但若正占优(领先/敌濒覆灭)则不退，继续压制把对手打死，避免领先方陪跑成平局
     if (context.mainHull < 0.26 && context.dist < context.rangeRef * 1.22 && !context.winning) {
       this.mode = context.detachedCount > 0 ? "regroup" : "kite";
-      this.modeTimer = randomInRange(1.6, 2.8);
+      this.modeTimer = this.rng.range(1.6, 2.8);
       return this.mode;
     }
     if ((context.focus.visible || context.maxShipThreat > 0.7) && context.energyRatio < 0.12 && context.dist < context.rangeRef * 0.96 && !context.winning) {
       this.mode = "regroup";
-      this.modeTimer = randomInRange(1.8, 3);
+      this.modeTimer = this.rng.range(1.8, 3);
       return this.mode;
     }
 
@@ -2552,7 +2554,7 @@ export class BotController {
       }
     }
     this.mode = bestMode;
-    this.modeTimer = randomInRange(
+    this.modeTimer = this.rng.range(
       bestMode === "collapse" || bestMode === "kite" || bestMode === "cutoff" ? 1.2 : 1.8,
       bestMode === "regroup" || bestMode === "harvest" ? 3.2 : 2.8,
     );
@@ -2579,8 +2581,8 @@ export class BotController {
     const perp = toward + Math.PI * 0.5;
     const sweepOffset = this.searchSweepSign * spread * 0.34;
     return {
-      x: searchCenter.x + Math.cos(perp) * sweepOffset + randomInRange(-spread * 0.14, spread * 0.14),
-      y: searchCenter.y + Math.sin(perp) * sweepOffset + randomInRange(-spread * 0.14, spread * 0.14),
+      x: searchCenter.x + Math.cos(perp) * sweepOffset + this.rng.range(-spread * 0.14, spread * 0.14),
+      y: searchCenter.y + Math.sin(perp) * sweepOffset + this.rng.range(-spread * 0.14, spread * 0.14),
     };
   }
 
@@ -3755,7 +3757,7 @@ export class BotController {
     const throttleBand = (min, max) => {
       const adjustedMin = clamp(min + throttleShift, 0.52, 1.18);
       const adjustedMax = clamp(max + throttleShift, adjustedMin + 0.04, 1.2);
-      return randomInRange(adjustedMin, adjustedMax);
+      return this.rng.range(adjustedMin, adjustedMax);
     };
     let mainThrottle = mode === "recover"
       ? throttleBand(1.02, 1.18)
@@ -3930,7 +3932,7 @@ export class BotController {
                     ? focus.x - side.x * 180 - toward.x * 28
                     : mode === "broadside"
                       ? focus.x + side.x * sign * 220 - toward.x * 90
-                      : focus.x + randomInRange(-250, 250),
+                      : focus.x + this.rng.range(-250, 250),
             y: mode === "harvest"
               ? main.y - toward.y * 70 + side.y * 145
               : mode === "regroup"
@@ -3941,7 +3943,7 @@ export class BotController {
                     ? focus.y - side.y * 180 - toward.y * 28
                     : mode === "broadside"
                       ? focus.y + side.y * sign * 220 - toward.y * 90
-                      : focus.y + randomInRange(-250, 250),
+                      : focus.y + this.rng.range(-250, 250),
           };
       if (tactical.barrierTactics?.own) {
         const barrier = tactical.barrierTactics.own;
@@ -3998,7 +4000,7 @@ export class BotController {
                     ? focus.x + side.x * 180 - toward.x * 28
                     : mode === "broadside"
                       ? focus.x + side.x * sign * 120 + toward.x * 70
-                      : focus.x + Math.cos(orbitAngle + Math.PI * 0.5) * randomInRange(160, 300),
+                      : focus.x + Math.cos(orbitAngle + Math.PI * 0.5) * this.rng.range(160, 300),
             y: mode === "harvest"
               ? main.y - toward.y * 70 - side.y * 145
               : mode === "regroup"
@@ -4009,7 +4011,7 @@ export class BotController {
                     ? focus.y + side.y * 180 - toward.y * 28
                     : mode === "broadside"
                       ? focus.y + side.y * sign * 120 + toward.y * 70
-                      : focus.y + Math.sin(orbitAngle + Math.PI * 0.5) * randomInRange(160, 300),
+                      : focus.y + Math.sin(orbitAngle + Math.PI * 0.5) * this.rng.range(160, 300),
           };
       if (tactical.barrierTactics?.own) {
         const barrier = tactical.barrierTactics.own;

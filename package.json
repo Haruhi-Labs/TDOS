@@ -18,6 +18,7 @@
     "test:core:bunny-haruhi-integration": "node scripts/verify-core.mjs bunny-haruhi-integration",
     "test:core:bunny-companion": "node scripts/verify-core.mjs bunny-companion",
     "test:core:bunny-ai": "node scripts/verify-core.mjs bunny-ai",
+    "test:core:rng": "node scripts/verify-core.mjs rng",
     "test:ai:bunny-haruhi": "node scripts/measure-bunny-haruhi.mjs --balance",
     "test:perf:bunny-haruhi": "node scripts/measure-bunny-haruhi.mjs --performance",
     "test:changelog": "node scripts/verify-changelog.mjs",
