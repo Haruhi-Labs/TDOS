@@ -91,9 +91,10 @@
 - `shared/game/bunny-haruhi-view-params.js` 仅派生展示数值；`src/battle/bunny-haruhi-view.js`、`render/bunny-haruhi.js` 让单人、联机和观战共用权威舰况、技能展示元数据和基础图元。状态/锁档/施放资格采用当前权威帧，显示插值不产生规则事件。原皮占位在图片资源层映射，不注册实验角色或复制战斗规则。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/rng.js`：对局级随机源。`MatchSimulation` 传入整数 `seed` 时规则与各席 AI 使用互不干扰的种子随机流，实体 ID 也改为对局内计数，整局可复现；未传时每次取值读取调用时刻的 `Math.random`，取值顺序不变。对局内规则与 AI 不直接调用 `Math.random`；种子不进入快照。
-- `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。
+- `shared/game/ai/bridge/observation.js`：规则层到 AI 的唯一读取出口。`buildObservation(match, seat)` 把实时对局翻译成该席位有权知道的纯数据（己方完整状态、视野内敌方实体及其公开技能状态、长门雷达接触、猫爪标记、可感知弹体与公开波纹）；现状中未经迷雾过滤的四项读取集中在 `privileged`。时间字段保留绝对时间戳，观测可 JSON 往返。
+- `shared/game/bot-controller.js`：AI 决策、能量管理和各难度行为参数。决策只读取观测，不持有敌方舰队引用；对己方舰队的写入集中在 `legacyWrite` 与一组 `write*` 方法，写入后观测失效重建。对外是一层门面：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
 - `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
-- `shared/game/bot-character-strategy.js`：角色针对性战术层，负责公开技能状态快照、威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
+- `shared/game/bot-character-strategy.js`：角色针对性战术层，负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
 - `shared/game/bot-shamisen-strategy.js`：三味线“猫爪印记”的攻守编队层，负责无视野追踪、分阶段突破、防线识别、追击收束，以及被猎杀舰的战线外撤游与护卫屏障；猎杀标记不会在此被提升为真实视野。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
 - `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。

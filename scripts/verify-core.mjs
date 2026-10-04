@@ -7,6 +7,7 @@ import { runBunnyHaruhiIntegrationSuite } from "./core-tests/bunny-haruhi-integr
 import { runBunnyCompanionSuite } from "./core-tests/bunny-companion-suite.mjs";
 import { runBunnyAiSuite } from "./core-tests/bunny-ai-suite.mjs";
 import { runRngSuite } from "./core-tests/rng-suite.mjs";
+import { runAiObservationSuite } from "./core-tests/ai-observation-suite.mjs";
 
 const suites = new Map([
   ["rules", runRulesSuite],
@@ -18,6 +19,7 @@ const suites = new Map([
   ["bunny-companion", runBunnyCompanionSuite],
   ["bunny-ai", runBunnyAiSuite],
   ["rng", runRngSuite],
+  ["ai-observation", runAiObservationSuite],
 ]);
 const requestedSuites = process.argv.slice(2);
 const suiteNames = requestedSuites.length > 0 ? requestedSuites : [...suites.keys()];

@@ -3131,7 +3131,7 @@ export class MatchSimulation {
     const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats);
     const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
     for (const seat of this.aiSeats) {
-      const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
+      const bot = new BotController(this.teamBySeat(seat));
       bot.legacy = legacyAiSeats.includes(seat);
       bot.setDifficulty(aiDifficulty);
       this.bots[seat] = bot;

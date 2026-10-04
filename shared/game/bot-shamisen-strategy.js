@@ -5,8 +5,8 @@ const HUNT_BREACH_ADVANCE = 270;
 const HUNT_CONTAIN_ADVANCE = 125;
 const HUNT_SCREEN_WIDTH = 118;
 
-function livingFleet(team) {
-  return team.getAllShips().filter((ship) => ship?.alive && !ship.isAuxiliary);
+function livingFleet(ships) {
+  return ships.filter((ship) => ship?.alive && !ship.isAuxiliary);
 }
 
 function fleetCenter(ships, fallback) {
@@ -30,11 +30,11 @@ function normalizedDirection(from, to) {
   };
 }
 
-function clampPoint(match, point, padding) {
+function clampPoint(worldSize, point, padding) {
   return {
     ...point,
-    x: match.clampX(point.x, padding),
-    y: match.clampY(point.y, padding),
+    x: clamp(point.x, padding, worldSize - padding),
+    y: clamp(point.y, padding, worldSize - padding),
   };
 }
 
@@ -69,20 +69,15 @@ function visibleScreenContact(contacts, center, target, targetId) {
   return best;
 }
 
-function targetForHunt(team, enemy) {
-  if (!team.hasShamisenFlagship?.()) {
-    return null;
-  }
-  const targetId = team.shamisenHunt?.targetId;
-  return enemy.getAllShips().find((ship) => ship?.alive && ship.id === targetId) || null;
+// 猫爪印记目标与己方被猎杀舰都来自观测：前者只有编号和位置，后者是己方舰船。
+function targetForHunt(obs) {
+  const hunt = obs.self.hunt;
+  return hunt ? { id: hunt.targetId, x: hunt.x, y: hunt.y, visible: hunt.visible } : null;
 }
 
-function ownHuntedShip(team, enemy) {
-  if (!enemy.hasShamisenFlagship?.()) {
-    return null;
-  }
-  const targetId = enemy.shamisenHunt?.targetId;
-  return team.getAllShips().find((ship) => ship?.alive && ship.id === targetId) || null;
+function ownHuntedShip(obs, ships) {
+  const hunted = obs.self.hunted;
+  return hunted ? ships.find((ship) => ship?.alive && ship.id === hunted.shipId) || null : null;
 }
 
 /**
@@ -93,21 +88,21 @@ function ownHuntedShip(team, enemy) {
  * 标记不会在这里转化为真实视野，也不会暴露角色、血量或朝向。
  */
 export function buildShamisenHuntTactics({
-  team,
-  enemy,
+  obs,
+  ships: ownShips,
   main,
   focus,
   knownContacts = [],
   localAdvantage = 1,
 }) {
-  const ships = livingFleet(team);
+  const ships = livingFleet(ownShips);
   const center = fleetCenter(ships, main);
-  const markedEnemy = targetForHunt(team, enemy);
-  const huntedShip = ownHuntedShip(team, enemy);
+  const markedEnemy = targetForHunt(obs);
+  const huntedShip = ownHuntedShip(obs, ownShips);
 
   let attack = null;
   if (markedEnemy) {
-    const targetVisible = team.visibleEnemyIds.has(markedEnemy.id);
+    const targetVisible = markedEnemy.visible;
     const distances = ships
       .map((ship) => ({ ship, distance: distance(ship.x, ship.y, markedEnemy.x, markedEnemy.y) }))
       .sort((left, right) => left.distance - right.distance);
@@ -191,7 +186,7 @@ function advanceToward(center, objective, amount) {
   };
 }
 
-function attackFormationPlan({ tactics, team, main, now, padding }) {
+function attackFormationPlan({ tactics, obs, ships, main, now, padding }) {
   const attack = tactics?.attack;
   if (!attack?.active || !attack.isFocus) {
     return null;
@@ -201,10 +196,10 @@ function attackFormationPlan({ tactics, team, main, now, padding }) {
   const objectiveDirection = normalizedDirection(center, objective);
   const side = { x: -objectiveDirection.y, y: objectiveDirection.x };
   const standOff = attack.blocker
-    ? clamp(main.effectiveVision() * 0.82, 112, 175)
+    ? clamp(main.stats.vision * 0.82, 112, 175)
     : attack.targetVisible
-      ? clamp(main.effectiveVision() * 0.66, 88, 142)
-      : clamp(main.effectiveVision() * 0.78, 108, 168);
+      ? clamp(main.stats.vision * 0.66, 88, 142)
+      : clamp(main.stats.vision * 0.78, 108, 168);
   const desiredCenter = {
     x: objective.x - objectiveDirection.x * standOff,
     y: objective.y - objectiveDirection.y * standOff,
@@ -217,7 +212,7 @@ function attackFormationPlan({ tactics, team, main, now, padding }) {
   const staged = advanceToward(center, desiredCenter, advanceLimit);
   const pulse = Math.sin(now * 0.52 + attack.targetId * 0.017);
   const leadKey = attack.leadShipKey === "main"
-    ? ["sub1", "sub2"].find((key) => team.ships[key]?.alive && !team.ships[key].isAttached()) || "main"
+    ? ["sub1", "sub2"].find((key) => obs.self.ships[key]?.alive && !obs.self.ships[key].attached) || "main"
     : attack.leadShipKey;
   const forwardLead = attack.overcommitRisk ? -35 : attack.targetVisible ? 74 : 96;
 
@@ -231,12 +226,12 @@ function attackFormationPlan({ tactics, team, main, now, padding }) {
     roles: {},
     throttles: {},
   };
-  for (const ship of livingFleet(team)) {
+  for (const ship of livingFleet(ships)) {
     const isLead = ship.key === leadKey;
     const laneSign = ship.key === "sub1" ? -1 : ship.key === "sub2" ? 1 : 0;
     const forward = isLead ? forwardLead : ship.key === "main" ? 0 : 20;
     const lateral = laneSign * HUNT_SCREEN_WIDTH + (ship.key === "main" ? pulse * 28 : 0);
-    plan.points[ship.key] = clampPoint(team.match, {
+    plan.points[ship.key] = clampPoint(obs.world.size, {
       x: staged.x + staged.direction.x * forward + side.x * lateral,
       y: staged.y + staged.direction.y * forward + side.y * lateral,
       intentAngle: Math.atan2(objective.y - staged.y, objective.x - staged.x),
@@ -252,14 +247,14 @@ function attackFormationPlan({ tactics, team, main, now, padding }) {
   return plan;
 }
 
-function defenseFormationPlan({ tactics, team, focus, now, padding }) {
+function defenseFormationPlan({ tactics, obs, ships, focus, now, padding }) {
   const defense = tactics?.defense;
-  const hunted = defense?.active ? team.ships[defense.huntedShipKey] : null;
+  const hunted = defense?.active ? obs.self.ships[defense.huntedShipKey] : null;
   if (!hunted?.alive || !focus) {
     return null;
   }
-  const main = team.ships.main;
-  const center = fleetCenter(livingFleet(team), main);
+  const main = obs.self.ships.main;
+  const center = fleetCenter(livingFleet(ships), main);
   const towardEnemy = normalizedDirection(center, focus);
   const side = { x: -towardEnemy.y, y: towardEnemy.x };
   const orbit = Math.sin(now * 0.46 + hunted.id * 0.021);
@@ -279,7 +274,7 @@ function defenseFormationPlan({ tactics, team, focus, now, padding }) {
     x: huntedAnchor.x - towardEnemy.x * backDistance + side.x * orbit * lateralTravel,
     y: huntedAnchor.y - towardEnemy.y * backDistance + side.y * orbit * lateralTravel,
     intentAngle: Math.atan2(focus.y - hunted.y, focus.x - hunted.x),
-    preferredRange: clamp(main.effectiveRange() * 1.08, 230, 430),
+    preferredRange: clamp(main.stats.range * 1.08, 230, 430),
   };
 
   const plan = {
@@ -292,9 +287,9 @@ function defenseFormationPlan({ tactics, team, focus, now, padding }) {
     roles: {},
     throttles: {},
   };
-  for (const ship of livingFleet(team)) {
+  for (const ship of livingFleet(ships)) {
     if (ship.key === hunted.key) {
-      plan.points[ship.key] = clampPoint(team.match, huntedPoint, padding);
+      plan.points[ship.key] = clampPoint(obs.world.size, huntedPoint, padding);
       plan.roles[ship.key] = "hunt-evade";
       plan.throttles[ship.key] = { min: 1.04, max: 1.18 };
       continue;
@@ -302,11 +297,11 @@ function defenseFormationPlan({ tactics, team, focus, now, padding }) {
     const laneSign = ship.key === "sub1" ? -1 : ship.key === "sub2" ? 1 : 0;
     const lateral = laneSign * 104;
     const forward = ship.key === "main" ? 0 : 58;
-    plan.points[ship.key] = clampPoint(team.match, {
+    plan.points[ship.key] = clampPoint(obs.world.size, {
       x: screenCenter.x + towardEnemy.x * forward + side.x * lateral,
       y: screenCenter.y + towardEnemy.y * forward + side.y * lateral,
       intentAngle: Math.atan2(focus.y - screenCenter.y, focus.x - screenCenter.x),
-      preferredRange: clamp(ship.effectiveRange() * 0.86, 170, 340),
+      preferredRange: clamp(ship.stats.range * 0.86, 170, 340),
     }, padding);
     plan.roles[ship.key] = "hunt-screen";
     plan.throttles[ship.key] = { min: 0.94, max: 1.1 };
@@ -316,12 +311,13 @@ function defenseFormationPlan({ tactics, team, focus, now, padding }) {
 
 export function planShamisenHuntFormation({
   tactics,
-  team,
+  obs,
+  ships,
   main,
   focus,
   now,
   padding,
 }) {
-  return defenseFormationPlan({ tactics, team, focus, now, padding })
-    || attackFormationPlan({ tactics, team, main, now, padding });
+  return defenseFormationPlan({ tactics, obs, ships, focus, now, padding })
+    || attackFormationPlan({ tactics, obs, ships, main, now, padding });
 }

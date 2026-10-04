@@ -6,6 +6,7 @@
 //   node scripts/ai/golden-trace.mjs --scenario=<名称>      只处理名称包含该文本的场景
 //   node scripts/ai/golden-trace.mjs --dump=<名称>:<tick>   输出该场景运行到指定 tick 后的完整状态
 //   node scripts/ai/golden-trace.mjs --perf                记录 tick 耗时基线
+//   node scripts/ai/golden-trace.mjs --strict-observation  观测经 JSON 往返后再交给 AI，结果仍须与基线一致
 //   --baseline=<路径>  指定基线文件；--out=<路径>  指定录制或耗时输出文件；--force  忽略环境不符
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
@@ -28,11 +29,12 @@ const WORLD_SIZE = 1440;
 const CHECKPOINT_TICKS = 30;
 
 function parseArgs(argv) {
-  const args = { record: false, perf: false, force: false, scenario: null, dump: null, baseline: null, out: null };
+  const args = { record: false, perf: false, force: false, strictObservation: false, scenario: null, dump: null, baseline: null, out: null };
   for (const item of argv) {
     if (item === "--record") args.record = true;
     else if (item === "--perf") args.perf = true;
     else if (item === "--force") args.force = true;
+    else if (item === "--strict-observation") args.strictObservation = true;
     else if (item.startsWith("--scenario=")) args.scenario = item.slice("--scenario=".length);
     else if (item.startsWith("--dump=")) args.dump = item.slice("--dump=".length);
     else if (item.startsWith("--baseline=")) args.baseline = item.slice("--baseline=".length);
@@ -310,13 +312,16 @@ function checkpoint(simulation, random) {
   };
 }
 
-function runScenario(scenario, { dumpTick = null, digest = true, timings = null } = {}) {
+function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false } = {}) {
   const originalRandom = Math.random;
   const random = seededRandom(scenario.seed);
   __resetEntityIds(1);
   Math.random = random;
   try {
     const simulation = scenario.build();
+    if (strictObservation) {
+      for (const bot of Object.values(simulation.bots)) bot.strictObservation = true;
+    }
     const light = [];
     const checkpoints = [];
     for (let tick = 0; tick < scenario.maxTicks && simulation.phase === "running"; tick += 1) {
@@ -445,6 +450,7 @@ if (args.dump) {
   runPerf(perfScenarios, args.out ? resolve(args.out) : DEFAULT_PERF_OUTPUT);
 } else if (args.record) {
   if (args.scenario) throw new Error("录制基线必须包含全部场景，不能与 --scenario 同用");
+  if (args.strictObservation) throw new Error("--strict-observation 只用于比对");
   const outputPath = args.out ? resolve(args.out) : baselinePath;
   const startedAt = performance.now();
   const baseline = {
@@ -483,7 +489,7 @@ if (args.dump) {
       failures.push(`${scenario.name}：基线中没有该场景`);
       continue;
     }
-    const difference = compareScenario(expected, runScenario(scenario));
+    const difference = compareScenario(expected, runScenario(scenario, { strictObservation: args.strictObservation }));
     if (difference) failures.push(`${scenario.name}：${difference}`);
   }
   const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);

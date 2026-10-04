@@ -1,4 +1,10 @@
 import { TICK_DT } from "./constants.js";
+import {
+  buildObservation,
+  observeEnemyEntity,
+  observeEnemySpawn,
+  snapshotVisibleCharacterTactics,
+} from "./ai/bridge/observation.js";
 import { bunnyStageRoute, shouldTransformBunny } from "./bot-bunny-haruhi-strategy.js";
 import { SCOUT_LAUNCH_COST, fireArcDensityMultiplier } from "./combat-rules.js";
 import {
@@ -22,7 +28,6 @@ import {
   keepDirectiveInsideKoizumiBarrier,
   koizumiBarrierRoleDirective,
   predictCharacterSkillAim,
-  snapshotVisibleCharacterTactics,
 } from "./bot-character-strategy.js";
 import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
 import { rngFor } from "./rng.js";
@@ -87,9 +92,18 @@ const AI_DIFFICULTY = Object.freeze({
 });
 
 export class BotController {
-  constructor(team, enemy) {
-    this.team = team;
-    this.enemy = enemy;
+  constructor(team) {
+    this.match = team.match;
+    this.seat = team.seat;
+    // 决策只读取观测；对实时对象的写入集中在 legacyWrite，待动作层接管。
+    this.legacyWrite = { team };
+    this.observation = null;
+    this.observationStale = true;
+    this.observationIndex = null;
+    // 校验用：观测先经 JSON 往返再交给决策，证明决策没有依赖实时对象引用或非纯数据值。
+    this.strictObservation = false;
+    this.entryDepth = 0;
+    this.entryGuards = new Map();
     // 每席 AI 使用对局分配的随机流；未带种子的对局里它就是环境随机源。
     this.rng = team.match.aiRng?.[team.seat] || rngFor(team.match);
     this.profile = HARD_AI_PROFILE;
@@ -105,12 +119,12 @@ export class BotController {
 
     this.moveTimer = 0;
     this.koizumiOrbSteerTimer = 0;
-    this.scoutTimer = team.hasYukiFlagship() ? 0.55 : this.profile.initialScoutTimer;
+    this.scoutTimer = this.obs.self.flags.yukiFlagship ? 0.55 : this.profile.initialScoutTimer;
     this.scoutDoctrine = createScoutDoctrineState();
     this.currentScoutPlan = null;
     this.scoutPlanRefreshAt = 0;
     // 春日的首次施放既能立即提供团队强化，也会解锁常驻支援，因此不等待通用的开局观察窗。
-    this.flagshipTimer = team.mainCharacterId() === "haruhi" ? 0 : this.profile.initialFlagshipTimer;
+    this.flagshipTimer = this.obs.self.loadout.main === "haruhi" ? 0 : this.profile.initialFlagshipTimer;
     this.subTimers = {
       sub1: this.profile.initialSubTimers.sub1,
       sub2: this.profile.initialSubTimers.sub2,
@@ -119,12 +133,12 @@ export class BotController {
     this.mode = "press";
 
     this.lastMainPos = {
-      x: team.ships.main.x,
-      y: team.ships.main.y,
+      x: this.obs.self.ships.main.x,
+      y: this.obs.self.ships.main.y,
     };
     this.stuckTimer = 0;
 
-    const enemyMain = enemy.ships.main;
+    const enemyMain = observeEnemySpawn(this.match, this.seat);
     const spawnZone = this.zoneForPoint(enemyMain.x, enemyMain.y);
     this.searchOrder = [5, 2, 8, 4, 6, 1, 7, 3, 9];
     this.searchCursor = 0;
@@ -139,7 +153,7 @@ export class BotController {
         y: enemyMain.y,
         angle: enemyMain.angle,
         speed: 0,
-        seenAt: this.team.match.elapsed,
+        seenAt: this.obs.time,
         zoneId: spawnZone.id,
         source: "spawn",
       },
@@ -147,7 +161,7 @@ export class BotController {
     };
     this.pendingSightings = new Map();
     this.searchSweepSign = 1;
-    this.lastSearchAdvanceAt = this.team.match.elapsed;
+    this.lastSearchAdvanceAt = this.obs.time;
     // 情报占据图(belief)：像人一样推理敌人位置——持续预测(向外扩散可能区)、排除(己方视野
     // 看过且无敌的区清零)、缩小到最高概率未排除区去搜。初始以敌出生点为峰。
     this.belief = this.initBelief(enemyMain);
@@ -167,25 +181,25 @@ export class BotController {
       zoneId: spawnZone.id,
       launched: false,
       urgent: false,
-      at: this.team.match.elapsed,
+      at: this.obs.time,
     };
     this.lastFlagshipDecision = {
       action: "idle",
       cast: false,
-      at: this.team.match.elapsed,
+      at: this.obs.time,
       target: null,
     };
     this.lastSubSkillDecision = {
       sub1: {
         action: "idle",
         cast: false,
-        at: this.team.match.elapsed,
+        at: this.obs.time,
         target: null,
       },
       sub2: {
         action: "idle",
         cast: false,
-        at: this.team.match.elapsed,
+        at: this.obs.time,
         target: null,
       },
     };
@@ -193,9 +207,169 @@ export class BotController {
       attempt1: false,
       attempt2: false,
       acted: [],
-      level: this.team.splitLevel,
-      at: this.team.match.elapsed,
+      level: this.obs.self.splitLevel,
+      at: this.obs.time,
     };
+    return new Proxy(this, {
+      get(target, property) {
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" && Object.hasOwn(BotController.prototype, property)
+          && !Object.hasOwn(target, property)
+          ? target.guardedEntry(property, value)
+          : value;
+      },
+    });
+  }
+
+  // 外部（对局循环、调试页、测试）经门面调用任一方法时刷新观测，并把传入的实时对象换成观测数据；
+  // 内部互相调用直接走原型方法，不重复处理。
+  guardedEntry(name, method) {
+    let guard = this.entryGuards.get(name);
+    if (!guard) {
+      guard = (...args) => {
+        if (this.entryDepth > 0) return method.apply(this, args);
+        this.observationStale = true;
+        this.entryDepth = 1;
+        try {
+          return method.apply(this, args.map((arg) => this.observeArgument(arg)));
+        } finally {
+          this.entryDepth = 0;
+        }
+      };
+      this.entryGuards.set(name, guard);
+    }
+    return guard;
+  }
+
+  observeArgument(arg) {
+    const liveTeam = arg && typeof arg === "object" ? arg.team : null;
+    if (!liveTeam || liveTeam.match !== this.match) return arg;
+    if (liveTeam.seat === this.seat) return this.ownShipById(arg.id) || arg;
+    const entity = observeEnemyEntity(arg, this.match.elapsed);
+    return this.strictObservation ? JSON.parse(JSON.stringify(entity)) : entity;
+  }
+
+  get obs() {
+    if (this.observationStale || !this.observation) {
+      const observation = buildObservation(this.match, this.seat);
+      this.observation = this.strictObservation ? JSON.parse(JSON.stringify(observation)) : observation;
+      this.observationStale = false;
+      this.observationIndex = null;
+    }
+    return this.observation;
+  }
+
+  // 兼容外部读取；决策代码不得使用。
+  get team() {
+    return this.legacyWrite.team;
+  }
+
+  indexObservation() {
+    const obs = this.obs;
+    if (!this.observationIndex) {
+      const self = obs.self;
+      const ships = [self.ships.main, self.ships.sub1, self.ships.sub2, ...self.extraShips];
+      this.observationIndex = {
+        ships,
+        shipById: new Map(ships.map((ship) => [ship.id, ship])),
+        visibleIds: new Set(obs.enemy.visible.map((entity) => entity.id)),
+      };
+    }
+    return this.observationIndex;
+  }
+
+  ownShips() {
+    return this.indexObservation().ships;
+  }
+
+  ownShipById(id) {
+    return this.indexObservation().shipById.get(id) || null;
+  }
+
+  get visibleIds() {
+    return this.indexObservation().visibleIds;
+  }
+
+  ownShip(shipOrKey) {
+    if (typeof shipOrKey === "string") {
+      return this.obs.self.ships[shipOrKey] || this.ownShips().find((ship) => ship.key === shipOrKey) || null;
+    }
+    return shipOrKey ? this.ownShipById(shipOrKey.id) : null;
+  }
+
+  fleetMembers(shipOrKey) {
+    const ship = this.ownShip(shipOrKey);
+    return ship ? ship.fleet.memberIds.map((id) => this.ownShipById(id)).filter(Boolean) : [];
+  }
+
+  fleetEnergy(shipOrKey) {
+    const ship = this.ownShip(shipOrKey);
+    return ship ? { current: ship.fleet.energy, max: ship.fleet.maxEnergy } : { current: 0, max: 0 };
+  }
+
+  hasEffect(ship, effectKey) {
+    return Number(ship?.effects?.[effectKey] || 0) > this.obs.time;
+  }
+
+  clampX(x, padding = 0) {
+    return clamp(x, padding, this.obs.world.size - padding);
+  }
+
+  clampY(y, padding = 0) {
+    return clamp(y, padding, this.obs.world.size - padding);
+  }
+
+  zoneById(zoneId) {
+    const safeId = clamp(Number(zoneId) || 5, 1, 9);
+    return this.obs.world.zones.find((zone) => zone.id === safeId) || this.obs.world.zones[4];
+  }
+
+  writeSplit(level) {
+    const ok = this.legacyWrite.team.split(level);
+    this.observationStale = true;
+    return ok;
+  }
+
+  writeThrottle(shipKey, throttle) {
+    this.legacyWrite.team.ships[shipKey].throttle = throttle;
+    this.observationStale = true;
+  }
+
+  writeRoute(shipKey, endX, endY, throttle) {
+    this.legacyWrite.team.ships[shipKey].setBezierRoute(undefined, undefined, endX, endY, throttle, false);
+    this.observationStale = true;
+  }
+
+  writeRouteEndpoint(shipKey, endX, endY) {
+    this.legacyWrite.team.ships[shipKey].setRouteEndpoint(endX, endY, false);
+    this.observationStale = true;
+  }
+
+  writeLaunchScout(zoneId, options) {
+    const ok = this.legacyWrite.team.launchScout(zoneId, options);
+    this.observationStale = true;
+    return ok;
+  }
+
+  writeScoutMission(scoutId, options) {
+    const team = this.legacyWrite.team;
+    const scout = team.scouts.find((item) => item.id === scoutId && item.alive);
+    const ok = Boolean(scout) && team.assignScoutMission(scout, options);
+    this.observationStale = true;
+    return ok;
+  }
+
+  writeFlagshipSkill() {
+    const ok = this.legacyWrite.team.castFlagshipSkill();
+    this.observationStale = true;
+    return ok;
+  }
+
+  writeSubSkill(shipKey, options) {
+    const team = this.legacyWrite.team;
+    const ok = options === undefined ? team.castSubSkill(shipKey) : team.castSubSkill(shipKey, options);
+    this.observationStale = true;
+    return ok;
   }
 
   debugPoint(point) {
@@ -226,7 +400,7 @@ export class BotController {
     if (!contact) {
       return null;
     }
-    const age = Number.isFinite(contact.age) ? contact.age : Math.max(0, this.team.match.elapsed - (contact.seenAt || this.team.match.elapsed));
+    const age = Number.isFinite(contact.age) ? contact.age : Math.max(0, this.obs.time - (contact.seenAt || this.obs.time));
     return {
       id: contact.id,
       kind: contact.kind || "ship",
@@ -391,13 +565,13 @@ export class BotController {
     const focus = this.currentContext?.focus || this.lastTacticalPlan?.focus || this.enemyIntel.main;
     let visibleContacts = 0;
     for (const contact of this.enemyIntel.entities.values()) {
-      const age = this.team.match.elapsed - contact.seenAt;
+      const age = this.obs.time - contact.seenAt;
       if ((contact.source === "visible" || age <= 0.6) && age <= 1.2) {
         visibleContacts += 1;
       }
     }
     return {
-      seat: this.team.seat,
+      seat: this.seat,
       mode: this.mode,
       modeTimer: this.modeTimer,
       moveTimer: this.moveTimer,
@@ -451,17 +625,17 @@ export class BotController {
       },
       splitDecision: {
         ...this.lastSplitDecision,
-        level: this.team.splitLevel,
+        level: this.obs.self.splitLevel,
       },
     };
   }
 
   zoneForPoint(x, y) {
-    return this.team.match.zones.find((zone) => zoneContains(zone, x, y)) || this.team.match.zones[4];
+    return this.obs.world.zones.find((zone) => zoneContains(zone, x, y)) || this.obs.world.zones[4];
   }
 
   zoneCenter(zoneId) {
-    const zone = this.team.match.zoneById(zoneId);
+    const zone = this.zoneById(zoneId);
     return {
       zoneId: zone.id,
       x: zone.x + zone.width * 0.5,
@@ -470,14 +644,14 @@ export class BotController {
   }
 
   safeRoutePadding(extra = 0) {
-    return clamp(this.team.match.worldSize * 0.08, 90, 145) + extra;
+    return clamp(this.obs.world.size * 0.08, 90, 145) + extra;
   }
 
   edgePressure(ship) {
     if (!ship) {
       return 0;
     }
-    const worldSize = this.team.match.worldSize;
+    const worldSize = this.obs.world.size;
     const margin = clamp(worldSize * 0.12, 120, 190);
     const edgeDistance = Math.min(ship.x, ship.y, worldSize - ship.x, worldSize - ship.y);
     if (edgeDistance >= margin) {
@@ -498,8 +672,9 @@ export class BotController {
     this.replanMult = d.replanMult;
     this.focusLowHp = !!d.focusLowHp;
     // 把"数值缩放"与"极限锁血"落到本AI所控舰队上(玩家队无 bot,不受影响)
-    this.team.aiFocusLowHp = this.focusLowHp;
-    this.team.applyAiStatMult(d.statMult);
+    this.legacyWrite.team.aiFocusLowHp = this.focusLowHp;
+    this.legacyWrite.team.applyAiStatMult(d.statMult);
+    this.observationStale = true;
     return this;
   }
 
@@ -517,7 +692,7 @@ export class BotController {
 
   queueSighting(entity) {
     const snapshot = this.snapshotEnemyContact(entity, "visible");
-    const now = this.team.match.elapsed;
+    const now = this.obs.time;
     const pending = this.pendingSightings.get(snapshot.id);
     if (pending) {
       pending.snapshot = snapshot;
@@ -537,7 +712,7 @@ export class BotController {
   }
 
   flushPendingSightings() {
-    const now = this.team.match.elapsed;
+    const now = this.obs.time;
     for (const [id, pending] of this.pendingSightings) {
       if (pending.readyAt > now) {
         continue;
@@ -568,21 +743,21 @@ export class BotController {
       maxHp: Number.isFinite(entity.maxHp) ? entity.maxHp : null,
       radius: Number.isFinite(entity.radius) ? entity.radius : null,
       combatCapable: Boolean(entity.combatCapable),
-      seenAt: this.team.match.elapsed,
+      seenAt: this.obs.time,
       zoneId: zone.id,
       source,
-      ...snapshotVisibleCharacterTactics(entity, this.team.match.elapsed),
+      ...(entity.tactics || snapshotVisibleCharacterTactics(entity, this.obs.time)),
     };
   }
 
   ingestRadarContacts() {
-    if (!this.team.hasYukiFlagship() || !(this.team.radarPassive?.contacts instanceof Map)) {
+    const radar = this.obs.self.radar;
+    if (!radar) {
       return;
     }
 
-    const now = this.team.match.elapsed;
-    const enemyShips = new Map(this.enemy.getAllShips().map((ship) => [ship.id, ship]));
-    for (const radarContact of this.team.radarPassive.contacts.values()) {
+    const now = this.obs.time;
+    for (const radarContact of radar.contacts) {
       const targetId = Number(radarContact?.targetId ?? radarContact?.id);
       const detectedAt = Number(radarContact?.detectedAt);
       const expiresAt = Number(radarContact?.expiresAt);
@@ -592,7 +767,7 @@ export class BotController {
         || !Number.isFinite(radarContact?.x)
         || !Number.isFinite(radarContact?.y)
         || (Number.isFinite(expiresAt) && expiresAt <= now)
-        || this.team.visibleEnemyIds.has(targetId)
+        || this.visibleIds.has(targetId)
       ) {
         continue;
       }
@@ -615,10 +790,6 @@ export class BotController {
         continue;
       }
 
-      const targetMeta = enemyShips.get(targetId);
-      if (!targetMeta?.alive) {
-        continue;
-      }
       const identifiedCharacterId = radarContact.characterId && CHARACTER_DEFS[radarContact.characterId]
         ? radarContact.characterId
         : null;
@@ -652,14 +823,11 @@ export class BotController {
   }
 
   ingestShamisenHuntTarget() {
-    if (!this.team.hasShamisenFlagship?.()) {
+    const hunt = this.obs.self.hunt;
+    if (!hunt || hunt.visible) {
       return;
     }
-    const targetId = this.team.shamisenHunt?.targetId;
-    const target = this.enemy.getAllShips().find((ship) => ship.alive && ship.id === targetId);
-    if (!target || this.team.visibleEnemyIds.has(target.id)) {
-      return;
-    }
+    const target = { id: hunt.targetId, x: hunt.x, y: hunt.y };
     const zone = this.zoneForPoint(target.x, target.y);
     // AI读取的内容与玩家看到的迷雾标记相同：精确位置会更新，但不偷看角色、席位、
     // 血量、朝向或舰体半径；source=hunt 也不会被当作真实视野。
@@ -676,7 +844,7 @@ export class BotController {
       hp: null,
       maxHp: null,
       radius: null,
-      seenAt: this.team.match.elapsed,
+      seenAt: this.obs.time,
       zoneId: zone.id,
       source: "hunt",
       confidence: 1,
@@ -700,7 +868,7 @@ export class BotController {
     let vx = Math.cos(contact.angle || 0) * baseSpeed;
     let vy = Math.sin(contact.angle || 0) * baseSpeed;
 
-    const pressureTarget = this.team.ships.main;
+    const pressureTarget = this.obs.self.ships.main;
     const pullX = pressureTarget.x - contact.x;
     const pullY = pressureTarget.y - contact.y;
     const pullLen = Math.max(1, Math.hypot(pullX, pullY));
@@ -721,10 +889,10 @@ export class BotController {
     if (!contact) {
       return null;
     }
-    const age = Math.max(0, this.team.match.elapsed - contact.seenAt);
+    const age = Math.max(0, this.obs.time - contact.seenAt);
     const lead = contact.source === "spawn" ? 0 : Math.min(age * this.profile.memoryLeadMultiplier, Math.max(maxLead, 0)) * 0.78;
     const padding = this.safeRoutePadding();
-    const worldSize = this.team.match.worldSize;
+    const worldSize = this.obs.world.size;
     const travel = this.predictEnemyVector(contact);
     let x = clamp(contact.x + travel.x * lead, padding, worldSize - padding);
     let y = clamp(contact.y + travel.y * lead, padding, worldSize - padding);
@@ -790,7 +958,7 @@ export class BotController {
 
   // ── 情报占据图(belief)：类人地推理"敌人可能在哪" ──
   initBelief(enemyMain) {
-    const ws = this.team.match.worldSize;
+    const ws = this.obs.world.size;
     const cols = 16;
     const rows = 16;
     const belief = { cols, rows, cell: ws / cols, w: new Float64Array(cols * rows) };
@@ -808,7 +976,7 @@ export class BotController {
 
   // 该点是否在我方任一视野源覆盖内(用于"只采信我方能看见的间接情报",保持公平)
   perceivesPoint(x, y) {
-    for (const src of this.team.getVisionSources()) {
+    for (const src of this.obs.self.visionSources) {
       if (distance(x, y, src.x, src.y) <= src.range) return true;
     }
     return false;
@@ -823,8 +991,8 @@ export class BotController {
     const n = cols * rows;
 
     const visible = [];
-    for (const s of this.enemy.getAllShips()) {
-      if (s && s.alive && this.team.visibleEnemyIds.has(s.id)) visible.push(s);
+    for (const s of this.obs.enemy.visible) {
+      if (s.kind === "ship") visible.push(s);
     }
     if (visible.length) {
       // 坍缩：看得见就把概率集中到可见位置(清掉旧弥散)
@@ -860,7 +1028,7 @@ export class BotController {
     }
 
     // ② 排除：己方每个视野源覆盖到的cell若无敌→几乎清零(看过、是空的)
-    for (const src of this.team.getVisionSources()) {
+    for (const src of this.obs.self.visionSources) {
       const r = src.range;
       if (!(r > 0)) continue;
       const minx = clamp(Math.floor((src.x - r) / cell), 0, cols - 1);
@@ -881,12 +1049,9 @@ export class BotController {
     // ── 间接情报(很关键:敌舰本体多数时间在视野外，靠"看到的子弹/敌侦察机"反推敌方范围) ──
     // noIndirectIntel=true 时整体跳过(用于控制变量对照实验)
     if (!this.noIndirectIntel) {
-      const match = this.team.match;
       // (a) 敌方子弹:朝我方飞来→开火的敌舰在其"逆飞行方向"、射程之内。只用我方能感知到的子弹(公平)。
-      if (match.projectiles) {
-        for (const p of match.projectiles) {
-          if (!p || !p.alive || p.team === this.team) continue;
-          if (!this.perceivesPoint(p.x, p.y)) continue;
+      {
+        for (const p of this.obs.enemy.projectiles) {
           const vx = p.targetX - p.x;
           const vy = p.targetY - p.y;
           const vl = Math.hypot(vx, vy);
@@ -905,8 +1070,8 @@ export class BotController {
       let bx0 = 0;
       let by0 = 0;
       let bn = 0;
-      for (const sc of this.enemy.scouts) {
-        if (!sc || !sc.alive || !this.team.visibleEnemyIds.has(sc.id)) continue;
+      for (const sc of this.obs.enemy.visible) {
+        if (sc.kind !== "scout") continue;
         if (sc.pattern === "burst") {
           bx0 += sc.x; by0 += sc.y; bn++;
           continue; // burst 不逐个回溯(会误导),留到下面按质心处理
@@ -978,7 +1143,7 @@ export class BotController {
   }
 
   beliefZoneWeights() {
-    const weights = new Map(this.team.match.zones.map((zone) => [zone.id, 0]));
+    const weights = new Map(this.obs.world.zones.map((zone) => [zone.id, 0]));
     const belief = this.belief;
     if (!belief) return weights;
     for (let index = 0; index < belief.w.length; index += 1) {
@@ -995,14 +1160,12 @@ export class BotController {
   refreshIntel() {
     this.ingestRadarContacts();
     this.ingestShamisenHuntTarget();
-    for (const entity of this.enemy.getEntities()) {
-      if (this.team.visibleEnemyIds.has(entity.id)) {
-        this.queueSighting(entity);
-      }
+    for (const entity of this.obs.enemy.visible) {
+      this.queueSighting(entity);
     }
     this.flushPendingSightings();
 
-    const staleCutoff = this.team.match.elapsed - 18;
+    const staleCutoff = this.obs.time - 18;
     for (const [id, contact] of this.enemyIntel.entities) {
       if (contact.seenAt < staleCutoff) {
         this.enemyIntel.entities.delete(id);
@@ -1014,7 +1177,7 @@ export class BotController {
     if (!this.enemyIntel.main || this.enemyIntel.main.source !== "visible") {
       return null;
     }
-    const age = this.team.match.elapsed - this.enemyIntel.main.seenAt;
+    const age = this.obs.time - this.enemyIntel.main.seenAt;
     if (age > 0.7) {
       return null;
     }
@@ -1043,7 +1206,7 @@ export class BotController {
       if (requireShip && contact.kind !== "ship") {
         continue;
       }
-      const age = this.team.match.elapsed - contact.seenAt;
+      const age = this.obs.time - contact.seenAt;
       if (age > maxAge) {
         continue;
       }
@@ -1151,14 +1314,14 @@ export class BotController {
     const hpRatio = clamp(ship.hp / Math.max(ship.maxHp, 1), 0.08, 1);
     const energyRatio = clamp(ship.energy / Math.max(ship.maxEnergy, 1), 0, 1);
     const roleFactor = ship.key === "main" ? 1.24 : ship.isAuxiliary ? 0.72 : 1;
-    const rangeFactor = clamp(ship.effectiveRange() / 520, 0.84, 1.2);
-    const dpsFactor = clamp((ship.effectiveDamage() / Math.max(ship.effectiveFireRate(), 0.22)) / 60, 0.78, 1.34);
+    const rangeFactor = clamp(ship.stats.range / 520, 0.84, 1.2);
+    const dpsFactor = clamp((ship.stats.damage / Math.max(ship.stats.fireRate, 0.22)) / 60, 0.78, 1.34);
     return roleFactor * rangeFactor * dpsFactor * (0.38 + 0.62 * hpRatio) * (0.48 + 0.52 * energyRatio);
   }
 
   friendlyPowerAround(x, y, radius = 320) {
     let total = 0;
-    for (const ship of this.team.getAllShips()) {
+    for (const ship of this.ownShips()) {
       if (!ship.alive) {
         continue;
       }
@@ -1168,7 +1331,7 @@ export class BotController {
       }
       total += this.shipCombatValue(ship) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.25, 1);
     }
-    for (const wingman of this.team.wingmen) {
+    for (const wingman of this.obs.self.wingmen) {
       if (!wingman.alive) {
         continue;
       }
@@ -1178,7 +1341,7 @@ export class BotController {
       }
       total += 0.36 * clamp(wingman.hp / Math.max(wingman.maxHp, 1), 0.2, 1) * clamp(1 - d / Math.max(radius * 1.2, 1), 0.22, 1);
     }
-    for (const scout of this.team.scouts) {
+    for (const scout of this.obs.self.scouts) {
       if (!scout.alive || !scout.combatCapable) {
         continue;
       }
@@ -1325,8 +1488,8 @@ export class BotController {
     const anchorLen = Math.max(1, Math.hypot(anchorDx, anchorDy));
     const safeReach = clamp(210 + hostiles.length * 18, 210, 320);
     return {
-      x: this.team.match.clampX(ship.x + (awayX / awayLen) * safeReach + (anchorDx / anchorLen) * 90, this.safeRoutePadding(14)),
-      y: this.team.match.clampY(ship.y + (awayY / awayLen) * safeReach + (anchorDy / anchorLen) * 90, this.safeRoutePadding(14)),
+      x: this.clampX(ship.x + (awayX / awayLen) * safeReach + (anchorDx / anchorLen) * 90, this.safeRoutePadding(14)),
+      y: this.clampY(ship.y + (awayY / awayLen) * safeReach + (anchorDy / anchorLen) * 90, this.safeRoutePadding(14)),
       hostiles,
     };
   }
@@ -1336,7 +1499,7 @@ export class BotController {
       return 0;
     }
     const vitality = this.shipVitality(ship);
-    const visionEdge = clamp((ship.effectiveVision() - this.estimateVisionRange(context.focus)) / 52, -0.18, 0.7);
+    const visionEdge = clamp((ship.stats.vision - this.estimateVisionRange(context.focus)) / 52, -0.18, 0.7);
     const characterBias = ship.characterId === "yuki"
       ? 0.46
       : ship.characterId === "future1096"
@@ -1350,16 +1513,16 @@ export class BotController {
   }
 
   energyProfile(shipOrKey) {
-    const members = this.team.fleetMembersForShip(shipOrKey).filter((ship) => ship.alive);
-    const pool = this.team.fleetEnergyForShip(shipOrKey);
+    const members = this.fleetMembers(shipOrKey).filter((ship) => ship.alive);
+    const pool = this.fleetEnergy(shipOrKey);
     const ratio = pool.current / Math.max(pool.max, 1);
-    const regen = members.reduce((sum, ship) => sum + ship.baseEnergyRegen(), 0);
-    const moveLoad = members.reduce((sum, ship) => sum + ship.moveEnergyDrain(), 0);
+    const regen = members.reduce((sum, ship) => sum + ship.stats.energyRegen, 0);
+    const moveLoad = members.reduce((sum, ship) => sum + ship.stats.moveDrain, 0);
     const sustainCruise = members.reduce((sum, ship) => (
-      sum + energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttleForGear(3))
+      sum + energyRateForThrottle(ship.stats.energyRegen, ship.stats.moveDrain, throttleForGear(3))
     ), 0);
     const sustainRecover = members.reduce((sum, ship) => (
-      sum + energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttleForGear(2))
+      sum + energyRateForThrottle(ship.stats.energyRegen, ship.stats.moveDrain, throttleForGear(2))
     ), 0);
     return {
       current: pool.current,
@@ -1377,12 +1540,12 @@ export class BotController {
 
   energyThrottleGearCap(shipOrKey) {
     const profile = this.energyProfile(shipOrKey);
-    const ship = typeof shipOrKey === "string" ? this.team.ships[shipOrKey] : shipOrKey;
+    const ship = typeof shipOrKey === "string" ? this.obs.self.ships[shipOrKey] : shipOrKey;
     if (profile.ratio <= AI_ENERGY_GEAR_POLICY.criticalRatio) {
       return 1;
     }
     // 刀锋期间优先以四档迅速穿入敌阵；接触伤害固定，危险能量线前仍降档保留后续机动。
-    if (ship?.hasEffect?.("bladeQueenUntil")) {
+    if (this.hasEffect(ship, "bladeQueenUntil")) {
       return 4;
     }
     if (profile.ratio <= AI_ENERGY_GEAR_POLICY.lowRatio) {
@@ -1403,14 +1566,14 @@ export class BotController {
   }
 
   enforceEnergyThrottleCaps() {
-    for (const ship of Object.values(this.team.ships)) {
-      if (!ship?.alive || ship.isAttached()) {
+    for (const ship of Object.values(this.obs.self.ships)) {
+      if (!ship?.alive || ship.attached) {
         continue;
       }
       const currentGear = throttleGearForValue(ship.throttle);
       const gearCap = this.energyThrottleGearCap(ship);
       if (currentGear > gearCap) {
-        ship.throttle = throttleForGear(gearCap);
+        this.writeThrottle(ship.key, throttleForGear(gearCap));
       }
     }
   }
@@ -1442,7 +1605,7 @@ export class BotController {
   }
 
   pointEdgeClearance(x, y) {
-    const size = this.team.match.worldSize;
+    const size = this.obs.world.size;
     return Math.min(x, y, size - x, size - y);
   }
 
@@ -1475,7 +1638,7 @@ export class BotController {
       candidate.y,
       enemyEstimate.x,
       enemyEstimate.y,
-      this.team.hasKyonFlagship(),
+      this.obs.self.flags.kyonFlagship,
     );
     const enemyDensity = this.arcDensityFromState(
       enemyFacing,
@@ -1483,10 +1646,10 @@ export class BotController {
       enemyEstimate.y,
       candidate.x,
       candidate.y,
-      this.enemy.hasKyonFlagship(),
+      this.obs.privileged.enemyHasKyonFlagship,
     );
     const edgePenalty = clamp((150 - this.pointEdgeClearance(candidate.x, candidate.y)) / 150, 0, 1) * 0.55;
-    const preferredRange = Number.isFinite(candidate.preferredRange) ? candidate.preferredRange : ship.effectiveRange() * 0.9;
+    const preferredRange = Number.isFinite(candidate.preferredRange) ? candidate.preferredRange : ship.stats.range * 0.9;
     const actualRange = distance(candidate.x, candidate.y, enemyEstimate.x, enemyEstimate.y);
     const rangePenalty = Math.abs(actualRange - preferredRange) / Math.max(preferredRange, 1);
     return {
@@ -1502,17 +1665,17 @@ export class BotController {
     }
     const enemyForward = { x: Math.cos(contact.angle), y: Math.sin(contact.angle) };
     const enemySide = { x: -enemyForward.y, y: enemyForward.x };
-    const sideOffset = clamp(main.effectiveRange() * 0.82, 180, 320);
-    const rearOffset = clamp(main.effectiveRange() * 0.22, 55, 130);
+    const sideOffset = clamp(main.stats.range * 0.82, 180, 320);
+    const rearOffset = clamp(main.stats.range * 0.22, 55, 130);
     let bestSign = this.searchSweepSign;
     let bestScore = -Infinity;
     for (const sign of [1, -1]) {
       const candidate = {
-        x: this.team.match.clampX(contact.x - enemyForward.x * rearOffset + enemySide.x * sideOffset * sign, this.safeRoutePadding()),
-        y: this.team.match.clampY(contact.y - enemyForward.y * rearOffset + enemySide.y * sideOffset * sign, this.safeRoutePadding()),
+        x: this.clampX(contact.x - enemyForward.x * rearOffset + enemySide.x * sideOffset * sign, this.safeRoutePadding()),
+        y: this.clampY(contact.y - enemyForward.y * rearOffset + enemySide.y * sideOffset * sign, this.safeRoutePadding()),
       };
       candidate.intentAngle = this.broadsideIntentAngle(candidate.x, candidate.y, contact.x, contact.y, sign);
-      candidate.preferredRange = clamp(main.effectiveRange() * 0.86, 180, 340);
+      candidate.preferredRange = clamp(main.stats.range * 0.86, 180, 340);
       const exchange = this.evaluateArcExchange(main, contact, candidate, 1.2);
       const clearanceBias = this.pointEdgeClearance(candidate.x, candidate.y) / 220;
       const score = exchange.score + clearanceBias;
@@ -1537,7 +1700,7 @@ export class BotController {
         continue;
       }
       const dist = distance(main.x, main.y, contact.x, contact.y);
-      const proximity = clamp(1 - dist / Math.max(main.effectiveRange() * 2.4, 1), -0.18, 0.95);
+      const proximity = clamp(1 - dist / Math.max(main.stats.range * 2.4, 1), -0.18, 0.95);
       const freshness = clamp(1 - contact.age / 8, 0, 1);
       const vulnerability = 1 - this.contactHpRatio(contact);
       const isolation = this.enemyIsolationScore(contact, 6);
@@ -1558,7 +1721,7 @@ export class BotController {
         + overwhelmOpportunity * 0.92
         + visibleBias
         + huntBias
-        + (this.legacy ? 0 : characterTargetPriorityBonus(contact, this.team.match.elapsed))
+        + (this.legacy ? 0 : characterTargetPriorityBonus(contact, this.obs.time))
         - uncertaintyPenalty;
       if (score > bestScore) {
         bestScore = score;
@@ -1570,19 +1733,19 @@ export class BotController {
 
   buildTacticalContext(main, focus) {
     const fleetEnergy = this.energyProfile("main");
-    const rangeRef = main.effectiveRange();
+    const rangeRef = main.stats.range;
     const dist = distance(main.x, main.y, focus.x, focus.y);
     const mainHull = main.hp / Math.max(main.maxHp, 1);
     const mainEnergyRatio = clamp(main.energy / Math.max(main.maxEnergy, 1), 0, 1);
-    const fleetHull = this.team.hullRatio();
+    const fleetHull = this.obs.self.hullRatio;
     const energyRatio = fleetEnergy.ratio;
     const friendlyLocal = this.friendlyPowerAround(focus.x, focus.y, 330);
     const friendlyEscort = this.friendlyPowerAround(main.x, main.y, 240);
     const enemyLocal = this.enemyThreatAround(focus.x, focus.y, 330, 8);
     const localAdvantage = (friendlyLocal + friendlyEscort * 0.34 + 0.25) / Math.max(enemyLocal + 0.25, 0.25);
     const shamisenHunt = buildShamisenHuntTactics({
-      team: this.team,
-      enemy: this.enemy,
+      obs: this.obs,
+      ships: this.ownShips(),
       main,
       focus,
       knownContacts: this.knownEnemyContacts({ maxAge: 8 }),
@@ -1602,7 +1765,7 @@ export class BotController {
     const searchRequired = hiddenHuntTarget || focus.source === "spawn" || focus.age > 9 || focus.confidence < 0.26;
     const killWindow = this.contactHpRatio(focus) < 0.44 && dist < rangeRef * 1.75;
     const broadsideWindow = dist > rangeRef * 0.58 && dist < rangeRef * 1.2 && intelSolid;
-    const detachedShips = [this.team.ships.sub1, this.team.ships.sub2].filter((ship) => ship.alive && !ship.isAttached());
+    const detachedShips = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
     const detachedSpread = detachedShips.reduce((max, ship) => Math.max(max, distance(ship.x, ship.y, main.x, main.y)), 0);
     const overextended = detachedSpread > 320 && localAdvantage < 0.92;
     const shipThreats = new Map();
@@ -1622,8 +1785,8 @@ export class BotController {
       || mainHull < 0.28
       || Boolean(shamisenHunt.defense?.active && shamisenHunt.defense.huntedHpRatio < 0.62);
     const flankSign = this.preferredFlankSign(main, focus);
-    const ownArcDensity = this.arcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, this.team.hasKyonFlagship());
-    const enemyArcDensity = this.arcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, this.enemy.hasKyonFlagship());
+    const ownArcDensity = this.arcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, this.obs.self.flags.kyonFlagship);
+    const enemyArcDensity = this.arcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, this.obs.privileged.enemyHasKyonFlagship);
     const arcAdvantage = ownArcDensity - enemyArcDensity;
     const enemyBroadsideRisk = enemyArcDensity >= 1.45;
     const safeExchange = enemyArcDensity <= 1 && ownArcDensity >= 1;
@@ -1695,21 +1858,22 @@ export class BotController {
 
     // 收尾判断：是否占优(领先) + 是否到了该收尾的窗口(敌方濒临覆灭)。
     // 领先时不应因自身低血/低能转入防守，而应压制收尾——破解"双方都低血同时转防守"的平局僵局。
-    const enemyHullTeam = this.enemy.hullRatio();
-    const ownHullTeam = this.team.hullRatio();
-    const enemyAliveCount = this.enemy.getAllShips().filter((s) => s && s.alive).length;
-    const ownAliveCount = this.team.getAllShips().filter((s) => s && s.alive).length;
+    const enemyHullTeam = this.obs.privileged.enemyHullRatio;
+    const ownHullTeam = this.obs.self.hullRatio;
+    const enemyAliveCount = this.obs.privileged.enemyAliveCount;
+    const ownAliveCount = this.ownShips().filter((s) => s && s.alive).length;
     const winning = this.legacy ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + 0.08);
     const closeoutWindow = this.legacy ? false : (enemyAliveCount > 0
       && (enemyAliveCount < ownAliveCount || enemyHullTeam < 0.3 || (killWindow && winning)));
     const enemyMainContact = this.projectContact(this.enemyIntel.main, 1.2);
     const advancedCounterplay = this.usesAdvancedSkillCounterplay();
     const barrierTactics = buildKoizumiBarrierTactics({
-      team: this.team,
+      obs: this.obs,
+      ships: this.ownShips(),
       enemyMainContact,
       main,
       enemyContacts: this.knownEnemyContacts({ maxAge: 4.5 }),
-      now: this.team.match.elapsed,
+      now: this.obs.time,
       legacy: this.legacy,
       advanced: advancedCounterplay,
     });
@@ -1781,8 +1945,8 @@ export class BotController {
       return true;
     }
     if (level === 1) {
-      const ship = this.team.ships.sub1;
-      if (this.team.splitLevel !== 0 || !ship.alive) {
+      const ship = this.obs.self.ships.sub1;
+      if (this.obs.self.splitLevel !== 0 || !ship.alive) {
         return false;
       }
       if (
@@ -1815,8 +1979,8 @@ export class BotController {
       );
     }
     if (level === 2) {
-      const ship = this.team.ships.sub2;
-      if (this.team.splitLevel !== 1 || !ship.alive) {
+      const ship = this.obs.self.ships.sub2;
+      if (this.obs.self.splitLevel !== 1 || !ship.alive) {
         return false;
       }
       if (
@@ -1854,18 +2018,18 @@ export class BotController {
   evaluateSplit(elapsed, context) {
     const acted = [];
     const attempt1 = this.shouldSplit(1, context, elapsed);
-    if (attempt1 && this.team.split(1)) {
+    if (attempt1 && this.writeSplit(1)) {
       acted.push(1);
     }
     const attempt2 = this.shouldSplit(2, context, elapsed);
-    if (attempt2 && this.team.split(2)) {
+    if (attempt2 && this.writeSplit(2)) {
       acted.push(2);
     }
     this.lastSplitDecision = {
       attempt1,
       attempt2,
       acted,
-      level: this.team.splitLevel,
+      level: this.obs.self.splitLevel,
       at: elapsed,
     };
   }
@@ -1893,12 +2057,12 @@ export class BotController {
     const current = this.zoneCenter(this.enemyIntel.searchZoneId);
     if (
       distance(main.x, main.y, current.x, current.y) <= this.profile.searchArrivalRadius
-      || this.team.match.elapsed - this.lastSearchAdvanceAt > this.profile.searchAdvanceWindow
+      || this.obs.time - this.lastSearchAdvanceAt > this.profile.searchAdvanceWindow
     ) {
       this.enemyIntel.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
       this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
       this.searchSweepSign *= -1;
-      this.lastSearchAdvanceAt = this.team.match.elapsed;
+      this.lastSearchAdvanceAt = this.obs.time;
     }
 
     return this.zoneCenter(this.enemyIntel.searchZoneId);
@@ -1909,9 +2073,9 @@ export class BotController {
       return null;
     }
     const travel = this.predictEnemyVector(focus);
-    const probeDistance = clamp((140 + (focus.uncertainty || 0) * 0.9) * this.profile.probeDistanceMultiplier, 150, this.team.match.worldSize / 2.6);
-    const probeX = this.team.match.clampX(focus.x + Math.cos(travel.angle) * probeDistance, this.safeRoutePadding());
-    const probeY = this.team.match.clampY(focus.y + Math.sin(travel.angle) * probeDistance, this.safeRoutePadding());
+    const probeDistance = clamp((140 + (focus.uncertainty || 0) * 0.9) * this.profile.probeDistanceMultiplier, 150, this.obs.world.size / 2.6);
+    const probeX = this.clampX(focus.x + Math.cos(travel.angle) * probeDistance, this.safeRoutePadding());
+    const probeY = this.clampY(focus.y + Math.sin(travel.angle) * probeDistance, this.safeRoutePadding());
     return this.zoneForPoint(probeX, probeY).id;
   }
 
@@ -1921,7 +2085,7 @@ export class BotController {
     let bestKey = "main";
     let bestD = Infinity;
     for (const key of ["main", "sub1", "sub2"]) {
-      const ship = this.team.ships[key];
+      const ship = this.obs.self.ships[key];
       if (!ship || !ship.alive) continue;
       const d = c ? distance(ship.x, ship.y, c.x, c.y) : 0;
       if (d < bestD) { bestD = d; bestKey = key; }
@@ -1935,13 +2099,13 @@ export class BotController {
       const probeZoneId = this.likelyProbeZoneId(focus);
       if (focus.visible) {
         this.enemyIntel.searchZoneId = focus.zoneId;
-        return this.stableNoise(Math.round(this.team.match.elapsed * 10), focus.zoneId) < 0.72 && probeZoneId
+        return this.stableNoise(Math.round(this.obs.time * 10), focus.zoneId) < 0.72 && probeZoneId
           ? probeZoneId
           : focus.zoneId;
       }
       if (focus.age <= 12) {
         this.enemyIntel.searchZoneId = probeZoneId || focus.zoneId;
-        if (probeZoneId && this.stableNoise(Math.round(this.team.match.elapsed * 8), probeZoneId) < 0.92) {
+        if (probeZoneId && this.stableNoise(Math.round(this.obs.time * 8), probeZoneId) < 0.92) {
           return probeZoneId;
         }
         return focus.zoneId;
@@ -1951,45 +2115,45 @@ export class BotController {
   }
 
   planScoutDeployment(context = this.currentContext) {
-    if (!this.team.hasYukiFlagship() || !this.team.ships.main.alive) {
+    if (!this.obs.self.flags.yukiFlagship || !this.obs.self.ships.main.alive) {
       return null;
     }
     const focus = context?.focus || this.primaryEnemyEstimate();
-    const activeScouts = this.team.scouts
+    const activeScouts = this.obs.self.scouts
       .filter((scout) => scout.alive && scout.combatCapable)
       .map((scout) => ({
         id: scout.id,
-        zoneId: scout.zone?.id || this.zoneForPoint(scout.x, scout.y).id,
+        zoneId: scout.zoneId || this.zoneForPoint(scout.x, scout.y).id,
         life: scout.life,
         mode: scout.mode,
         mission: scout.mission,
       }));
     return planYukiScoutDeployment({
       state: this.scoutDoctrine,
-      zones: this.team.match.zones,
-      worldSize: this.team.match.worldSize,
-      ownMain: this.team.ships.main,
-      forwardSign: this.team.seat === "A" ? 1 : -1,
+      zones: this.obs.world.zones,
+      worldSize: this.obs.world.size,
+      ownMain: this.obs.self.ships.main,
+      forwardSign: this.seat === "A" ? 1 : -1,
       focus,
       contacts: this.knownEnemyContacts({ maxAge: 12 }),
       beliefZoneWeights: this.beliefZoneWeights(),
       activeScouts,
       context: context || {},
-      now: this.team.match.elapsed,
+      now: this.obs.time,
       probeZoneId: this.likelyProbeZoneId(focus),
     });
   }
 
   retaskYukiCombatScouts(plan) {
-    const now = this.team.match.elapsed;
+    const now = this.obs.time;
     if (!plan || now < this.scoutDoctrine.nextRetaskAt) {
       return 0;
     }
-    const activeScouts = this.team.scouts
+    const activeScouts = this.obs.self.scouts
       .filter((scout) => scout.alive && scout.combatCapable)
       .map((scout) => ({
         id: scout.id,
-        zoneId: scout.zone?.id || this.zoneForPoint(scout.x, scout.y).id,
+        zoneId: scout.zoneId || this.zoneForPoint(scout.x, scout.y).id,
         life: scout.life,
         mode: scout.mode,
         mission: scout.mission,
@@ -1997,10 +2161,10 @@ export class BotController {
     const orders = buildScoutRetaskOrders(plan, activeScouts, 2);
     let retasked = 0;
     for (const [index, order] of orders.entries()) {
-      const scout = this.team.scouts.find((item) => item.id === order.scoutId && item.alive);
+      const scout = this.obs.self.scouts.find((item) => item.id === order.scoutId && item.alive);
       if (!scout) continue;
-      const seekPoint = scoutMissionPoint(plan, this.team.match.zones, order.zoneId, index + 1);
-      if (this.team.assignScoutMission(scout, {
+      const seekPoint = scoutMissionPoint(plan, this.obs.world.zones, order.zoneId, index + 1);
+      if (this.writeScoutMission(scout.id, {
         zoneId: order.zoneId,
         seekPoint,
         patrolCenter: seekPoint,
@@ -2025,8 +2189,8 @@ export class BotController {
     if (fleetEnergy.current < SCOUT_LAUNCH_COST) {
       return false;
     }
-    if (this.team.hasYukiFlagship()) {
-      const activeScouts = this.team.scouts.filter((item) => item.alive && item.combatCapable).length;
+    if (this.obs.self.flags.yukiFlagship) {
+      const activeScouts = this.obs.self.scouts.filter((item) => item.alive && item.combatCapable).length;
       const desiredActive = scoutPlan?.desiredActive || 4;
       const maxActive = scoutPlan?.maxActive || 6;
       if (activeScouts >= maxActive) {
@@ -2053,14 +2217,14 @@ export class BotController {
   }
 
   shouldReserveEnergyForHaruhiFlagship() {
-    if (this.team.mainCharacterId() !== "haruhi" || !this.team.ships.main.alive) {
+    if (this.obs.self.loadout.main !== "haruhi" || !this.obs.self.ships.main.alive) {
       return false;
     }
     const meta = skillMetaForCharacter("haruhi", "flagship");
     const cost = Number(meta?.cost) || 0;
     const readyIn = Math.max(
       0,
-      Number(this.team.cooldowns.flagship) || 0,
+      Number(this.obs.self.cooldowns.flagship) || 0,
       Number(this.flagshipTimer) || 0,
     );
     if (readyIn > HARUHI_FLAGSHIP_ENERGY_RESERVE_WINDOW) {
@@ -2072,7 +2236,7 @@ export class BotController {
   }
 
   combatCenter(enemyEstimate) {
-    const worldCenter = this.team.match.worldSize * 0.5;
+    const worldCenter = this.obs.world.size * 0.5;
     return {
       x: lerp(worldCenter, enemyEstimate.x, 0.24),
       y: lerp(worldCenter, enemyEstimate.y, 0.24),
@@ -2081,7 +2245,7 @@ export class BotController {
 
   computeRecoveryTarget(main, enemyEstimate) {
     const padding = this.safeRoutePadding(24);
-    const worldSize = this.team.match.worldSize;
+    const worldSize = this.obs.world.size;
     const inwardX = clamp(main.x, padding, worldSize - padding);
     const inwardY = clamp(main.y, padding, worldSize - padding);
     const toEnemyX = enemyEstimate.x - main.x;
@@ -2108,20 +2272,20 @@ export class BotController {
     this.refreshIntel();
     this.updateBelief(dt);
     this.updateStuckState(dt);
-    const main = this.team.ships.main;
+    const main = this.obs.self.ships.main;
     const focus = main.alive ? this.selectEnemyFocus(main) : null;
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
     this.evaluateSplit(elapsed, this.currentContext);
     this.enforceEnergyThrottleCaps();
-    const shouldRefreshScoutPlan = this.team.hasYukiFlagship() && (
+    const shouldRefreshScoutPlan = this.obs.self.flags.yukiFlagship && (
       !this.currentScoutPlan
-      || this.team.match.elapsed >= this.scoutPlanRefreshAt
+      || this.obs.time >= this.scoutPlanRefreshAt
       || this.scoutTimer <= 0
-      || this.team.match.elapsed >= this.scoutDoctrine.nextRetaskAt
+      || this.obs.time >= this.scoutDoctrine.nextRetaskAt
     );
     if (shouldRefreshScoutPlan) {
       this.currentScoutPlan = this.planScoutDeployment(this.currentContext);
-      this.scoutPlanRefreshAt = this.team.match.elapsed + 0.4;
+      this.scoutPlanRefreshAt = this.obs.time + 0.4;
     }
     const scoutPlan = this.currentScoutPlan;
     const retaskedScouts = this.retaskYukiCombatScouts(scoutPlan);
@@ -2129,7 +2293,7 @@ export class BotController {
     if (
       this.currentContext
       && this.currentContext.intelUrgency > 0.88
-      && this.team.scouts.filter((item) => item.alive).length === 0
+      && this.obs.self.scouts.filter((item) => item.alive).length === 0
     ) {
       this.scoutTimer = Math.min(this.scoutTimer, this.profile.aggressiveScoutWindow);
     }
@@ -2137,7 +2301,7 @@ export class BotController {
     if (
       this.currentContext
       && this.currentContext.maxShipThreat > 0.94
-      && this.team.scouts.filter((item) => item.alive).length <= 1
+      && this.obs.self.scouts.filter((item) => item.alive).length <= 1
     ) {
       this.scoutTimer = Math.min(this.scoutTimer, this.profile.aggressiveScoutWindow);
     }
@@ -2149,10 +2313,10 @@ export class BotController {
     }
     this.steerActiveKoizumiOrbs(this.currentContext);
 
-    if (this.scoutTimer <= 0 && !this.team.areScoutsDisabled()) {
+    if (this.scoutTimer <= 0 && !this.obs.self.scoutsDisabled) {
       if (this.shouldLaunchScout(this.currentContext, scoutPlan)) {
         const focusEst = this.currentContext?.focus || this.primaryEnemyEstimate();
-        const zoneId = scoutPlan?.zoneId || this.pickScoutZoneId(this.team.ships.main, focusEst);
+        const zoneId = scoutPlan?.zoneId || this.pickScoutZoneId(this.obs.self.ships.main, focusEst);
         // 侦察目标点：看得见就奔可见处；看不见就奔 belief 占据图的最高概率(未排除)区——
         // 让侦察去"最该排查"的地方，系统化缩小可能区(类人搜索)。前出分离舰就近发出，最快覆盖。
         const peak = (focusEst && focusEst.visible) ? null : this.beliefPeak();
@@ -2161,7 +2325,7 @@ export class BotController {
         const seekPoint = scoutAim && Number.isFinite(scoutAim.x) ? { x: scoutAim.x, y: scoutAim.y } : null;
         // 侦察机也必须纳入能量预算。尤其是分离副舰，不能只因刚好攒够28点就立即花光，
         // 否则下一秒既无法机动，也无法使用自保技能。
-        const scoutEnergyFloors = this.team.hasYukiFlagship()
+        const scoutEnergyFloors = this.obs.self.flags.yukiFlagship
           ? { emergencyFloor: 0.08, normalFloor: 0.12, conserveFloor: 0.2 }
           : { emergencyFloor: 0.12, normalFloor: 0.18, conserveFloor: 0.28 };
         const hasScoutReserve = this.allowEnergyCommit(
@@ -2171,7 +2335,7 @@ export class BotController {
           scoutEnergyFloors,
         );
         const launched = hasScoutReserve
-          && this.team.launchScout(zoneId, {
+          && this.writeLaunchScout(zoneId, {
             fromShipKey: scoutSourceKey,
             seekPoint,
             patrolCenter: scoutPlan?.seekPoint || seekPoint,
@@ -2179,7 +2343,7 @@ export class BotController {
             mission: scoutPlan?.mission,
           });
         if (launched && scoutPlan) {
-          recordScoutDeployment(this.scoutDoctrine, scoutPlan, this.team.match.elapsed);
+          recordScoutDeployment(this.scoutDoctrine, scoutPlan, this.obs.time);
         }
         this.lastScoutDecision = {
           action: launched ? "launch" : hasScoutReserve ? "retry" : "hold-energy",
@@ -2191,7 +2355,7 @@ export class BotController {
           primaryZoneId: scoutPlan?.primaryZoneId || null,
           predictedZoneId: scoutPlan?.predictedZoneId || null,
           retasked: retaskedScouts,
-          at: this.team.match.elapsed,
+          at: this.obs.time,
         };
         if (launched) {
           if (scoutPlan) {
@@ -2207,7 +2371,7 @@ export class BotController {
           }
         } else {
           this.scoutTimer = !hasScoutReserve
-            ? this.team.hasYukiFlagship() ? this.rng.range(1.2, 2.2) : this.rng.range(2.2, 3.8)
+            ? this.obs.self.flags.yukiFlagship ? this.rng.range(1.2, 2.2) : this.rng.range(2.2, 3.8)
             : this.currentContext?.emergencyCommit
               ? this.rng.range(0.9, 1.8)
               : this.rng.range(1.4, 2.8);
@@ -2223,9 +2387,9 @@ export class BotController {
           primaryZoneId: scoutPlan?.primaryZoneId || null,
           predictedZoneId: scoutPlan?.predictedZoneId || null,
           retasked: retaskedScouts,
-          at: this.team.match.elapsed,
+          at: this.obs.time,
         };
-        this.scoutTimer = this.team.hasYukiFlagship()
+        this.scoutTimer = this.obs.self.flags.yukiFlagship
           ? this.currentContext?.conserveEnergy ? this.rng.range(1.4, 2.2) : this.rng.range(0.8, 1.4)
           : this.currentContext?.conserveEnergy ? this.rng.range(2.2, 3.4) : this.rng.range(1.2, 2.2);
       }
@@ -2243,13 +2407,13 @@ export class BotController {
       return;
     }
     const estimate = context?.focus || this.primaryEnemyEstimate();
-    const characterId = this.team.mainCharacterId();
+    const characterId = this.obs.self.loadout.main;
     const isHaruhi = characterId === "haruhi";
     if (!this.shouldCastFlagshipSkill(estimate, context)) {
       this.lastFlagshipDecision = {
         action: "hold",
         cast: false,
-        at: this.team.match.elapsed,
+        at: this.obs.time,
         target: this.debugContact(estimate),
       };
       this.flagshipTimer = isHaruhi
@@ -2261,17 +2425,17 @@ export class BotController {
             : this.rng.range(1.2, 2.4);
       return;
     }
-    const ok = this.team.castFlagshipSkill();
+    const ok = this.writeFlagshipSkill();
     this.lastFlagshipDecision = {
       action: ok ? "cast" : "retry",
       cast: ok,
-      at: this.team.match.elapsed,
+      at: this.obs.time,
       target: this.debugContact(estimate),
     };
     this.flagshipTimer = ok
       ? isHaruhi
         // 与真实冷却对齐；两者每帧同步递减，冷却归零的同一帧立即进入下一次施放判断。
-        ? Math.max(0.15, Number(this.team.cooldowns.flagship) || 0)
+        ? Math.max(0.15, Number(this.obs.self.cooldowns.flagship) || 0)
         : (context?.skillAggression > 0.95 ? this.rng.range(12, 17) : this.rng.range(14, 20))
       : isHaruhi
         ? this.rng.range(0.18, 0.35)
@@ -2286,12 +2450,12 @@ export class BotController {
     if (this.subTimers[shipKey] > 0) {
       return;
     }
-    const ship = this.team.ships[shipKey];
-    if (!ship || !ship.alive || ship.isAttached()) {
+    const ship = this.obs.self.ships[shipKey];
+    if (!ship || !ship.alive || ship.attached) {
       this.lastSubSkillDecision[shipKey] = {
         action: "unavailable",
         cast: false,
-        at: this.team.match.elapsed,
+        at: this.obs.time,
         target: null,
       };
       this.subTimers[shipKey] = this.rng.range(4, 7);
@@ -2303,7 +2467,7 @@ export class BotController {
       this.lastSubSkillDecision[shipKey] = {
         action: "hold",
         cast: false,
-        at: this.team.match.elapsed,
+        at: this.obs.time,
         target: this.debugContact(estimate),
       };
       this.subTimers[shipKey] = context?.conserveEnergy
@@ -2320,23 +2484,23 @@ export class BotController {
       const aim = predictCharacterSkillAim(
         estimate,
         this.legacy ? 0 : 1.05,
-        this.team.match.worldSize,
+        this.obs.world.size,
         this.safeRoutePadding(4),
       );
-      ok = this.team.castSubSkill(shipKey, {
+      ok = this.writeSubSkill(shipKey, {
         targetX: aim?.x ?? estimate.x,
         targetY: aim?.y ?? estimate.y,
       });
     } else if (ship.characterId === "tsuruya") {
       const zoneId = estimate?.zoneId || this.enemyIntel.searchZoneId || 5;
-      ok = this.team.castSubSkill(shipKey, { zoneId });
+      ok = this.writeSubSkill(shipKey, { zoneId });
     } else {
-      ok = this.team.castSubSkill(shipKey);
+      ok = this.writeSubSkill(shipKey);
     }
     this.lastSubSkillDecision[shipKey] = {
       action: ok ? "cast" : "retry",
       cast: ok,
-      at: this.team.match.elapsed,
+      at: this.obs.time,
       target: this.debugContact(estimate),
     };
     if (
@@ -2350,7 +2514,7 @@ export class BotController {
     }
     this.subTimers[shipKey] = ok
       ? ship.characterId === "haruhi"
-        ? Math.max(0.15, Number(this.team.cooldowns[shipKey]) || 0)
+        ? Math.max(0.15, Number(this.obs.self.cooldowns[shipKey]) || 0)
         : (context?.skillAggression > 1 ? this.rng.range(12, 18) : this.rng.range(15, 22))
       : context?.conserveEnergy
         ? this.rng.range(4.6, 7.8)
@@ -2360,7 +2524,7 @@ export class BotController {
   }
 
   updateStuckState(dt) {
-    const main = this.team.ships.main;
+    const main = this.obs.self.ships.main;
     if (!main.alive || !main.route) {
       this.stuckTimer = 0;
       this.lastMainPos = { x: main.x, y: main.y };
@@ -2591,7 +2755,7 @@ export class BotController {
       ? focus.angle
       : Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
     const sideAngle = basisAngle + Math.PI * 0.5;
-    const zoneSpan = this.team.match.worldSize / 3;
+    const zoneSpan = this.obs.world.size / 3;
     const spawnFactor = focus?.source === "spawn" ? 1.48 : 1;
     const wingReach = clamp((zoneSpan * 0.54 + (focus?.uncertainty || 0) * 0.32) * spawnFactor, 160, 430);
     const forwardReach = clamp((zoneSpan * 0.36 + (focus?.uncertainty || 0) * 0.22) * (focus?.source === "spawn" ? 1.16 : 1), 120, 300);
@@ -2620,8 +2784,8 @@ export class BotController {
       : Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
     const sideAngle = basisAngle + Math.PI * 0.5;
     const uncertainty = focus?.uncertainty || 0;
-    const forwardReach = clamp(main.effectiveRange() * (0.7 + pressure * 0.18) + uncertainty * 0.42, 190, 430);
-    const wingReach = clamp(main.effectiveRange() * 0.56 + uncertainty * 0.42 + pressure * 56, 165, 390);
+    const forwardReach = clamp(main.stats.range * (0.7 + pressure * 0.18) + uncertainty * 0.42, 190, 430);
+    const wingReach = clamp(main.stats.range * 0.56 + uncertainty * 0.42 + pressure * 56, 165, 390);
     const centerReach = clamp(forwardReach * 0.86, 150, 360);
     const mainBias = this.searchSweepSign * clamp(54 + uncertainty * 0.1, 54, 118);
 
@@ -2653,11 +2817,11 @@ export class BotController {
       if (vitality.fragile) {
         continue;
       }
-      const visionMargin = ship.effectiveVision() - enemyVision;
+      const visionMargin = ship.stats.vision - enemyVision;
       const score = vitality.value
         + clamp(visionMargin / 55, -0.2, 0.85)
-        + clamp((ship.effectiveVision() - 160) / 70, 0, 0.65)
-        + clamp((ship.baseSpeed() - 33) / 8, -0.1, 0.3)
+        + clamp((ship.stats.vision - 160) / 70, 0, 0.65)
+        + clamp((ship.stats.baseSpeed - 33) / 8, -0.1, 0.3)
         + (ship.characterId === "yuki" ? 0.9 : 0)
         + (ship.characterId === "asakura" ? 0.32 : 0)
         + (ship.characterId === "future1096" ? 0.18 : 0)
@@ -2679,7 +2843,7 @@ export class BotController {
     return clamp(
       (0.48 - vitality.hpRatio) * 2.4
       + (0.26 - vitality.energyRatio) * 1.8
-      + (dist < ship.effectiveRange() * 0.92 ? 0.22 : 0)
+      + (dist < ship.stats.range * 0.92 ? 0.22 : 0)
       + (context.enemyBroadsideRisk ? 0.16 : 0)
       + (context.defensivePressure ? 0.14 : 0),
       0,
@@ -2688,7 +2852,7 @@ export class BotController {
   }
 
   planDetachedRoles(main, enemyEstimate, context) {
-    const detachedShips = [this.team.ships.sub1, this.team.ships.sub2].filter((ship) => ship.alive && !ship.isAttached());
+    const detachedShips = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
     const preferredSign = context?.flankSign || this.preferredFlankSign(main, enemyEstimate);
     const intelLead = this.chooseDetachedIntelLead(detachedShips, enemyEstimate, context);
     let retreatShip = null;
@@ -2751,12 +2915,12 @@ export class BotController {
     const enemySide = { x: -enemyForward.y, y: enemyForward.x };
     const vitality = this.shipVitality(ship);
     const threat = this.shipThreatSnapshot(ship, 7);
-    const ownVision = ship.effectiveVision();
+    const ownVision = ship.stats.vision;
     const enemyVision = this.estimateVisionRange(enemyEstimate);
     const blindLower = enemyVision + 16;
     const blindUpper = ownVision - 8;
     const mainAngle = Math.atan2(mainTarget.y - enemyEstimate.y, mainTarget.x - enemyEstimate.x);
-    const preferredRange = clamp(ship.effectiveRange() * 0.9, 170, 380);
+    const preferredRange = clamp(ship.stats.range * 0.9, 170, 380);
     const emergencyEscape = threat.overwhelmed || (threat.danger > 1.18 && role !== "intel");
 
     const barrierDirective = koizumiBarrierRoleDirective(
@@ -2778,7 +2942,7 @@ export class BotController {
             x: escape.x,
             y: escape.y,
             intentAngle: Math.atan2(enemyEstimate.y - escape.y, enemyEstimate.x - escape.x),
-            preferredRange: clamp(ship.effectiveRange() * 1.08, 220, 420),
+            preferredRange: clamp(ship.stats.range * 1.08, 220, 420),
           },
           throttle: { min: 1.04, max: 1.2 },
           role: "escape",
@@ -2815,15 +2979,15 @@ export class BotController {
         score += vitality.hpRatio < 0.35 ? 0.24 : 0;
       } else if (role === "fire") {
         score += clamp(spread / 1.55, 0, 0.82);
-        score += candidateDist >= ship.effectiveRange() * 0.72 && candidateDist <= ship.effectiveRange() * 1.02 ? 0.4 : -0.16;
+        score += candidateDist >= ship.stats.range * 0.72 && candidateDist <= ship.stats.range * 1.02 ? 0.4 : -0.16;
       } else if (role === "flank") {
         const rearBias = -Math.cos(shortestAngleDelta(candidateAngle, enemyEstimate.angle));
         score += clamp(spread / 1.4, 0, 0.98);
-        score += candidateDist <= ship.effectiveRange() * 0.9 ? 0.34 : 0;
+        score += candidateDist <= ship.stats.range * 0.9 ? 0.34 : 0;
         score += clamp(rearBias * 0.7, -0.18, 0.8);
       } else if (role === "front") {
         score += candidateDist < distance(mainTarget.x, mainTarget.y, enemyEstimate.x, enemyEstimate.y) - 16 ? 0.42 : -0.08;
-        score += candidateDist <= ship.effectiveRange() * 0.94 ? 0.3 : -0.12;
+        score += candidateDist <= ship.stats.range * 0.94 ? 0.3 : -0.12;
       }
       return score;
     };
@@ -2834,8 +2998,8 @@ export class BotController {
       for (const item of candidates) {
         const candidate = {
           ...item,
-          x: this.team.match.clampX(item.x, this.safeRoutePadding(10)),
-          y: this.team.match.clampY(item.y, this.safeRoutePadding(10)),
+          x: this.clampX(item.x, this.safeRoutePadding(10)),
+          y: this.clampY(item.y, this.safeRoutePadding(10)),
         };
         const score = scoreCandidate(candidate, exposureWeight);
         if (score > bestScore) {
@@ -2879,7 +3043,7 @@ export class BotController {
         max: context?.searchRequired || context?.trackableIntel ? 1.12 : 1.02,
       };
     } else if (role === "rear") {
-      const safeRange = clamp(ship.effectiveRange() * 1.04 + (0.6 - vitality.hpRatio) * 110, 220, 460);
+      const safeRange = clamp(ship.stats.range * 1.04 + (0.6 - vitality.hpRatio) * 110, 220, 460);
       candidates = [
         {
           x: enemyEstimate.x - toward.x * safeRange + side.x * laneSign * 170,
@@ -2896,7 +3060,7 @@ export class BotController {
       ];
       throttle = { min: 0.58, max: 0.84 };
     } else if (role === "flank") {
-      const strikeRange = clamp(ship.effectiveRange() * 0.72, 130, 280);
+      const strikeRange = clamp(ship.stats.range * 0.72, 130, 280);
       candidates = [
         {
           x: enemyEstimate.x - enemyForward.x * 48 + enemySide.x * laneSign * 220,
@@ -2952,7 +3116,7 @@ export class BotController {
       ];
       throttle = { min: 0.98, max: 1.18 };
     } else if (role === "front") {
-      const screenRange = clamp(Math.max(enemyVision + 12, ship.effectiveRange() * 0.78), 150, 320);
+      const screenRange = clamp(Math.max(enemyVision + 12, ship.stats.range * 0.78), 150, 320);
       candidates = [
         {
           x: enemyEstimate.x - toward.x * screenRange + side.x * laneSign * 120,
@@ -2975,7 +3139,7 @@ export class BotController {
       ];
       throttle = { min: 0.96, max: 1.14 };
     } else {
-      const supportRange = clamp(ship.effectiveRange() * 0.94, 180, 360);
+      const supportRange = clamp(ship.stats.range * 0.94, 180, 360);
       candidates = [
         {
           x: enemyEstimate.x - enemyForward.x * 72 + enemySide.x * laneSign * 210,
@@ -3021,13 +3185,13 @@ export class BotController {
       return false;
     }
     const targets = ships.filter((ship) => ship?.alive);
-    const state = this.enemy.visionWaveSkill;
+    const state = this.obs.enemy.visionWave;
     const horizon = Math.max(0.2, Number(buffDuration) || 0);
     if (targets.length === 0 || !state) {
       return false;
     }
 
-    const now = this.team.match.elapsed;
+    const now = this.obs.time;
     const waves = state.waves.filter((wave) => wave.expiresAt > now);
     const willReachWithin = (wave, ship, delay = 0) => {
       const speed = Math.max(1, Number(wave.speed) || 480);
@@ -3069,7 +3233,7 @@ export class BotController {
     if (!["haruhi", "tsuruya", "asakura"].includes(characterId)) {
       return false;
     }
-    const targets = this.team.getAllShips();
+    const targets = this.ownShips();
     return this.incomingVisionWaveWillPurge(targets, meta?.duration || 6);
   }
 
@@ -3082,8 +3246,8 @@ export class BotController {
   }
 
   shouldCastFlagshipSkill(estimate, context = this.currentContext) {
-    const main = this.team.ships.main;
-    const characterId = this.team.mainCharacterId();
+    const main = this.obs.self.ships.main;
+    const characterId = this.obs.self.loadout.main;
     if (!estimate || !main.alive) {
       return false;
     }
@@ -3106,8 +3270,8 @@ export class BotController {
       return true;
     }
     if (characterId === "future1096") {
-      const form = this.team.future1096Form;
-      const hull = this.team.hullRatio();
+      const form = this.obs.self.future1096Form;
+      const hull = this.obs.self.hullRatio;
       const pressure = Number(context?.defensivePressure) || 0;
       const aggression = Number(context?.skillAggression) || 0;
       if (!form) {
@@ -3124,20 +3288,19 @@ export class BotController {
       return hull > 0.48 && pressure < 0.42 && aggression > 0.46;
     }
     if (characterId === "tsuruya") {
-      return this.team.hullRatio() < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;
+      return this.obs.self.hullRatio < 0.995 || (context?.skillAggression || 0) > 0.18 || (context?.combatUrgency || 0) > 0.34;
     }
     if (characterId === "asakura") {
-      const now = this.team.match.elapsed;
-      const visibleShips = this.enemy.getAllShips().filter(
-        (ship) => ship.alive && this.team.visibleEnemyIds.has(ship.id),
-      );
+      const now = this.obs.time;
+      const visibleShips = this.obs.enemy.visible.filter((entity) => entity.kind === "ship");
+      const teamBuffs = this.obs.enemy.visibleTeamBuffs;
       let visibleBuffRemaining = 0;
       if (visibleShips.length > 0) {
         visibleBuffRemaining = Math.max(
           0,
-          this.enemy.effects.sponsorUntil - now,
-          this.enemy.effects.haruhiBoostUntil - now,
-          this.enemy.visionWaveSkill.activeUntil - now,
+          teamBuffs.sponsorUntil - now,
+          teamBuffs.haruhiBoostUntil - now,
+          teamBuffs.visionWaveActiveUntil - now,
         );
         for (const ship of visibleShips) {
           visibleBuffRemaining = Math.max(
@@ -3151,9 +3314,7 @@ export class BotController {
 
       const waveArrivalSeconds = dist / 480;
       const canPurgeBeforeExpiry = visibleBuffRemaining > waveArrivalSeconds + 0.2;
-      const hasHiddenEnemyShip = this.enemy.getAllShips().some(
-        (enemy) => enemy.alive && !this.team.visibleEnemyIds.has(enemy.id),
-      );
+      const hasHiddenEnemyShip = this.obs.privileged.hasHiddenEnemyShip;
       const usefulSearchPulse = hasHiddenEnemyShip && Boolean(
         estimate.source === "radar"
         || (!estimate.visible && estimate.source !== "spawn" && estimate.age <= 7)
@@ -3188,18 +3349,16 @@ export class BotController {
       : dist;
     const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, 4);
     if (ship.characterId === "haruhi") {
-      const shockRadius = this.team.match.worldSize / 6;
-      const visibleEnemyShips = this.enemy.getAllShips().filter((enemyShip) => (
-        enemyShip.alive
-        && this.team.visibleEnemyIds.has(enemyShip.id)
+      const shockRadius = this.obs.world.size / 6;
+      const visibleEnemyShips = this.obs.enemy.visible.filter((enemyShip) => (
+        enemyShip.kind === "ship"
         && distance(ship.x, ship.y, enemyShip.x, enemyShip.y) <= shockRadius + enemyShip.radius
       ));
-      const visibleEnemyAircraft = [...this.enemy.scouts, ...this.enemy.wingmen].filter((aircraft) => (
-        aircraft.alive
-        && this.team.visibleEnemyIds.has(aircraft.id)
+      const visibleEnemyAircraft = this.obs.enemy.visible.filter((aircraft) => (
+        aircraft.kind !== "ship"
         && distance(ship.x, ship.y, aircraft.x, aircraft.y) <= shockRadius + aircraft.radius
       ));
-      const ownAircraftAtRisk = [...this.team.scouts, ...this.team.wingmen].filter((aircraft) => (
+      const ownAircraftAtRisk = [...this.obs.self.scouts, ...this.obs.self.wingmen].filter((aircraft) => (
         aircraft.alive
         && distance(ship.x, ship.y, aircraft.x, aircraft.y) <= shockRadius + aircraft.radius
       )).length;
@@ -3219,18 +3378,18 @@ export class BotController {
       if (assignedToBreach) {
         return Boolean(
           estimate
-          && !ship.isKoizumiOrbActive()
+          && !ship.koizumiOrbActive
           && estimate.source !== "spawn"
           && (estimate.visible || estimate.age <= 4.2)
-          && breachDistance <= ship.effectiveRange() * 1.75,
+          && breachDistance <= ship.stats.range * 1.75,
         );
       }
       return Boolean(
         estimate
-        && !ship.isKoizumiOrbActive()
+        && !ship.koizumiOrbActive
         && estimate.source !== "spawn"
         && (estimate.visible || estimate.age <= 3.2 || context?.trackableIntel)
-        && dist <= ship.effectiveRange() * 1.55
+        && dist <= ship.stats.range * 1.55
         && (((context?.skillAggression) || 0) > 0.14 || this.energyProfile(ship).high),
       );
     }
@@ -3246,7 +3405,7 @@ export class BotController {
       );
     }
     if (ship.characterId === "kyon") {
-      return ship.hp / Math.max(1, ship.maxHp) < 0.84 || Boolean(estimate && dist <= ship.effectiveRange() * 1.18);
+      return ship.hp / Math.max(1, ship.maxHp) < 0.84 || Boolean(estimate && dist <= ship.stats.range * 1.18);
     }
     if (ship.characterId === "tsuruya") {
       return Boolean(
@@ -3257,20 +3416,20 @@ export class BotController {
     }
     if (ship.characterId === "yuki") {
       return (((context?.scoutPriority) || 0) > 0.28 || this.energyProfile(ship).high)
-        && (!estimate || !estimate.visible || estimate.age > 2.5 || this.team.scouts.length < 3);
+        && (!estimate || !estimate.visible || estimate.age > 2.5 || this.obs.self.scouts.length < 3);
     }
     if (ship.characterId === "asakura") {
       if (assignedToBreach) {
         return Boolean(
           estimate
           && (estimate.visible || estimate.age <= 4.2)
-          && breachDistance <= ship.effectiveRange() * 1.5,
+          && breachDistance <= ship.stats.range * 1.5,
         );
       }
       return Boolean(
         estimate
         && (estimate.visible || estimate.age <= 2.4)
-        && dist <= ship.effectiveRange() * 0.95
+        && dist <= ship.stats.range * 0.95
         && (((context?.skillAggression) || 0) > 0.14 || context?.killWindow || context?.combatUrgency > 0.5),
       );
     }
@@ -3281,7 +3440,7 @@ export class BotController {
       return Boolean(
         estimate
         && (estimate.visible || estimate.age <= 2.2)
-        && dist <= ship.effectiveRange() * 1.12
+        && dist <= ship.stats.range * 1.12
         && (((context?.skillAggression) || 0) > 0.12 || context?.killWindow || this.energyProfile(ship).high),
       );
     }
@@ -3297,7 +3456,7 @@ export class BotController {
     const enemyForward = { x: Math.cos(enemyEstimate.angle), y: Math.sin(enemyEstimate.angle) };
     const enemySide = { x: -enemyForward.y, y: enemyForward.x };
     const broadsideSign = this.preferredFlankSign(main, enemyEstimate);
-    const preferredRange = clamp(main.effectiveRange() * 0.88, 180, 340);
+    const preferredRange = clamp(main.stats.range * 0.88, 180, 340);
 
     const pickBest = (candidates, exposureWeight = 1) => {
       let best = null;
@@ -3305,8 +3464,8 @@ export class BotController {
       for (const item of candidates) {
         const candidate = {
           ...item,
-          x: this.team.match.clampX(item.x, this.safeRoutePadding()),
-          y: this.team.match.clampY(item.y, this.safeRoutePadding()),
+          x: this.clampX(item.x, this.safeRoutePadding()),
+          y: this.clampY(item.y, this.safeRoutePadding()),
         };
         const exchange = this.evaluateArcExchange(main, enemyEstimate, candidate, exposureWeight);
         if (exchange.score > bestScore) {
@@ -3321,7 +3480,7 @@ export class BotController {
       return this.computeRecoveryTarget(main, enemyEstimate);
     }
     if (mode === "harvest") {
-      const conserveRange = clamp(main.effectiveRange() * 1.22, 240, 420);
+      const conserveRange = clamp(main.stats.range * 1.22, 240, 420);
       return pickBest([
         {
           x: enemyEstimate.x - toward.x * conserveRange + side.x * 130,
@@ -3354,7 +3513,7 @@ export class BotController {
       ], 1.35);
     }
     if (mode === "kite") {
-      const retreatRange = clamp(main.effectiveRange() * 1.16, 220, 420);
+      const retreatRange = clamp(main.stats.range * 1.16, 220, 420);
       return pickBest([
         {
           x: enemyEstimate.x - toward.x * retreatRange + side.x * 140,
@@ -3393,8 +3552,8 @@ export class BotController {
       ], 1.05);
     }
     if (mode === "broadside") {
-      const sideOffset = clamp(main.effectiveRange() * 0.82, 180, 320);
-      const rearOffset = clamp(main.effectiveRange() * 0.24, 50, 130);
+      const sideOffset = clamp(main.stats.range * 0.82, 180, 320);
+      const rearOffset = clamp(main.stats.range * 0.24, 50, 130);
       return pickBest([
         {
           x: enemyEstimate.x - enemyForward.x * rearOffset + enemySide.x * broadsideSign * sideOffset,
@@ -3499,16 +3658,16 @@ export class BotController {
       // 站在敌视野之外打：交火距离取"敌方视野×POKE_VISION_MULT"(刚好够不到我)，clamp 在射程内。
       // 比满射程远吊更靠前→火力更集中/压制更强，又仍在敌视野外→不挨打。
       const enemyVis = this.estimateVisionRange(enemy);
-      const pokeR = clamp(enemyVis * POKE_VISION_MULT, enemyVis + 30, ship.effectiveRange() * 0.95);
+      const pokeR = clamp(enemyVis * POKE_VISION_MULT, enemyVis + 30, ship.stats.range * 0.95);
       const px = target.x - enemy.x;
       const py = target.y - enemy.y;
       const pOff = Math.hypot(px, py);
-      if (pOff > 1 && Math.abs(pOff - pokeR) > 12 && pOff < ship.effectiveRange() * 0.98) {
+      if (pOff > 1 && Math.abs(pOff - pokeR) > 12 && pOff < ship.stats.range * 0.98) {
         const pk = pokeR / pOff;
         return {
           ...target,
-          x: this.team.match.clampX(enemy.x + px * pk, this.safeRoutePadding()),
-          y: this.team.match.clampY(enemy.y + py * pk, this.safeRoutePadding()),
+          x: this.clampX(enemy.x + px * pk, this.safeRoutePadding()),
+          y: this.clampY(enemy.y + py * pk, this.safeRoutePadding()),
         };
       }
     }
@@ -3517,13 +3676,13 @@ export class BotController {
     // 是否压近夺视野要judicious：常规敌人压近能吃到侧舷1.5倍密度，值得贴上去交火；
     // 但对手是阿虚(Kyon)旗舰时射界密度被抹平、贴脸纯比血厚——此时只有真正占优/收尾才压近，
     // 否则保持站位别一头扎进肉阵容被对耗(对抗实测的回归)。
-    const enemyFlatDensity = typeof this.enemy.hasKyonFlagship === "function" && this.enemy.hasKyonFlagship();
+    const enemyFlatDensity = this.obs.privileged.enemyHasKyonFlagship;
     const want = tactical.killWindow || tactical.emergencyCommit || tactical.winning
       || (enemyFlatDensity
         ? tactical.localAdvantage >= 1.05
         : (tactical.localAdvantage >= 0.82 || tactical.intelSolid));
     if (!want) return target;
-    const vision = ship.effectiveVision();
+    const vision = ship.stats.vision;
     const ox = target.x - enemy.x;
     const oy = target.y - enemy.y;
     const off = Math.hypot(ox, oy);
@@ -3533,22 +3692,22 @@ export class BotController {
     const k = visionEngage / off;
     return {
       ...target,
-      x: this.team.match.clampX(enemy.x + ox * k, this.safeRoutePadding()),
-      y: this.team.match.clampY(enemy.y + oy * k, this.safeRoutePadding()),
+      x: this.clampX(enemy.x + ox * k, this.safeRoutePadding()),
+      y: this.clampY(enemy.y + oy * k, this.safeRoutePadding()),
     };
   }
 
-  issueShipRoute(ship, targetX, targetY, throttle, padding = this.team.match.mapPadding) {
-    if (!ship || !ship.alive || !ship.canControl()) {
+  issueShipRoute(ship, targetX, targetY, throttle, padding = this.obs.world.mapPadding) {
+    if (!ship || !ship.alive || !ship.canControl) {
       return null;
     }
-    if (this.team.match.bunnyHaruhiActive) {
-      const target = bunnyStageRoute(ship, { x: targetX, y: targetY }, this.currentContext?.focus, this.team.match.elapsed);
+    if (this.obs.rules.bunnyStage) {
+      const target = bunnyStageRoute(ship, { x: targetX, y: targetY }, this.currentContext?.focus, this.obs.time);
       targetX = target.x;
       targetY = target.y;
     }
-    const tx = this.team.match.clampX(targetX, padding);
-    const ty = this.team.match.clampY(targetY, padding);
+    const tx = this.clampX(targetX, padding);
+    const ty = this.clampY(targetY, padding);
     const requestedThrottle = clamp(throttle, 0.45, 1.2);
     // AI 的战术层以 >1 表示明确的超速意图；离散化后应进入前进4档，
     // 不能因为 1.04～1.18 在数值上更靠近标准巡航而丢掉脱困/追击加速。
@@ -3556,7 +3715,7 @@ export class BotController {
     let update = "new";
 
     if (!ship.route) {
-      ship.setBezierRoute(undefined, undefined, tx, ty, th, false);
+      this.writeRoute(ship.key, tx, ty, th);
       return {
         x: tx,
         y: ty,
@@ -3568,11 +3727,11 @@ export class BotController {
 
     const endpointGap = distance(ship.route.p2.x, ship.route.p2.y, tx, ty);
     if (endpointGap > 90 || ship.route.t > 0.7) {
-      ship.setBezierRoute(undefined, undefined, tx, ty, th, false);
+      this.writeRoute(ship.key, tx, ty, th);
       update = "reset";
     } else {
-      ship.throttle = normalizeThrottleToGear(th, ship.throttle);
-      ship.setRouteEndpoint(tx, ty, false);
+      this.writeThrottle(ship.key, normalizeThrottleToGear(th, ship.throttle));
+      this.writeRouteEndpoint(ship.key, tx, ty);
       update = "retarget";
     }
     return {
@@ -3586,8 +3745,8 @@ export class BotController {
 
   steerActiveKoizumiOrbs(context = this.currentContext) {
     if (this.koizumiOrbSteerTimer > 0) return;
-    const activeOrbs = [this.team.ships.sub1, this.team.ships.sub2].filter(
-      (ship) => ship?.alive && ship.koizumiOrb?.phase === "active" && ship.canControl(),
+    const activeOrbs = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter(
+      (ship) => ship?.alive && ship.koizumiOrb?.phase === "active" && ship.canControl,
     );
     if (activeOrbs.length === 0) {
       this.koizumiOrbSteerTimer = 0;
@@ -3615,7 +3774,7 @@ export class BotController {
   }
 
   issueMovement(context = this.currentContext) {
-    const main = this.team.ships.main;
+    const main = this.obs.self.ships.main;
     if (!main.alive) {
       return;
     }
@@ -3650,10 +3809,11 @@ export class BotController {
     const detachedPlan = this.planDetachedRoles(main, enemyEstimate, tactical);
     let shamisenHuntPlan = planShamisenHuntFormation({
       tactics: tactical.shamisenHunt,
-      team: this.team,
+      obs: this.obs,
+      ships: this.ownShips(),
       main,
       focus: enemyEstimate,
-      now: this.team.match.elapsed,
+      now: this.obs.time,
       padding: this.safeRoutePadding(12),
     });
     // 古泉盾的突破/渗透已有独立的精确策略。猎杀方先执行破盾战术，避免把“追标记”
@@ -3698,7 +3858,7 @@ export class BotController {
       useSearchSectorPlan,
       shouldUseDetachedRoles: false,
     };
-    const intelLeadShip = detachedPlan.intelLeadKey ? this.team.ships[detachedPlan.intelLeadKey] : null;
+    const intelLeadShip = detachedPlan.intelLeadKey ? this.obs.self.ships[detachedPlan.intelLeadKey] : null;
     const barrierBreachWindow = Boolean(
       tactical.barrierTactics?.enemy
       && !tactical.barrierTactics.enemy.active
@@ -3714,13 +3874,13 @@ export class BotController {
       && (mode !== "collapse" || (intelLeadShip?.characterId === "yuki" && (enemyEstimate.visible || tactical.intelSolid)))
     ) {
       const supportRange = clamp(
-        main.effectiveRange() * (tactical.trackableIntel || tactical.searchRequired ? 1.04 : 0.96) * (intelLeadShip?.characterId === "yuki" ? 1.18 : 1),
+        main.stats.range * (tactical.trackableIntel || tactical.searchRequired ? 1.04 : 0.96) * (intelLeadShip?.characterId === "yuki" ? 1.18 : 1),
         240,
         intelLeadShip?.characterId === "yuki" ? 430 : 390,
       );
       const supportCandidate = {
-        x: this.team.match.clampX(enemyEstimate.x - toward.x * supportRange - side.x * sign * 54, this.safeRoutePadding(8)),
-        y: this.team.match.clampY(enemyEstimate.y - toward.y * supportRange - side.y * sign * 54, this.safeRoutePadding(8)),
+        x: this.clampX(enemyEstimate.x - toward.x * supportRange - side.x * sign * 54, this.safeRoutePadding(8)),
+        y: this.clampY(enemyEstimate.y - toward.y * supportRange - side.y * sign * 54, this.safeRoutePadding(8)),
         intentAngle: Math.atan2(
           enemyEstimate.y - (enemyEstimate.y - toward.y * supportRange - side.y * sign * 54),
           enemyEstimate.x - (enemyEstimate.x - toward.x * supportRange - side.x * sign * 54),
@@ -3747,7 +3907,7 @@ export class BotController {
       enemyEstimate,
       target: mainTarget,
       tactics: tactical.barrierTactics,
-      match: this.team.match,
+      worldSize: this.obs.world.size,
       padding: this.safeRoutePadding(14),
       flankSign: tactical.flankSign || 1,
     });
@@ -3778,8 +3938,8 @@ export class BotController {
       const band = shamisenHuntPlan.throttles.main;
       mainThrottle = throttleBand(band.min, band.max);
     }
-    const attachedBladeQueenActive = this.team.fleetMembersForShip(main).some(
-      (ship) => ship.alive && ship.hasEffect?.("bladeQueenUntil"),
+    const attachedBladeQueenActive = this.fleetMembers(main).some(
+      (ship) => ship.alive && this.hasEffect(ship, "bladeQueenUntil"),
     );
     if (attachedBladeQueenActive) {
       mainThrottle = throttleForGear(4);
@@ -3805,7 +3965,7 @@ export class BotController {
       mainThrottle = throttleForGear(3);
     }
     const mainIssued = this.issueShipRoute(
-      this.team.ships.main,
+      this.obs.self.ships.main,
       mainTarget.x,
       mainTarget.y,
       mainThrottle,
@@ -3824,14 +3984,14 @@ export class BotController {
     }
 
     const focus = mode === "search" ? searchCenter : enemyEstimate;
-    const shouldUseDetachedRoles = this.team.splitLevel > 0 && (Boolean(shamisenHuntPlan)
+    const shouldUseDetachedRoles = this.obs.self.splitLevel > 0 && (Boolean(shamisenHuntPlan)
       || (
         !(sectorPlan && !tactical.intelSolid && !enemyEstimate.visible && tactical.trackableIntel)
         && (mode !== "search" || tactical.trackableIntel || tactical.intelSolid || tactical.focus.source !== "spawn")
       ));
     debugPlan.shouldUseDetachedRoles = shouldUseDetachedRoles;
     const routeDetachedShip = (ship) => {
-      if (!ship || !ship.alive || ship.isAttached()) {
+      if (!ship || !ship.alive || ship.attached) {
         return;
       }
       const role = detachedPlan.roles[ship.key] || "fire";
@@ -3860,15 +4020,15 @@ export class BotController {
       // 编队凝聚(反孤立)：交战角色的分离舰不得离主力太远，避免被各个击破，并让火力自然汇聚到同一片战区
       // (公平的"集中兵力"——靠站位凝聚，而非锁定目标)。后撤/侦察/逃逸不受此限。
       if (!huntPoint && !this.legacy && (role === "fire" || role === "flank" || role === "front") && main.alive) {
-        const leash = clamp(main.effectiveRange() * 0.40, 150, 235);
+        const leash = clamp(main.stats.range * 0.40, 150, 235);
         const dxm = directive.target.x - main.x;
         const dym = directive.target.y - main.y;
         const dm = Math.hypot(dxm, dym);
         if (dm > leash) {
           directive.target = {
             ...directive.target,
-            x: this.team.match.clampX(main.x + (dxm / dm) * leash, this.safeRoutePadding(8)),
-            y: this.team.match.clampY(main.y + (dym / dm) * leash, this.safeRoutePadding(8)),
+            x: this.clampX(main.x + (dxm / dm) * leash, this.safeRoutePadding(8)),
+            y: this.clampY(main.y + (dym / dm) * leash, this.safeRoutePadding(8)),
           };
         }
       }
@@ -3895,7 +4055,7 @@ export class BotController {
         ship,
         directive.target.x,
         directive.target.y,
-        ship.hasEffect?.("bladeQueenUntil")
+        this.hasEffect(ship, "bladeQueenUntil")
           ? throttleForGear(4)
           : throttleBand(throttleRange.min, throttleRange.max),
         this.safeRoutePadding(role === "rear" || role === "escape" ? 14 : 8),
@@ -3913,9 +4073,9 @@ export class BotController {
       }
     };
 
-    if (this.team.splitLevel >= 1 && this.team.ships.sub1.alive) {
+    if (this.obs.self.splitLevel >= 1 && this.obs.self.ships.sub1.alive) {
       if (shouldUseDetachedRoles) {
-        routeDetachedShip(this.team.ships.sub1);
+        routeDetachedShip(this.obs.self.ships.sub1);
       } else {
         let sub1Target = mode === "search"
         ? searchAssignments.sub1
@@ -3954,7 +4114,7 @@ export class BotController {
         );
       }
       const issued = this.issueShipRoute(
-        this.team.ships.sub1,
+        this.obs.self.ships.sub1,
         sub1Target.x,
         sub1Target.y,
         mode === "harvest"
@@ -3980,9 +4140,9 @@ export class BotController {
       }
     }
 
-    if (this.team.splitLevel >= 2 && this.team.ships.sub2.alive) {
+    if (this.obs.self.splitLevel >= 2 && this.obs.self.ships.sub2.alive) {
       if (shouldUseDetachedRoles) {
-        routeDetachedShip(this.team.ships.sub2);
+        routeDetachedShip(this.obs.self.ships.sub2);
       } else {
         const orbitAngle = Number.isFinite(focus.angle) ? focus.angle : Math.atan2(focus.y - main.y, focus.x - main.x);
         let sub2Target = mode === "search"
@@ -4022,7 +4182,7 @@ export class BotController {
         );
       }
       const issued = this.issueShipRoute(
-        this.team.ships.sub2,
+        this.obs.self.ships.sub2,
         sub2Target.x,
         sub2Target.y,
         mode === "harvest"
