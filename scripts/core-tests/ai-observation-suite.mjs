@@ -128,6 +128,44 @@ function radarAndHuntCheck() {
   assert.equal(hunter.self.radar, null);
 }
 
+// 兔女郎春日的广播范围只经规则层的可见性进入对手 AI 的观测：
+// bless 暴露己方全部玩家舰，knows 仅暴露施放者自身。
+function bunnyBroadcastCheck() {
+  const sim = createMatch({
+    A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" },
+    B: { main: "haruhi", sub1: "koizumi", sub2: "asakura" },
+  });
+  const fleet = sim.teamA;
+  fleet.split(1);
+  fleet.split(2);
+  // 三艘舰都放在对手视野之外，彼此也拉开，排除常规视野的影响。
+  hold(fleet.ships.main, 160, 200);
+  hold(fleet.ships.sub1, 200, 700);
+  hold(fleet.ships.sub2, 180, 1200);
+  const visibleKeys = () => {
+    sim.teamB.computeVisibility(fleet);
+    const observation = buildObservation(sim, "B");
+    return observation.enemy.visible.filter((entity) => entity.kind === "ship").map((entity) => entity.key).sort();
+  };
+  assert.deepEqual(visibleKeys(), [], "变身前对手不应看到视野外的舰船");
+
+  assert.equal(fleet.castSubSkill("sub1"), true);
+  assert.equal(fleet.ships.sub1.bunnyHaruhi.form, "bless");
+  assert.deepEqual(visibleKeys(), ["main", "sub1", "sub2"], "bless 向对手 AI 暴露己方全部玩家舰");
+
+  fleet.cooldowns.sub1 = 0;
+  assert.equal(fleet.castSubSkill("sub1"), true);
+  assert.equal(fleet.ships.sub1.bunnyHaruhi.form, "knows");
+  assert.deepEqual(visibleKeys(), ["sub1"], "knows 只向对手 AI 暴露施放者自身");
+  const broadcaster = buildObservation(sim, "B").enemy.visible.find((entity) => entity.key === "sub1");
+  assert.equal(broadcaster.characterId, "bunny_haruhi");
+  assert.equal(buildObservation(sim, "B").privileged.hasHiddenEnemyShip, true);
+
+  // 技能被封印时广播停止，对手 AI 的观测随之清空。
+  fleet.forceSkillsDisabled = true;
+  assert.deepEqual(visibleKeys(), []);
+}
+
 function facadeCheck() {
   const sim = createMatch({
     A: { main: "kyon", sub1: "tsuruya", sub2: "future1096" },
@@ -149,5 +187,6 @@ export function runAiObservationSuite() {
   fogCheck();
   ownStateCheck();
   radarAndHuntCheck();
+  bunnyBroadcastCheck();
   facadeCheck();
 }
