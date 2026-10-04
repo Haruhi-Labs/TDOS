@@ -22,6 +22,7 @@
     "test:core:ai-observation": "node scripts/verify-core.mjs ai-observation",
     "test:core:ai-actions": "node scripts/verify-core.mjs ai-actions",
     "test:core:ai-params": "node scripts/verify-core.mjs ai-params",
+    "test:core:ai-policy": "node scripts/verify-core.mjs ai-policy",
     "test:ai:bunny-haruhi": "node scripts/measure-bunny-haruhi.mjs --balance",
     "test:perf:bunny-haruhi": "node scripts/measure-bunny-haruhi.mjs --performance",
     "test:changelog": "node scripts/verify-changelog.mjs",

@@ -1,8 +1,12 @@
 import assert from "node:assert/strict";
 import { MatchSimulation, randomAiLoadout, __resetEntityIds, TICK_DT } from "../../shared/game-core.js";
-import { bunnyStageRoute, shouldTransformBunny } from "../../shared/game/bot-bunny-haruhi-strategy.js";
-import { snapshotVisibleCharacterTactics } from "../../shared/game/bot-character-strategy.js";
+import { observeOwnShip, snapshotVisibleCharacterTactics } from "../../shared/game/ai/bridge/observation.js";
+import * as bunnyTactics from "../../shared/game/ai/policy/tactics/bunny-stage.js";
 import { withSeededRandom } from "./helpers.mjs";
+
+// 战术模块只接收观测数据；测试直接改实时舰船，这里在每次调用前重新观测。
+const shouldTransformBunny = (ship, ...rest) => bunnyTactics.shouldTransformBunny(observeOwnShip(ship), ...rest);
+const bunnyStageRoute = (ship, ...rest) => bunnyTactics.bunnyStageRoute(observeOwnShip(ship), ...rest);
 
 const bunny = { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" };
 function legacyRandomLoadout() {

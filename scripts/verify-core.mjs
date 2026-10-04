@@ -10,6 +10,7 @@ import { runRngSuite } from "./core-tests/rng-suite.mjs";
 import { runAiObservationSuite } from "./core-tests/ai-observation-suite.mjs";
 import { runAiActionsSuite } from "./core-tests/ai-actions-suite.mjs";
 import { runAiParamsSuite } from "./core-tests/ai-params-suite.mjs";
+import { runAiPolicySuite } from "./core-tests/ai-policy-suite.mjs";
 
 const suites = new Map([
   ["rules", runRulesSuite],
@@ -24,6 +25,7 @@ const suites = new Map([
   ["ai-observation", runAiObservationSuite],
   ["ai-actions", runAiActionsSuite],
   ["ai-params", runAiParamsSuite],
+  ["ai-policy", runAiPolicySuite],
 ]);
 const requestedSuites = process.argv.slice(2);
 const suiteNames = requestedSuites.length > 0 ? requestedSuites : [...suites.keys()];

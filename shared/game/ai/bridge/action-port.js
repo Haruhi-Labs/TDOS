@@ -3,7 +3,12 @@
 import { applyMatchAction } from "../../action-dispatcher.js";
 import { normalizeThrottleToGear } from "../../throttle.js";
 import { AI_ACTION_TYPES } from "../actions.js";
-import { buildObservation, observeEnemyEntity, observeEnemySpawn } from "./observation.js";
+import {
+  buildObservation,
+  observeEnemyEntity,
+  observeEnemySpawn,
+  snapshotVisibleCharacterTactics,
+} from "./observation.js";
 
 export const AI_ACTION_MODES = Object.freeze({
   // 与标准动作相同的执行链和权限校验。
@@ -108,6 +113,11 @@ export function createActionPort(match, seat, { mode = AI_ACTION_MODES.DISPATCH 
       if (liveTeam.seat === seat) return lookupOwnShip(value.id) || value;
       const entity = observeEnemyEntity(value, match.elapsed);
       return port.strict ? pureData(entity) : entity;
+    },
+
+    // 调用方直接给出的实体描述没有公开战术字段时，按同一口径补算。
+    observeTactics(entity) {
+      return snapshotVisibleCharacterTactics(entity, match.elapsed);
     },
 
     enemySpawn() {

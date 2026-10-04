@@ -4,7 +4,7 @@
 
 ## 指定阵容AI与公开入口
 
-`bot-bunny-haruhi-strategy.js` 只被共享Bot控制器调用。`shouldTransformBunny(ship,estimate,context)` 先使用既有领域资格校验；输入为本舰权威状态、已有可见/记忆接触及可为空的战术上下文。首次攻击形态支付后保留20%生命余量，健康时推进首次激奏；击杀窗口保留攻击形态，短距离且低血/低能量时才争取短暂免伤，健康且阿虚仍在己方时保留激奏。它不抽随机数、不写状态，施放仍经 `Team.castSubSkill`。
+`shared/game/ai/policy/tactics/bunny-stage.js` 只被 AI 策略调用，输入的本舰状态来自观测。`shouldTransformBunny(ship,estimate,context)` 先使用既有领域资格校验；输入为本舰权威状态、已有可见/记忆接触及可为空的战术上下文。首次攻击形态支付后保留20%生命余量，健康时推进首次激奏；击杀窗口保留攻击形态，短距离且低血/低能量时才争取短暂免伤，健康且阿虚仍在己方时保留激奏。它不抽随机数、不写状态，施放仍经 `Team.castSubSkill`。
 
 `bunnyStageRoute(ship,target,estimate,now)` 只在含新角色的对局中修正既有导航目标。可见接触快照按需追加 `bunnyStageRadius` 与 `bunnyStagePhase`，雷达不产生这两个字段；超过3秒的记忆不用于精确舞台走位。己方舞台只在敌人接近时迎击，可见敌人入迷后拉开；敌方舞台优先绕开，健康且已接近入迷的舰船可继续停留。最终仍走地图约束、原航线和权威锁档。
 

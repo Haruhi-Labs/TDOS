@@ -1,5 +1,6 @@
-import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
-import { clamp, distance } from "./math.js";
+// 角色针对性战术：威胁优先级、古泉能量圈的攻防编组与定向技能预判。只消费观测与情报记忆。
+import { CHARACTER_DEFS, skillMetaForCharacter } from "../../../characters.js";
+import { clamp, distance } from "../../../math.js";
 
 export const KOIZUMI_BARRIER_INTEL_MAX_AGE = 8;
 
@@ -14,9 +15,6 @@ const INFILTRATION_SLOT_ANGLES = Object.freeze({
   sub1: 0.72,
   sub2: -0.72,
 });
-
-// 可见实体的公开战术快照由观测层生成；此处保留导出以兼容既有引用。
-export { snapshotVisibleCharacterTactics } from "./ai/bridge/observation.js";
 
 export function contactCharacterTactics(contact, now) {
   if (!contact) {

@@ -96,10 +96,10 @@
 - `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，也是 AI 侧唯一持有实时舰队的位置。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作默认经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；`direct` 模式保留改造前的直接调用路径，只用于行为对照。
 - `shared/game/ai/bridge/runner.js`：为每个 AI 席位创建端口与策略，并在每个逻辑帧驱动一次。
 - `shared/game/ai/params/`：AI 参数层。`default.js` 是默认参数（等于极限难度的行为），按决策阶段分节；`difficulty.js` 把单人难度拆成决策参数的覆盖层和规则层的让分表（数值缩放、集火残血），让分由 `MatchSimulation` 写入 AI 所控舰队；`presets.js` 提供 `legacy` 旧版对照预设；`index.js` 的 `resolveAiParams({ difficulty, preset, overrides })` 按「默认、难度、预设、覆盖」的顺序合并并深冻结，未知键或类型不符直接报错。`MatchSimulation` 的 `aiParams` 选项可按席位指定预设与覆盖。走位候选点几何与三个策略模块里的数值尚未外提，用 `node scripts/ai/list-literals.mjs` 查看剩余的内联数值。
-- `shared/game/bot-controller.js`：AI 决策与能量管理，数值读取参数表。只通过端口读取观测、提交动作，不持有双方舰队引用。对外是一层门面：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
-- `shared/game/bot-scout-strategy.js`：纯计算的侦察战术层，负责前沿覆盖、敌方动向预测、战场集中、骚扰分配与僚机重新编组。
-- `shared/game/bot-character-strategy.js`：角色针对性战术层，负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判；不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色。
-- `shared/game/bot-shamisen-strategy.js`：三味线“猫爪印记”的攻守编队层，负责无视野追踪、分阶段突破、防线识别、追击收束，以及被猎杀舰的战线外撤游与护卫屏障；猎杀标记不会在此被提升为真实视野。
+- `shared/game/ai/policy/`：AI 的决策代码，只消费观测、参数与随机流，经端口提交动作；`check:modules` 禁止它导入运行时规则模块、观测桥或战斗内核。`rule-policy.js` 负责状态初始化与每帧的阶段编排，各阶段的方法按职责分在同目录模块里并安装到 `RulePolicy` 原型上：`intel-tracker.js`（情报记忆与外推）、`belief.js`（占据图）、`evaluation.js`（战力估值与态势）、`context.js`（焦点与战术上下文）、`energy.js`、`split.js`、`mode.js`、`targets.js`（主舰目标点）、`detached.js`（分离舰角色与站位）、`movement.js`（改航编排）、`scout.js`、`skills.js`、`view.js`、`commands.js`、`geometry.js`、`debug-state.js`。
+- `shared/game/ai/policy/characters/`：每个角色一个 AI 档案，声明分离与前探偏置、默认分离角色、技能增益是否怕净化，以及技能的施放条件与瞄准。新增角色的 AI 在这里加档案并在 `index.js` 注册。
+- `shared/game/ai/policy/tactics/`：跨多个决策阶段的战术。`character-counterplay.js` 负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判，不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色；`shamisen-hunt.js` 负责“猫爪印记”的攻守编队，猎杀标记不会在此被提升为真实视野；`yuki-scout.js` 是纯计算的侦察条令；`bunny-stage.js` 负责兔女郎春日的变身时机与舞台走位。
+- `shared/game/bot-controller.js`：`RulePolicy` 的对外门面，供对局循环、调试页和测试使用：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
 - `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。
 - `shared/game/koizumi-orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。
@@ -184,11 +184,13 @@
 | 技能实际生效过程 | `shared/game-core.js` | 对应 `shared/game/*` 叶模块、核心测试 |
 | 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
 | 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game-core.js`、碰撞/射线规则、核心测试 |
-| AI 决策和能量策略 | `shared/game/bot-controller.js` | `shared/game/characters.js`、核心 AI 测试 |
-| AI 的权重、阈值、计时区间与难度 | `shared/game/ai/params/` | `shared/game/bot-controller.js`、`test:core:ai-params`；改默认值属于规则变更 |
-| AI 角色识别与针对性反制 | `shared/game/bot-character-strategy.js` | `shared/game/bot-controller.js`、角色技能叶模块、核心 AI 测试 |
-| 三味线猎杀攻守编队 | `shared/game/bot-shamisen-strategy.js` | `shared/game/bot-controller.js`、`shared/game/shamisen-hunt.js`、核心 AI 测试 |
-| 侦察战区规划与长门僚机编组 | `shared/game/bot-scout-strategy.js` | `shared/game/bot-controller.js`、`shared/game-core.js` |
+| AI 决策和能量策略 | `shared/game/ai/policy/` 下对应阶段的模块 | `shared/game/ai/params/`、核心 AI 测试 |
+| 某个角色的 AI（技能时机、偏置） | `shared/game/ai/policy/characters/<角色>.js` | `shared/game/ai/params/default.js`、`test:core:ai-policy` |
+| AI 能读到什么、能做什么 | `shared/game/ai/bridge/observation.js`、`shared/game/ai/actions.js` | `test:core:ai-observation`、`test:core:ai-actions` |
+| AI 的权重、阈值、计时区间与难度 | `shared/game/ai/params/` | `shared/game/ai/policy/`、`test:core:ai-params`；改默认值属于规则变更 |
+| AI 角色识别与针对性反制 | `shared/game/ai/policy/tactics/character-counterplay.js` | `shared/game/ai/policy/context.js`、`shared/game/ai/bridge/observation.js`、核心 AI 测试 |
+| 三味线猎杀攻守编队 | `shared/game/ai/policy/tactics/shamisen-hunt.js` | `shared/game/ai/policy/movement.js`、`shared/game/shamisen-hunt.js`、核心 AI 测试 |
+| 侦察战区规划与长门僚机编组 | `shared/game/ai/policy/tactics/yuki-scout.js` | `shared/game/ai/policy/scout.js`、`shared/game-core.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | WebGL 图元、批处理与着色器 | `src/battle/webgl/*` | `src/battle/native-webgl-renderer.js`、`npm run test:ui:webgl` |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |

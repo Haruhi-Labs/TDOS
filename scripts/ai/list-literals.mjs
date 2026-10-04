@@ -3,18 +3,18 @@
 //
 //   node scripts/ai/list-literals.mjs            按文件与方法汇总数量
 //   node scripts/ai/list-literals.mjs --lines    逐行列出
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const FILES = [
-  "shared/game/bot-controller.js",
-  "shared/game/bot-character-strategy.js",
-  "shared/game/bot-shamisen-strategy.js",
-  "shared/game/bot-scout-strategy.js",
-  "shared/game/bot-bunny-haruhi-strategy.js",
-];
+const POLICY_DIR = "shared/game/ai/policy";
+function walk(dir) {
+  return readdirSync(resolve(ROOT, dir), { withFileTypes: true }).flatMap((entry) => (
+    entry.isDirectory() ? walk(`${dir}/${entry.name}`) : entry.name.endsWith(".js") ? [`${dir}/${entry.name}`] : []
+  ));
+}
+const FILES = walk(POLICY_DIR).sort();
 // 不视为可调参数的数值：零和单位量、取半、平方与防除零、浮点容差。
 const ALLOWED = new Set(["0", "1", "2", "0.5", "1e-9", "1e-6"]);
 const showLines = process.argv.includes("--lines");
@@ -44,6 +44,7 @@ for (const file of FILES) {
   });
   total += fileTotal;
   if (!showLines) {
+    if (fileTotal === 0) continue;
     console.log(`\n${file}：${fileTotal}`);
     for (const [name, count] of [...perMethod].sort((left, right) => right[1] - left[1])) {
       console.log(`  ${String(count).padStart(4)}  ${name}`);
