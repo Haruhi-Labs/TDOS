@@ -6,6 +6,7 @@ import {
   planBunnyTransform, nextBunnyForm, isBunnyBroadcasting, isBunnyControlLocked,
   resolveBunnyThrottle, isBunnyEncoreLocked,
 } from "./bunny-haruhi.js";
+import { rngFor } from "./rng.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
 import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.js";
 import { supportOrbGeometry, supportOtherworlderReady } from "./haruhi-support.js";
@@ -46,7 +47,7 @@ export function commitBunnyTransform(ship) {
     .map((candidate) => ({ ship: candidate, speed: candidate.effectiveSpeed(), rate: candidate.effectiveFireRate() }));
   if (result.unlockSupport) {
     const source = { ...bunnyHaruhiSupportSource(ship, true), state: result.state.support };
-    unlockBunnyHaruhiSupport(source, match.elapsed, Math.random);
+    unlockBunnyHaruhiSupport(source, match.elapsed, rngFor(match).next);
   }
   ship.bunnyHaruhi = result.state;
   ship.hp = result.hp;

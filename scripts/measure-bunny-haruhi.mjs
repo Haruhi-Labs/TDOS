@@ -126,9 +126,9 @@ if (process.argv[2] === "--worker") {
           const bot = sim.bots[seat];
           let opening = null;
           if (scenario.prepared) {
-            const bots = sim.bots;
             const originals = [];
-            sim.bots = {};
+            // 对局经 aiRunners 驱动 AI；准备期用对局自带的开关暂停双方 AI。
+            for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, false);
             for (const team of [sim.teamA, sim.teamB]) {
               sim.combatEnabled[team.seat] = false;
               team.splitLevel = 2;
@@ -146,7 +146,7 @@ if (process.argv[2] === "--worker") {
             }
             assert.equal(casts, 4);
             for (const [unit, method] of originals) unit.takeDamage = method;
-            sim.bots = bots;
+            for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, true);
             for (const team of [sim.teamA, sim.teamB]) {
               sim.combatEnabled[team.seat] = true;
               if (scenario.bribe) team.getAllShips().forEach((unit, index) => {
@@ -159,9 +159,12 @@ if (process.argv[2] === "--worker") {
               form: own.ships.sub1.bunnyHaruhi?.form || null, note: "准备期双方停战且不承受外部伤害；资源支付与CD不跳过。正式统计从这里开始；策反场景双方位于中央战区。" };
           }
           const originalCast = bot.shouldCastSubSkill.bind(bot);
+          let policyDecisions = 0;
           if (scenario.policy && variant === "new") bot.shouldCastSubSkill = (ship, estimate, context) => {
-            if (!ship.bunnyHaruhi) return originalCast(ship, estimate, context);
-            const state = ship.bunnyHaruhi;
+            // AI 传入的是观测数据；场景策略需要的成功施放次数只在权威状态里，按舰位取回实时舰船。
+            const state = own.ships[ship.key]?.bunnyHaruhi;
+            if (!state) return originalCast(ship, estimate, context);
+            policyDecisions++;
             if (scenario.policy === "bless") return state.successfulCasts === 0;
             if (scenario.policy === "encore") return state.successfulCasts < 4;
             if (scenario.policy === "defense") return state.form === "bless" ? ship.hp / ship.maxHp < 0.48 : originalCast(ship, estimate, context);
@@ -249,6 +252,11 @@ if (process.argv[2] === "--worker") {
                 priorConverted.set(unit.id, converted);
               }
             }
+          }
+          if (scenario.policy && variant === "new") {
+            assert.ok(policyDecisions > 0, `${scenario.id} 的场景策略从未被 AI 调用`);
+            if (scenario.policy === "bless") assert.ok(metrics.casts <= 1 && metrics.formSeconds.knows === 0, "停留bless的场景不得继续变身");
+            if (scenario.policy === "encore") assert.ok(metrics.casts <= 4, "冲encore后停留的场景不得超过四次施放");
           }
           return { scenario: scenario.id, seed, seat, variant, roster, opponent, opening, winner: sim.winnerSeat, won: sim.winnerSeat === seat, timedOut: !sim.winnerSeat, duration: fixed(sim.elapsed - combatStartedAt), metrics, telemetry: sim.statisticsSummary().telemetry };
         });

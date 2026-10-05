@@ -1,4 +1,5 @@
-import { distance, randomInRange } from "./math.js";
+import { distance } from "./math.js";
+import { rngFor } from "./rng.js";
 import { throttleForGear } from "./throttle.js";
 import { isKoizumiOrbActive } from "./koizumi-orb.js";
 import {
@@ -252,13 +253,13 @@ export function resolveBladeQueenContacts(match) {
           { kind: DAMAGE_KIND.SKILL },
         );
         for (let spark = 0; spark < 3; spark += 1) {
-          const offset = randomInRange(0, target.radius + 6);
-          const angle = randomInRange(0, TAU);
+          const offset = rngFor(match).range(0, target.radius + 6);
+          const angle = rngFor(match).range(0, TAU);
           match.spawnBurst(
             match.clampX(target.x + Math.cos(angle) * offset, 0),
             match.clampY(target.y + Math.sin(angle) * offset, 0),
             spark % 2 === 0 ? "#ff2d55" : "#ff8aa0",
-            randomInRange(7, 12),
+            rngFor(match).range(7, 12),
           );
         }
       }

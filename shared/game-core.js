@@ -46,12 +46,14 @@ import {
   quadraticLengthApprox,
   quadraticPoint,
   quadraticStartCurvature,
-  randomInRange,
   rotateOffset,
   shortestAngleDelta,
   zoneContains,
 } from "./game/math.js";
+import { createAmbientRng, createSeededRng, rngFor } from "./game/rng.js";
 import { BotController } from "./game/bot-controller.js";
+import { createAiRunner } from "./game/ai/bridge/runner.js";
+import { aiHandicapFor } from "./game/ai/params/index.js";
 import { applyMatchAction } from "./game/action-dispatcher.js";
 import { serializeShipStatusEffects, statusEffectNames } from "./game/status-effects.js";
 import {
@@ -307,7 +309,13 @@ function normalizeAiSeats(mode = "pvp", aiSeats) {
 }
 
 let globalEntityId = 1;
-function nextEntityId() {
+// 带种子的对局使用自己的计数器，初值与递增方式和全局计数器相同；其余对局沿用全局计数器。
+function nextEntityId(match) {
+  const local = match?.entityIds;
+  if (local) {
+    local.value += 1;
+    return local.value;
+  }
   globalEntityId += 1;
   return globalEntityId;
 }
@@ -317,12 +325,12 @@ export function __resetEntityIds(state = 1) {
 }
 
 class FloatingText {
-  constructor(x, y, text, color = "#ffd178", meta = {}) {
+  constructor(x, y, text, color = "#ffd178", meta = {}, match = null) {
     const payload = text && typeof text === "object" ? text : null;
     const textKey = meta.textKey || payload?.textKey || payload?.key || null;
     const textArgs = meta.textArgs || payload?.textArgs || payload?.args || null;
     const fallback = payload ? payload.text || payload.fallback || textKey : text;
-    this.id = nextEntityId();
+    this.id = nextEntityId(match);
     this.kind = "floating_text";
     this.x = x;
     this.y = y;
@@ -361,8 +369,8 @@ class FloatingText {
 }
 
 class Burst {
-  constructor(x, y, color = "#ffdb9b", radius = 7) {
-    this.id = nextEntityId();
+  constructor(x, y, color = "#ffdb9b", radius = 7, match = null) {
+    this.id = nextEntityId(match);
     this.kind = "burst";
     this.x = x;
     this.y = y;
@@ -404,7 +412,7 @@ class Projectile {
     visualKind = "shell",
     claw = null,
   }) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "projectile";
     this.team = team;
     this.source = source || null;
@@ -467,7 +475,7 @@ class Projectile {
     }
     // 小目标闪避:体型越小越容易被打空(侦察机/僚机),正常体型舰船不受影响
     const evade = clamp((SMALL_TARGET_REF_RADIUS - hitTarget.radius) / SMALL_TARGET_REF_RADIUS, 0, 1) * SMALL_TARGET_MAX_MISS;
-    if (evade > 0 && Math.random() < evade) {
+    if (evade > 0 && rngFor(match).next() < evade) {
       match.spawnFloatingTextKey(hitTarget.x, hitTarget.y - 6, "未命中", {}, "#92c5ff");
       return;
     }
@@ -530,7 +538,7 @@ class Projectile {
 
 class Ship {
   constructor(team, key, x, y, facing, options = {}) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "ship";
     this.team = team;
     this.key = key;
@@ -566,7 +574,7 @@ class Ship {
     this.koizumiOrb = null;
     this.heroPowerShock = createHaruhiHeroPowerShockState();
 
-    this.cooldown = randomInRange(0, 0.5);
+    this.cooldown = rngFor(this.team.match).range(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
@@ -1343,8 +1351,8 @@ class Ship {
     const predictedX = target.x + (target.speed || 0) * Math.cos(target.angle || 0) * (targetDistance / 300);
     const predictedY = target.y + (target.speed || 0) * Math.sin(target.angle || 0) * (targetDistance / 300);
     const spread = clamp(targetDistance / 18, 4, 26);
-    const aimX = predictedX + randomInRange(-spread, spread);
-    const aimY = predictedY + randomInRange(-spread, spread);
+    const aimX = predictedX + rngFor(this.team.match).range(-spread, spread);
+    const aimY = predictedY + rngFor(this.team.match).range(-spread, spread);
     const fireDensity = this.broadsideMultiplier(target);
     if (fireDensity <= 0) {
       return;
@@ -1506,7 +1514,7 @@ class Ship {
 
 class Scout {
   constructor(team, x, y, config = {}) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "scout";
     this.team = team;
     this.zone = config.zone || null;
@@ -1515,7 +1523,7 @@ class Scout {
     this.mode = "transit";
     this.x = x;
     this.y = y;
-    this.angle = randomInRange(0, TAU);
+    this.angle = rngFor(this.team.match).range(0, TAU);
     this.speed = config.speed || (this.pattern === "burst" ? 112 : 62);
     this.radius = config.radius || (this.pattern === "burst" ? 3.2 : 3.8);
     this.hp = 1;
@@ -1528,7 +1536,7 @@ class Scout {
     this.attackRange = this.combatCapable ? this.vision : 0;
     this.damage = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.damage : 0;
     this.fireRate = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.fireRate : 0;
-    this.cooldown = this.combatCapable ? randomInRange(0, 0.5) : 0;
+    this.cooldown = this.combatCapable ? rngFor(this.team.match).range(0, 0.5) : 0;
     this.alive = true;
     this.life = Number.isFinite(config.life) ? config.life : this.pattern === "burst" ? 11 : 28;
     this.anchor = config.anchor || null;
@@ -1537,9 +1545,9 @@ class Scout {
       ? { x: config.patrolCenter.x, y: config.patrolCenter.y }
       : null;
     this.patrolRadius = Number.isFinite(config.patrolRadius) ? Math.max(24, config.patrolRadius) : null;
-    this.orbitAngle = randomInRange(0, TAU);
+    this.orbitAngle = rngFor(this.team.match).range(0, TAU);
     const orbitSpeedRange = this.pattern === "burst" ? [2.4, 4.8] : [0.8, 1.6];
-    this.orbitSpeed = randomInRange(...orbitSpeedRange) * (Math.random() < 0.5 ? -1 : 1);
+    this.orbitSpeed = rngFor(this.team.match).range(...orbitSpeedRange) * (rngFor(this.team.match).next() < 0.5 ? -1 : 1);
     this.command = {
       x: x,
       y: y,
@@ -1560,7 +1568,7 @@ class Scout {
       this.command.y = config.seekPoint.y;
     }
 
-    this.patrolTimer = randomInRange(1.0, 2.4);
+    this.patrolTimer = rngFor(this.team.match).range(1.0, 2.4);
   }
 
   randomPatrolPoint() {
@@ -1585,8 +1593,8 @@ class Scout {
       ? Math.min(zoneMaxY, this.patrolCenter.y + this.patrolRadius)
       : zoneMaxY;
     this.command = {
-      x: randomInRange(Math.min(minX, maxX), Math.max(minX, maxX)),
-      y: randomInRange(Math.min(minY, maxY), Math.max(minY, maxY)),
+      x: rngFor(this.team.match).range(Math.min(minX, maxX), Math.max(minX, maxX)),
+      y: rngFor(this.team.match).range(Math.min(minY, maxY), Math.max(minY, maxY)),
     };
   }
 
@@ -1647,7 +1655,7 @@ class Scout {
       } else if (this.mode === "patrol") {
         this.patrolTimer -= dt;
         if (remaining < 12 || this.patrolTimer <= 0) {
-          this.patrolTimer = randomInRange(1.0, 2.6);
+          this.patrolTimer = rngFor(this.team.match).range(1.0, 2.6);
           this.randomPatrolPoint();
         }
       }
@@ -1686,8 +1694,8 @@ class Scout {
         source: this,
         x: this.x,
         y: this.y,
-        targetX: match.clampX(predictedX + randomInRange(-spread, spread), 0),
-        targetY: match.clampY(predictedY + randomInRange(-spread, spread), 0),
+        targetX: match.clampX(predictedX + rngFor(this.team.match).range(-spread, spread), 0),
+        targetY: match.clampY(predictedY + rngFor(this.team.match).range(-spread, spread), 0),
         damage: this.effectiveDamage(),
         speed: 240,
         hitRadius: 8,
@@ -1725,7 +1733,7 @@ class Scout {
 
 class Wingman {
   constructor(team, x, y, zone) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "wingman";
     this.team = team;
     this.zone = zone;
@@ -1740,21 +1748,21 @@ class Wingman {
     this.vision = 100;
     this.attackRange = 280;
     this.damage = 11.5;
-    this.cooldown = randomInRange(0.8, 1.4);
+    this.cooldown = rngFor(this.team.match).range(0.8, 1.4);
     this.life = 48;
     this.alive = true;
     this.command = {
       x: zone.x + zone.width * 0.5,
       y: zone.y + zone.height * 0.5,
     };
-    this.patrolTimer = randomInRange(1.0, 2.5);
+    this.patrolTimer = rngFor(this.team.match).range(1.0, 2.5);
   }
 
   randomPatrolPoint() {
     const margin = 26;
     this.command = {
-      x: randomInRange(this.zone.x + margin, this.zone.x + this.zone.width - margin),
-      y: randomInRange(this.zone.y + margin, this.zone.y + this.zone.height - margin),
+      x: rngFor(this.team.match).range(this.zone.x + margin, this.zone.x + this.zone.width - margin),
+      y: rngFor(this.team.match).range(this.zone.y + margin, this.zone.y + this.zone.height - margin),
     };
   }
 
@@ -1784,7 +1792,7 @@ class Wingman {
     } else if (this.mode === "patrol") {
       this.patrolTimer -= dt;
       if (d < 12 || this.patrolTimer <= 0) {
-        this.patrolTimer = randomInRange(1.0, 2.8);
+        this.patrolTimer = rngFor(this.team.match).range(1.0, 2.8);
         this.randomPatrolPoint();
       }
     }
@@ -1799,7 +1807,7 @@ class Wingman {
       return;
     }
 
-    const spread = randomInRange(-7, 7);
+    const spread = rngFor(this.team.match).range(-7, 7);
     const angle = Math.atan2(target.y - this.y, target.x - this.x);
     const targetX = target.x + Math.cos(angle + Math.PI * 0.5) * spread;
     const targetY = target.y + Math.sin(angle + Math.PI * 0.5) * spread;
@@ -1862,7 +1870,7 @@ class Team {
     this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
-    // 单人难度对本队的影响(仅当本队由AI控制时,由 BotController.setDifficulty 写入):
+    // 单人难度对本队的影响(仅当本队由AI控制时,由 MatchSimulation 按难度让分表写入):
     //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
     //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
     // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
@@ -1959,7 +1967,7 @@ class Team {
   }
 
   ensureShamisenHuntTarget(enemyTeam) {
-    return ensureShamisenHuntTarget(this, enemyTeam);
+    return ensureShamisenHuntTarget(this, enemyTeam, rngFor(this.match).next);
   }
 
   isShamisenHuntTarget(target) {
@@ -2507,7 +2515,7 @@ class Team {
     scout.patrolRadius = Number.isFinite(options.patrolRadius) ? Math.max(24, options.patrolRadius) : scout.patrolRadius;
     scout.command = { x: seekPoint.x, y: seekPoint.y };
     scout.mode = "transit";
-    scout.patrolTimer = randomInRange(1, 2.1);
+    scout.patrolTimer = rngFor(this.match).range(1, 2.1);
     return true;
   }
 
@@ -2604,7 +2612,7 @@ class Team {
 
   launchHaruhiAlienWingmen(ship) {
     const zone = this.zoneForPoint(ship.x, ship.y);
-    const releaseAngle = randomInRange(0, TAU);
+    const releaseAngle = rngFor(this.match).range(0, TAU);
     const spawnRadius = ship.radius + 12;
     const x = this.match.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
     const y = this.match.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
@@ -2613,7 +2621,7 @@ class Team {
   }
 
   launchHaruhiRandomBeam(ship) {
-    const angle = randomInRange(0, TAU);
+    const angle = rngFor(this.match).range(0, TAU);
     return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
   }
 
@@ -2644,7 +2652,7 @@ class Team {
       }
       const main = this.ships.main;
       const boostWasActive = haruhiBoostActive(this);
-      const supporter = activateHaruhiFlagship(this, meta.duration || 16);
+      const supporter = activateHaruhiFlagship(this, meta.duration || 16, rngFor(this.match).next);
       if (!boostWasActive) {
         for (const ship of this.getPlayerShips()) {
           if (ship.alive) {
@@ -2732,7 +2740,7 @@ class Team {
     let ok = false;
     if (ship.characterId === "haruhi") {
       this.match.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
-        id: nextEntityId(),
+        id: nextEntityId(this.match),
         ship,
         now: this.match.elapsed,
         worldSize: this.match.worldSize,
@@ -2805,7 +2813,7 @@ class Team {
     const unitY = dirY / dirLen;
     const range = BEAM_BASE_RANGE;
     const beam = {
-      id: nextEntityId(),
+      id: nextEntityId(this.match),
       shipKey: ship.key,
       phase: "charge",
       x1: ship.x,
@@ -2869,11 +2877,11 @@ class Team {
   spawnBeamHitParticles(x, y) {
     this.match.spawnBurst(x, y, "#8ef8ff", 11);
     for (let i = 0; i < 7; i += 1) {
-      const angle = randomInRange(0, TAU);
-      const offset = randomInRange(4, 28);
+      const angle = rngFor(this.match).range(0, TAU);
+      const offset = rngFor(this.match).range(4, 28);
       const px = this.match.clampX(x + Math.cos(angle) * offset, 0);
       const py = this.match.clampY(y + Math.sin(angle) * offset, 0);
-      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", randomInRange(3.5, 7.5));
+      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", rngFor(this.match).range(3.5, 7.5));
     }
   }
 
@@ -3077,6 +3085,13 @@ export class MatchSimulation {
     this.aiEnabled = { A: true, B: true };
     this.zones = buildZones(worldSize);
 
+    // 显式传入整数种子时整局可复现，规则与各席 AI 使用互不干扰的随机流；
+    // 否则沿用环境随机源，取值顺序与全局 Math.random 一致。种子不进入快照。
+    const seeded = Number.isInteger(options.seed);
+    this.rng = seeded ? createSeededRng(options.seed) : createAmbientRng();
+    this.aiRng = { A: this.rng.fork("ai:A"), B: this.rng.fork("ai:B") };
+    this.entityIds = seeded ? { value: 1 } : null;
+
     this.tick = 0;
     this.elapsed = 0;
     this.phase = "running";
@@ -3113,15 +3128,30 @@ export class MatchSimulation {
     this.teamA.ensureShamisenHuntTarget(this.teamB);
     this.teamB.ensureShamisenHuntTarget(this.teamA);
     this.bots = {};
+    this.aiRunners = {};
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
     // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
     const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats);
-    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
+    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态)
     for (const seat of this.aiSeats) {
-      const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
-      bot.legacy = legacyAiSeats.includes(seat);
-      bot.setDifficulty(aiDifficulty);
-      this.bots[seat] = bot;
+      // aiParams 可按席位指定预设与参数覆盖：{ A: { preset, overrides } }。
+      const seatParams = options.aiParams?.[seat] || {};
+      const runner = createAiRunner(this, seat, {
+        actionMode: options.aiActionMode,
+        params: {
+          difficulty: aiDifficulty,
+          preset: legacyAiSeats.includes(seat) ? "legacy" : seatParams.preset ?? null,
+          overrides: seatParams.overrides ?? null,
+        },
+      });
+      this.aiRunners[seat] = runner;
+      this.bots[seat] = runner.policy;
+      // 难度让分属于规则层：数值缩放与集火残血直接写入 AI 所控舰队，不经过 AI 决策。
+      const handicap = aiHandicapFor(aiDifficulty);
+      const team = this.teamBySeat(seat);
+      team.aiFocusLowHp = handicap.focusLowHp;
+      team.applyAiStatMult(handicap.statMult);
+      runner.port.invalidate();
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;
@@ -3302,7 +3332,7 @@ export class MatchSimulation {
       if (hunter.shamisenHunt?.targetId !== ship.id) {
         continue;
       }
-      const effectId = nextEntityId();
+      const effectId = nextEntityId(this);
       this.shamisenHuntKillEffects.push({
         id: effectId,
         hunterSeat: hunter.seat,
@@ -3314,7 +3344,7 @@ export class MatchSimulation {
         life: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
         maxLife: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
       });
-      resolveShamisenHuntKill(hunter, huntedTeam, ship);
+      resolveShamisenHuntKill(hunter, huntedTeam, ship, this.rng.next);
     }
   }
 
@@ -3332,7 +3362,7 @@ export class MatchSimulation {
   }
 
   spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {
-    this.floatingTexts.push(new FloatingText(x, y, text, color, meta));
+    this.floatingTexts.push(new FloatingText(x, y, text, color, meta, this));
   }
 
   spawnFloatingTextKey(x, y, textKey, args = {}, color = "#ffd178", fallback = textKey) {
@@ -3353,7 +3383,7 @@ export class MatchSimulation {
   }
 
   spawnBurst(x, y, color = "#ffdb9b", radius = 7) {
-    this.bursts.push(new Burst(x, y, color, radius));
+    this.bursts.push(new Burst(x, y, color, radius, this));
   }
 
   spawnKoizumiBarrierImpact(options = {}) {
@@ -3369,7 +3399,7 @@ export class MatchSimulation {
     }
     const maxLife = kind === "ram" || kind === "break" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
     this.koizumiBarrierImpacts.push({
-      id: nextEntityId(),
+      id: nextEntityId(this),
       kind,
       ramKind: options.ramKind || null,
       teamSeat,
@@ -3517,8 +3547,8 @@ export class MatchSimulation {
 
     this.refreshShamisenHunts();
 
-    for (const [seat, bot] of Object.entries(this.bots)) {
-      if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
+    for (const [seat, runner] of Object.entries(this.aiRunners)) {
+      if (this.aiEnabled[seat] !== false) runner.update(safeDt, this.elapsed);
     }
 
     this.teamA.update(safeDt);

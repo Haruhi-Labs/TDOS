@@ -1,7 +1,6 @@
-import { CHARACTER_DEFS, skillMetaForCharacter } from "./characters.js";
-import { haruhiOtherworlderReady } from "./haruhi-flagship.js";
-import { koizumiBarrierGeometry } from "./koizumi-barrier.js";
-import { clamp, distance } from "./math.js";
+// 角色针对性战术：威胁优先级、古泉能量圈的攻防编组与定向技能预判。只消费观测与情报记忆。
+import { CHARACTER_DEFS, skillMetaForCharacter } from "../../../characters.js";
+import { clamp, distance } from "../../../math.js";
 
 export const KOIZUMI_BARRIER_INTEL_MAX_AGE = 8;
 
@@ -16,51 +15,6 @@ const INFILTRATION_SLOT_ANGLES = Object.freeze({
   sub1: 0.72,
   sub2: -0.72,
 });
-
-function remaining(until, now) {
-  return Math.max(0, Number(until || 0) - now);
-}
-
-// 只把玩家同样能从可见舰船上判断出的技能状态写进接触快照；雷达接触不会调用这里，
-// 因而角色战术层不会借服务端对象越过战争迷雾读取隐藏技能。
-export function snapshotVisibleCharacterTactics(entity, now) {
-  const orb = entity?.koizumiOrb;
-  const barrier = entity?.slotKey === "main" && entity.characterId === "koizumi"
-    ? koizumiBarrierGeometry(entity.team)
-    : null;
-  return {
-    ...(entity?.bunnyStageExposure?.inside ? { bunnyStagePhase: entity.bunnyStageExposure.phase } : {}),
-    ...(entity?.slotKey === "main" && entity.characterId === "bunny_haruhi"
-      ? { bunnyStageRadius: entity.team.areSkillsDisabled() ? 0 : entity.effectiveVision() }
-      : {}),
-    bladeQueenRemaining: remaining(entity?.effects?.bladeQueenUntil, now),
-    catPawRemaining: remaining(entity?.effects?.catPawUntil, now),
-    koizumiOrbRemaining: orb
-      ? orb.phase === "active"
-        ? remaining(orb.activeUntil, now)
-        : 3
-      : 0,
-    haruhiImpactReady: Boolean(
-      entity?.slotKey === "main"
-      && entity.characterId === "haruhi"
-      && haruhiOtherworlderReady(entity.team),
-    ),
-    haruhiSupportCount: entity?.slotKey === "main" && entity.characterId === "haruhi"
-      ? Number(entity.team?.haruhiFlagship?.supporters?.size || 0)
-      : 0,
-    haruhiBoostActive: Boolean(
-      entity?.slotKey === "main"
-      && entity.characterId === "haruhi"
-      && Number(entity.team?.effects?.haruhiBoostUntil || 0) > now,
-    ),
-    future1096Form: entity?.slotKey === "main" && entity.characterId === "future1096"
-      ? entity.team?.future1096Form || null
-      : null,
-    koizumiBarrierActive: Boolean(barrier?.active),
-    koizumiBarrierRadius: barrier?.radius || 0,
-    koizumiBarrierDisabledRemaining: barrier?.disabledRemaining || 0,
-  };
-}
 
 export function contactCharacterTactics(contact, now) {
   if (!contact) {
@@ -151,8 +105,8 @@ export function knownKoizumiBarrier(contact, now) {
   };
 }
 
-export function ownKoizumiBarrier(team) {
-  const barrier = koizumiBarrierGeometry(team);
+export function ownKoizumiBarrier(obs) {
+  const barrier = obs.self.koizumiBarrier;
   if (!barrier) {
     return null;
   }
@@ -162,14 +116,14 @@ export function ownKoizumiBarrier(team) {
   };
 }
 
-export function barrierBreakerForShip(team, ship, { allowReady = true } = {}) {
-  if (!team || !ship?.alive || ship.isAttached?.()) {
+export function barrierBreakerForShip(obs, ship, { allowReady = true } = {}) {
+  if (!obs || !ship?.alive || ship.attached) {
     return null;
   }
   if (
-    ship === team.ships.main
+    ship.key === "main"
     && ship.characterId === "haruhi"
-    && haruhiOtherworlderReady(team)
+    && obs.self.haruhiOtherworlderReady
   ) {
     return {
       ship,
@@ -186,13 +140,13 @@ export function barrierBreakerForShip(team, ship, { allowReady = true } = {}) {
   const kind = ship.characterId === "koizumi" ? "koizumi_orb" : "blade_queen";
   const active = ship.characterId === "koizumi"
     ? ship.koizumiOrb?.phase === "active"
-    : Boolean(ship.hasEffect?.("bladeQueenUntil"));
+    : Number(ship.effects?.bladeQueenUntil || 0) > obs.time;
   const meta = skillMetaForCharacter(ship.characterId, "sub");
   const ready = active || Boolean(
     allowReady
-    && ship.canControl?.()
-    && !ship.isSilenced?.()
-    && Number(team.cooldowns?.[ship.key] || 0) <= 0
+    && ship.canControl
+    && !ship.silenced
+    && Number(obs.self.cooldowns?.[ship.key] || 0) <= 0
     && Number(ship.energy || 0) >= Number(meta?.cost || 0),
   );
   if (!ready) {
@@ -207,9 +161,9 @@ export function barrierBreakerForShip(team, ship, { allowReady = true } = {}) {
   };
 }
 
-export function chooseKoizumiBarrierBreaker(team, { activeOnly = false } = {}) {
-  const candidates = team.getAllShips()
-    .map((ship) => barrierBreakerForShip(team, ship, { allowReady: !activeOnly }))
+export function chooseKoizumiBarrierBreaker(obs, ships, { activeOnly = false } = {}) {
+  const candidates = ships
+    .map((ship) => barrierBreakerForShip(obs, ship, { allowReady: !activeOnly }))
     .filter((item) => item && (!activeOnly || item.active));
   candidates.sort((left, right) => (
     Number(right.active) - Number(left.active)
@@ -294,7 +248,7 @@ export function predictCharacterSkillAim(contact, seconds, worldSize, padding = 
 function infiltrationScore(ship) {
   const hpRatio = clamp(Number(ship.hp || 0) / Math.max(1, Number(ship.maxHp || 1)), 0, 1);
   const energyRatio = clamp(Number(ship.energy || 0) / Math.max(1, Number(ship.maxEnergy || 1)), 0, 1);
-  return hpRatio * 0.7 + energyRatio * 0.3 + Number(ship.baseSpeed?.() || 0) / 80;
+  return hpRatio * 0.7 + energyRatio * 0.3 + Number(ship.stats?.baseSpeed || 0) / 80;
 }
 
 function infiltrationPoint(infiltration, shipKey, phase = infiltration?.phase) {
@@ -313,10 +267,11 @@ function infiltrationPoint(infiltration, shipKey, phase = infiltration?.phase) {
   };
 }
 
-function buildBarrierInfiltration(team, enemy, { coordinated = false } = {}) {
-  const playerShips = (team?.getPlayerShips?.() || []).filter((ship) => ship?.alive);
+function buildBarrierInfiltration(obs, enemy, { coordinated = false } = {}) {
+  const fleet = obs.self.ships;
+  const playerShips = [fleet.main, fleet.sub1, fleet.sub2].filter((ship) => ship?.alive);
   const livingShips = playerShips
-    .filter((ship) => ship.canControl?.())
+    .filter((ship) => ship.canControl)
     .sort((left, right) => infiltrationScore(right) - infiltrationScore(left));
   if (!enemy?.active || livingShips.length === 0) {
     return null;
@@ -343,9 +298,9 @@ function buildBarrierInfiltration(team, enemy, { coordinated = false } = {}) {
   const plan = {
     phase: "stage",
     shipKeys: assaultShips.map((ship) => ship.key),
-    splitShipKeys: coordinated && Number(team.hullRatio?.() || 0) >= 0.56
+    splitShipKeys: coordinated && Number(obs.self.hullRatio || 0) >= 0.56
       ? playerShips
-          .filter((ship) => ship.key !== "main" && ship.isAttached?.())
+          .filter((ship) => ship.key !== "main" && ship.attached)
           .filter((ship) => Number(ship.hp || 0) / Math.max(1, Number(ship.maxHp || 1)) >= 0.38)
           .map((ship) => ship.key)
       : [],
@@ -386,7 +341,8 @@ function buildBarrierInfiltration(team, enemy, { coordinated = false } = {}) {
 }
 
 export function buildKoizumiBarrierTactics({
-  team,
+  obs,
+  ships,
   enemyMainContact,
   main,
   enemyContacts,
@@ -394,13 +350,13 @@ export function buildKoizumiBarrierTactics({
   legacy = false,
   advanced = false,
 }) {
-  const own = legacy ? null : ownKoizumiBarrier(team);
+  const own = legacy ? null : ownKoizumiBarrier(obs);
   const enemy = legacy ? null : knownKoizumiBarrier(enemyMainContact, now);
   const breaker = advanced && enemy?.active
-    ? chooseKoizumiBarrierBreaker(team)
+    ? chooseKoizumiBarrierBreaker(obs, ships)
     : null;
   const infiltration = !legacy && enemy?.active && !breaker
-    ? buildBarrierInfiltration(team, enemy, { coordinated: advanced })
+    ? buildBarrierInfiltration(obs, enemy, { coordinated: advanced })
     : null;
   const incoming = advanced && own?.active
     ? incomingKoizumiBarrierBreaker(enemyContacts, main, own, now)
@@ -460,13 +416,17 @@ export function applyKoizumiBarrierMainStrategy({
   enemyEstimate,
   target,
   tactics,
-  match,
+  worldSize,
   padding,
   flankSign = 1,
 }) {
-  if (!main || !enemyEstimate || !target || !tactics || !match) {
+  if (!main || !enemyEstimate || !target || !tactics || !Number.isFinite(worldSize)) {
     return target;
   }
+  const match = {
+    clampX: (value, margin = 0) => clamp(value, margin, worldSize - margin),
+    clampY: (value, margin = 0) => clamp(value, margin, worldSize - margin),
+  };
   const own = tactics.own;
   const enemy = tactics.enemy;
   const incoming = tactics.incoming;
@@ -495,7 +455,7 @@ export function applyKoizumiBarrierMainStrategy({
       ...target,
       x: match.clampX(main.x + (awayX / awayLength) * 230, padding),
       y: match.clampY(main.y + (awayY / awayLength) * 230, padding),
-      preferredRange: Math.max(main.effectiveRange() * 0.72, own.radius + 110),
+      preferredRange: Math.max(main.stats.range * 0.72, own.radius + 110),
     };
   }
 
@@ -527,7 +487,7 @@ export function applyKoizumiBarrierMainStrategy({
   const dy = target.y - enemyEstimate.y;
   const currentRange = Math.hypot(dx, dy);
   const minimumRange = Math.max(own.radius + 38, main.radius + 90);
-  const maximumRange = Math.max(minimumRange, main.effectiveRange() * 0.86);
+  const maximumRange = Math.max(minimumRange, main.stats.range * 0.86);
   const desiredRange = clamp(currentRange, minimumRange, maximumRange);
   const fallbackX = main.x - enemyEstimate.x;
   const fallbackY = main.y - enemyEstimate.y;
