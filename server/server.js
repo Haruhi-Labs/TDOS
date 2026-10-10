@@ -1,3 +1,4 @@
+import { beginRoomMatch } from "./room-state.js";
 import { GAME_VERSION } from "../shared/game-version.js";
 import { WebSocketServer } from "ws";
 import { randomUUID } from "node:crypto";
@@ -196,10 +197,7 @@ function startMatch(room) {
   };
 
   const needsCountdown = room.mode === "pvp";
-  room.status = needsCountdown ? "countdown" : "running";
-  room.startedAt = Date.now();
-  room.countdownEndsAt = needsCountdown ? Date.now() + PVP_COUNTDOWN_MS : null;
-  room.match = new MatchSimulation({
+  beginRoomMatch(room, { countdownMs: PVP_COUNTDOWN_MS, createMatch: () => new MatchSimulation({
     mode: room.mode,
     worldSize: DEFAULT_WORLD_SIZE,
     teamNames,
@@ -207,12 +205,7 @@ function startMatch(room) {
       A: playerA ? playerA.loadout : DEFAULT_TEAM_LOADOUT,
       B: room.mode === "ai" ? (room.aiLoadout || DEFAULT_AI_LOADOUT) : playerB ? playerB.loadout : DEFAULT_TEAM_LOADOUT,
     },
-  });
-  room.snapshotAccumulator = 0;
-  room.snapshotSeq = 0;
-  room.finishedAt = null;
-  room.closesAt = null;
-  room.result = null;
+  }) });
 
   for (const seat of ["A", "B"]) {
     const p = getPlayerById(room.seats[seat]);

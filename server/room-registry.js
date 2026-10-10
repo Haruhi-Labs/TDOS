@@ -1,3 +1,4 @@
+import { copyPlainData } from "../shared/data/plain-data.js";
 import { cloneLoadout, DEFAULT_AI_LOADOUT, randomAiLoadout } from "../shared/game/characters.js";
 import { ROOM_CAPACITY } from "./config.js";
 
@@ -74,11 +75,16 @@ export function createRoomRegistry({
       const player = getPlayerById(playerId);
       if (player && player.roomId === room.id && player.spectating) {
         list.push(player);
-      } else {
-        room.spectators.delete(playerId);
       }
     }
     return list;
+  }
+
+  function pruneRoomSpectators(room) {
+    const activeIds = new Set(roomSpectators(room).map((player) => player.id));
+    for (const id of room.spectators || []) {
+      if (!activeIds.has(id)) room.spectators.delete(id);
+    }
   }
 
   function spectatorCount(room) {
@@ -92,7 +98,7 @@ export function createRoomRegistry({
       seat: "A",
       name: playerA ? playerA.name : "空位",
       playerId: playerA ? playerA.id : null,
-      loadout: playerA ? playerA.loadout : null,
+      loadout: playerA ? cloneLoadout(playerA.loadout) : null,
       isBot: false,
       ready: Boolean(room.ready?.A),
     }];
@@ -110,7 +116,7 @@ export function createRoomRegistry({
         seat: "B",
         name: playerB ? playerB.name : "空位",
         playerId: playerB ? playerB.id : null,
-        loadout: playerB ? playerB.loadout : null,
+        loadout: playerB ? cloneLoadout(playerB.loadout) : null,
         isBot: false,
         ready: Boolean(room.ready?.B),
       });
@@ -132,7 +138,7 @@ export function createRoomRegistry({
 
   function displayPlayerRows(room) {
     if (room && room.result && Array.isArray(room.result.players)) {
-      return room.result.players;
+      return copyPlainData(room.result.players);
     }
     return seatPlayerRows(room);
   }
@@ -166,7 +172,7 @@ export function createRoomRegistry({
             seat: viewer.seat,
             spectating: Boolean(viewer.spectating),
             isHost,
-            loadout: viewer.loadout,
+            loadout: cloneLoadout(viewer.loadout),
           }
         : null,
     };
@@ -224,6 +230,7 @@ export function createRoomRegistry({
   }
 
   function assignSpectatorToRoom(player, room) {
+    pruneRoomSpectators(room);
     player.roomId = room.id;
     player.seat = null;
     player.spectating = true;
@@ -295,6 +302,7 @@ export function createRoomRegistry({
     findPrivateRoom,
     getPlayerById,
     resetPlayerRoomState,
+    pruneRoomSpectators,
     roomSpectators,
     seatPlayerRows,
     selectedShipsForRoom,

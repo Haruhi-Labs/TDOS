@@ -103,6 +103,20 @@ function roomRegistryCheck() {
   assert.deepEqual(memberPayload.room.players.map((row) => row.seat), ["A", "B"], "房间状态席位顺序应稳定");
   assert.equal(memberPayload.room.closesAt, 9999, "房间状态应下发服务端权威关闭截止时间");
 
+  memberPayload.room.players[0].loadout.main = "其他角色";
+  memberPayload.self.loadout.sub1 = "其他角色";
+  assert.deepEqual(playerA.loadout, DEFAULT_TEAM_LOADOUT, "房间读模型不得反向修改玩家阵容");
+  room.result = harness.registry.buildMatchResult(room, 5000);
+  harness.registry.buildRoomStatePayload(room, playerA.id).room.players[0].name = "其他名字";
+  assert.equal(room.result.players[0].name, "玩家甲", "结算展示不得共享结果记录的可写引用");
+  room.spectators.add("失效连接");
+  harness.registry.buildRoomStatePayload(room, playerA.id);
+  harness.registry.buildLobbyPayload();
+  assert.equal(room.spectators.has("失效连接"), true, "序列化和统计查询不得暗中修改房间集合");
+  assert.equal(harness.registry.spectatorCount(room), 1, "失效连接不得计入公开人数");
+  harness.registry.pruneRoomSpectators(room);
+  assert.equal(room.spectators.has("失效连接"), false, "显式生命周期操作负责整理失效连接");
+
   room.visibility = "public";
   const lobby = harness.registry.buildLobbyPayload(5678);
   assert.equal(lobby.now, 5678, "大厅时间戳应由统一序列化器生成");

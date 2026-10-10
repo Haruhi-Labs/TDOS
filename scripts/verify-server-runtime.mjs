@@ -1,3 +1,4 @@
+import { beginRoomMatch, startRoomRunning, finishRoomMatch } from "../server/room-state.js";
 import assert from "node:assert/strict";
 import { createInputQueue } from "../server/input-queue.js";
 import { FINISHED_ROOM_CLOSE_DELAY_MS } from "../server/config.js";
@@ -10,6 +11,35 @@ function createPlayer(id) {
     lastProcessedSeq: 0,
     lastQueuedSeq: 0,
   };
+}
+
+function roomStateOwnershipCheck() {
+  let clock = 100;
+  let creations = 0;
+  const room = { mode: "pvp", status: "waiting", result: { old: true }, snapshotSeq: 50 };
+  const createMatch = () => {
+    creations += 1;
+    assert.equal(room.status, "countdown");
+    return { phase: "running" };
+  };
+  assert.equal(beginRoomMatch(room, { createMatch, countdownMs: 3000, now: () => clock++ }), true);
+  assert.equal(room.startedAt, 100);
+  assert.equal(room.countdownEndsAt, 3101, "保持两次取时与创建模拟的原顺序");
+  assert.equal(room.result, null);
+  assert.equal(room.snapshotSeq, 0);
+  assert.equal(beginRoomMatch(room, { createMatch }), false);
+  assert.equal(creations, 1, "重复开局不得替换模拟");
+  assert.equal(startRoomRunning(room, 3100), false);
+  assert.equal(startRoomRunning(room, 3101), true);
+  assert.equal(room.countdownEndsAt, null);
+  assert.equal(finishRoomMatch(room, 3200, 1000, () => assert.fail("未结束不得构建结果")), false);
+  room.match.phase = "finished";
+  assert.equal(finishRoomMatch(room, 3200, 1000, (target) => {
+    assert.equal(target.status, "finished");
+    assert.equal(target.closesAt, 4200);
+    return { winnerSeat: "A" };
+  }), true);
+  assert.equal(finishRoomMatch(room, 3300, 1000, () => assert.fail("不得重复结算")), false);
 }
 
 function inputQueueCheck() {
@@ -175,6 +205,7 @@ function catchupLimitCheck() {
   assert.equal(runtime.advanceLoop(1100), 1, "触发上限后应丢弃过期积压而非持续追赶");
 }
 
+roomStateOwnershipCheck();
 inputQueueCheck();
 matchLifecycleCheck();
 catchupLimitCheck();

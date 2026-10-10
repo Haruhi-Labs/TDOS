@@ -25,6 +25,7 @@ export function createRoomLifecycle({
     getPlayerById,
     resetPlayerRoomState,
     roomSpectators,
+    pruneRoomSpectators,
     spectatorCount,
     streamCapacityUnits,
   } = registry;
@@ -81,6 +82,7 @@ export function createRoomLifecycle({
       return;
     }
 
+    pruneRoomSpectators(room);
     if (room.kind === "tournament" && room.ownerId === player.id) {
       closeRoom(oldRoomId, "主持人离开，比赛房间已关闭");
       return;
