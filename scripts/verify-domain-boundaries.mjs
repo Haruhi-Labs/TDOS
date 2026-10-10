@@ -66,3 +66,18 @@ const zoneX = isolated.zones[0].x;
 observation.world.zones[0].x = -500;
 assert.equal(isolated.zones[0].x, zoneX, "AI 观察不得引用权威地图对象");
 console.log("输出隔离校验通过：外部修改快照及观察不能回写对局。");
+
+// 过期状态的读取不负责结算；重复序列化也不能触发清理。
+left.clawMarks = { sourceSeat: "B", stacks: 2, required: 4, expiresAt: 1, color: "#fff" };
+match.elapsed = 2;
+const expired = { ...left.clawMarks };
+for (let repeat = 0; repeat < 3; repeat += 1) {
+  assert.equal(left.activeClawMarks().stacks, 0);
+  left.serialize();
+}
+assert.deepEqual(left.clawMarks, expired, "只读查询不得提交过期状态");
+left.update(0);
+assert.equal(left.clawMarks.stacks, 0, "实体更新应提交到期清理");
+left.activeClawMarks().required = 999;
+assert.equal(left.clawMarks.required, 4, "抓痕查询不得暴露可写组件引用");
+console.log("查询纯度校验通过：过期清理属于实体生命周期，读取次数不影响权威状态。");

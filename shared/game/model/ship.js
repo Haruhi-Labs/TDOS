@@ -631,20 +631,27 @@ export class Ship {
     this.route = null;
   }
 
-  activeClawMarks() {
+  expireClawMarks() {
     if (this.clawMarks.stacks > 0 && this.clawMarks.expiresAt <= this.team.match.elapsed) {
       this.clawMarks.sourceSeat = null;
       this.clawMarks.stacks = 0;
       this.clawMarks.expiresAt = 0;
     }
-    return this.clawMarks;
+  }
+
+  activeClawMarks() {
+    if (this.clawMarks.stacks > 0 && this.clawMarks.expiresAt <= this.team.match.elapsed) {
+      return { ...this.clawMarks, sourceSeat: null, stacks: 0, expiresAt: 0 };
+    }
+    return { ...this.clawMarks };
   }
 
   registerClawHit(claw, match, source = null) {
     if (!this.alive || !claw || !this.team.match.rules.canDamage(source, this)) {
       return false;
     }
-    const marks = this.activeClawMarks();
+    this.expireClawMarks();
+    const marks = this.clawMarks;
     const sourceSeat = claw.sourceSeat || null;
     if (marks.stacks > 0 && marks.sourceSeat !== sourceSeat) {
       marks.stacks = 0;
@@ -683,6 +690,7 @@ export class Ship {
   }
 
   update(dt) {
+    this.expireClawMarks();
     if (!this.alive) {
       return;
     }
