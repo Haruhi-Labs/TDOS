@@ -1,10 +1,5 @@
 import { createSkillDetails, skillPreviewHTML } from "./character-select/skill-details.js";
-import {
-  CHARACTER_ORDER,
-  CHARACTER_DEFS,
-  cloneLoadout,
-  DEFAULT_TEAM_LOADOUT,
-} from "../shared/game-core.js";
+import { CHARACTER_ORDER, CHARACTER_DEFS, cloneLoadout, DEFAULT_TEAM_LOADOUT } from "../shared/game/characters.js";
 import { isMobile } from "./mobile.js";
 import { t } from "./i18n.js";
 import {

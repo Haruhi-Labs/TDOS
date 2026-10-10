@@ -16,7 +16,7 @@ function roomStatusText(status) {
   return t("未知");
 }
 
-export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer }) {
+export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer, isRulesetCompatible }) {
   function updateRoomSummary() {
     if (!app.room) {
       ui.roomSummary.textContent = t("未进入房间");
@@ -96,7 +96,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const joinButton = document.createElement("button");
       joinButton.textContent = t("加入");
-      joinButton.disabled = !app.connected || !app.rulesetCompatible || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
+      joinButton.disabled = !app.connected || !isRulesetCompatible() || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
       joinButton.addEventListener("click", () => {
         syncLoadoutToServer(false);
         socketSend({ type: "join_room", roomId: room.roomId });
@@ -104,7 +104,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const spectateButton = document.createElement("button");
       spectateButton.textContent = t("观战");
-      spectateButton.disabled = !app.connected || !app.rulesetCompatible || Boolean(app.room) || !(room.status === "running" || room.kind === "tournament" && ["waiting", "countdown"].includes(room.status));
+      spectateButton.disabled = !app.connected || !isRulesetCompatible() || Boolean(app.room) || !(room.status === "running" || room.kind === "tournament" && ["waiting", "countdown"].includes(room.status));
       spectateButton.addEventListener("click", () => {
         socketSend({ type: "spectate_room", roomId: room.roomId });
       });

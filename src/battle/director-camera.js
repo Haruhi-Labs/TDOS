@@ -1,4 +1,5 @@
-import { clamp, DEFAULT_WORLD_SIZE } from "../../shared/game-core.js";
+import { clamp } from "../../shared/game/math.js";
+import { DEFAULT_WORLD_SIZE } from "../../shared/game/constants.js";
 
 export const DIRECTOR_ZOOM_MAX = 4;
 

@@ -1,15 +1,9 @@
 import { GAME_VERSION } from "../shared/game-version.js";
 import { WebSocketServer } from "ws";
 import { randomUUID } from "node:crypto";
-import {
-  cloneLoadout,
-  DEFAULT_AI_LOADOUT,
-  DEFAULT_TEAM_LOADOUT,
-  MatchSimulation,
-  DEFAULT_WORLD_SIZE,
-  TICK_RATE,
-  SNAPSHOT_RATE,
-} from "../shared/game-core.js";
+import { cloneLoadout, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT } from "../shared/game/characters.js";
+import { MatchSimulation } from "../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE, TICK_RATE, SNAPSHOT_RATE } from "../shared/game/constants.js";
 import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
   evaluateRulesetCompatibility,

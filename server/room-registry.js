@@ -1,8 +1,4 @@
-import {
-  cloneLoadout,
-  DEFAULT_AI_LOADOUT,
-  randomAiLoadout,
-} from "../shared/game-core.js";
+import { cloneLoadout, DEFAULT_AI_LOADOUT, randomAiLoadout } from "../shared/game/characters.js";
 import { ROOM_CAPACITY } from "./config.js";
 
 const PLAYER_SEATS = ["A", "B"];

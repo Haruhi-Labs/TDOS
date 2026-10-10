@@ -7,7 +7,14 @@ import {
   interpolateBattleState,
 } from "../battle/state-interpolation.js";
 
-export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs }) {
+export function createOnlineStateSync({ timeline, pruneBefore = () => {}, getSeat = () => null, getRouteOverride = () => null, nowMs, worldSize, maxExtrapolateMs }) {
+  const smoothEntities = new Map();
+  let lastRenderMs = 0;
+  function reset() {
+    smoothEntities.clear();
+    lastRenderMs = 0;
+  }
+
   const LOGICAL = worldSize;
   const MAX_EXTRAPOLATE_MS = maxExtrapolateMs;
 
@@ -23,7 +30,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     if (!ship) {
       return null;
     }
-    const override = app.routeOverrides.get(ship.key);
+    const override = getRouteOverride(ship.key);
     if (override && override.route) {
       return override.route;
     }
@@ -126,10 +133,10 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
   }
   
   function estimateServerNowMs() {
-    if (!app.clockReady) {
+    if (!timeline.clockReady) {
       return nowMs();
     }
-    return nowMs() + app.clockOffsetMs;
+    return nowMs() + timeline.clockOffsetMs;
   }
   
   function smoothEntity(entity, dt, followRate, teleportDistance, teamSeat) {
@@ -137,16 +144,16 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
       return entity;
     }
     if (!entity.alive) {
-      app.smoothEntities.delete(entity.id);
+      smoothEntities.delete(entity.id);
       return entity;
     }
   
-    const cache = app.smoothEntities.get(entity.id);
+    const cache = smoothEntities.get(entity.id);
     const seenAt = nowMs();
     // 只有新伴随舰需要换队隔离；旧飞行器保留原平滑行为。
     const companion = entity.entityRole === "bunny_kyon";
     if (!cache || (companion && cache.teamSeat !== teamSeat)) {
-      app.smoothEntities.set(entity.id, {
+      smoothEntities.set(entity.id, {
         x: entity.x,
         y: entity.y,
         angle: entity.angle || 0,
@@ -158,7 +165,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
   
     const d = distance(cache.x, cache.y, entity.x, entity.y);
     if (d > teleportDistance) {
-      app.smoothEntities.set(entity.id, {
+      smoothEntities.set(entity.id, {
         x: entity.x,
         y: entity.y,
         angle: entity.angle || 0,
@@ -175,7 +182,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     const targetAngle = Number.isFinite(entity.angle) ? entity.angle : baseAngle;
     const angle = baseAngle + shortestAngleDelta(baseAngle, targetAngle) * alpha;
   
-    app.smoothEntities.set(entity.id, {
+    smoothEntities.set(entity.id, {
       x,
       y,
       angle,
@@ -216,16 +223,16 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
       return state;
     }
     const renderNowMs = nowMs();
-    const dt = app.lastRenderMs > 0 ? clamp((renderNowMs - app.lastRenderMs) / 1000, 1 / 144, 0.05) : 1 / 60;
-    app.lastRenderMs = renderNowMs;
+    const dt = lastRenderMs > 0 ? clamp((renderNowMs - lastRenderMs) / 1000, 1 / 144, 0.05) : 1 / 60;
+    lastRenderMs = renderNowMs;
   
-    for (const [entityId, cache] of app.smoothEntities) {
+    for (const [entityId, cache] of smoothEntities) {
       if (renderNowMs - cache.seenAt > 1400) {
-        app.smoothEntities.delete(entityId);
+        smoothEntities.delete(entityId);
       }
     }
   
-    const ownSeat = app.seat || "A";
+    const ownSeat = getSeat() || "A";
     return {
       ...state,
       teams: {
@@ -237,34 +244,34 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
   
   function interpolateSnapshotState(previousSnapshot, nextSnapshot, t) {
     return interpolateBattleState(previousSnapshot.state, nextSnapshot.state, t, {
-      spanSeconds: Math.max(1, nextSnapshot.tick - previousSnapshot.tick) / app.serverTickRate,
+      spanSeconds: Math.max(1, nextSnapshot.tick - previousSnapshot.tick) / timeline.serverTickRate,
     });
   }
   
   function getRenderState() {
-    if (app.snapshots.length === 0) {
+    let snapshots = timeline.snapshots;
+    if (snapshots.length === 0) {
       return null;
     }
   
-    const latest = app.snapshots[app.snapshots.length - 1];
+    const latest = snapshots[snapshots.length - 1];
     const serverNowMs = estimateServerNowMs();
     const latestServerTime = Number(latest.serverTimeMs) || 0;
     const advanceMs = latestServerTime > 0 ? clamp(serverNowMs - latestServerTime, -120, MAX_EXTRAPOLATE_MS) : clamp(nowMs() - latest.receivedAtMs, 0, MAX_EXTRAPOLATE_MS);
-    const advancedTick = latest.tick + (advanceMs / 1000) * app.serverTickRate;
-    const targetTick = advancedTick - (app.interpDelayMs / 1000) * app.serverTickRate;
+    const advancedTick = latest.tick + (advanceMs / 1000) * timeline.serverTickRate;
+    const targetTick = advancedTick - (timeline.interpDelayMs / 1000) * timeline.serverTickRate;
   
-    while (app.snapshots.length > 4 && app.snapshots[1].tick < targetTick - app.serverTickRate * 0.6) {
-      app.snapshots.shift();
-    }
+    pruneBefore(targetTick);
+    snapshots = timeline.snapshots;
   
-    const first = app.snapshots[0];
+    const first = snapshots[0];
     if (targetTick <= first.tick) {
       return stabilizeRenderState(first.state);
     }
   
-    for (let i = 1; i < app.snapshots.length; i += 1) {
-      const previous = app.snapshots[i - 1];
-      const next = app.snapshots[i];
+    for (let i = 1; i < snapshots.length; i += 1) {
+      const previous = snapshots[i - 1];
+      const next = snapshots[i];
       if (targetTick <= next.tick) {
         const span = Math.max(1, next.tick - previous.tick);
         const t = clamp((targetTick - previous.tick) / span, 0, 1);
@@ -273,12 +280,13 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     }
   
     const extraTicks = Math.max(0, targetTick - latest.tick);
-    const extraSeconds = clamp(extraTicks / app.serverTickRate, 0, MAX_EXTRAPOLATE_MS / 1000);
+    const extraSeconds = clamp(extraTicks / timeline.serverTickRate, 0, MAX_EXTRAPOLATE_MS / 1000);
     return stabilizeRenderState(extrapolateState(latest.state, extraSeconds));
   }
   
 
   return {
+    reset,
     cloneRoute,
     estimateServerNowMs,
     getDisplayRouteForShip,

@@ -1,4 +1,5 @@
-import { DEFAULT_WORLD_SIZE, clamp } from "../../../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE } from "../../../shared/game/constants.js";
+import { clamp } from "../../../shared/game/math.js";
 
 const TAU = Math.PI * 2;
 

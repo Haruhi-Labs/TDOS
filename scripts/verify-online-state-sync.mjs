@@ -66,7 +66,9 @@ const app = {
 };
 let now = 1000;
 const sync = createOnlineStateSync({
-  app,
+  timeline: app,
+  getSeat: () => app.seat,
+  getRouteOverride: (key) => app.routeOverrides.get(key),
   nowMs: () => now,
   worldSize: 100,
   maxExtrapolateMs: 180,

@@ -1,21 +1,10 @@
 import { BUNNY_HARUHI_CONFIG } from "../shared/game/bunny-haruhi-config.js";
 import { getPortraitAssetUrl } from "./character-select/portraits.js";
-import {
-  DEFAULT_WORLD_SIZE,
-  MatchSimulation,
-  CHARACTER_ORDER,
-  CHARACTER_DEFS,
-  DEFAULT_AI_LOADOUT,
-  DEFAULT_TEAM_LOADOUT,
-  randomAiLoadout,
-  SCOUT_LAUNCH_COST,
-  TICK_DT,
-  clamp,
-  cloneLoadout,
-  distance,
-  normalizeLoadout,
-  skillMetaForCharacter,
-} from "../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE, TICK_DT } from "../shared/game/constants.js";
+import { MatchSimulation } from "../shared/game-core.js";
+import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, randomAiLoadout, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../shared/game/characters.js";
+import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
+import { clamp, distance } from "../shared/game/math.js";
 import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 

@@ -1,11 +1,7 @@
 // 共享战斗 HUD 刷新:技能按钮/移动端HUD/全队舰况等纯展示逻辑,单人与在线共用。
 // 约定:第一个参数是各模式 cacheDom 出的 ui 对象(id 已由 battle/template.js 统一),
 // 战斗状态与选中信息全部显式传入,不读各模式的模块级变量。
-import {
-  AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-  MANUAL_SCOUT_COOLDOWN,
-  SCOUT_LAUNCH_COST,
-} from "../../shared/game-core.js";
+import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../../shared/game/combat-rules.js";
 import { shipCharacterName, slotLabel as localizedSlotLabel, t } from "../i18n.js";
 import {
   clearCooldownProgress,

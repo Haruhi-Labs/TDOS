@@ -1,8 +1,4 @@
-import {
-  THROTTLE_GEAR_VALUES,
-  throttleForGear,
-  throttleGearForValue,
-} from "../../shared/game-core.js";
+import { THROTTLE_GEAR_VALUES, throttleForGear, throttleGearForValue } from "../../shared/game/throttle.js";
 import { t } from "../i18n.js";
 
 export function throttleGearLabel(gear) {

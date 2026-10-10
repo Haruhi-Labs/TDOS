@@ -10,11 +10,7 @@ import { gameStorageKey, IS_TEST_BUILD } from "./deployment.js";
 // 本模块不操作具体 DOM，只负责读写与归一化，可被任意前端模块复用。
 // ═══════════════════════════════════════════════════════════════
 
-import {
-  DEFAULT_TEAM_LOADOUT,
-  cloneLoadout,
-  normalizeLoadout,
-} from "../shared/game-core.js";
+import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../shared/game/characters.js";
 
 const PROFILE_KEY = gameStorageKey("haruhi-profile-v1");
 

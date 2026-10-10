@@ -1,4 +1,4 @@
-import { SCOUT_LAUNCH_COST } from "../../shared/game-core.js";
+import { SCOUT_LAUNCH_COST } from "../../shared/game/combat-rules.js";
 import { battleSkillMeta as skillMetaForCharacter, bunnyBlockLabel, bunnyCastCost, bunnyFormLabel, renderBunnyReadout } from "./bunny-haruhi-view.js";
 import { shipCharacterName, skillText, slotLabel, t } from "../i18n.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";

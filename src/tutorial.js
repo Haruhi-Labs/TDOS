@@ -1,4 +1,4 @@
-import { distance } from "../shared/game-core.js";
+import { distance } from "../shared/game/math.js";
 import { t } from "./i18n.js";
 
 export const TUTORIAL_LOADOUT = Object.freeze({ main: "haruhi", sub1: "yuki", sub2: "kyon" });

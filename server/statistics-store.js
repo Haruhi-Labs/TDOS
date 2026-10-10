@@ -5,7 +5,7 @@ import { createReadStream } from "node:fs";
 import { appendFile, mkdir, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
-import { CHARACTER_ORDER } from "../shared/game-core.js";
+import { CHARACTER_ORDER } from "../shared/game/characters.js";
 
 const SCHEMA_VERSION = 2;
 const PUBLIC_MODES = new Set(["solo", "multiplayer"]);

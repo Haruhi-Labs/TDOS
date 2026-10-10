@@ -169,6 +169,18 @@ for (const fileName of ["shared/game/collision-system.js", "shared/game/targetin
   }
 }
 
+// 页面装配可创建对局，表现与联机消费模块只使用静态定义、纯算法及读模型。
+const simulationEntrypoints = new Set(["src/solo.js", "src/debug.js", "src/battle/native-webgl-visual-fixture.js"]);
+for (const file of walk("src")) {
+  for (const specifier of importSpecifiers(file)) {
+    const target = display(resolveImport(file, specifier));
+    if ((target === "shared/game-core.js" || target.startsWith("shared/game/model/") || target.startsWith("shared/game/runtime/"))
+      && !simulationEntrypoints.has(display(file))) {
+      failures.push(`${display(file)} 不得依赖权威实体或模拟入口 ${target}`);
+    }
+  }
+}
+
 const requiredLinks = [
   ["shared/game-core.js", "./game/bot-controller.js"],
   ["shared/game-core.js", "./game/characters.js"],

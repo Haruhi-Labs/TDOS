@@ -1,4 +1,4 @@
-import { CHARACTER_DEFS } from "../../shared/game-core.js";
+import { CHARACTER_DEFS } from "../../shared/game/characters.js";
 import { t } from "../i18n.js";
 
 export const CHARACTER_THEMES = {

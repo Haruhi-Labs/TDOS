@@ -1,13 +1,7 @@
-import {
-  DEFAULT_TEAM_LOADOUT,
-  DEFAULT_WORLD_SIZE,
-  SCOUT_LAUNCH_COST,
-  clamp,
-  cloneLoadout,
-  distance,
-  normalizeLoadout,
-  skillMetaForCharacter,
-} from "../shared/game-core.js";
+import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../shared/game/characters.js";
+import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
+import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
+import { clamp, distance } from "../shared/game/math.js";
 import { MATCH_ACTION_TYPES, matchActions } from "../shared/protocol/match-actions.js";
 import { createOnlineStateSync } from "./online/state-sync.js";
 import { bindDirectorCameraInput } from "./battle/director-camera.js";
@@ -21,7 +15,6 @@ import {
 import { createOnlineResultView } from "./online/result-view.js";
 import {
   createOnlineSnapshotTransport,
-  DEFAULT_INTERP_MS,
 } from "./online/snapshot-transport.js";
 import { createThrottleCommandState } from "./online/throttle-command-state.js";
 import { createTournamentView } from "./online/tournament-view.js";
@@ -228,38 +221,6 @@ function initApp() {
   selectedShipKey: "main",
   selectedZoneId: 5,
   throttle: 1,
-  pingMs: 0,
-  jitterMs: 0,
-  interpDelayMs: DEFAULT_INTERP_MS,
-  pingTimer: null,
-  pingSeq: 0,
-  pendingPings: new Map(),
-  rttVarianceMs: 0,
-  bestClockRttMs: Infinity,
-  clockOffsetMs: 0,
-  clockReady: false,
-  serverTickRate: 30,
-  serverSnapshotRate: 20,
-  networkProtocolVersion: 1,
-  serverRulesetVersion: "",
-  rulesetStatus: "pending",
-  rulesetCompatible: false,
-  snapshotIntervalMs: 1000 / 20,
-  snapshots: [],
-  latestSnapshot: null,
-  lastSnapshotTick: 0,
-  lastSnapshotSeq: 0,
-  decodedSnapshotState: null,
-  decodedSnapshotSeq: 0,
-  lastSnapshotAckSentAt: 0,
-  lastAckedSnapshotSeq: 0,
-  lastSnapshotArriveAtMs: 0,
-  snapshotArrivalMs: 0,
-  snapshotArrivalJitterMs: 0,
-  snapshotLossRatio: 0,
-  snapshotReorderRatio: 0,
-  smoothEntities: new Map(),
-  lastRenderMs: 0,
   routeOverrides: new Map(),
   drag: null,
   suppressClick: false,
@@ -290,11 +251,14 @@ function initApp() {
     log,
     now: () => stateSync?.estimateServerNowMs?.() ?? Date.now(),
   });
-  lobbyView = createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer });
-  snapshotTransport = createOnlineSnapshotTransport({ app, nowMs, socketSend, updateConnectionUi, log });
+  lobbyView = createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer, isRulesetCompatible: () => snapshotTransport.state.rulesetCompatible });
+  snapshotTransport = createOnlineSnapshotTransport({ nowMs, socketSend, updateConnectionUi, log, isConnected: () => app.connected, onPlayerId: (id) => { app.playerId = id; } });
   throttleCommandState = createThrottleCommandState();
   stateSync = createOnlineStateSync({
-    app,
+    timeline: snapshotTransport.state,
+    pruneBefore: snapshotTransport.pruneBefore,
+    getSeat: () => app.seat,
+    getRouteOverride: (key) => app.routeOverrides.get(key),
     nowMs,
     worldSize: LOGICAL,
     maxExtrapolateMs: MAX_EXTRAPOLATE_MS,
@@ -304,7 +268,7 @@ function initApp() {
       app.room &&
       app.room.status === "running" &&
       app.connected &&
-      app.rulesetCompatible &&
+      snapshotTransport.state.rulesetCompatible &&
       app.seat &&
       !app.spectating
     ),
@@ -350,17 +314,17 @@ function log(message) {
 function updateConnectionUi() {
   ui.connectionValue.textContent = !app.connected
     ? t("未连接")
-    : app.rulesetStatus === "mismatch"
+    : snapshotTransport.state.rulesetStatus === "mismatch"
       ? t("规则版本不兼容")
       : t("已连接");
-  ui.pingValue.textContent = app.connected ? `${Math.round(app.pingMs)}ms` : "-";
-  ui.jitterValue.textContent = app.connected ? `${Math.round(app.jitterMs)}ms` : "-";
-  ui.interpValue.textContent = app.connected ? `${Math.round(app.interpDelayMs)}ms` : "-";
+  ui.pingValue.textContent = app.connected ? `${Math.round(snapshotTransport.state.pingMs)}ms` : "-";
+  ui.jitterValue.textContent = app.connected ? `${Math.round(snapshotTransport.state.jitterMs)}ms` : "-";
+  ui.interpValue.textContent = app.connected ? `${Math.round(snapshotTransport.state.interpDelayMs)}ms` : "-";
 
-  tournamentView?.update({ room: app.room, seat: app.seat, isHost: app.isRoomHost, connected: app.connected, compatible: app.rulesetCompatible });
+  tournamentView?.update({ room: app.room, seat: app.seat, isHost: app.isRoomHost, connected: app.connected, compatible: snapshotTransport.state.rulesetCompatible });
   ui.connectBtn.disabled = app.connected;
   ui.disconnectBtn.disabled = !app.connected;
-  const lobbyActionsDisabled = !app.connected || !app.rulesetCompatible || Boolean(app.room);
+  const lobbyActionsDisabled = !app.connected || !snapshotTransport.state.rulesetCompatible || Boolean(app.room);
   ui.createPublicBtn.disabled = lobbyActionsDisabled;
   ui.createPrivateBtn.disabled = lobbyActionsDisabled;
   ui.createAiRoomBtn.disabled = lobbyActionsDisabled;
@@ -385,8 +349,8 @@ function isTournamentPreparing() {
 }
 
 function setRoomHudVisible(visible) {
-  tournamentView?.update({ room: app.room, seat: app.seat, isHost: app.isRoomHost, connected: app.connected, compatible: app.rulesetCompatible });
-  spectatorView?.update({ active: isSpectatorMode() || isTournamentPreparing(), room: app.room, state: app.latestSnapshot?.state, zoom: camera?.zoom });
+  tournamentView?.update({ room: app.room, seat: app.seat, isHost: app.isRoomHost, connected: app.connected, compatible: snapshotTransport.state.rulesetCompatible });
+  spectatorView?.update({ active: isSpectatorMode() || isTournamentPreparing(), room: app.room, state: snapshotTransport.state.latestSnapshot?.state, zoom: camera?.zoom });
   if (ui.lobbyView) ui.lobbyView.hidden = !visible;
   if (ui.battleView) ui.battleView.hidden = visible;
 }
@@ -404,7 +368,7 @@ function isSpectatorMode() {
 }
 
 function canControlBattle() {
-  return Boolean(app && app.connected && app.rulesetCompatible && app.room && app.room.status === "running" && app.seat && !app.spectating);
+  return Boolean(app && app.connected && snapshotTransport.state.rulesetCompatible && app.room && app.room.status === "running" && app.seat && !app.spectating);
 }
 
 function validShipKey(shipKey) {
@@ -461,8 +425,7 @@ function bindPressButton(button, handler) {
 
 function clearMatchRuntime() {
   snapshotTransport.resetMatchState();
-  app.smoothEntities.clear();
-  app.lastRenderMs = 0;
+  stateSync.reset();
   app.routeOverrides.clear();
   throttleCommandState.clear();
   app.drag = null;
@@ -623,7 +586,7 @@ function applyRoomState(message) {
   const canBattle = roomStatus === "running";
   const isFinished = roomStatus === "finished";
   const showBattleView = isTournamentPreparing() || isCountdown || canBattle || isFinished;
-  setBattleControlsEnabled(Boolean(canBattle && !app.spectating && app.rulesetCompatible));
+  setBattleControlsEnabled(Boolean(canBattle && !app.spectating && snapshotTransport.state.rulesetCompatible));
   setRoomHudVisible(!showBattleView);
   syncResponsiveMode();
   // 战斗页刚由 hidden 显示时,首次测量可能拿到 0 宽 → 下一帧布局就绪后再校准画布清晰度
@@ -651,7 +614,7 @@ function applyRoomState(message) {
     if (app.room && app.room.winnerSeat) {
       app.lastWinnerSeat = app.room.winnerSeat;
     }
-    const latestWinner = app.latestSnapshot && app.latestSnapshot.state ? app.latestSnapshot.state.winnerSeat : null;
+    const latestWinner = snapshotTransport.state.latestSnapshot && snapshotTransport.state.latestSnapshot.state ? snapshotTransport.state.latestSnapshot.state.winnerSeat : null;
     resultView.show(latestWinner || app.lastWinnerSeat || (app.room ? app.room.winnerSeat : null) || null);
   } else if (!canBattle && !isCountdown) {
     clearMatchRuntime();
@@ -759,7 +722,7 @@ function syncPowerFromSelectedShip(team) {
   app.throttle = throttleValueForGear(gear);
 }
 
-function selectShip(shipKey, state = app.latestSnapshot ? app.latestSnapshot.state : null) {
+function selectShip(shipKey, state = snapshotTransport.state.latestSnapshot ? snapshotTransport.state.latestSnapshot.state : null) {
   if (!shipKey || isSpectatorMode()) {
     return false;
   }
@@ -923,9 +886,7 @@ function handleServerMessage(raw) {
   }
 
   if (type === "ruleset_mismatch") {
-    app.rulesetCompatible = false;
-    app.rulesetStatus = "mismatch";
-    app.serverRulesetVersion = String(message.serverRulesetVersion || app.serverRulesetVersion || "");
+    snapshotTransport.handleRulesetMismatch(message);
     setBattleControlsEnabled(false);
     updateConnectionUi();
     log(t("规则版本不兼容：客户端与服务器无法进入同一场对战"));
@@ -988,10 +949,10 @@ function setRouteOverride(shipKey, seq, route) {
 }
 
 function getLatestOwnShip(shipKey) {
-  if (!app.latestSnapshot || !app.latestSnapshot.state) {
+  if (!snapshotTransport.state.latestSnapshot || !snapshotTransport.state.latestSnapshot.state) {
     return null;
   }
-  const own = teamBySeat(app.latestSnapshot.state, app.seat);
+  const own = teamBySeat(snapshotTransport.state.latestSnapshot.state, app.seat);
   if (!own || !own.ships) {
     return null;
   }
@@ -1180,7 +1141,7 @@ function throttleForShipCommand(ship) {
 }
 
 function currentBattleState() {
-  return app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null);
+  return app.lastRenderState || (snapshotTransport.state.latestSnapshot ? snapshotTransport.state.latestSnapshot.state : null);
 }
 
 function syncResponsiveMode() {
@@ -1314,7 +1275,7 @@ function renderBattleFrame() {
     ownTeam,
     enemyTeam,
     spectating,
-    radar: spectating ? null : app.latestSnapshot?.radar || null,
+    radar: spectating ? null : snapshotTransport.state.latestSnapshot?.radar || null,
     visibleEnemyIds: new Set((ownTeam && ownTeam.visibleEnemyIds) || []),
     // 观战:按快照内各座位的选中舰高亮;对战:己方取本地选中,敌方不高亮
     selectedKeyForTeam: (team) =>
@@ -1375,7 +1336,7 @@ function openOnlineCharSelect() {
 }
 
 function useFlagshipSkillOnline() {
-  const own = teamBySeat(app.latestSnapshot ? app.latestSnapshot.state : null, app.seat);
+  const own = teamBySeat(snapshotTransport.state.latestSnapshot ? snapshotTransport.state.latestSnapshot.state : null, app.seat);
   const meta = currentFlagshipMeta(own, app.playerLoadout);
   if (!meta || meta.type !== "active") {
     return;
@@ -1387,7 +1348,7 @@ function useFlagshipSkillOnline() {
 }
 
 function useSubSkillOnline() {
-  const state = app.latestSnapshot ? app.latestSnapshot.state : null;
+  const state = snapshotTransport.state.latestSnapshot ? snapshotTransport.state.latestSnapshot.state : null;
   const own = teamBySeat(state, app.seat);
   const ship = own && own.ships ? own.ships[app.selectedShipKey] : null;
   const meta = currentSubMeta(ship);
@@ -1922,13 +1883,13 @@ function bindUiEvents() {
     };
     const nextShip = shipByKey[event.code];
     if (nextShip) {
-      if (selectShip(nextShip, app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null))) {
+      if (selectShip(nextShip, app.lastRenderState || (snapshotTransport.state.latestSnapshot ? snapshotTransport.state.latestSnapshot.state : null))) {
         event.preventDefault();
       }
       return;
     }
 
-    const state = app.lastRenderState || (app.latestSnapshot ? app.latestSnapshot.state : null);
+    const state = app.lastRenderState || (snapshotTransport.state.latestSnapshot ? snapshotTransport.state.latestSnapshot.state : null);
 
     if (event.code === "Tab") {
       event.preventDefault();

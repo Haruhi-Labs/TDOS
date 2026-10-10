@@ -1,9 +1,4 @@
-import {
-  CHARACTER_DEFS,
-  CHARACTER_ORDER,
-  DEFAULT_TEAM_LOADOUT,
-  normalizeLoadout,
-} from "../../shared/game-core.js";
+import { CHARACTER_DEFS, CHARACTER_ORDER, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters.js";
 import {
   getLoadout,
   getNickname as getProfileNickname,

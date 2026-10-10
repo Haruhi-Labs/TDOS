@@ -7,13 +7,12 @@
 //  - 表现基准以单人版为权威;要给战场加视觉效果,只改这里,两种模式天然同步。
 //  - solo.js / online.js 内不允许再出现与本文件同名的绘制函数(scripts/check-battle-drift.mjs 把关)。
 
-import {
-  DEFAULT_WORLD_SIZE,
-  FIRE_ARC_BANDS,
-  clamp,
-  quadraticPoint,
-} from "../../shared/game-core.js";
-import { BLADE_QUEEN_RANGE_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER } from "../../shared/game/character-contacts.js";
+import { DEFAULT_WORLD_SIZE } from "../../shared/game/constants.js";
+import { FIRE_ARC_BANDS } from "../../shared/game/combat-rules.js";
+import { clamp, quadraticPoint } from "../../shared/game/math.js";
+import { HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER } from "../../shared/game/contact-geometry.js";
+import { CHARACTER_DEFS } from "../../shared/game/characters.js";
+const BLADE_QUEEN_RANGE_MULTIPLIER = CHARACTER_DEFS.asakura.subSkill.rangeMultiplier;
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
 import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";
