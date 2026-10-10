@@ -157,6 +157,17 @@ for (const file of walk("shared/game/model")) {
   }
 }
 
+// 通用算法只允许基础工具；角色能力由调用方注入。
+for (const fileName of ["shared/game/collision-system.js", "shared/game/targeting-system.js", ...walk("shared/game/systems").map(display)]) {
+  const file = resolve(ROOT, fileName);
+  for (const specifier of importSpecifiers(file)) {
+    const target = display(resolveImport(file, specifier));
+    if (!["shared/game/math.js", "shared/game/damage.js", "shared/game/throttle.js"].includes(target)) {
+      failures.push(`${fileName} 不得导入角色实现或状态所有者 ${target}`);
+    }
+  }
+}
+
 const requiredLinks = [
   ["shared/game-core.js", "./game/bot-controller.js"],
   ["shared/game-core.js", "./game/characters.js"],

@@ -1,3 +1,4 @@
+import { CHARACTER_RULES } from "../rules/character-rules.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../constants.js";
 import { DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../characters.js";
@@ -6,7 +7,8 @@ import { createAmbientRng, createSeededRng } from "../rng.js";
 import { createAiRunner } from "../ai/bridge/runner.js";
 import { aiHandicapFor } from "../ai/params/index.js";
 import { applyMatchAction } from "../action-dispatcher.js";
-import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, resolveBladeQueenContacts as resolveMatchBladeQueenContacts, resolveScoutClashes as resolveMatchScoutClashes, resolveShipCollisions as resolveMatchShipCollisions } from "../collision-system.js";
+import { resolveScoutClashes as resolveMatchScoutClashes, resolveShipCollisions as resolveMatchShipCollisions } from "../collision-system.js";
+import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, resolveBladeQueenContacts as resolveMatchBladeQueenContacts } from "../character-contacts.js";
 import { visionWavesCoverEntity as teamVisionWavesCoverEntity } from "../vision-wave.js";
 import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
 import { consumeKoizumiBarrierHit, koizumiBarrierGeometry, koizumiBarrierProjectileImpact, resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts, trackKoizumiBarrierProjectileCrossing, updateKoizumiBarrierRecovery } from "../koizumi-barrier.js";
@@ -39,6 +41,7 @@ export class MatchSimulation {
       B: options.teamLoadouts?.B || (aiSeats.includes("B") ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
     };
 
+    this.rules = CHARACTER_RULES;
     this.mode = mode;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
@@ -258,7 +261,7 @@ export class MatchSimulation {
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
   // (用上一帧的接触集做迟滞判定),持续贴着不再反复减速,避免被一路压停。同队编队跟随的舰不互撞。
   resolveShipCollisions() {
-    resolveMatchShipCollisions(this);
+    this._contactPairs = resolveMatchShipCollisions(this);
   }
 
   resolveHaruhiOtherworlderContacts() {

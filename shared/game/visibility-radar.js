@@ -1,16 +1,7 @@
+import { collectVisibleEntityIds } from "./systems/visibility.js";
 import { YUKI_RADAR_ROTATION_SECONDS } from "./combat-rules.js";
-import {
-  clamp,
-  counterClockwiseSweepDistance,
-  distance,
-  distanceSq,
-  lerp,
-  normalizeAngle,
-  stableRadarNoise,
-} from "./math.js";
+import { clamp, counterClockwiseSweepDistance, distance, lerp, normalizeAngle, stableRadarNoise } from "./math.js";
 import { visionWavesCoverEntity } from "./vision-wave.js";
-import { haruhiBoostActive } from "./haruhi-flagship.js";
-import { bunnyBroadcastsShip } from "./bunny-haruhi-runtime.js";
 
 const TAU = Math.PI * 2;
 const RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
@@ -91,7 +82,7 @@ export function updateRadarPassive(team, enemyTeam, dt) {
     const bearing = normalizeAngle(Math.atan2(target.y - source.y, target.x - source.x));
     if (counterClockwiseSweepDistance(previousAngle, bearing) > sweepDistance + 1e-9) continue;
     if (team.visibleEnemyIds.has(target.id)) {
-      target.nameRevealed = true;
+      target.revealName();
       radar.contacts.delete(target.id);
       continue;
     }
@@ -123,30 +114,10 @@ export function serializeRadarPassive(team) {
 }
 
 export function computeVisibility(team, enemyTeam) {
-  team.visibleEnemyIds.clear();
-  const sensors = team.getVisionSources();
-  const enemyEntities = enemyTeam.getEntities();
-  for (const enemy of enemyEntities) {
-    for (const sensor of sensors) {
-      if (distanceSq(enemy.x, enemy.y, sensor.x, sensor.y) <= sensor.range * sensor.range) {
-        team.visibleEnemyIds.add(enemy.id);
-        break;
-      }
-    }
-    if (!team.visibleEnemyIds.has(enemy.id) && visionWavesCoverEntity(team, enemy)) {
-      team.visibleEnemyIds.add(enemy.id);
-    }
-  }
-  // “我在这里！”持续期间，春日一方的全部舰队舰船向敌方提供真实视野。
-  // 侦察机与战斗僚机不属于舰队舰船，不在这里全图暴露。
-  if (haruhiBoostActive(enemyTeam)) {
-    for (const ship of enemyTeam.getAllShips()) {
-      if (ship.alive) team.visibleEnemyIds.add(ship.id);
-    }
-  }
-  if (team.match.bunnyHaruhiActive) {
-    for (const ship of enemyTeam.getPlayerShips()) {
-      if (bunnyBroadcastsShip(enemyTeam, ship)) team.visibleEnemyIds.add(ship.id);
-    }
-  }
+  return collectVisibleEntityIds({
+    sensors: team.getVisionSources(),
+    entities: enemyTeam.getEntities(),
+    coveredByWave: (entity) => visionWavesCoverEntity(team, entity),
+    broadcast: team.match.rules.broadcastShips(enemyTeam),
+  });
 }

@@ -13,12 +13,7 @@ import {
   clamp,
   quadraticPoint,
 } from "../../shared/game-core.js";
-import {
-  BLADE_QUEEN_RANGE_MULTIPLIER,
-  HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
-  HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER,
-  HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER,
-} from "../../shared/game/collision-system.js";
+import { BLADE_QUEEN_RANGE_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_HALF_WIDTH_RADIUS_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_REAR_RADIUS_MULTIPLIER } from "../../shared/game/character-contacts.js";
 import { characterShortName, localizeFloatingText, t } from "../i18n.js";
 import { drawShipDestructionEffects, syncShipDestructionEffects } from "../ship-destruction-effects.js";
 import { drawYukiRadar, drawYukiRadarMinimap } from "./render/radar.js";

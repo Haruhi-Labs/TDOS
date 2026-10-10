@@ -1,19 +1,18 @@
 // 舰船状态所有者与领域操作。
-import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES, normalizeThrottleToGear, throttleForGear } from "../throttle.js";
+import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES, normalizeThrottleToGear } from "../throttle.js";
 import { fireArcDensityMultiplier } from "../combat-rules.js";
-import { CHARACTER_DEFS, characterDefinition as getCharacterDef, slotLabel } from "../characters.js";
+import { characterDefinition as getCharacterDef, slotLabel } from "../characters.js";
 import { clamp, distance, dot, lerp, quadraticLengthApprox, quadraticPoint, quadraticStartCurvature, rotateOffset, shortestAngleDelta } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
 import { dispelKoizumiOrb, isKoizumiOrbActive, isKoizumiOrbReturning, serializeKoizumiOrb, updateKoizumiOrb } from "../koizumi-orb.js";
-import { haruhiDamageTakenMultiplier, haruhiOtherworlderReady, haruhiStatMultiplier } from "../haruhi-flagship.js";
-import { createHaruhiHeroPowerShockState, haruhiHeroPowerDamageTakenMultiplier, haruhiHeroPowerSpeedFactor, isHaruhiHeroPowerControlLocked, serializeHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
-import { shamisenHuntDamageMultiplier } from "../shamisen-hunt.js";
+import { haruhiOtherworlderReady } from "../haruhi-flagship.js";
+import { createHaruhiHeroPowerShockState, serializeHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
 import { DAMAGE_KIND, normalizeDamageContext } from "../damage.js";
-import { isBunnyCompanion, countsForVictory, purgeBunnyReliable, bunnyOwnerDamageBlocked } from "../bunny-haruhi-companion.js";
-import { bunnyCompanionForm, serializeBunnyCompanion, bunnyReliableState } from "../bunny-companion-runtime.js";
-import { createBunnyHaruhiState, bunnyStatMultiplier, bunnyDamageTakenMultiplier, isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor, cleanseBunnyStageControl, purgeBunnyForm, resolveBunnyThrottle, isBunnyEncoreLocked } from "../bunny-haruhi.js";
+import { isBunnyCompanion, countsForVictory, purgeBunnyReliable } from "../bunny-haruhi-companion.js";
+import { serializeBunnyCompanion } from "../bunny-companion-runtime.js";
+import { createBunnyHaruhiState, isBunnyControlLocked, cleanseBunnyStageControl, purgeBunnyForm, resolveBunnyThrottle, isBunnyEncoreLocked } from "../bunny-haruhi.js";
 import { BUNNY_HARUHI_CHARACTER, bunnyStageEnabled, serializeBunnyShip } from "../bunny-haruhi-runtime.js";
 import { Projectile } from "../model/projectile.js";
 import { FORMATION_DAMAGE_SHARE, SOLO_FIRE_RATE_BONUS, nextEntityId } from "../model/model-support.js";
@@ -129,22 +128,80 @@ export class Ship {
     return false;
   }
 
+  // 位移与碰撞副作用由舰船提交，规则模块只提供几何结果。
+  displaceTo(x, y, padding = 0) {
+    this.x = this.team.match.clampX(x, padding);
+    this.y = this.team.match.clampY(y, padding);
+  }
+
+  applyCollisionSlow(until, floor) {
+    this.collisionSlowUntil = Math.max(this.collisionSlowUntil, until);
+    this.speed = Math.min(this.speed, this.effectiveSpeed() * floor);
+  }
+
+  beginForcedKnockback(motion) {
+    this.forcedKnockback = { ...motion };
+    this.speed = 0;
+    this.route = null;
+  }
+
+  restoreHull(amount) {
+    this.hp = Math.min(this.maxHp, this.hp + amount);
+  }
+
+  drainHull(amount) {
+    this.hp -= amount;
+  }
+
+  restoreEnergy(amount) {
+    this.energy = clamp(this.energy + amount, 0, this.maxEnergy);
+  }
+
+  spendEnergy(amount) {
+    this.energy = Math.max(0, this.energy - amount);
+  }
+
+  scaleMotion(speedRatio, cooldownRatio) {
+    this.speed *= speedRatio;
+    this.cooldown *= cooldownRatio;
+  }
+
+  setFlightSpeed(speed) {
+    this.speed = speed;
+  }
+
+  setFlightHeading(angle) {
+    this.angle = angle;
+  }
+
+  navigateTo(point, throttle) {
+    this.route = null;
+    this.command = { ...point };
+    if (throttle !== undefined) this.throttle = throttle;
+  }
+
+  revealName() {
+    this.nameRevealed = true;
+  }
+
+  setThrottle(value) {
+    this.throttle = normalizeThrottleToGear(value, this.throttle);
+  }
+
   hasEffect(effectKey) {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
   }
 
   isControlLocked() {
-    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this)
-      || Boolean(this.bunnyStageExposure && isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this))));
+    return this.team.match.rules.controlLocked(this);
   }
 
   isSilenced() {
-    return !this.isControlImmune() && (this.hasEffect("silencedUntil")
-      || (this.bunnyStageExposure?.phase === "speechless" && bunnyStageEnabled(this)));
+    return this.team.match.rules.silenced(this);
   }
 
   isControlImmune() {
-    return this.isKoizumiOrbActive();
+    return this.team.match.rules.controlImmune(this);
   }
 
   clearControlEffects() {
@@ -165,50 +222,11 @@ export class Ship {
   }
 
   isDamageImmune() {
-    return this.isKoizumiOrbActive()
-      || Boolean((this.bunnyHaruhi || this.bunnyCompanion)
-        && isBunnyDamageImmune(this.bunnyHaruhi || bunnyCompanionForm(this), this.team.match.elapsed, !this.team.areSkillsDisabled()));
+    return this.team.match.rules.damageImmune(this);
   }
 
   statWithBuffs(statKey, baseValue) {
-    let value = baseValue;
-
-    if (this.hasEffect("reliableUntil")) {
-      if (statKey === "turnRate") {
-        value *= 1.28;
-      }
-      if (statKey === "speed") {
-        value *= 1.08;
-      }
-      if (statKey === "damage") {
-        value *= 1.08;
-      }
-      if (statKey === "accel") {
-        value *= 1.12;
-      }
-    }
-
-    if (this.hasEffect("bladeQueenUntil")) {
-      if (statKey === "speed") {
-        value *= CHARACTER_DEFS.asakura.subSkill.speedMultiplier;
-      }
-      if (statKey === "accel") {
-        value *= CHARACTER_DEFS.asakura.subSkill.accelerationMultiplier;
-      }
-      if (statKey === "turnRate") {
-        value *= CHARACTER_DEFS.asakura.subSkill.turnMultiplier;
-      }
-    }
-
-    value *= this.team.future1096StatMultiplier(statKey);
-    value *= haruhiStatMultiplier(this.team, statKey);
-
-    if (this.bunnyHaruhi) value *= bunnyStatMultiplier({ form: this.bunnyHaruhi, enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
-    if (this.bunnyCompanion) value *= bunnyStatMultiplier({ form: bunnyCompanionForm(this), enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
-    if (this.bunnyReliable) value *= bunnyStatMultiplier({ reliable: bunnyReliableState(this), enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
-    if (this.bunnyStageExposure) value *= bunnyStatMultiplier({ stage: this.bunnyStageExposure, enabled: bunnyStageEnabled(this) }, statKey, this.team.match.elapsed);
-
-    return value;
+    return this.team.match.rules.statWithBuffs(this, statKey, baseValue);
   }
 
   baseSpeed() {
@@ -232,17 +250,11 @@ export class Ship {
   }
 
   effectiveSpeed() {
-    const speed = this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
-    return this.bunnyStageExposure && !this.isControlImmune()
-      ? speed * bunnyStageSpeedFactor(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) : speed;
+    return this.team.match.rules.effectiveSpeed(this);
   }
 
   minimumFlightSpeed() {
-    // 刀锋下限取技能强化后的满能量航速，不使用能量、震慑或碰撞减速系数。
-    if (!this.hasEffect("bladeQueenUntil")) return 0;
-    const meta = CHARACTER_DEFS.asakura.subSkill;
-    // 舰队防御形态等属性减速也不能压低角色自身的刀锋巡航下限。
-    return Math.max(this.base.speed * meta.speedMultiplier, this.baseSpeed()) * throttleForGear(meta.minimumGear);
+    return this.team.match.rules.minimumFlightSpeed(this);
   }
 
   applyControlSpeedLimit() {
@@ -254,9 +266,8 @@ export class Ship {
     this.speed = minimumSpeed > 0 ? Math.max(this.speed, minimumSpeed) : 0;
   }
 
-  advanceFlight(dt) {
-    this.x = this.team.match.clampX(this.x + Math.cos(this.angle) * this.speed * dt, 8);
-    this.y = this.team.match.clampY(this.y + Math.sin(this.angle) * this.speed * dt, 8);
+  advanceFlight(dt, padding = 8) {
+    this.displaceTo(this.x + Math.cos(this.angle) * this.speed * dt, this.y + Math.sin(this.angle) * this.speed * dt, padding);
   }
 
   // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
@@ -317,16 +328,7 @@ export class Ship {
   }
 
   damageTakenMultiplier() {
-    let value = 1;
-    if (this.hasEffect("reliableUntil")) {
-      value *= 0.84;
-    }
-    value *= this.team.future1096DamageTakenMultiplier();
-    value *= haruhiDamageTakenMultiplier(this.team);
-    value *= haruhiHeroPowerDamageTakenMultiplier(this);
-    if (this.bunnyHaruhi) value *= bunnyDamageTakenMultiplier(this.bunnyHaruhi);
-    if (this.bunnyCompanion) value *= bunnyDamageTakenMultiplier(bunnyCompanionForm(this));
-    return value;
+    return this.team.match.rules.damageTakenMultiplier(this);
   }
 
   markActiveSkillEffectStarted(effectKey) {
@@ -606,7 +608,7 @@ export class Ship {
   }
 
   registerClawHit(claw, match, source = null) {
-    if (!this.alive || !claw || bunnyOwnerDamageBlocked(source, this)) {
+    if (!this.alive || !claw || !this.team.match.rules.canDamage(source, this)) {
       return false;
     }
     const marks = this.activeClawMarks();
@@ -630,7 +632,7 @@ export class Ship {
     if (burstDamage > 0) {
       const damageImmune = this.isDamageImmune();
       const damageContext = { kind: DAMAGE_KIND.ATTACK_EFFECT };
-      const displayedDamage = burstDamage * shamisenHuntDamageMultiplier(
+      const displayedDamage = burstDamage * this.team.match.rules.attackDamageMultiplier(
         source,
         this,
         damageContext.kind,
@@ -877,7 +879,7 @@ export class Ship {
   }
 
   takeDamage(amount, _source = null, match = null, context = undefined) {
-    if (bunnyOwnerDamageBlocked(_source, this)) return false;
+    if (!this.team.match.rules.canDamage(_source, this)) return false;
     if (!this.alive) {
       return;
     }
@@ -888,7 +890,7 @@ export class Ship {
     // “猫爪印记”只放大子弹和攻击命中特效。先乘二再分摊，保证整次攻击总伤害正确；
     // 分摊递归以 share=false 投递，不会因份额碰巧落到猎杀目标而再次乘二。
     if (share) {
-      amount *= shamisenHuntDamageMultiplier(_source, this, damageKind);
+      amount *= this.team.match.rules.attackDamageMultiplier(_source, this, damageKind);
     }
     // 不分离(本船所在编队还有其它存活船):本次伤害的 FORMATION_DAMAGE_SHARE 比例平摊给其它船,
     // 本船只承担其余部分。平摊出去的份额以 share=false 再投递,不会二次平摊(避免连锁/递归)。

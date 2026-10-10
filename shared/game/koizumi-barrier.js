@@ -2,10 +2,7 @@ import { clamp } from "./math.js";
 import { bunnyHaruhiSupportSource } from "./bunny-haruhi-support.js";
 import { supportOtherworlderReady, triggerSupportOtherworlder } from "./haruhi-support.js";
 import { isKoizumiOrbActive } from "./koizumi-orb.js";
-import {
-  haruhiOtherworlderAuraForwardReach,
-  haruhiRamApproachEligible,
-} from "./collision-system.js";
+import { haruhiOtherworlderAuraForwardReach, haruhiRamApproachEligible } from "./character-contacts.js";
 import {
   haruhiOtherworlderReady,
   triggerHaruhiOtherworlder,

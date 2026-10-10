@@ -1,9 +1,8 @@
 // 战斗实体的状态与生命周期。
 import { clamp, distance, shortestAngleDelta } from "../math.js";
 import { rngFor } from "../rng.js";
-import { shamisenHuntDamageMultiplier } from "../shamisen-hunt.js";
 import { DAMAGE_KIND } from "../damage.js";
-import { bunnyOwnerDamageBlocked } from "../bunny-haruhi-companion.js";
+
 import { DEG_TO_RAD, REAR_STRIKE_MIN_DEG, REAR_STRIKE_MULT, SMALL_TARGET_REF_RADIUS, SMALL_TARGET_MAX_MISS, nextEntityId } from "../model/model-support.js";
 
 export class Projectile {
@@ -68,7 +67,7 @@ export class Projectile {
     let hitTarget = null;
     let nearest = Infinity;
     for (const entity of candidates) {
-      if (bunnyOwnerDamageBlocked(this.source, entity)) continue;
+      if (!this.team.match.rules.canDamage(this.source, entity)) continue;
       if (!entity.alive || (typeof entity.isTargetableByFire === "function" && !entity.isTargetableByFire())) {
         continue;
       }
@@ -101,7 +100,7 @@ export class Projectile {
     }
     const damageImmune = typeof hitTarget.isDamageImmune === "function" && hitTarget.isDamageImmune();
     const damageContext = { kind: DAMAGE_KIND.PROJECTILE };
-    const displayedDamage = damage * shamisenHuntDamageMultiplier(
+    const displayedDamage = damage * this.team.match.rules.attackDamageMultiplier(
       this.source,
       hitTarget,
       damageContext.kind,

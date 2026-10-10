@@ -1,7 +1,6 @@
 // AI 与对局之间的端口：读取只有观测，写入只有动作。
 // 端口是 AI 侧唯一持有实时 Team 的位置，决策代码通过它提交动作并得知是否被接受。
 import { applyMatchAction } from "../../action-dispatcher.js";
-import { normalizeThrottleToGear } from "../../throttle.js";
 import { AI_ACTION_TYPES } from "../actions.js";
 import {
   buildObservation,
@@ -55,7 +54,7 @@ function applyDirect(team, action) {
       ship.setRouteEndpoint(action.endX, action.endY, false);
       return true;
     case AI_ACTION_TYPES.SET_THROTTLE:
-      ship.throttle = normalizeThrottleToGear(action.throttle, ship.throttle);
+      ship.setThrottle(action.throttle);
       return true;
     case AI_ACTION_TYPES.CAST_FLAGSHIP_SKILL:
       return team.castFlagshipSkill();

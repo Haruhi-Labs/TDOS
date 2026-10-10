@@ -70,22 +70,16 @@ function transitionToReturn(ship) {
   state.phase = "returning";
   state.returnStartedAt = ship.team.match.elapsed;
   state.angularVelocity *= 0.72;
-  ship.route = null;
-  ship.command = {
-    x: ship.team.match.worldSize * 0.5,
-    y: ship.team.match.worldSize * 0.5,
-  };
+  ship.navigateTo({ x: ship.team.match.worldSize * 0.5, y: ship.team.match.worldSize * 0.5 });
   return true;
 }
 
 function finishReturn(ship) {
   const match = ship.team.match;
   const center = match.worldSize * 0.5;
-  ship.x = center;
-  ship.y = center;
-  ship.command = { x: center, y: center };
-  ship.route = null;
-  ship.speed = Math.min(ship.speed, ship.effectiveSpeed() * 0.9);
+  ship.displaceTo(center, center);
+  ship.navigateTo({ x: center, y: center });
+  ship.setFlightSpeed(Math.min(ship.speed, ship.effectiveSpeed() * 0.9));
   ship.koizumiOrb = null;
   match.spawnBurst(center, center, "#ff526f", 16);
   match.spawnFloatingTextKey(center + 12, center - 16, "归航", {}, "#ff9bad");
@@ -107,7 +101,7 @@ export function dispelKoizumiOrb(ship) {
   if (!ship?.koizumiOrb) return false;
   // 净化直接解除形态，不触发归航或瞬移；当前位置与已有航向继续交给普通推进。
   ship.koizumiOrb = null;
-  ship.speed = Math.min(ship.speed, ship.effectiveSpeed());
+  ship.setFlightSpeed(Math.min(ship.speed, ship.effectiveSpeed()));
   return true;
 }
 
@@ -129,7 +123,7 @@ export function activateKoizumiOrb(ship, duration = 8) {
     hitAt: new Map(),
   };
   // 从既有航速连续加速，既不会瞬移，也能在半秒内形成明确的高速感。
-  ship.speed = Math.max(ship.speed, cruiseSpeed * 0.46);
+  ship.setFlightSpeed(Math.max(ship.speed, cruiseSpeed * 0.46));
   ship.clearControlEffects();
   ship.team.match.spawnBurst(ship.x, ship.y, "#ff405f", 14);
   ship.team.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "超能力粒子", {}, "#ff8da1");
@@ -195,7 +189,7 @@ export function updateKoizumiOrb(ship, dt) {
     requestedAngularVelocity,
     ORB_ANGULAR_ACCELERATION * (returning ? 1.18 : 1) * dt,
   );
-  ship.angle = normalizeAngle(ship.angle + state.angularVelocity * dt);
+  ship.setFlightHeading(normalizeAngle(ship.angle + state.angularVelocity * dt));
 
   const turnLoad = clamp(Math.abs(state.angularVelocity) / Math.max(0.01, maximumTurnRate), 0, 1);
   let targetSpeed = state.cruiseSpeed * (1 - (1 - ORB_MIN_TURN_SPEED_RATIO) * turnLoad);
@@ -206,13 +200,9 @@ export function updateKoizumiOrb(ship, dt) {
   if (returning && returnElapsed > ORB_RETURN_HARD_ASSIST_AFTER) {
     targetSpeed = Math.min(targetSpeed, state.cruiseSpeed * 0.72);
   }
-  ship.speed = approach(ship.speed, targetSpeed, state.cruiseSpeed * dt * (returning ? 2.15 : 1.85));
+  ship.setFlightSpeed(approach(ship.speed, targetSpeed, state.cruiseSpeed * dt * (returning ? 2.15 : 1.85)));
 
-  ship.x += Math.cos(ship.angle) * ship.speed * dt;
-  ship.y += Math.sin(ship.angle) * ship.speed * dt;
-  const padding = Math.max(8, ship.radius + 2);
-  ship.x = match.clampX(ship.x, padding);
-  ship.y = match.clampY(ship.y, padding);
+  ship.advanceFlight(dt, Math.max(8, ship.radius + 2));
 
   if (!returning && ship.route) {
     const alignment = clamp((Math.cos(delta) + 0.35) / 1.35, 0.16, 1);
@@ -299,16 +289,14 @@ function applyCollisionKnockback(match, source, contactTarget, direction) {
   for (const ship of fleet) {
     if (ship.isControlImmune() || ship.minimumFlightSpeed() > 0) continue;
     const destination = actualKnockbackDistance(match, ship, direction.x, direction.y, knockbackDistance);
-    ship.forcedKnockback = {
+    ship.beginForcedKnockback({
       startedAt,
       endsAt,
       fromX: ship.x,
       fromY: ship.y,
       toX: destination.x,
       toY: destination.y,
-    };
-    ship.speed = 0;
-    ship.route = null;
+    });
   }
 }
 

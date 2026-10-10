@@ -3,7 +3,8 @@ import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-co
 import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
 import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
 import { fireCandidates } from "../../shared/game/targeting-system.js";
-import { resolveBunnyOtherworlderContacts, resolveShipCollisions } from "../../shared/game/collision-system.js";
+import { resolveShipCollisions } from "../../shared/game/collision-system.js";
+import { resolveBunnyOtherworlderContacts } from "../../shared/game/character-contacts.js";
 import { createInputQueue } from "../../server/input-queue.js";
 import { applyStatePatch, createStatePatch, quantizeNetworkState } from "../../shared/network-patch.js";
 import { createOnlineStateSync } from "../../src/online/state-sync.js";

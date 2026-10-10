@@ -12,10 +12,7 @@ import {
   throttleForGear,
   throttleGearForValue,
 } from "../../shared/game-core.js";
-import {
-  BLADE_QUEEN_RANGE_MULTIPLIER,
-  HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER,
-} from "../../shared/game/collision-system.js";
+import { BLADE_QUEEN_RANGE_MULTIPLIER, HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER } from "../../shared/game/character-contacts.js";
 import {
   HARUHI_ESPER_ORBIT_SPEED,
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,

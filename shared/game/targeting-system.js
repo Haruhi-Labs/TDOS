@@ -1,12 +1,11 @@
 import { distance } from "./math.js";
-import { bunnyOwnerDamageBlocked } from "./bunny-haruhi-companion.js";
 
 export function fireCandidates(team, attacker, enemyTeam) {
   const range = attacker.attackRange || attacker.effectiveRange();
   const canArc = typeof attacker.broadsideMultiplier === "function";
   const candidates = [];
   for (const target of enemyTeam.getEntities()) {
-    if (!target.alive || bunnyOwnerDamageBlocked(attacker, target)) continue;
+    if (!target.alive || !team.match.rules.canDamage(attacker, target)) continue;
     if (typeof target.isTargetableByFire === "function" && !target.isTargetableByFire()) continue;
     const targetDistance = distance(attacker.x, attacker.y, target.x, target.y);
     if (targetDistance > range) continue;
@@ -76,13 +75,13 @@ export function assignFocusTargets(team, enemyTeam) {
     const remaining = remainingHp.has(chosen.id) ? remainingHp.get(chosen.id) : chosen.hp;
     remainingHp.set(chosen.id, remaining - budget);
   }
-  team._focusTargets = assignments;
+  return assignments;
 }
 
 export function pickTargetFor(team, attacker, enemyTeam) {
   const candidates = fireCandidates(team, attacker, enemyTeam);
   if (!candidates.length) return null;
-  const huntTargetId = team.shamisenHunt?.targetId;
+  const huntTargetId = team.match.rules.preferredTargetId(team);
   if (huntTargetId !== null && huntTargetId !== undefined) {
     const hunted = candidates.find(
       (candidate) => candidate.target.id === huntTargetId && candidate.arc > 0,
@@ -119,7 +118,7 @@ export function pickTargetFor(team, attacker, enemyTeam) {
 }
 
 export function stepCombat(team, enemyTeam) {
-  if (team.aiFocusLowHp) assignFocusTargets(team, enemyTeam);
+  if (team.aiFocusLowHp) team.assignFocusTargets(enemyTeam);
   for (const ship of team.getAllShips()) ship.tryAttack(team.match, enemyTeam);
   for (const wingman of team.wingmen) wingman.tryAttack(team.match, enemyTeam);
   for (const scout of team.scouts) scout.tryAttack(team.match, enemyTeam);

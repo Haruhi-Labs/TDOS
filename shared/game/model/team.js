@@ -395,7 +395,7 @@ export class Team {
         break;
       }
       const slice = i === members.length - 1 ? remaining : Math.min(ship.energy, (cost * ship.energy) / total);
-      ship.energy = Math.max(0, ship.energy - slice);
+      ship.spendEnergy(slice);
       spent += slice;
     }
     if (spent < cost) {
@@ -491,11 +491,8 @@ export class Team {
     const dirX = len > 1e-4 ? dx / len : Math.cos(ship.angle);
     const dirY = len > 1e-4 ? dy / len : Math.sin(ship.angle);
     const padding = Math.max(this.match.mapPadding, ship.radius + 4);
-    ship.x = this.match.clampX(ship.x + dirX * step, padding);
-    ship.y = this.match.clampY(ship.y + dirY * step, padding);
-    ship.command.x = ship.x;
-    ship.command.y = ship.y;
-    ship.route = null;
+    ship.displaceTo(ship.x + dirX * step, ship.y + dirY * step, padding);
+    ship.navigateTo({ x: ship.x, y: ship.y });
     this.match.spawnBurst(fromX, fromY, "#d8f7ff", 8);
     this.match.spawnBurst(ship.x, ship.y, "#9be0ff", 9);
     this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "闪现", {}, "#9be0ff");
@@ -510,7 +507,7 @@ export class Team {
       if (!ship.alive) {
         continue;
       }
-      ship.hp = Math.min(ship.maxHp, ship.hp + ship.maxHp * 0.01 * dt);
+      ship.restoreHull(ship.maxHp * 0.01 * dt);
     }
   }
 
@@ -595,7 +592,7 @@ export class Team {
       const energyRate = ship.bunnyStageExposure
         ? bunnyEnergyRate(ship.bunnyStageExposure, ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle, bunnyStageEnabled(ship))
         : energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
-      ship.energy = clamp(ship.energy + energyRate * dt, 0, ship.maxEnergy);
+      ship.restoreEnergy(energyRate * dt);
     }
   }
 
@@ -873,7 +870,7 @@ export class Team {
     }
     const enemyTeam = this.match.enemyTeamBySeat(this.seat);
     if (enemyTeam && enemyTeam.visibleEnemyIds && enemyTeam.visibleEnemyIds.has(ship.id)) {
-      ship.nameRevealed = true;
+      ship.revealName();
     }
   }
 
@@ -919,20 +916,20 @@ export class Team {
     } else if (ship.characterId === "future1096") {
       ok = this.castBeamFromShip(shipKey, options.targetX, options.targetY);
       if (!ok) {
-        ship.energy = clamp(ship.energy + (meta.cost || 0), 0, ship.maxEnergy);
+        ship.restoreEnergy(meta.cost || 0);
       }
     } else if (ship.characterId === "kyon") {
       this.setShipEffect(ship, "reliableUntil", meta.duration || 14);
-      ship.hp = Math.min(ship.maxHp, ship.hp + ship.maxHp * 0.18);
+      ship.restoreHull(ship.maxHp * 0.18);
       ok = true;
     } else if (ship.characterId === "tsuruya") {
       ok = this.bribeZone(ship, Number(options.zoneId) || 5);
       if (!ok) {
-        ship.energy = clamp(ship.energy + (meta.cost || 0), 0, ship.maxEnergy);
+        ship.restoreEnergy(meta.cost || 0);
       }
     } else if (ship.characterId === "asakura") {
       this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
-      ship.speed = Math.max(ship.speed, ship.minimumFlightSpeed());
+      ship.setFlightSpeed(Math.max(ship.speed, ship.minimumFlightSpeed()));
       ok = true;
     } else if (ship.characterId === "shamisen") {
       this.setShipEffect(ship, "catPawUntil", meta.duration || 12);
@@ -1136,7 +1133,7 @@ export class Team {
   }
 
   computeVisibility(enemyTeam) {
-    computeTeamVisibility(this, enemyTeam);
+    this.visibleEnemyIds = computeTeamVisibility(this, enemyTeam);
   }
 
   // 某攻击者当前可开火的候选目标:已过滤"真实可见 + 进射程",并带上距离与射界密度。
@@ -1154,7 +1151,7 @@ export class Team {
   }
 
   assignFocusTargets(enemyTeam) {
-    assignTeamFocusTargets(this, enemyTeam);
+    this._focusTargets = assignTeamFocusTargets(this, enemyTeam);
   }
 
   pickTargetFor(attacker, enemyTeam) {

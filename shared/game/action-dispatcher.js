@@ -1,4 +1,3 @@
-import { normalizeThrottleToGear } from "./throttle.js";
 import {
   MATCH_ACTION_TYPES,
   validateMatchAction,
@@ -56,7 +55,7 @@ export function applyMatchAction(team, action) {
     const ship = controllableShip(team, action.shipKey);
     if (!ship) return false;
     const throttle = Number(action.throttle);
-    ship.throttle = normalizeThrottleToGear(throttle, ship.throttle);
+    ship.setThrottle(throttle);
     return true;
   }
 
