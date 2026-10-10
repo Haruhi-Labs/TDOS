@@ -43,7 +43,7 @@ const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logL
   name: "ship-selection-fixture",
   transform(code, id) {
     if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, refresh() { app.state = app.sim.serializeState(); app.renderState = app.renderPreviousState = app.renderCurrentState = app.state; updateUi(); } };`;
-    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; } };`;
+    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
 }] });
@@ -99,12 +99,12 @@ try {
         ship.alive = status !== "dead";
         snapshotSeq++;
         socket.send(JSON.stringify({ type: "snapshot", roomId: "selection-room", snapshotSeq, tick: snapshotSeq, state: onlineSimulation.serializeState() }));
-        await page.waitForFunction((seq) => window.selectionFixture.app.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
+        await page.waitForFunction((seq) => window.selectionFixture.timeline.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
         // HUD 按 10Hz 节流，等待下一份同状态快照刷新；不直接调用页面选舰函数。
         await page.waitForTimeout(110);
         snapshotSeq++;
         socket.send(JSON.stringify({ type: "snapshot", roomId: "selection-room", snapshotSeq, tick: snapshotSeq, state: onlineSimulation.serializeState() }));
-        await page.waitForFunction((seq) => window.selectionFixture.app.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
+        await page.waitForFunction((seq) => window.selectionFixture.timeline.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
       }
       await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     }

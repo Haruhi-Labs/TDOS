@@ -57,7 +57,7 @@ const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logL
   name: "bunny-view-fixture",
   transform(code, id) {
     if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, publish(state) { app.paused = true; app.state = state; app.renderState = app.renderPreviousState = app.renderCurrentState = state; app.playerLoadout = state.teams.A.loadout; updateShipSwitchLabels(app.playerLoadout); app.sim.serializeState = () => state; updateUi(); } };`;
-    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; } };`;
+    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
 }] });
@@ -109,7 +109,7 @@ try {
         for (let i = 0; i < 2; i += 1) {
           sequence++;
           socket.send(JSON.stringify({ type: "snapshot", roomId: "bunny-view", snapshotSeq: sequence, tick: sequence, state }));
-          await page.waitForFunction((seq) => window.bunnyFixture.app.latestSnapshot?.snapshotSeq === seq, sequence);
+          await page.waitForFunction((seq) => window.bunnyFixture.timeline.latestSnapshot?.snapshotSeq === seq, sequence);
           if (!i) await page.waitForTimeout(120);
         }
       }
