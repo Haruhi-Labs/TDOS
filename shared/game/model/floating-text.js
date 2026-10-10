@@ -1,3 +1,4 @@
+import { copyPlainData } from "../../data/plain-data.js";
 // 战斗实体的状态与生命周期。
 import { nextEntityId } from "../model/model-support.js";
 
@@ -36,7 +37,7 @@ export class FloatingText {
       y: this.y,
       text: this.text,
       textKey: this.textKey,
-      textArgs: this.textArgs,
+      textArgs: copyPlainData(this.textArgs),
       color: this.color,
       life: this.life,
       maxLife: this.maxLife,

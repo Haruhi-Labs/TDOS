@@ -264,7 +264,7 @@ export function buildObservation(match, seat) {
     world: {
       size: match.worldSize,
       mapPadding: match.mapPadding,
-      zones: match.zones,
+      zones: match.zones.map((zone) => ({ ...zone })),
     },
     rules: {
       bunnyStage: Boolean(match.bunnyHaruhiActive),

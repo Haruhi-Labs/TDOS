@@ -61,7 +61,7 @@ for (const file of files) {
 const leafBoundaries = [
   {
     dir: "shared/game",
-    allowedRoots: ["shared/game", "shared/protocol"],
+    allowedRoots: ["shared/game", "shared/protocol", "shared/data"],
     reason: "共享规则叶模块不得反向依赖总入口、界面或服务端",
   },
   {
@@ -70,6 +70,7 @@ const leafBoundaries = [
       "shared/game/ai/policy",
       "shared/game/ai/params",
       "shared/game/ai/actions.js",
+      "shared/data",
       "shared/game/math.js",
       "shared/game/characters.js",
       "shared/game/throttle.js",

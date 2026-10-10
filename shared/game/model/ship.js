@@ -986,9 +986,9 @@ export class Ship {
       route: this.route
         ? {
             anchorToMain: this.route.anchorToMain,
-            p0: this.route.p0,
-            p1: this.route.p1,
-            p2: this.route.p2,
+            p0: { ...this.route.p0 },
+            p1: { ...this.route.p1 },
+            p2: { ...this.route.p2 },
             t: this.route.t,
           }
         : null,

@@ -566,7 +566,7 @@ export class MatchSimulation {
       },
       mode: this.mode,
       aiSeats: [...this.aiSeats],
-      zones: this.zones,
+      zones: this.zones.map((zone) => ({ ...zone })),
       phase: this.phase,
       winnerSeat: this.winnerSeat,
       elapsed: this.elapsed,

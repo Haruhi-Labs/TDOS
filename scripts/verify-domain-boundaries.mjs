@@ -44,3 +44,25 @@ for (let repeat = 0; repeat < 3; repeat += 1) {
 }
 assert.equal(JSON.stringify(match.serializeState()), before, "能力查询不得写入权威状态");
 console.log("领域边界校验通过：通用系统消费能力契约，查询不写入权威状态。");
+
+// 输出给 UI 或工具的快照不得把航线、地图或 AI 记忆的引用带出权威层。
+const isolated = new MatchSimulation({ mode: "ai", seed: 93 });
+isolated.teamA.ships.main.setBezierRoute(undefined, undefined, 500, 500, 1, false);
+for (let tick = 0; tick < 20; tick += 1) isolated.update();
+const detached = isolated.serializeState();
+const expected = JSON.stringify(detached);
+function vandalize(value) {
+  if (!value || typeof value !== "object") return;
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === "number") value[key] = -999;
+    else if (typeof item === "string") value[key] = "外部修改";
+    else vandalize(item);
+  }
+}
+vandalize(detached);
+assert.equal(JSON.stringify(isolated.serializeState()), expected, "修改输出快照不得回写权威或 AI 状态");
+const observation = isolated.bot.port.observe();
+const zoneX = isolated.zones[0].x;
+observation.world.zones[0].x = -500;
+assert.equal(isolated.zones[0].x, zoneX, "AI 观察不得引用权威地图对象");
+console.log("输出隔离校验通过：外部修改快照及观察不能回写对局。");

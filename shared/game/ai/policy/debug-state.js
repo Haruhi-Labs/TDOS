@@ -1,3 +1,4 @@
+import { copyPlainData } from "../../../data/plain-data.js";
 // 调试状态序列化：供推演页展示决策中间量，结构保持稳定。
 // 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
 
@@ -200,7 +201,7 @@ export const debugStateMethods = {
         visibleContacts += 1;
       }
     }
-    return {
+    return copyPlainData({
       seat: this.seat,
       mode: this.mode,
       modeTimer: this.modeTimer,
@@ -257,6 +258,6 @@ export const debugStateMethods = {
         ...this.lastSplitDecision,
         level: this.obs.self.splitLevel,
       },
-    };
+    });
   },
 };
