@@ -127,6 +127,13 @@ export class MatchSimulation {
     }
   }
 
+  discardProjectilesFrom(sourceId) {
+    for (const projectile of this.projectiles) {
+      if (projectile.sourceId === sourceId) projectile.discard();
+    }
+    this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
+  }
+
   configureTutorialBattle() {
     this.teamA.damageFloorRatio = 0.25;
     this.teamB.forceCharacterSkillsDisabled = true;

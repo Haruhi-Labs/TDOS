@@ -198,6 +198,14 @@ export class Team {
     return [this.ships.main, this.ships.sub1, this.ships.sub2];
   }
 
+  addAuxiliaryShip(ship) {
+    this.extraShips.push(ship);
+  }
+
+  removeAuxiliaryShip(ship) {
+    this.extraShips = this.extraShips.filter((candidate) => candidate !== ship);
+  }
+
   getAllShips() {
     return [...this.getPlayerShips(), ...this.extraShips];
   }

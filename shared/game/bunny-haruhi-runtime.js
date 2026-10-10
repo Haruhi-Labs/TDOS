@@ -50,14 +50,11 @@ export function commitBunnyTransform(ship) {
     unlockBunnyHaruhiSupport(source, match.elapsed, rngFor(match).next);
   }
   ship.bunnyHaruhi = result.state;
-  ship.hp = result.hp;
-  ship.energy = result.energy;
-  ship.throttle = resolveBunnyThrottle(result.state, oldThrottle, true, match.elapsed);
-  if (oldSpeed > 0) ship.speed *= ship.effectiveSpeed() / oldSpeed;
-  ship.cooldown *= oldRate / ship.effectiveFireRate();
+  ship.applyResourcePlan(result);
+  ship.setThrottle(resolveBunnyThrottle(result.state, oldThrottle, true, match.elapsed));
+  ship.rescaleCombatTiming(oldSpeed, oldRate);
   for (const old of companions) {
-    if (old.speed > 0) old.ship.speed *= old.ship.effectiveSpeed() / old.speed;
-    old.ship.cooldown *= old.rate / old.ship.effectiveFireRate();
+    old.ship.rescaleCombatTiming(old.speed, old.rate);
   }
   if (result.spawnCompanion) team.spawnBunnyCompanion(ship);
   team.cooldowns[ship.key] = result.cooldownSeconds;
@@ -91,8 +88,8 @@ export function resolveBunnyStages(match) {
         inside, sourceShipId: sample?.sourceShipId, now: match.elapsed, tick: match.tick,
       });
       ship.bunnyStageExposure = resolved.state;
-      if (resolved.healRatio && ship.alive) ship.hp = Math.min(ship.maxHp, ship.hp + ship.maxHp * resolved.healRatio);
-      if (!ship.isControlImmune() && isBunnyControlLocked(resolved.state, match.elapsed)) ship.speed = 0;
+      if (resolved.healRatio && ship.alive) ship.restoreHull(ship.maxHp * resolved.healRatio);
+      if (!ship.isControlImmune() && isBunnyControlLocked(resolved.state, match.elapsed)) ship.setFlightSpeed(0);
     }
   }
 }
@@ -105,12 +102,12 @@ export function advanceBunnyRules(match) {
     for (const team of [match.teamA, match.teamB]) {
       for (const ship of team.getPlayerShips()) {
         if (!ship.alive) continue;
-        if (ship.bunnyHaruhi) ship.hp -= bunnySelfDrainAmount(ship.bunnyHaruhi, {
+        if (ship.bunnyHaruhi) ship.drainHull(bunnySelfDrainAmount(ship.bunnyHaruhi, {
           from, to, hp: ship.hp, maxHp: ship.maxHp, enabled: !team.areSkillsDisabled(),
-        });
-        if (ship.bunnyStageExposure) ship.hp += bunnyStageHealAmount(ship.bunnyStageExposure, {
+        }));
+        if (ship.bunnyStageExposure) ship.restoreHull(bunnyStageHealAmount(ship.bunnyStageExposure, {
           from, to, hp: ship.hp, maxHp: ship.maxHp, enabled: bunnyStageEnabled(ship),
-        });
+        }));
       }
     }
     match.bunnySustainAt = to;

@@ -145,6 +145,39 @@ export class Ship {
     this.route = null;
   }
 
+  applyResourcePlan({ hp = this.hp, energy = this.energy }) {
+    this.hp = hp;
+    this.energy = energy;
+  }
+
+  resetHullCapacity(maxHp) {
+    this.maxHp = maxHp;
+    this.hp = maxHp;
+  }
+
+  rescaleCombatTiming(previousSpeed, previousRate) {
+    if (previousSpeed > 0) this.speed *= this.effectiveSpeed() / previousSpeed;
+    this.cooldown *= previousRate / this.effectiveFireRate();
+  }
+
+  followTarget(point, throttle = this.throttle) {
+    this.command = { ...point };
+    this.throttle = throttle;
+  }
+
+  transferToTeam(destination) {
+    this.team.removeAuxiliaryShip(this);
+    this.team = destination;
+    destination.addAuxiliaryShip(this);
+  }
+
+  retireWithoutLoss() {
+    this.alive = false;
+    this.hp = 0;
+    this.speed = 0;
+    this.route = null;
+  }
+
   restoreHull(amount) {
     this.hp = Math.min(this.maxHp, this.hp + amount);
   }

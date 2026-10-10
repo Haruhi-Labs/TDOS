@@ -1,3 +1,4 @@
+import { Projectile } from "../../shared/game/model/projectile.js";
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
 import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
@@ -193,7 +194,7 @@ function conversionCheck() {
   companion.x = owner.x + 40;
   companion.y = owner.y;
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
-  sim.projectiles.push({ sourceId: id, alive: true }, { sourceId: owner.id, alive: true });
+  sim.projectiles.push(new Projectile({ team, source: companion }), new Projectile({ team, source: owner }));
   assert.equal(enemy.bribeZone(enemy.ships.sub1, zone.id), true);
   assert.equal(companion.team, enemy);
   assert.ok(!team.extraShips.includes(companion) && enemy.extraShips.includes(companion));
@@ -274,7 +275,7 @@ function conversionCheck() {
   sim.elapsed = 24.99;
   prepareBunnyCompanions(sim);
   assert.equal(companion.team, enemy);
-  sim.projectiles.push({ sourceId: id, alive: true });
+  sim.projectiles.push(new Projectile({ team, source: companion }));
   sim.elapsed = 25;
   const oldRate = companion.effectiveFireRate();
   companion.cooldown = 1;
@@ -400,7 +401,7 @@ function replayAndDisplayCheck() {
   const after = sim.serializeState();
   const app = { routeOverrides: new Map(), smoothEntities: new Map(), lastRenderMs: 0, seat: "A", serverTickRate: 30, interpDelayMs: 0 };
   let now = 1000;
-  const sync = createOnlineStateSync({ app, nowMs: () => now, worldSize: sim.worldSize, maxExtrapolateMs: 180 });
+  const sync = createOnlineStateSync({ timeline: app, getSeat: () => app.seat, getRouteOverride: (key) => app.routeOverrides.get(key), nowMs: () => now, worldSize: sim.worldSize, maxExtrapolateMs: 180 });
   app.snapshots = [{ tick: 0, state: before, serverTimeMs: now, receivedAtMs: now }];
   sync.getRenderState();
   now += 16;

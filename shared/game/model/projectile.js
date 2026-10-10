@@ -42,6 +42,10 @@ export class Projectile {
     this.originY = y;
   }
 
+  discard() {
+    this.alive = false;
+  }
+
   update(dt, match) {
     if (!this.alive) {
       return;

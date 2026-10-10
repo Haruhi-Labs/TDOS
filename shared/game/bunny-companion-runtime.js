@@ -28,7 +28,7 @@ function followPoint(owner, offset) {
   };
 }
 
-/** Ship工厂由兼容入口注入，叶模块不反向导入game-core。 */
+/** Ship 工厂由舰队注入，角色规则不反向导入实体实现。 */
 export function spawnBunnyCompanion(owner, createShip) {
   if (!owner.alive || owner.bunnyHaruhi?.form !== "encore" || owner.bunnyHaruhi.companionId !== null
     || !["sub1", "sub2"].includes(owner.key) || owner.team.ships[owner.key] !== owner) return null;
@@ -40,10 +40,9 @@ export function spawnBunnyCompanion(owner, createShip) {
     entityRole: C.companionRole, baseStats: deriveBunnyCompanionBase(owner.base), roleLabel: "伴随舰",
   });
   ship.bunnyCompanion = createBunnyCompanionState(owner.id, team.seat, team.match.elapsed);
-  ship.maxHp = Math.max(1, Math.round(ship.base.hp * (team.statMult || 1)));
-  ship.hp = ship.maxHp;
-  ship.throttle = owner.throttle;
-  team.extraShips.push(ship);
+  ship.resetHullCapacity(Math.max(1, Math.round(ship.base.hp * (team.statMult || 1))));
+  ship.setThrottle(owner.throttle);
+  team.addAuxiliaryShip(ship);
   owner.bunnyHaruhi.companionId = ship.id;
   owner.bunnyHaruhi.companionSpawned = true;
   return ship;
@@ -75,11 +74,7 @@ function clearCompanionReliable(ship) {
 }
 
 function clearCompanionProjectiles(ship) {
-  const { match } = ship.team;
-  for (const projectile of match.projectiles) {
-    if (projectile.sourceId === ship.id) projectile.alive = false;
-  }
-  match.projectiles = match.projectiles.filter((projectile) => projectile.alive);
+  ship.team.match.discardProjectilesFrom(ship.id);
 }
 
 function transferCompanion(ship, destination, nextState) {
@@ -87,14 +82,11 @@ function transferCompanion(ship, destination, nextState) {
   const oldRate = ship.effectiveFireRate();
   clearCompanionReliable(ship);
   clearCompanionProjectiles(ship);
-  ship.team.extraShips = ship.team.extraShips.filter((candidate) => candidate !== ship);
-  ship.team = destination;
+  ship.transferToTeam(destination);
   ship.bunnyCompanion = nextState;
-  destination.extraShips.push(ship);
   // 位置与生命不因换阵营重算；伤害等查询读取当前阵营，禁止重复难度缩放。
-  ship.route = null;
-  if (oldSpeed > 0) ship.speed *= ship.effectiveSpeed() / oldSpeed;
-  ship.cooldown *= oldRate / ship.effectiveFireRate();
+  ship.clearRoute();
+  ship.rescaleCombatTiming(oldSpeed, oldRate);
 }
 
 function returnCompanion(ship, now) {
@@ -103,8 +95,7 @@ function returnCompanion(ship, now) {
     ...ship.bunnyCompanion, convertedUntil: 0, nextReliableAt: now + C.companion.intervalSeconds,
     reliableUntil: 0, reliableStartedTick: -1,
   });
-  ship.command = followPoint(owner, ship.bunnyCompanion.followOffset);
-  ship.throttle = owner.throttle;
+  ship.followTarget(followPoint(owner, ship.bunnyCompanion.followOffset), owner.throttle);
 }
 
 /** 战区资格由鹤屋入口校验；转移仅发生在队伍更新前的动作/生命周期阶段。 */
@@ -117,7 +108,7 @@ export function convertBunnyCompanion(ship, destination, zone) {
     returnCompanion(ship, now);
   } else {
     transferCompanion(ship, destination, planBunnyCompanionConversion(ship.bunnyCompanion, now).state);
-    ship.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+    ship.followTarget({ x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 });
   }
   return true;
 }
@@ -127,10 +118,7 @@ export function cleanupBunnyCompanions(match) {
   for (const ship of bunnyCompanions(match)) {
     const owner = bunnyCompanionOwner(ship);
     if (ship.alive && owner?.alive) continue;
-    ship.alive = false;
-    ship.hp = 0;
-    ship.speed = 0;
-    ship.route = null;
+    ship.retireWithoutLoss();
     ship.bunnyCompanion.nextReliableAt = null;
     ship.bunnyCompanion.convertedUntil = 0;
     clearCompanionReliable(ship);
@@ -160,13 +148,12 @@ export function prepareBunnyCompanions(match) {
     else ship.bunnyCompanion = result.state;
     if (result.triggerReliable) {
       for (const receiver of [owner, ship]) {
-        Object.assign(receiver, bunnyReliableRecovery(receiver));
+        receiver.applyResourcePlan(bunnyReliableRecovery(receiver));
         receiver.bunnyReliable = createBunnyReliableState(ship.id, match.elapsed, match.tick);
       }
     }
     if (ship.bunnyCompanion.convertedUntil) continue;
-    ship.command = followPoint(owner, ship.bunnyCompanion.followOffset);
-    ship.throttle = owner.throttle;
+    ship.followTarget(followPoint(owner, ship.bunnyCompanion.followOffset), owner.throttle);
   }
 }
 
