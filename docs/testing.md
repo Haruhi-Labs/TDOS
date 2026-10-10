@@ -105,4 +105,4 @@ env -u NETWORK_WS_URL npm run test:network:load
 
 ## 架构重构行为基线
 
-`npm run test:architecture:replay` 使用重构前提交 `8376672` 录制的固定种子基线，覆盖八组阵容、四种难度、每组 3600 帧。每帧将完整公开权威状态与 AI 调试决策纳入摘要，每 300 帧比较一次，失败时定位首个分歧区间。它自建内存模拟，不连接服务、不写统计。基线只在明确评估规则变化后通过 `node scripts/verify-architecture-replay.mjs --record` 更新；纯架构重构不得重刷基线来接受行为变化。它补充领域断言，不证明所有技能组合、真实设备或线上行为。
+`npm run test:architecture:replay` 使用同步远端后的重构起点 `406c910` 录制的固定种子基线，覆盖含兔女郎春日在内的九组阵容、四种难度、每组 3600 帧。每帧将完整公开权威状态与 AI 调试决策纳入摘要，每 300 帧比较一次，失败时定位首个分歧区间。它自建内存模拟，不连接服务、不写统计。基线只在明确评估规则变化后通过 `node scripts/verify-architecture-replay.mjs --record` 更新；纯架构重构不得重刷基线来接受行为变化。它补充领域断言，不证明所有技能组合、真实设备或线上行为。

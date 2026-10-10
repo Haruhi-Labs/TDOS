@@ -8,14 +8,15 @@ const fixture = new URL("./fixtures/architecture-replay.json", import.meta.url);
 const record = process.argv.includes("--record");
 const expected = record ? null : JSON.parse(readFileSync(fixture, "utf8"));
 const results = [];
+const roster = [...new Set([...CHARACTER_ORDER, "bunny_haruhi"])];
 const originalRandom = Math.random;
 function loadout(index) {
   return Object.fromEntries(["main", "sub1", "sub2"].map((key, offset) => [
-    key, CHARACTER_ORDER[(index + offset) % CHARACTER_ORDER.length],
+    key, roster[(index + offset) % roster.length],
   ]));
 }
 try {
-  for (let index = 0; index < CHARACTER_ORDER.length; index += 1) {
+  for (let index = 0; index < roster.length; index += 1) {
     let seed = (0x1096cafe + index) >>> 0;
     Math.random = () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -45,5 +46,5 @@ try {
 } finally {
   Math.random = originalRandom;
 }
-if (record) writeFileSync(fixture, `${JSON.stringify({ baseline: "83766723e1047ed2ba94df1f565e4cbdba9ee667", cases: results }, null, 2)}\n`);
-console.log(`架构回放${record ? "基线录制" : "校验"}通过：八组阵容、四种难度，共 28800 帧权威状态与 AI 决策。`);
+if (record) writeFileSync(fixture, `${JSON.stringify({ baseline: "406c910f6700a8c6e069e13151d75a4a49ffad36", cases: results }, null, 2)}\n`);
+console.log(`架构回放${record ? "基线录制" : "校验"}通过：${roster.length} 组阵容、四种难度，共 ${roster.length * 3600} 帧权威状态与 AI 决策。`);
