@@ -132,7 +132,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
     return nowMs() + app.clockOffsetMs;
   }
   
-  function smoothEntity(entity, dt, followRate, teleportDistance) {
+  function smoothEntity(entity, dt, followRate, teleportDistance, teamSeat) {
     if (!entity || !Number.isFinite(entity.id)) {
       return entity;
     }
@@ -143,12 +143,15 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
   
     const cache = app.smoothEntities.get(entity.id);
     const seenAt = nowMs();
-    if (!cache) {
+    // 只有新伴随舰需要换队隔离；旧飞行器保留原平滑行为。
+    const companion = entity.entityRole === "bunny_kyon";
+    if (!cache || (companion && cache.teamSeat !== teamSeat)) {
       app.smoothEntities.set(entity.id, {
         x: entity.x,
         y: entity.y,
         angle: entity.angle || 0,
         seenAt,
+        ...(companion ? { teamSeat } : {}),
       });
       return entity;
     }
@@ -160,6 +163,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
         y: entity.y,
         angle: entity.angle || 0,
         seenAt,
+        ...(companion ? { teamSeat } : {}),
       });
       return entity;
     }
@@ -176,6 +180,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
       y,
       angle,
       seenAt,
+      ...(companion ? { teamSeat } : {}),
     });
     return {
       ...entity,
@@ -199,7 +204,7 @@ export function createOnlineStateSync({ app, nowMs, worldSize, maxExtrapolateMs 
         sub2: smoothEntity(team.ships.sub2, dt, followRate, teleportDistance),
       },
       extraShips: Array.isArray(team.extraShips)
-        ? team.extraShips.map((ship) => smoothEntity(ship, dt, followRate, teleportDistance))
+        ? team.extraShips.map((ship) => smoothEntity(ship, dt, followRate, teleportDistance, team.seat))
         : [],
       scouts: Array.isArray(team.scouts) ? team.scouts.map((item) => smoothEntity(item, dt, followRate - 2, teleportDistance * 0.9)) : [],
       wingmen: Array.isArray(team.wingmen) ? team.wingmen.map((item) => smoothEntity(item, dt, followRate - 2, teleportDistance * 0.9)) : [],

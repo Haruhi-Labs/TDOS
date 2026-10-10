@@ -108,6 +108,7 @@ export function quadraticStartCurvature(p0, p1, p2) {
   return cross / (2 * speed * speed * speed);
 }
 
+// 仅为兼容保留：对局内的随机取值统一使用 rng.js 提供的对局随机源。
 export function randomInRange(min, max) {
   return Math.random() * (max - min) + min;
 }

@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 
 const contracts = new Map([
+  ["../shared/game/haruhi-flagship.js", [
+    "HARUHI_ALIEN_INTERVAL", "HARUHI_BOOST_MULTIPLIER", "HARUHI_DAMAGE_TAKEN_MULTIPLIER",
+    "HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER", "HARUHI_ESPER_ORBIT_SPEED",
+    "HARUHI_OTHERWORLDER_COOLDOWN", "HARUHI_OTHERWORLDER_DAMAGE_RATIO",
+    "HARUHI_OTHERWORLDER_KNOCKBACK_DURATION", "HARUHI_SUPPORTS", "HARUHI_SUPPORT_LABELS",
+    "HARUHI_TIME_TRAVELER_BEAM_GAP", "HARUHI_TIME_TRAVELER_INTERVAL",
+    "activateHaruhiFlagship", "createHaruhiFlagshipState", "haruhiBoostActive",
+    "haruhiDamageTakenMultiplier", "haruhiEsperOrb", "haruhiOtherworlderReady",
+    "haruhiStatMultiplier", "hasHaruhiSupport", "projectileAbsorptionPoint",
+    "serializeHaruhiFlagship", "triggerHaruhiOtherworlder", "updateHaruhiFlagship",
+  ]],
   ["../shared/game-core.js", [
     "AUTO_SCOUT_COOLDOWN_MULTIPLIER", "BotController", "CHARACTER_DEFS", "CHARACTER_ORDER",
     "DEFAULT_AI_LOADOUT", "DEFAULT_MAP_PADDING", "DEFAULT_TEAM_LOADOUT", "DEFAULT_THROTTLE_GEAR",

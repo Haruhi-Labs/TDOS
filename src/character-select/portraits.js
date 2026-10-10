@@ -96,6 +96,9 @@ export const CHARACTER_THEMES = {
 // 立绘合成（真实图片 + 复古占位）
 // ═══════════════════════════════════════════════════
 const portraitCache = new Map();
+// 仅复用素材，不更改独立角色ID或战斗定义；成功/失败缓存也共用原图。
+const portraitSourceId = (id) => id === "bunny_haruhi" ? "haruhi" : id;
+CHARACTER_THEMES.bunny_haruhi = CHARACTER_THEMES.haruhi;
 const imageCache = new Map();
 
 // 同步加载状态：成功时缓存 Image，失败时缓存 null
@@ -104,15 +107,17 @@ const imageSyncMap = new Map();
 // 立绘按阵营分蓝/红两套：/assets/portraits/{color}/{charId}.webp
 export const TEAM_COLORS = ["blue", "red"];
 function pkey(charId, color) {
-  return `${color}/${charId}`;
+  return `${color}/${portraitSourceId(charId)}`;
 }
 
 // 公共目录中的立绘没有构建哈希；资源内容发生替换时改用新文件名，避免线上长期缓存继续命中旧图。
 export function getPortraitAssetUrl(charId, color = "blue") {
+  charId = portraitSourceId(charId);
   return `${import.meta.env.BASE_URL}assets/portraits/${color}/${charId}.webp`;
 }
 
 export function loadPortraitImage(charId, color = "blue") {
+  charId = portraitSourceId(charId);
   const key = pkey(charId, color);
   if (imageCache.has(key)) {
     return imageCache.get(key);
@@ -141,6 +146,7 @@ export function getLoadedPortraitImage(charId, color = "blue") {
 }
 
 export function getPortrait(charId, width = 400, height = 700, color = "blue") {
+  charId = portraitSourceId(charId);
   const key = `${color}/${charId}-${width}x${height}`;
   if (portraitCache.has(key)) {
     return portraitCache.get(key);

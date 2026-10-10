@@ -3,6 +3,22 @@ const negative = (name, icon, description, persistent = "持续至被驱散或�
 
 // 展示目录不决定战斗结果。新增状态在这里定义身份与说明，在 status-effects.js 提供权威寿命。
 export const STATUS_EFFECT_DEFS = Object.freeze({
+  bunny_bless: positive("攻击形态强化", "star", "航速+{assaultSpeed}%，转向与加速+{assaultManeuver}%，射程与视野+{assaultRange}%，伤害+{assaultDamage}%，射速+{assaultRate}%。", "切换形态后结束"),
+  bunny_vulnerable: negative("攻击形态易伤", "broken_shield", "受到伤害增加{vulnerable}%。", "切换形态后结束"),
+  bunny_knows: negative("防御形态减益", "slow", "机动、射程、视野降至{guardMove}%，伤害和射速降至{guardAttack}%。", "切换形态后结束"),
+  bunny_immunity: positive("形态免伤", "shield", "暂时免疫外部伤害，不免疫控制与驱散。"),
+  bunny_drain: negative("形态自损", "broken_shield", "每秒消耗{drainRate}%最大生命，最低保留1生命。"),
+  bunny_encore: positive("激奏", "lock", "推进固定为{gear}档，持续{encoreDuration}秒；正常耗能，能量耗尽仍能按该档移动，控制仍会降低实际航速。"),
+  bunny_speechless: negative("哑口无言", "silence", "沉默、航速与射速降低{speechlessSlow}%，停止自然回能。", "离开舞台后结束"),
+  bunny_entranced: positive("入迷", "plus", "战斗属性提高{stageBoost}%，每秒恢复{stageRegen}%最大生命。", "离开舞台后结束"),
+  bunny_lock: negative("舞台禁控", "lock", "暂时失去操控与射击能力。"),
+  bunny_recovery: negative("舞台恢复", "slow", "航速逐渐恢复，不再禁控。"),
+  bunny_reliable: positive("伴随舰可靠增益", "plus", "转向提高{reliableTurn}%，航速和伤害提高{reliableSpeed}%，加速提高{reliableAccel}%；无额外减伤。"),
+  bunny_broadcast: negative("位置广播", "eye", "当前位置向敌方公开。", "来源停止后结束"),
+  bunny_converted: negative("临时策反", "return", "策反期间加入敌方，计时结束后归还。"),
+  bunny_time_traveler: positive("未来人", "beam", "本舰每{beamInterval}秒发射三道随机光线。"),
+  bunny_otherworlder: positive("异世界人", "impact", "本舰获得冲撞气场，命中与破盾共用{impactCooldown}秒冷却。"),
+  bunny_esper: positive("超能力者", "orb", "光球环绕本舰视野边界并吸收敌弹。"),
   reliable: positive("靠谱的普通人", "shield", "转向提高28%，航速与伤害提高8%，加速提高12%，受到伤害降低16%。"),
   blade_queen: positive("刀锋女王", "blade", "航速提高45%，加速提高26%，转向提高12%；至少保持强化后的三档满能量航速，受控时沿当前朝向续飞，仍不能操作。可穿舰，刀锋半径扩大25%，接触伤害固定为目标最大生命的15%，持续重叠每秒结算一次。"),
   cat_paw: positive("猫爪乱舞", "paw", "射速提高15%，发射猫爪子弹；连续命中叠加抓痕，达到4层额外造成80伤害。"),

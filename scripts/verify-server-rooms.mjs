@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../shared/game-core.js";
 import { createRoomLifecycle } from "../server/room-lifecycle.js";
 import { MAX_ACTIVE_ROOMS, MAX_STREAM_CAPACITY_UNITS } from "../server/config.js";
@@ -315,6 +316,46 @@ function tournamentWaitingAndCapacityCheck() {
   assert.equal(h.lifecycle.createRoom(old, "public", "pvp").ok, true, "旧客户端仍可加入普通房流程");
 }
 
+function bunnyRulesetCheck() {
+  const h = createHarness();
+  const current = createPlayer("current");
+  current.rulesetVersion = RULESET_VERSION;
+  const legacy = createPlayer("legacy");
+  h.players.set(current.id, current);
+  h.players.set(legacy.id, legacy);
+  const bunny = { main: "bunny_haruhi", sub1: "kyon", sub2: "yuki" };
+  assert.equal(h.lifecycle.updateLoadout(legacy, bunny).ok, false);
+  assert.equal(h.lifecycle.updateLoadout(current, bunny).ok, true);
+  const { room } = h.lifecycle.createRoom(current, "public", "pvp");
+  assert.equal(h.lifecycle.joinRoom(legacy, room).ok, false);
+  legacy.rulesetVersion = RULESET_VERSION;
+  assert.equal(h.lifecycle.joinRoom(legacy, room).ok, true);
+  const observer = createPlayer("observer");
+  h.players.set(observer.id, observer);
+  assert.equal(h.lifecycle.spectateRoom(observer, room).ok, false);
+  observer.rulesetVersion = RULESET_VERSION;
+  assert.equal(h.lifecycle.spectateRoom(observer, room).ok, true);
+  h.lifecycle.closeRoom(room.id);
+  current.supportsTournamentRooms = observer.supportsTournamentRooms = true;
+  observer.rulesetVersion = "";
+  const tournament = h.lifecycle.createRoom(observer, "public", "pvp", "tournament").room;
+  assert.equal(h.lifecycle.joinRoom(current, tournament).ok, false, "不能把新阵容带进仍有旧端观众的准备房");
+  current.loadout = cloneLoadout(DEFAULT_TEAM_LOADOUT);
+  assert.equal(h.lifecycle.joinRoom(current, tournament).ok, true);
+  assert.equal(h.lifecycle.updateLoadout(current, bunny).ok, false);
+  assert.deepEqual(current.loadout, DEFAULT_TEAM_LOADOUT, "失败更换阵容必须原子拒绝");
+  observer.rulesetVersion = RULESET_VERSION;
+  assert.equal(h.lifecycle.updateLoadout(current, bunny).ok, true);
+  legacy.supportsTournamentRooms = true;
+  assert.equal(h.lifecycle.joinRoom(legacy, tournament).ok, true);
+  h.lifecycle.setPlayerReady(current, true);
+  h.lifecycle.setPlayerReady(legacy, true);
+  legacy.rulesetVersion = "";
+  assert.equal(h.lifecycle.startTournament(observer).ok, false, "就绪后规则声明失效也不能开赛");
+  legacy.rulesetVersion = RULESET_VERSION;
+  assert.equal(h.lifecycle.startTournament(observer).ok, true);
+}
+bunnyRulesetCheck();
 tournamentLifecycleCheck();
 tournamentWaitingAndCapacityCheck();
 roomRegistryCheck();

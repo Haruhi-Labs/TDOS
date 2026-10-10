@@ -99,6 +99,25 @@ try {
     };
   }
   const host = await enter("主持<评委>");
+  const labels = await host.page.evaluate(async () => {
+    const { setLocale, t } = await import("/src/i18n.js");
+    const { createTournamentView } = await import("/src/online/tournament-view.js");
+    const results = [];
+    for (const locale of ["zh", "ja", "en"]) {
+      setLocale(locale, { notify: false });
+      const root = document.createElement("div");
+      root.innerHTML = '<div class="game-wrap"></div>';
+      const view = createTournamentView(root, { onLoadout() {}, onReady() {}, onStart() {} });
+      const button = root.querySelector('[data-tournament="ready"]');
+      const initial = button.textContent;
+      view.update({ room: { kind: "tournament", status: "waiting", players: [{ playerId: "fixture", seat: "A", ready: false }] }, seat: "A", connected: true, compatible: true });
+      results.push([locale, initial, button.textContent, t("就绪")]);
+      view.destroy();
+    }
+    setLocale("zh", { notify: false });
+    return results;
+  });
+  assert.deepEqual(labels, [["zh", "设为就绪", "设为就绪", "就绪"], ["ja", "準備完了", "準備完了", "使用可能"], ["en", "Ready", "Ready", "Ready"]], "比赛准备按钮和技能可用状态必须各自正确翻译");
   await host.page.getByRole("button", { name: "创建比赛房间", exact: true }).click();
   await host.page.locator(".tournament-preparation").waitFor({ state: "visible" });
   assert.equal(host.state().self.seat, null);
@@ -129,7 +148,7 @@ try {
   await observer.send({ type: "set_ready", ready: true });
   await until(() => observer.incoming.some((m) => m.code === "tournament_player_only"), "观众伪造就绪被拒绝");
   // 等待时支持离席补位，原 B 席位不挪动，已有就绪失效。
-  await b.page.getByRole("button", { name: "就绪", exact: true }).click();
+  await b.page.getByRole("button", { name: "设为就绪", exact: true }).click();
   await until(() => host.state().room.players[1].ready, "B 方先就绪");
   await a.page.getByRole("button", { name: "离开房间", exact: true }).click();
   await until(() => !host.state().room.players[0].playerId && !host.state().room.players[1].ready, "离席取消双方就绪");
@@ -140,8 +159,8 @@ try {
   await observer.page.getByRole("button", { name: "离开房间", exact: true }).click();
   await roomCard(observer.page).getByRole("button", { name: "观战", exact: true }).click();
   await observer.page.locator(".tournament-preparation").waitFor({ state: "visible" });
-  await a.page.getByRole("button", { name: "就绪", exact: true }).click();
-  await b.page.getByRole("button", { name: "就绪", exact: true }).click();
+  await a.page.getByRole("button", { name: "设为就绪", exact: true }).click();
+  await b.page.getByRole("button", { name: "设为就绪", exact: true }).click();
   await until(() => host.state().room.players.every((p) => p.ready), "双方就绪");
   assert.equal(host.state().room.status, "waiting", "双方就绪不应自动开始");
   // 真实选角交互修改阵容，保存动作不会开启比赛。
@@ -159,7 +178,7 @@ try {
   assert.equal(await host.page.locator('[data-tournament="start"]').isDisabled(), true);
   await a.page.locator(".cs-screen").waitFor({ state: "detached" });
   assert.equal(await observer.page.locator('.spectator-team[data-seat="A"] h3').first().textContent(), "朝仓凉子");
-  await a.page.getByRole("button", { name: "就绪", exact: true }).click();
+  await a.page.getByRole("button", { name: "设为就绪", exact: true }).click();
   await until(() => host.state().room.players.every((p) => p.ready), "新阵容重新就绪");
   await b.page.setViewportSize({ width: 390, height: 844 });
   await b.page.getByRole("button", { name: "更换阵容", exact: true }).click();
@@ -171,7 +190,7 @@ try {
   await b.page.getByRole("button", { name: "保存阵容", exact: true }).click();
   await until(() => host.state().room.players[1].ready === false, "触屏换阵容取消就绪");
   await b.page.locator(".csm").waitFor({ state: "detached" });
-  await b.page.getByRole("button", { name: "就绪", exact: true }).click();
+  await b.page.getByRole("button", { name: "设为就绪", exact: true }).click();
   await until(() => host.state().room.players.every((p) => p.ready), "触屏重新就绪");
   for (const [width, height] of [[1440, 900], [1280, 720], [1024, 600], [800, 600], [390, 844], [320, 568], [844, 390], [667, 375]]) {
     await assertLayout(host.page, width, height);

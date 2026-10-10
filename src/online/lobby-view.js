@@ -1,5 +1,4 @@
-import { CHARACTER_DEFS } from "../../shared/game-core.js";
-import { t, translateServerText } from "../i18n.js";
+import { characterShortName, t, translateServerText } from "../i18n.js";
 
 function localizedServerName(name, isBot = false) {
   const raw = String(name || "").trim();
@@ -41,7 +40,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
       const suffix = playerRow.isBot ? t("（AI）") : "";
       const displayName = localizedServerName(playerRow.name, playerRow.isBot);
       const loadoutText = playerRow.loadout
-        ? ` | ${CHARACTER_DEFS[playerRow.loadout.main].shortName}/${CHARACTER_DEFS[playerRow.loadout.sub1].shortName}/${CHARACTER_DEFS[playerRow.loadout.sub2].shortName}`
+        ? ` | ${["main", "sub1", "sub2"].map((key) => characterShortName(playerRow.loadout[key])).join("/")}`
         : "";
       rows.push(t("{seat}：{name}{suffix}{loadout}", {
         seat: seatText,

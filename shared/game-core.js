@@ -46,18 +46,21 @@ import {
   quadraticLengthApprox,
   quadraticPoint,
   quadraticStartCurvature,
-  randomInRange,
   rotateOffset,
   shortestAngleDelta,
   zoneContains,
 } from "./game/math.js";
+import { createAmbientRng, createSeededRng, rngFor } from "./game/rng.js";
 import { BotController } from "./game/bot-controller.js";
+import { createAiRunner } from "./game/ai/bridge/runner.js";
+import { aiHandicapFor } from "./game/ai/params/index.js";
 import { applyMatchAction } from "./game/action-dispatcher.js";
 import { serializeShipStatusEffects, statusEffectNames } from "./game/status-effects.js";
 import {
   COLLISION_SLOW_DURATION,
   COLLISION_SLOW_FLOOR,
   resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts,
+  resolveBunnyOtherworlderContacts,
   resolveBladeQueenContacts as resolveMatchBladeQueenContacts,
   resolveScoutClashes as resolveMatchScoutClashes,
   resolveShipCollisions as resolveMatchShipCollisions,
@@ -141,6 +144,23 @@ import {
   shamisenHuntDamageMultiplier,
 } from "./game/shamisen-hunt.js";
 import { DAMAGE_KIND, normalizeDamageContext } from "./game/damage.js";
+import { bunnyTeamSupportSources } from "./game/bunny-haruhi-support.js";
+import { isBunnyCompanion, countsForVictory, isFleetParticipant, purgeBunnyReliable, bunnyOwnerDamageBlocked } from "./game/bunny-haruhi-companion.js";
+import {
+  spawnBunnyCompanion, bunnyCompanionForm, prepareBunnyCompanions, cleanupBunnyCompanions,
+  serializeBunnyCompanion, bunnyReliableState, convertBunnyCompanion,
+} from "./game/bunny-companion-runtime.js";
+import { supportOrbGeometry } from "./game/haruhi-support.js";
+import {
+  createBunnyHaruhiState, bunnyStatMultiplier, bunnyDamageTakenMultiplier,
+  isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor,
+  cleanseBunnyStageControl, purgeBunnyForm, canBunnyLaunchScout, resolveBunnyThrottle, isBunnyEncoreLocked, bunnyEnergyRate,
+} from "./game/bunny-haruhi.js";
+import {
+  BUNNY_HARUHI_CHARACTER, bunnyStageEnabled, commitBunnyTransform,
+  resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, updateBunnyTeamSupports,
+  serializeBunnyShip, refreshBunnyVisibility,
+} from "./game/bunny-haruhi-runtime.js";
 import {
   createMatchTelemetry,
   recordTelemetryAction,
@@ -289,7 +309,13 @@ function normalizeAiSeats(mode = "pvp", aiSeats) {
 }
 
 let globalEntityId = 1;
-function nextEntityId() {
+// 带种子的对局使用自己的计数器，初值与递增方式和全局计数器相同；其余对局沿用全局计数器。
+function nextEntityId(match) {
+  const local = match?.entityIds;
+  if (local) {
+    local.value += 1;
+    return local.value;
+  }
   globalEntityId += 1;
   return globalEntityId;
 }
@@ -299,12 +325,12 @@ export function __resetEntityIds(state = 1) {
 }
 
 class FloatingText {
-  constructor(x, y, text, color = "#ffd178", meta = {}) {
+  constructor(x, y, text, color = "#ffd178", meta = {}, match = null) {
     const payload = text && typeof text === "object" ? text : null;
     const textKey = meta.textKey || payload?.textKey || payload?.key || null;
     const textArgs = meta.textArgs || payload?.textArgs || payload?.args || null;
     const fallback = payload ? payload.text || payload.fallback || textKey : text;
-    this.id = nextEntityId();
+    this.id = nextEntityId(match);
     this.kind = "floating_text";
     this.x = x;
     this.y = y;
@@ -343,8 +369,8 @@ class FloatingText {
 }
 
 class Burst {
-  constructor(x, y, color = "#ffdb9b", radius = 7) {
-    this.id = nextEntityId();
+  constructor(x, y, color = "#ffdb9b", radius = 7, match = null) {
+    this.id = nextEntityId(match);
     this.kind = "burst";
     this.x = x;
     this.y = y;
@@ -386,7 +412,7 @@ class Projectile {
     visualKind = "shell",
     claw = null,
   }) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "projectile";
     this.team = team;
     this.source = source || null;
@@ -433,6 +459,7 @@ class Projectile {
     let hitTarget = null;
     let nearest = Infinity;
     for (const entity of candidates) {
+      if (bunnyOwnerDamageBlocked(this.source, entity)) continue;
       if (!entity.alive || (typeof entity.isTargetableByFire === "function" && !entity.isTargetableByFire())) {
         continue;
       }
@@ -448,7 +475,7 @@ class Projectile {
     }
     // 小目标闪避:体型越小越容易被打空(侦察机/僚机),正常体型舰船不受影响
     const evade = clamp((SMALL_TARGET_REF_RADIUS - hitTarget.radius) / SMALL_TARGET_REF_RADIUS, 0, 1) * SMALL_TARGET_MAX_MISS;
-    if (evade > 0 && Math.random() < evade) {
+    if (evade > 0 && rngFor(match).next() < evade) {
       match.spawnFloatingTextKey(hitTarget.x, hitTarget.y - 6, "未命中", {}, "#92c5ff");
       return;
     }
@@ -511,14 +538,15 @@ class Projectile {
 
 class Ship {
   constructor(team, key, x, y, facing, options = {}) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "ship";
     this.team = team;
     this.key = key;
     this.slotKey = options.slotKey || key;
     this.characterId = options.characterId;
     this.character = getCharacterDef(this.characterId);
-    this.base = this.character.stats;
+    this.base = options.baseStats || this.character.stats;
+    if (options.entityRole) this.entityRole = options.entityRole;
     this.isAuxiliary = Boolean(options.isAuxiliary);
     this.attachToMain = options.attachToMain !== false;
     this.roleLabel = options.roleLabel || slotLabel(this.slotKey);
@@ -546,7 +574,7 @@ class Ship {
     this.koizumiOrb = null;
     this.heroPowerShock = createHaruhiHeroPowerShockState();
 
-    this.cooldown = randomInRange(0, 0.5);
+    this.cooldown = rngFor(this.team.match).range(0, 0.5);
     this.formationOffset = { x: 0, y: 0 };
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
@@ -569,6 +597,16 @@ class Ship {
     // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
     // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
     this.activeSkillEffectStartedTicks = Object.create(null);
+    if (this.character === BUNNY_HARUHI_CHARACTER) {
+      this.bunnyHaruhi = createBunnyHaruhiState();
+      // 仅新角色拦截最终落值，覆盖动作、航线和AI直接赋值，不改旧舰船属性形态。
+      let throttle = this.throttle;
+      Object.defineProperty(this, "throttle", {
+        enumerable: true, configurable: true,
+        get: () => resolveBunnyThrottle(this.bunnyHaruhi, throttle, !this.team.areSkillsDisabled(), this.team.match.elapsed),
+        set: (value) => { throttle = resolveBunnyThrottle(this.bunnyHaruhi, value, !this.team.areSkillsDisabled(), this.team.match.elapsed); },
+      });
+    }
   }
 
   isAttached() {
@@ -614,11 +652,13 @@ class Ship {
   }
 
   isControlLocked() {
-    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this));
+    return !this.isControlImmune() && (this.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(this)
+      || Boolean(this.bunnyStageExposure && isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this))));
   }
 
   isSilenced() {
-    return !this.isControlImmune() && this.hasEffect("silencedUntil");
+    return !this.isControlImmune() && (this.hasEffect("silencedUntil")
+      || (this.bunnyStageExposure?.phase === "speechless" && bunnyStageEnabled(this)));
   }
 
   isControlImmune() {
@@ -631,6 +671,7 @@ class Ship {
     this.heroPowerShock = createHaruhiHeroPowerShockState();
     this.collisionSlowUntil = 0;
     this.forcedKnockback = null;
+    if (this.bunnyStageExposure) this.bunnyStageExposure = cleanseBunnyStageControl(this.bunnyStageExposure);
   }
 
   isKoizumiOrbActive() {
@@ -642,7 +683,9 @@ class Ship {
   }
 
   isDamageImmune() {
-    return this.isKoizumiOrbActive();
+    return this.isKoizumiOrbActive()
+      || Boolean((this.bunnyHaruhi || this.bunnyCompanion)
+        && isBunnyDamageImmune(this.bunnyHaruhi || bunnyCompanionForm(this), this.team.match.elapsed, !this.team.areSkillsDisabled()));
   }
 
   statWithBuffs(statKey, baseValue) {
@@ -678,6 +721,11 @@ class Ship {
     value *= this.team.future1096StatMultiplier(statKey);
     value *= haruhiStatMultiplier(this.team, statKey);
 
+    if (this.bunnyHaruhi) value *= bunnyStatMultiplier({ form: this.bunnyHaruhi, enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
+    if (this.bunnyCompanion) value *= bunnyStatMultiplier({ form: bunnyCompanionForm(this), enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
+    if (this.bunnyReliable) value *= bunnyStatMultiplier({ reliable: bunnyReliableState(this), enabled: !this.team.areSkillsDisabled() }, statKey, this.team.match.elapsed);
+    if (this.bunnyStageExposure) value *= bunnyStatMultiplier({ stage: this.bunnyStageExposure, enabled: bunnyStageEnabled(this) }, statKey, this.team.match.elapsed);
+
     return value;
   }
 
@@ -702,7 +750,9 @@ class Ship {
   }
 
   effectiveSpeed() {
-    return this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
+    const speed = this.team.fleetSpeedForShip(this) * haruhiHeroPowerSpeedFactor(this);
+    return this.bunnyStageExposure && !this.isControlImmune()
+      ? speed * bunnyStageSpeedFactor(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) : speed;
   }
 
   minimumFlightSpeed() {
@@ -714,6 +764,10 @@ class Ship {
   }
 
   applyControlSpeedLimit() {
+    if (this.bunnyStageExposure && isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) && !this.isControlImmune()) {
+      this.speed = 0;
+      return;
+    }
     const minimumSpeed = this.minimumFlightSpeed();
     this.speed = minimumSpeed > 0 ? Math.max(this.speed, minimumSpeed) : 0;
   }
@@ -774,7 +828,7 @@ class Ship {
       value *= Math.max(0.01, Number(this.character.subSkill.fireRateMultiplier) || 1);
     }
     // 分离/单飞(本船所在编队仅 1 艘):开火频率加成
-    if (this.team.fleetMemberCountForShip(this) <= 1) {
+    if (!isBunnyCompanion(this) && this.team.fleetMemberCountForShip(this) <= 1) {
       value *= SOLO_FIRE_RATE_BONUS;
     }
     return value;
@@ -788,6 +842,8 @@ class Ship {
     value *= this.team.future1096DamageTakenMultiplier();
     value *= haruhiDamageTakenMultiplier(this.team);
     value *= haruhiHeroPowerDamageTakenMultiplier(this);
+    if (this.bunnyHaruhi) value *= bunnyDamageTakenMultiplier(this.bunnyHaruhi);
+    if (this.bunnyCompanion) value *= bunnyDamageTakenMultiplier(bunnyCompanionForm(this));
     return value;
   }
 
@@ -797,6 +853,17 @@ class Ship {
 
   clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
     let cleared = false;
+    if (this.bunnyReliable) {
+      const next = purgeBunnyReliable(this.bunnyReliable, preserveCurrentTick ? this.team.match.tick : -1);
+      if (next.suppressed !== this.bunnyReliable.suppressed) cleared = true;
+      this.bunnyReliable = next;
+    }
+    if (this.bunnyHaruhi) {
+      const old = this.bunnyHaruhi;
+      const next = purgeBunnyForm(old, preserveCurrentTick ? this.team.match.tick : -1);
+      if (next.positiveSuppressed !== old.positiveSuppressed || next.immunityUntil !== old.immunityUntil) cleared = true;
+      this.bunnyHaruhi = next;
+    }
     const canClear = (effectKey) => (
       !preserveCurrentTick
       || this.activeSkillEffectStartedTicks[effectKey] !== this.team.match.tick
@@ -835,6 +902,7 @@ class Ship {
     const cleared = this.isSilenced()
       || this.hasEffect("stunnedUntil")
       || this.heroPowerShock.recoveryUntil > now
+      || (this.bunnyStageExposure?.recoveryUntil || 0) > now
       || this.collisionSlowUntil > now
       || Boolean(this.forcedKnockback)
       || this.activeClawMarks().stacks > 0;
@@ -1056,7 +1124,7 @@ class Ship {
   }
 
   registerClawHit(claw, match, source = null) {
-    if (!this.alive || !claw) {
+    if (!this.alive || !claw || bunnyOwnerDamageBlocked(source, this)) {
       return false;
     }
     const marks = this.activeClawMarks();
@@ -1165,7 +1233,8 @@ class Ship {
     const turnRate = this.effectiveTurnRate() * (0.22 + this.throttle * 0.4) * turnBoost;
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
 
-    const throttlePenalty = this.team.availableEnergyForShip(this) <= 0 ? 0.15 : 1;
+    const throttlePenalty = this.team.availableEnergyForShip(this) <= 0
+      && !isBunnyEncoreLocked(this.bunnyHaruhi, match.elapsed, !this.team.areSkillsDisabled()) ? 0.15 : 1;
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
     const minimumSpeed = this.minimumFlightSpeed();
     const targetSpeed = Math.max(minimumSpeed, dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor());
@@ -1282,8 +1351,8 @@ class Ship {
     const predictedX = target.x + (target.speed || 0) * Math.cos(target.angle || 0) * (targetDistance / 300);
     const predictedY = target.y + (target.speed || 0) * Math.sin(target.angle || 0) * (targetDistance / 300);
     const spread = clamp(targetDistance / 18, 4, 26);
-    const aimX = predictedX + randomInRange(-spread, spread);
-    const aimY = predictedY + randomInRange(-spread, spread);
+    const aimX = predictedX + rngFor(this.team.match).range(-spread, spread);
+    const aimY = predictedY + rngFor(this.team.match).range(-spread, spread);
     const fireDensity = this.broadsideMultiplier(target);
     if (fireDensity <= 0) {
       return;
@@ -1326,6 +1395,7 @@ class Ship {
   }
 
   takeDamage(amount, _source = null, match = null, context = undefined) {
+    if (bunnyOwnerDamageBlocked(_source, this)) return false;
     if (!this.alive) {
       return;
     }
@@ -1366,7 +1436,7 @@ class Ship {
     this.route = null;
     this.team.resolvePostCasualtyState(match);
     if (match) {
-      match.recordShipLoss(this.team.seat);
+      if (countsForVictory(this)) match.recordShipLoss(this.team.seat);
       match.spawnBurst(this.x, this.y, "#ff9d7d", 10);
       match.onShipDestroyed(this, _source);
     }
@@ -1422,6 +1492,13 @@ class Ship {
       nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
       buffs: statusEffectNames(statusEffects),
       statusEffects,
+      ...(this.bunnyHaruhi || this.bunnyStageExposure ? serializeBunnyShip(this) : {}),
+      ...(this.bunnyCompanion ? serializeBunnyCompanion(this) : {}),
+      ...(this.bunnyReliable ? { bunnyReliable: {
+        sourceCompanionId: this.bunnyReliable.sourceCompanionId,
+        remaining: Math.max(0, this.bunnyReliable.until - this.team.match.elapsed),
+        suppressed: this.bunnyReliable.suppressed,
+      } } : {}),
       route: this.route
         ? {
             anchorToMain: this.route.anchorToMain,
@@ -1437,7 +1514,7 @@ class Ship {
 
 class Scout {
   constructor(team, x, y, config = {}) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "scout";
     this.team = team;
     this.zone = config.zone || null;
@@ -1446,7 +1523,7 @@ class Scout {
     this.mode = "transit";
     this.x = x;
     this.y = y;
-    this.angle = randomInRange(0, TAU);
+    this.angle = rngFor(this.team.match).range(0, TAU);
     this.speed = config.speed || (this.pattern === "burst" ? 112 : 62);
     this.radius = config.radius || (this.pattern === "burst" ? 3.2 : 3.8);
     this.hp = 1;
@@ -1459,7 +1536,7 @@ class Scout {
     this.attackRange = this.combatCapable ? this.vision : 0;
     this.damage = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.damage : 0;
     this.fireRate = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.fireRate : 0;
-    this.cooldown = this.combatCapable ? randomInRange(0, 0.5) : 0;
+    this.cooldown = this.combatCapable ? rngFor(this.team.match).range(0, 0.5) : 0;
     this.alive = true;
     this.life = Number.isFinite(config.life) ? config.life : this.pattern === "burst" ? 11 : 28;
     this.anchor = config.anchor || null;
@@ -1468,9 +1545,9 @@ class Scout {
       ? { x: config.patrolCenter.x, y: config.patrolCenter.y }
       : null;
     this.patrolRadius = Number.isFinite(config.patrolRadius) ? Math.max(24, config.patrolRadius) : null;
-    this.orbitAngle = randomInRange(0, TAU);
+    this.orbitAngle = rngFor(this.team.match).range(0, TAU);
     const orbitSpeedRange = this.pattern === "burst" ? [2.4, 4.8] : [0.8, 1.6];
-    this.orbitSpeed = randomInRange(...orbitSpeedRange) * (Math.random() < 0.5 ? -1 : 1);
+    this.orbitSpeed = rngFor(this.team.match).range(...orbitSpeedRange) * (rngFor(this.team.match).next() < 0.5 ? -1 : 1);
     this.command = {
       x: x,
       y: y,
@@ -1491,7 +1568,7 @@ class Scout {
       this.command.y = config.seekPoint.y;
     }
 
-    this.patrolTimer = randomInRange(1.0, 2.4);
+    this.patrolTimer = rngFor(this.team.match).range(1.0, 2.4);
   }
 
   randomPatrolPoint() {
@@ -1516,8 +1593,8 @@ class Scout {
       ? Math.min(zoneMaxY, this.patrolCenter.y + this.patrolRadius)
       : zoneMaxY;
     this.command = {
-      x: randomInRange(Math.min(minX, maxX), Math.max(minX, maxX)),
-      y: randomInRange(Math.min(minY, maxY), Math.max(minY, maxY)),
+      x: rngFor(this.team.match).range(Math.min(minX, maxX), Math.max(minX, maxX)),
+      y: rngFor(this.team.match).range(Math.min(minY, maxY), Math.max(minY, maxY)),
     };
   }
 
@@ -1578,7 +1655,7 @@ class Scout {
       } else if (this.mode === "patrol") {
         this.patrolTimer -= dt;
         if (remaining < 12 || this.patrolTimer <= 0) {
-          this.patrolTimer = randomInRange(1.0, 2.6);
+          this.patrolTimer = rngFor(this.team.match).range(1.0, 2.6);
           this.randomPatrolPoint();
         }
       }
@@ -1617,8 +1694,8 @@ class Scout {
         source: this,
         x: this.x,
         y: this.y,
-        targetX: match.clampX(predictedX + randomInRange(-spread, spread), 0),
-        targetY: match.clampY(predictedY + randomInRange(-spread, spread), 0),
+        targetX: match.clampX(predictedX + rngFor(this.team.match).range(-spread, spread), 0),
+        targetY: match.clampY(predictedY + rngFor(this.team.match).range(-spread, spread), 0),
         damage: this.effectiveDamage(),
         speed: 240,
         hitRadius: 8,
@@ -1656,7 +1733,7 @@ class Scout {
 
 class Wingman {
   constructor(team, x, y, zone) {
-    this.id = nextEntityId();
+    this.id = nextEntityId(team.match);
     this.kind = "wingman";
     this.team = team;
     this.zone = zone;
@@ -1671,21 +1748,21 @@ class Wingman {
     this.vision = 100;
     this.attackRange = 280;
     this.damage = 11.5;
-    this.cooldown = randomInRange(0.8, 1.4);
+    this.cooldown = rngFor(this.team.match).range(0.8, 1.4);
     this.life = 48;
     this.alive = true;
     this.command = {
       x: zone.x + zone.width * 0.5,
       y: zone.y + zone.height * 0.5,
     };
-    this.patrolTimer = randomInRange(1.0, 2.5);
+    this.patrolTimer = rngFor(this.team.match).range(1.0, 2.5);
   }
 
   randomPatrolPoint() {
     const margin = 26;
     this.command = {
-      x: randomInRange(this.zone.x + margin, this.zone.x + this.zone.width - margin),
-      y: randomInRange(this.zone.y + margin, this.zone.y + this.zone.height - margin),
+      x: rngFor(this.team.match).range(this.zone.x + margin, this.zone.x + this.zone.width - margin),
+      y: rngFor(this.team.match).range(this.zone.y + margin, this.zone.y + this.zone.height - margin),
     };
   }
 
@@ -1715,7 +1792,7 @@ class Wingman {
     } else if (this.mode === "patrol") {
       this.patrolTimer -= dt;
       if (d < 12 || this.patrolTimer <= 0) {
-        this.patrolTimer = randomInRange(1.0, 2.8);
+        this.patrolTimer = rngFor(this.team.match).range(1.0, 2.8);
         this.randomPatrolPoint();
       }
     }
@@ -1730,7 +1807,7 @@ class Wingman {
       return;
     }
 
-    const spread = randomInRange(-7, 7);
+    const spread = rngFor(this.team.match).range(-7, 7);
     const angle = Math.atan2(target.y - this.y, target.x - this.x);
     const targetX = target.x + Math.cos(angle + Math.PI * 0.5) * spread;
     const targetY = target.y + Math.sin(angle + Math.PI * 0.5) * spread;
@@ -1793,7 +1870,7 @@ class Team {
     this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
 
     this.splitLevel = 0;
-    // 单人难度对本队的影响(仅当本队由AI控制时,由 BotController.setDifficulty 写入):
+    // 单人难度对本队的影响(仅当本队由AI控制时,由 MatchSimulation 按难度让分表写入):
     //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
     //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
     // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
@@ -1890,7 +1967,7 @@ class Team {
   }
 
   ensureShamisenHuntTarget(enemyTeam) {
-    return ensureShamisenHuntTarget(this, enemyTeam);
+    return ensureShamisenHuntTarget(this, enemyTeam, rngFor(this.match).next);
   }
 
   isShamisenHuntTarget(target) {
@@ -1960,6 +2037,10 @@ class Team {
 
   getAllShips() {
     return [...this.getPlayerShips(), ...this.extraShips];
+  }
+
+  spawnBunnyCompanion(owner) {
+    return spawnBunnyCompanion(owner, (...args) => new Ship(...args));
   }
 
   // 难度数值缩放:按 mult 缩放本队所有舰船的最大/当前血量(伤害缩放在 effectiveDamage 中按 statMult 动态生效)。
@@ -2044,11 +2125,11 @@ class Team {
   }
 
   hasLivingShips() {
-    return this.getAllShips().some((ship) => ship.alive);
+    return this.getAllShips().some((ship) => ship.alive && countsForVictory(ship));
   }
 
   hullRatio() {
-    const ships = this.getAllShips();
+    const ships = this.getAllShips().filter(countsForVictory);
     const hp = ships.reduce((sum, ship) => sum + Math.max(0, ship.hp), 0);
     const max = ships.reduce((sum, ship) => sum + ship.maxHp, 0);
     return max <= 0 ? 0 : hp / max;
@@ -2056,6 +2137,7 @@ class Team {
 
   fleetKeyForShip(shipOrKey) {
     const key = typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key;
+    if (isBunnyCompanion(typeof shipOrKey === "string" ? this.shipByKey(key) : shipOrKey)) return key;
     if (key === "sub1" && this.splitLevel >= 1) {
       return "sub1";
     }
@@ -2078,13 +2160,13 @@ class Team {
         members.push(this.ships.sub2);
       }
       for (const ship of this.extraShips) {
-        if (ship.alive) {
+        if (ship.alive && isFleetParticipant(ship)) {
           members.push(ship);
         }
       }
       return members;
     }
-    const ship = this.ships[fleetKey];
+    const ship = this.ships[fleetKey] || this.extraShips.find((candidate) => candidate.key === fleetKey && isBunnyCompanion(candidate));
     if (ship && ship.alive) {
       members.push(ship);
     }
@@ -2347,7 +2429,9 @@ class Team {
         continue;
       }
       const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
-      const energyRate = energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
+      const energyRate = ship.bunnyStageExposure
+        ? bunnyEnergyRate(ship.bunnyStageExposure, ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle, bunnyStageEnabled(ship))
+        : energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
       ship.energy = clamp(ship.energy + energyRate * dt, 0, ship.maxEnergy);
     }
   }
@@ -2370,6 +2454,7 @@ class Team {
       launchAlienWingmen: (ship) => this.launchHaruhiAlienWingmen(ship),
       launchRandomBeam: (ship) => this.launchHaruhiRandomBeam(ship),
     });
+    if (this.match.bunnyHaruhiActive) updateBunnyTeamSupports(this, dt);
     updateTeamVisionWaveSkill(this);
     this.maybeAutoLaunchScout();
     for (const scout of this.scouts) {
@@ -2430,11 +2515,12 @@ class Team {
     scout.patrolRadius = Number.isFinite(options.patrolRadius) ? Math.max(24, options.patrolRadius) : scout.patrolRadius;
     scout.command = { x: seekPoint.x, y: seekPoint.y };
     scout.mode = "transit";
-    scout.patrolTimer = randomInRange(1, 2.1);
+    scout.patrolTimer = rngFor(this.match).range(1, 2.1);
     return true;
   }
 
   launchScout(zoneId, options = {}) {
+    if (isBunnyCompanion(this.shipByKey(options.fromShipKey))) return false;
     const cost = SCOUT_LAUNCH_COST;
     const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
     if (this.areScoutsDisabled()) {
@@ -2451,7 +2537,7 @@ class Team {
     }
     const source = (requested && requested.alive ? requested : null)
       || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
-    if (!source || source.isControlLocked()) {
+    if (!source || source.isControlLocked() || !canBunnyLaunchScout(source.bunnyHaruhi)) {
       return false;
     }
     if (!this.spendEnergyForShip(source.key || "main", cost)) {
@@ -2526,7 +2612,7 @@ class Team {
 
   launchHaruhiAlienWingmen(ship) {
     const zone = this.zoneForPoint(ship.x, ship.y);
-    const releaseAngle = randomInRange(0, TAU);
+    const releaseAngle = rngFor(this.match).range(0, TAU);
     const spawnRadius = ship.radius + 12;
     const x = this.match.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
     const y = this.match.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
@@ -2535,11 +2621,12 @@ class Team {
   }
 
   launchHaruhiRandomBeam(ship) {
-    const angle = randomInRange(0, TAU);
+    const angle = rngFor(this.match).range(0, TAU);
     return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
   }
 
   castFlagshipSkill(zoneId = 5) {
+    if (this.ships.main.bunnyHaruhi) return false;
     const characterId = this.loadout.main;
     const meta = skillMetaForCharacter(characterId, "flagship");
     if (!meta || meta.type !== "active") {
@@ -2565,7 +2652,7 @@ class Team {
       }
       const main = this.ships.main;
       const boostWasActive = haruhiBoostActive(this);
-      const supporter = activateHaruhiFlagship(this, meta.duration || 16);
+      const supporter = activateHaruhiFlagship(this, meta.duration || 16, rngFor(this.match).next);
       if (!boostWasActive) {
         for (const ship of this.getPlayerShips()) {
           if (ship.alive) {
@@ -2629,6 +2716,7 @@ class Team {
 
   castSubSkill(shipKey, options = {}) {
     const ship = this.ships[shipKey];
+    if (ship?.bunnyHaruhi) return commitBunnyTransform(ship);
     if (!ship || !ship.alive || ship.isAttached() || !ship.canControl()) {
       return false;
     }
@@ -2652,7 +2740,7 @@ class Team {
     let ok = false;
     if (ship.characterId === "haruhi") {
       this.match.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
-        id: nextEntityId(),
+        id: nextEntityId(this.match),
         ship,
         now: this.match.elapsed,
         worldSize: this.match.worldSize,
@@ -2725,7 +2813,7 @@ class Team {
     const unitY = dirY / dirLen;
     const range = BEAM_BASE_RANGE;
     const beam = {
-      id: nextEntityId(),
+      id: nextEntityId(this.match),
       shipKey: ship.key,
       phase: "charge",
       x1: ship.x,
@@ -2773,6 +2861,13 @@ class Team {
     }
     enemyTeam.wingmen = enemyTeam.wingmen.filter((wingman) => wingman.team === enemyTeam);
 
+    // 使用固定集合，避免原地转移遗漏实体；普通飞行器保留原永久策反语义。
+    for (const companion of [...enemyTeam.extraShips]) {
+      if (companion.alive && zoneContains(zone, companion.x, companion.y)
+        && convertBunnyCompanion(companion, this, zone)) converted += 1;
+    }
+    if (this.match.bunnyHaruhiActive && converted > 0) refreshBunnyVisibility(this.match);
+
     if (converted > 0) {
       this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "钞能力 x{count}", { count: converted }, "#ffd27e", `钞能力 x${converted}`);
     }
@@ -2782,11 +2877,11 @@ class Team {
   spawnBeamHitParticles(x, y) {
     this.match.spawnBurst(x, y, "#8ef8ff", 11);
     for (let i = 0; i < 7; i += 1) {
-      const angle = randomInRange(0, TAU);
-      const offset = randomInRange(4, 28);
+      const angle = rngFor(this.match).range(0, TAU);
+      const offset = rngFor(this.match).range(4, 28);
       const px = this.match.clampX(x + Math.cos(angle) * offset, 0);
       const py = this.match.clampY(y + Math.sin(angle) * offset, 0);
-      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", randomInRange(3.5, 7.5));
+      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", rngFor(this.match).range(3.5, 7.5));
     }
   }
 
@@ -2832,7 +2927,7 @@ class Team {
       // 后续目标因存活数量变化而使用不同伤害档位。护盾已在上方截断射线，因此这里
       // 统计的就是屏障之后真正能被光线触及的舰船。
       const hitTargets = enemyTeam.getAllShips().filter((target) => {
-        if (!target.alive || !target.isTargetableByFire()) return false;
+        if (!target.alive || !target.isTargetableByFire() || bunnyOwnerDamageBlocked(ship, target)) return false;
         const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
         return probe.dist <= target.radius + BEAM_HIT_RADIUS && probe.t >= 0 && probe.t <= 1;
       });
@@ -2913,7 +3008,8 @@ class Team {
       name: this.name,
       color: this.color,
       splitLevel: this.splitLevel,
-      loadout: cloneLoadout(this.loadout),
+      loadout: this.match.bunnyHaruhiActive ? { ...this.loadout } : cloneLoadout(this.loadout),
+      ...(this.ships.main.bunnyHaruhi ? { bunnyStage: this.bunnyStage ? { ...this.bunnyStage } : null } : {}),
       energy: this.fleetEnergyForShip("main").current,
       maxEnergy: this.fleetEnergyForShip("main").max,
       hullRatio: this.hullRatio(),
@@ -2989,6 +3085,13 @@ export class MatchSimulation {
     this.aiEnabled = { A: true, B: true };
     this.zones = buildZones(worldSize);
 
+    // 显式传入整数种子时整局可复现，规则与各席 AI 使用互不干扰的随机流；
+    // 否则沿用环境随机源，取值顺序与全局 Math.random 一致。种子不进入快照。
+    const seeded = Number.isInteger(options.seed);
+    this.rng = seeded ? createSeededRng(options.seed) : createAmbientRng();
+    this.aiRng = { A: this.rng.fork("ai:A"), B: this.rng.fork("ai:B") };
+    this.entityIds = seeded ? { value: 1 } : null;
+
     this.tick = 0;
     this.elapsed = 0;
     this.phase = "running";
@@ -3016,18 +3119,39 @@ export class MatchSimulation {
     this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
     this.floatingTexts = [];
     this.telemetry = createMatchTelemetry();
+    if ([...this.teamA.getPlayerShips(), ...this.teamB.getPlayerShips()].some((ship) => ship.bunnyHaruhi)) {
+      this.bunnyHaruhiActive = true;
+      this.bunnySustainAt = 0;
+      resolveBunnyStages(this);
+      refreshBunnyVisibility(this);
+    }
     this.teamA.ensureShamisenHuntTarget(this.teamB);
     this.teamB.ensureShamisenHuntTarget(this.teamA);
     this.bots = {};
+    this.aiRunners = {};
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
     // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
     const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats);
-    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态);只影响AI反应延迟,不改能力
+    const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态)
     for (const seat of this.aiSeats) {
-      const bot = new BotController(this.teamBySeat(seat), this.enemyTeamBySeat(seat));
-      bot.legacy = legacyAiSeats.includes(seat);
-      bot.setDifficulty(aiDifficulty);
-      this.bots[seat] = bot;
+      // aiParams 可按席位指定预设与参数覆盖：{ A: { preset, overrides } }。
+      const seatParams = options.aiParams?.[seat] || {};
+      const runner = createAiRunner(this, seat, {
+        actionMode: options.aiActionMode,
+        params: {
+          difficulty: aiDifficulty,
+          preset: legacyAiSeats.includes(seat) ? "legacy" : seatParams.preset ?? null,
+          overrides: seatParams.overrides ?? null,
+        },
+      });
+      this.aiRunners[seat] = runner;
+      this.bots[seat] = runner.policy;
+      // 难度让分属于规则层：数值缩放与集火残血直接写入 AI 所控舰队，不经过 AI 决策。
+      const handicap = aiHandicapFor(aiDifficulty);
+      const team = this.teamBySeat(seat);
+      team.aiFocusLowHp = handicap.focusLowHp;
+      team.applyAiStatMult(handicap.statMult);
+      runner.port.invalidate();
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;
@@ -3202,12 +3326,13 @@ export class MatchSimulation {
     if (!ship) {
       return;
     }
+    if (this.bunnyHaruhiActive) cleanupBunnyCompanions(this);
     const pairs = [[this.teamA, this.teamB], [this.teamB, this.teamA]];
     for (const [hunter, huntedTeam] of pairs) {
       if (hunter.shamisenHunt?.targetId !== ship.id) {
         continue;
       }
-      const effectId = nextEntityId();
+      const effectId = nextEntityId(this);
       this.shamisenHuntKillEffects.push({
         id: effectId,
         hunterSeat: hunter.seat,
@@ -3219,7 +3344,7 @@ export class MatchSimulation {
         life: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
         maxLife: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
       });
-      resolveShamisenHuntKill(hunter, huntedTeam, ship);
+      resolveShamisenHuntKill(hunter, huntedTeam, ship, this.rng.next);
     }
   }
 
@@ -3237,7 +3362,7 @@ export class MatchSimulation {
   }
 
   spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {
-    this.floatingTexts.push(new FloatingText(x, y, text, color, meta));
+    this.floatingTexts.push(new FloatingText(x, y, text, color, meta, this));
   }
 
   spawnFloatingTextKey(x, y, textKey, args = {}, color = "#ffd178", fallback = textKey) {
@@ -3258,7 +3383,7 @@ export class MatchSimulation {
   }
 
   spawnBurst(x, y, color = "#ffdb9b", radius = 7) {
-    this.bursts.push(new Burst(x, y, color, radius));
+    this.bursts.push(new Burst(x, y, color, radius, this));
   }
 
   spawnKoizumiBarrierImpact(options = {}) {
@@ -3274,7 +3399,7 @@ export class MatchSimulation {
     }
     const maxLife = kind === "ram" || kind === "break" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
     this.koizumiBarrierImpacts.push({
-      id: nextEntityId(),
+      id: nextEntityId(this),
       kind,
       ramKind: options.ramKind || null,
       teamSeat,
@@ -3325,6 +3450,17 @@ export class MatchSimulation {
         projectile.alive = false;
         this.spawnBurst(absorbedAt.x, absorbedAt.y, "#ff526f", 6);
         continue;
+      }
+      if (this.bunnyHaruhiActive) {
+        const hit = bunnyTeamSupportSources(defendingTeam)
+          .map((source) => projectileAbsorptionPoint(projectile, dt, supportOrbGeometry(source)))
+          .filter(Boolean)
+          .sort((a, b) => distance(projectile.x, projectile.y, a.x, a.y) - distance(projectile.x, projectile.y, b.x, b.y))[0];
+        if (hit) {
+          projectile.alive = false;
+          this.spawnBurst(hit.x, hit.y, "#ff526f", 6);
+          continue;
+        }
       }
       projectile.update(dt, this);
     }
@@ -3406,11 +3542,13 @@ export class MatchSimulation {
     const safeDt = clamp(dt, 0, 0.05);
     this.tick += 1;
     this.elapsed += safeDt;
+    if (this.bunnyHaruhiActive) advanceBunnyRules(this);
+    if (this.bunnyHaruhiActive) prepareBunnyCompanions(this);
 
     this.refreshShamisenHunts();
 
-    for (const [seat, bot] of Object.entries(this.bots)) {
-      if (this.aiEnabled[seat] !== false) bot.update(safeDt, this.elapsed);
+    for (const [seat, runner] of Object.entries(this.aiRunners)) {
+      if (this.aiEnabled[seat] !== false) runner.update(safeDt, this.elapsed);
     }
 
     this.teamA.update(safeDt);
@@ -3422,10 +3560,13 @@ export class MatchSimulation {
     this.resolveKoizumiOrbContacts();
     updateKoizumiImpactWaves(this);
     this.resolveHaruhiOtherworlderContacts();
+    if (this.bunnyHaruhiActive) resolveBunnyOtherworlderContacts(this);
     this.resolveShipCollisions();
     this.resolveBladeQueenContacts();
     this.resolveScoutClashes();
+    if (this.bunnyHaruhiActive) resolveBunnyStages(this);
     this.resolveVisionWavePurges();
+    if (this.bunnyHaruhiActive) cleanupBunnySources(this);
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
     this.teamA.updateRadarPassive(this.teamB, safeDt);
@@ -3437,6 +3578,12 @@ export class MatchSimulation {
     if (this.combatEnabled.B) this.teamB.stepCombat(this.teamA);
     this.updateProjectiles(safeDt);
     this.updateVisualEffects(safeDt);
+
+    if (this.bunnyHaruhiActive) {
+      cleanupBunnyCompanions(this);
+      cleanupBunnySources(this);
+      refreshBunnyVisibility(this);
+    }
 
     this.checkVictory();
   }

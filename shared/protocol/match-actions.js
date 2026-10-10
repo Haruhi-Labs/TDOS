@@ -39,6 +39,14 @@ export function validateMatchAction(actionValue) {
     return { ok: false, type, reason: "未知动作类型" };
   }
 
+  if (type === MATCH_ACTION_TYPES.CAST_SUB_SKILL) {
+    const allowed = new Set(["type", "shipKey", "zoneId", "targetX", "targetY"]);
+    if (Object.keys(actionValue).some((key) => !allowed.has(key))
+      || (actionValue.shipKey !== undefined && !["sub1", "sub2"].includes(actionValue.shipKey))) {
+      return { ok: false, type, reason: "分舰动作只能指定副舰槽位及目标，不能提交权威状态" };
+    }
+  }
+
   if (type === MATCH_ACTION_TYPES.SET_ROUTE) {
     const endX = Number(actionValue.endX);
     const endY = Number(actionValue.endY);

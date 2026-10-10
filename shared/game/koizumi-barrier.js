@@ -1,4 +1,6 @@
 import { clamp } from "./math.js";
+import { bunnyHaruhiSupportSource } from "./bunny-haruhi-support.js";
+import { supportOtherworlderReady, triggerSupportOtherworlder } from "./haruhi-support.js";
 import { isKoizumiOrbActive } from "./koizumi-orb.js";
 import {
   haruhiOtherworlderAuraForwardReach,
@@ -300,7 +302,10 @@ export function koizumiBarrierBeamImpact(beam, defendingTeam) {
 }
 
 function haruhiCanRamBarrier(source, attackerTeam, defendingMain, geometry) {
-  if (source !== attackerTeam.ships.main || !haruhiOtherworlderReady(attackerTeam)) {
+  const bunny = source.bunnyHaruhi ? bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()) : null;
+  const ready = bunny ? supportOtherworlderReady(bunny, attackerTeam.match.elapsed)
+    : source === attackerTeam.ships.main && haruhiOtherworlderReady(attackerTeam);
+  if (!ready) {
     return null;
   }
   if (!haruhiRamApproachEligible(source, defendingMain.x, defendingMain.y)) {
@@ -391,8 +396,11 @@ export function resolveKoizumiBarrierRamContacts(match) {
       if (!impact) {
         continue;
       }
-      if (ramKind === "haruhi_otherworlder" && !triggerHaruhiOtherworlder(attackerTeam)) {
-        continue;
+      if (ramKind === "haruhi_otherworlder") {
+        const consumed = source.bunnyHaruhi
+          ? triggerSupportOtherworlder(bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()), match.elapsed)
+          : triggerHaruhiOtherworlder(attackerTeam);
+        if (!consumed) continue;
       }
       if (disruptKoizumiBarrier(defendingTeam, impact, {
         sourceSeat: attackerTeam.seat,

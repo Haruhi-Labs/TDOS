@@ -1,4 +1,5 @@
 import { CHARACTER_DEFS, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game-core.js";
+import { getPortraitAssetUrl } from "../character-select/portraits.js";
 import {
   characterShortName,
   fleetSideLabel,
@@ -33,12 +34,11 @@ function resultPlayerId(row) {
 }
 
 function resultSideHtml(loadout, faction, sideLabel, sideClass, sideId = "") {
-  const base = import.meta.env.BASE_URL;
   const safe = normalizeLoadout(loadout, DEFAULT_TEAM_LOADOUT);
   const cards = ["main", "sub1", "sub2"]
     .map((slot, index) => {
       const characterId = safe[slot];
-      const source = `${base}assets/portraits/${faction}/${characterId}.webp`;
+      const source = getPortraitAssetUrl(characterId, faction);
       const role = localizedSlotLabel(slot, "short");
       const name = characterShortName(
         characterId,

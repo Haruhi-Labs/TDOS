@@ -1,3 +1,5 @@
+import { BUNNY_HARUHI_CONFIG } from "../shared/game/bunny-haruhi-config.js";
+import { getPortraitAssetUrl } from "./character-select/portraits.js";
 import {
   DEFAULT_WORLD_SIZE,
   MatchSimulation,
@@ -363,9 +365,8 @@ function readLoadoutFromControls() {
 }
 
 function roleSummaryLine(slotKey, characterId) {
-  const def = CHARACTER_DEFS[characterId];
-  const stat = def.stats;
-  return `${slotLabel(slotKey)} ${def.shortName} | ${t("舰体")}${stat.hp} | ${t("能量")}${stat.energy} | ${t("航速")}${stat.speed} | ${t("机动")}${stat.turnRate.toFixed(2)}`;
+  const stat = characterId === BUNNY_HARUHI_CONFIG.characterId ? BUNNY_HARUHI_CONFIG.baseStats : CHARACTER_DEFS[characterId].stats;
+  return `${slotLabel(slotKey)} ${characterShortName(characterId)} | ${t("舰体")}${stat.hp} | ${t("能量")}${stat.energy} | ${t("航速")}${stat.speed} | ${t("机动")}${stat.turnRate.toFixed(2)}`;
 }
 
 function slotLabel(slotKey) {
@@ -386,9 +387,9 @@ function renderLoadoutPreview(loadout, target) {
 
 function updateShipSwitchLabels(loadout) {
   const labelMap = {
-    main: `${localizedSlotLabel("main", "short")} ${CHARACTER_DEFS[loadout.main].shortName}`,
-    sub1: `${localizedSlotLabel("sub1", "short")} ${CHARACTER_DEFS[loadout.sub1].shortName}`,
-    sub2: `${localizedSlotLabel("sub2", "short")} ${CHARACTER_DEFS[loadout.sub2].shortName}`,
+    main: `${localizedSlotLabel("main", "short")} ${characterShortName(loadout.main)}`,
+    sub1: `${localizedSlotLabel("sub1", "short")} ${characterShortName(loadout.sub1)}`,
+    sub2: `${localizedSlotLabel("sub2", "short")} ${characterShortName(loadout.sub2)}`,
   };
   for (const button of ui.shipSwitchButtons) {
     button.textContent = labelMap[button.dataset.ship] || button.textContent;
@@ -501,6 +502,8 @@ function syncPowerFromSelected() {
 function setThrottleGear(gear) {
   if (tutorial.isActive() && !tutorial.allowsControl("throttle")) return false;
   if (!selectedShipSim()?.canControl()) return false;
+  const lockedGear = ownTeamState()?.ships?.[app.selectedShipKey]?.bunnyHaruhi?.lockedGear;
+  if (lockedGear != null && Number(gear) !== lockedGear) return false;
   const throttle = throttleValueForGear(gear);
   syncThrottleGearControls(ui, throttle);
   applyAction(matchActions.setThrottle({
@@ -695,11 +698,10 @@ function difficultyMeta() {
 
 // 一侧阵容(主舰高亮 + 两副舰):头像取该阵营立绘,头部偏上裁切
 function resultSideHTML(loadout, faction, sideLabel, sideClass) {
-  const base = import.meta.env.BASE_URL;
   const cards = ["main", "sub1", "sub2"]
     .map((slot, i) => {
       const id = loadout[slot];
-      const src = `${base}assets/portraits/${faction}/${id}.webp`;
+      const src = getPortraitAssetUrl(id, faction);
       const role = localizedSlotLabel(slot, "short");
       const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
       return (
@@ -976,6 +978,7 @@ function useFlagshipSkill() {
 function useSubSkill() {
   if (tutorial.isActive() && !tutorial.allowsControl("subSkill")) return;
   const selected = selectedShipState();
+  if (selected?.bunnyHaruhi && !selected.bunnyHaruhi.canTransform) return;
   const own = ownTeamState();
   const meta = currentSubMeta(selected);
   if (!selected?.canControl || !meta || !own) {

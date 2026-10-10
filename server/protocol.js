@@ -28,6 +28,7 @@ export const RULESET_GUARDED_MESSAGE_TYPES = new Set([
 ]);
 
 const MESSAGE_CODES = {
+  "兔女郎春日阵容需要所有玩家及观众刷新到当前规则版本": "bunny_ruleset_required",
   "客户端不支持比赛房间，请刷新页面": "tournament_client_unsupported",
   "主持人离开，比赛房间已关闭": "tournament_host_left",
   "比赛开始后不能更换阵容": "tournament_loadout_locked",

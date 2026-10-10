@@ -1,6 +1,7 @@
 import { gameStorageKey } from "./deployment.js";
 import { CHARACTER_DEFS } from "../shared/game-core.js";
 import { CHARACTER_TEXT, MESSAGES } from "./i18n/catalog.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
 
 const STORAGE_KEY = gameStorageKey("haruhi-locale-v1");
 
@@ -100,7 +101,8 @@ export function skillText(characterId, mode = "flagship", field = "name") {
   const localized = CHARACTER_TEXT[locale]?.[characterId] || CHARACTER_TEXT.zh[characterId];
   const zh = CHARACTER_TEXT.zh[characterId];
   const key = mode === "sub" ? "subSkill" : "flagshipSkill";
-  return localized?.[key]?.[field] || zh?.[key]?.[field] || "";
+  const text = localized?.[key]?.[field] || zh?.[key]?.[field] || "";
+  return characterId === "bunny_haruhi" ? interpolate(text, BUNNY_VIEW_PARAMS) : text;
 }
 
 export function applyCoreLocale(locale = getLocale()) {
@@ -194,6 +196,7 @@ export function translateServerText(text, code = "") {
     room_not_running: "房间不在对战状态",
     room_full: "房间已满或不可加入",
     tournament_client_unsupported: "客户端不支持比赛房间，请刷新页面",
+    bunny_ruleset_required: "兔女郎春日阵容需要所有玩家及观众刷新到当前规则版本",
     tournament_host_left: "主持人离开，比赛房间已关闭",
     tournament_loadout_locked: "比赛开始后不能更换阵容",
     tournament_player_only: "只有比赛选手可以设置就绪",

@@ -10,6 +10,7 @@ import {
 } from "./math.js";
 import { visionWavesCoverEntity } from "./vision-wave.js";
 import { haruhiBoostActive } from "./haruhi-flagship.js";
+import { bunnyBroadcastsShip } from "./bunny-haruhi-runtime.js";
 
 const TAU = Math.PI * 2;
 const RADAR_ANGULAR_SPEED = TAU / YUKI_RADAR_ROTATION_SECONDS;
@@ -141,6 +142,11 @@ export function computeVisibility(team, enemyTeam) {
   if (haruhiBoostActive(enemyTeam)) {
     for (const ship of enemyTeam.getAllShips()) {
       if (ship.alive) team.visibleEnemyIds.add(ship.id);
+    }
+  }
+  if (team.match.bunnyHaruhiActive) {
+    for (const ship of enemyTeam.getPlayerShips()) {
+      if (bunnyBroadcastsShip(enemyTeam, ship)) team.visibleEnemyIds.add(ship.id);
     }
   }
 }

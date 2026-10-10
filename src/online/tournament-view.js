@@ -6,7 +6,7 @@ export function createTournamentView(battleView, { onLoadout, onReady, onStart }
   const events = new AbortController();
   battleView.querySelector(".game-wrap").insertAdjacentHTML("beforeend", `<section class="tournament-preparation" aria-label="${t("比赛准备")}" hidden>
     <p class="tournament-host"></p><h2 class="tournament-status" role="status" aria-live="polite"></h2>
-    <div class="tournament-player-actions" hidden><button type="button" data-tournament="loadout">${t("更换阵容")}</button><button type="button" data-tournament="ready">${t("就绪")}</button></div>
+    <div class="tournament-player-actions" hidden><button type="button" data-tournament="loadout">${t("更换阵容")}</button><button type="button" data-tournament="ready">${t("设为就绪")}</button></div>
     <button type="button" data-tournament="start" hidden>${t("开始比赛")}</button>
     <p class="tournament-hint">${t("主持人开赛后，3秒倒计时进入战斗")}</p>
   </section>`);
@@ -32,7 +32,7 @@ export function createTournamentView(battleView, { onLoadout, onReady, onStart }
     const statusNode = panel.querySelector(".tournament-status");
     if (statusNode.textContent !== status) statusNode.textContent = status;
     panel.querySelector(".tournament-player-actions").hidden = !seat;
-    readyButton.textContent = ready ? t("取消就绪") : t("就绪");
+    readyButton.textContent = ready ? t("取消就绪") : t("设为就绪");
     readyButton.setAttribute("aria-pressed", String(ready));
     readyButton.disabled = !connected || !compatible;
     loadoutButton.disabled = !connected || !compatible;

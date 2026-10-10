@@ -6,6 +6,7 @@ import {
 } from "./config.js";
 import { normalizeLoadout, DEFAULT_TEAM_LOADOUT } from "../shared/game-core.js";
 import { messageCode } from "./protocol.js";
+import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 
 export function createRoomLifecycle({
   rooms,
@@ -27,6 +28,18 @@ export function createRoomLifecycle({
     spectatorCount,
     streamCapacityUnits,
   } = registry;
+
+  // 旧端仍能使用旧阵容房间；含新角色时，玩家与观众都必须声明当前规则。
+  function bunnyClientError(room, player, loadout = player.loadout, includeLoadout = true) {
+    const members = room ? [getPlayerById(room.seats.A), getPlayerById(room.seats.B), ...roomSpectators(room)].filter(Boolean) : [];
+    const loadouts = room?.match?.teamA
+      ? [room.match.teamA.loadout, room.match.teamB.loadout]
+      : members.filter((member) => !member.spectating).map((member) => member === player ? loadout : member.loadout);
+    if (includeLoadout) loadouts.push(loadout);
+    const requiresCurrent = loadouts.some((value) => Object.values(value || {}).includes("bunny_haruhi"));
+    return requiresCurrent && [...members, player].some((member) => member.rulesetVersion !== RULESET_VERSION)
+      ? { ok: false, message: "兔女郎春日阵容需要所有玩家及观众刷新到当前规则版本" } : null;
+  }
 
   function closeRoom(roomId, reason = "房间已关闭") {
     const room = rooms.get(roomId);
@@ -140,6 +153,8 @@ export function createRoomLifecycle({
       return { ok: false, message: "你已经在房间中" };
     }
     const safeMode = mode === "ai" ? "ai" : "pvp";
+    const compatibilityError = bunnyClientError(null, player, player.loadout, kind !== "tournament");
+    if (compatibilityError) return compatibilityError;
     if (safeMode === "pvp" && kind === "tournament" && !player.supportsTournamentRooms) {
       return { ok: false, message: "客户端不支持比赛房间，请刷新页面" };
     }
@@ -186,6 +201,8 @@ export function createRoomLifecycle({
     if (room.status !== "waiting") {
       return { ok: false, message: "房间不在等待状态" };
     }
+    const compatibilityError = bunnyClientError(room, player);
+    if (compatibilityError) return compatibilityError;
     if (room.kind === "tournament") {
       const seat = ["A", "B"].find((key) => !room.seats[key]);
       if (!seat) return { ok: false, message: "房间已满或不可加入" };
@@ -225,6 +242,8 @@ export function createRoomLifecycle({
     if (room.visibility !== "public") {
       return { ok: false, message: "该房间不接受观战" };
     }
+    const compatibilityError = bunnyClientError(room, player, player.loadout, false);
+    if (compatibilityError) return compatibilityError;
     const preparing = room.kind === "tournament" && ["waiting", "countdown"].includes(room.status);
     if (!preparing && (room.status !== "running" || !room.match)) {
       return { ok: false, message: "房间不在对战状态" };
@@ -248,6 +267,8 @@ export function createRoomLifecycle({
       return { ok: false, message: "比赛开始后不能更换阵容" };
     }
     const next = normalizeLoadout(loadout || {}, DEFAULT_TEAM_LOADOUT);
+    const compatibilityError = bunnyClientError(player.spectating ? null : room, player, next);
+    if (compatibilityError) return compatibilityError;
     const changed = JSON.stringify(player.loadout) !== JSON.stringify(next);
     player.loadout = next;
     if (room?.status === "waiting") {
@@ -264,6 +285,8 @@ export function createRoomLifecycle({
       return { ok: false, message: "只有比赛选手可以设置就绪" };
     }
     if (room.status !== "waiting") return { ok: false, message: "房间不在等待状态" };
+    const compatibilityError = bunnyClientError(room, player, player.loadout, false);
+    if (compatibilityError) return compatibilityError;
     if (typeof ready !== "boolean") return { ok: false, message: "就绪状态无效" };
     room.ready[player.seat] = ready;
     sendRoomStateToMembers(room);
@@ -277,6 +300,8 @@ export function createRoomLifecycle({
       return { ok: false, message: "只有主持人可以开始比赛" };
     }
     if (room.status !== "waiting") return { ok: false, message: "房间不在等待状态" };
+    const compatibilityError = bunnyClientError(room, player, player.loadout, false);
+    if (compatibilityError) return compatibilityError;
     if (!["A", "B"].every((seat) => room.seats[seat] && room.ready[seat])) {
       return { ok: false, message: "双方选手就绪后才能开始比赛" };
     }

@@ -1,4 +1,5 @@
-import { SCOUT_LAUNCH_COST, skillMetaForCharacter } from "../../shared/game-core.js";
+import { SCOUT_LAUNCH_COST } from "../../shared/game-core.js";
+import { battleSkillMeta as skillMetaForCharacter, bunnyBlockLabel, bunnyCastCost, bunnyFormLabel, renderBunnyReadout } from "./bunny-haruhi-view.js";
 import { shipCharacterName, skillText, slotLabel, t } from "../i18n.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";
 import { isShipControlLocked } from "./ship-selection.js";
@@ -32,6 +33,7 @@ function display(button, name, state, cost = "", description = "") {
 
 function skillStatus(team, ship, meta, cooldown, pendingAim) {
   if (!ship?.alive) return t("已击沉");
+  if (ship.bunnyHaruhi) return team.skillsDisabled ? t("已封印") : ship.key === "main" ? t("舞台·被动") : bunnyBlockLabel(ship, team);
   if (meta?.type === "passive") {
     const barrier = meta.id === "closed_space_barrier" ? team.koizumiBarrier : null;
     return barrier ? barrier.active
@@ -61,15 +63,19 @@ export function renderCommandPanel(ui, own, { selected, pendingSubSkillAim, fall
   const cost = (meta) => meta?.type === "active" ? t("{energy}能量", { energy: meta.cost || 0 }) : "";
   display(ui.flagshipBtn, flag ? skillText(mainId, "flagship") : t("旗舰技能"), flag ? skillStatus(own, main, flag, own.cooldowns?.flagship, null) : "—", flag ? cost(flag) : "", mainId ? skillText(mainId, "flagship", "description") : "");
   display(ui.subSkillBtn, sub ? skillText(selected.characterId, "sub") : t("分舰技能"), sub ? skillStatus(own, selected, sub, own.cooldowns?.[selected.key], pendingSubSkillAim) : t("先选择副舰"), sub ? cost(sub) : "", sub ? skillText(selected.characterId, "sub", "description") : "");
+  ui.subSkillBtn.classList.toggle("bunny-transform", Boolean(sub && selected?.bunnyHaruhi));
+  if (sub && selected?.bunnyHaruhi) display(ui.subSkillBtn, bunnyFormLabel(selected.bunnyHaruhi.nextForm), bunnyBlockLabel(selected, own), bunnyCastCost(selected), skillText(selected.characterId, "sub", "description"));
   const flagKey = ui.flagshipBtn.querySelector("kbd");
   if (flagKey) flagKey.hidden = flag?.type === "passive";
   const scoutRemaining = Number(own.cooldowns?.scout) || 0;
   const scoutEnergy = selected?.alive ? selected.fleetEnergy : main?.fleetEnergy;
   display(ui.scoutBtn, t("侦察"), own.skillsDisabled ? t("已封印") : isShipControlLocked(selected || main) ? t((selected || main).stunRemaining > 0 ? "眩晕" : "不可操控") : scoutRemaining > 0 ? `${scoutRemaining.toFixed(1)}s` : scoutEnergy < SCOUT_LAUNCH_COST ? t("能量不足") : t("战区{zone}", { zone: selectedZoneId }), t("{energy}能量", { energy: SCOUT_LAUNCH_COST }));
+  if (selected?.bunnyHaruhi?.scoutsDisabled) display(ui.scoutBtn, t("侦察"), t("本舰侦察已停用"));
   const auto = Boolean(own.autoScout?.enabled);
   display(ui.autoScoutBtn, t("自动侦察"), auto ? scoutRemaining > 0 ? `${scoutRemaining.toFixed(1)}s` : Number(main?.fleetEnergy) < SCOUT_LAUNCH_COST ? t("等待能量") : t("战区{zone}", { zone: own.autoScout.zoneId }) : own.skillsDisabled ? t("已封印") : t("已关闭"), auto ? t("已开启") : "");
   ui.autoScoutBtn.setAttribute("aria-pressed", String(auto));
   const root = ui.flagshipBtn.closest?.(".battle-shell");
+  for (const readout of root?.querySelectorAll(".bunny-readout") || []) renderBunnyReadout(readout, selected);
   text(root?.querySelector("#commandSelectedShip"), selected ? shipCharacterName(selected) : "—");
   const hint = root?.querySelector("#commandContextHint");
   const hintText = pendingSubSkillAim ? sub?.target === "optional_point" ? t("点战场闪现；再次点技能原地释放") : t("点击战场确认技能目标") : "";
@@ -80,6 +86,7 @@ export function renderCommandPanel(ui, own, { selected, pendingSubSkillAim, fall
 export function mirrorCommandButton(source, target) {
   const nodes = parts(source);
   if (!nodes) return;
+  target?.classList.toggle("bunny-transform", source.classList.contains("bunny-transform"));
   display(target, nodes.title.textContent, nodes.state.textContent, nodes.cost.textContent, source.title);
   const label = target?.querySelector(".cooldown-button-label");
   text(label, source.querySelector(".cooldown-button-label")?.textContent || nodes.title.textContent);

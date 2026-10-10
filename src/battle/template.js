@@ -103,6 +103,7 @@ ${fleetRowHTML("sub2", t("副二"))}
               ${commandButtonHTML("autoScoutBtn", t("自动侦察"), "Z")}
             </div>
             <p class="command-context-hint" id="commandContextHint"></p>
+            <details class="bunny-details" hidden><summary>${t("兔女郎舰况")}</summary><p class="bunny-readout"></p></details>
           </section>
         </div>
         <footer class="command-footer">
@@ -145,6 +146,7 @@ ${fleetRowHTML("sub2", t("副二"))}
             ${throttleGearButtonsHTML("mobile-throttle-btn")}
           </div>
           <div id="mobileBattleHint" class="mobile-battle-hint" aria-live="polite">${t("点舰船切换 · 点战场下航线 · 拖侦察选择战区")}</div>
+          <details class="bunny-details" hidden><summary>${t("兔女郎舰况")}</summary><p class="bunny-readout"></p></details>
         </section>
         <div id="overlay" class="overlay hidden" role="dialog" aria-modal="true">
           <div id="resultCard" class="result-card">
