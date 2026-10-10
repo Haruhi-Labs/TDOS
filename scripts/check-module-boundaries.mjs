@@ -149,21 +149,27 @@ for (const fileName of ["server/config.js", "server/protocol.js", "server/snapsh
   }
 }
 
+for (const file of walk("shared/game/model")) {
+  for (const specifier of importSpecifiers(file)) {
+    if (display(resolveImport(file, specifier)).startsWith("shared/game/runtime/")) {
+      failures.push(`${display(file)} 不得反向导入对局编排层`);
+    }
+  }
+}
+
 const requiredLinks = [
   ["shared/game-core.js", "./game/bot-controller.js"],
   ["shared/game-core.js", "./game/characters.js"],
   ["shared/game-core.js", "./game/combat-rules.js"],
   ["shared/game-core.js", "./game/math.js"],
   ["shared/game-core.js", "./game/throttle.js"],
-  ["shared/game-core.js", "./game/visibility-radar.js"],
-  ["shared/game-core.js", "./game/vision-wave.js"],
-  ["shared/game-core.js", "./game/targeting-system.js"],
-  ["shared/game-core.js", "./game/action-dispatcher.js"],
-  ["shared/game-core.js", "./game/collision-system.js"],
-  ["shared/game-core.js", "./game/koizumi-barrier.js"],
-  ["shared/game-core.js", "./game/haruhi-hero-power.js"],
-  ["shared/game-core.js", "./game/shamisen-hunt.js"],
-  ["shared/game-core.js", "./game/ai/bridge/runner.js"],
+  ["shared/game-core.js", "./game/runtime/match-simulation.js"],
+  ["shared/game/runtime/match-simulation.js", "../model/team.js"],
+  ["shared/game/runtime/match-simulation.js", "../ai/bridge/runner.js"],
+  ["shared/game/runtime/match-simulation.js", "../action-dispatcher.js"],
+  ["shared/game/model/team.js", "../model/ship.js"],
+  ["shared/game/model/team.js", "../targeting-system.js"],
+  ["shared/game/model/team.js", "../visibility-radar.js"],
   ["shared/game/bot-controller.js", "./ai/policy/rule-policy.js"],
   ["shared/game/ai/bridge/runner.js", "./action-port.js"],
   ["shared/game/ai/bridge/action-port.js", "../../action-dispatcher.js"],

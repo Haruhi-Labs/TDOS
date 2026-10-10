@@ -1,0 +1,1223 @@
+// 舰队状态所有者与领域操作。
+import { energyRateForThrottle } from "../throttle.js";
+import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
+import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../characters.js";
+import { clamp, linePointDistance, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
+import { rngFor } from "../rng.js";
+import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
+import { computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
+import { activateVisionWaveSkill as activateTeamVisionWaveSkill, cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSkillState, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
+import { assignFocusTargets as assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, isFocusWorthy as isTeamFocusWorthy, pickTargetFor as pickTeamTarget, stepCombat as stepTeamCombat } from "../targeting-system.js";
+import { activateKoizumiOrb, isKoizumiOrbActive, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
+import { createKoizumiBarrierState, consumeKoizumiBarrierHit, koizumiBarrierBeamImpact, serializeKoizumiBarrier } from "../koizumi-barrier.js";
+import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
+import { createHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
+import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
+import { DAMAGE_KIND } from "../damage.js";
+import { isBunnyCompanion, countsForVictory, isFleetParticipant, bunnyOwnerDamageBlocked } from "../bunny-haruhi-companion.js";
+import { spawnBunnyCompanion, convertBunnyCompanion } from "../bunny-companion-runtime.js";
+import { canBunnyLaunchScout, bunnyEnergyRate } from "../bunny-haruhi.js";
+import { bunnyStageEnabled, commitBunnyTransform, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { Ship } from "../model/ship.js";
+import { Scout } from "../model/scout.js";
+import { Wingman } from "../model/wingman.js";
+import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, YUKI_COMBAT_SCOUT_LAUNCH_COUNT, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS, nextEntityId } from "../model/model-support.js";
+
+export class Team {
+  constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
+    this.match = match;
+    this.seat = seat;
+    this.name = name;
+    this.color = TEAM_COLORS[seat];
+    this.projectileColor = TEAM_PROJECTILE_COLORS[seat];
+    this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
+
+    this.splitLevel = 0;
+    // 单人难度对本队的影响(仅当本队由AI控制时,由 MatchSimulation 按难度让分表写入):
+    //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
+    //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
+    // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
+    this.statMult = 1;
+    this.aiFocusLowHp = false;
+    // 独立教程使用的安全门：敌军全程禁用技能，友军在自由战前锁血至 1/4。
+    // 常规对战均保持默认值，不改变既有规则。
+    this.forceSkillsDisabled = false;
+    this.forceCharacterSkillsDisabled = false;
+    this.forceScoutsDisabled = false;
+    this.damageFloorRatio = 0;
+    // 极限集火只对"残血"目标生效(血量 ≤ 该值×自身上限才值得转火去收人头);
+    // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
+    this.focusHpFrac = 0.5;
+    this.visibleEnemyIds = new Set();
+    this.cooldowns = {
+      scout: 0,
+      flagship: 0,
+      sub1: 0,
+      sub2: 0,
+    };
+    this.autoScout = {
+      enabled: false,
+      zoneId: 5,
+    };
+
+    this.effects = {
+      sponsorUntil: 0,
+      haruhiBoostUntil: 0,
+    };
+    this.future1096Form = null;
+    this.haruhiFlagship = createHaruhiFlagshipState(facing);
+    this.koizumiBarrier = createKoizumiBarrierState();
+    this.shamisenHunt = createShamisenHuntState();
+    this.activeSkillEffectStartedTicks = Object.create(null);
+
+    const sub1FormationOffset = { x: -36, y: 22 };
+    const sub2FormationOffset = { x: -36, y: -22 };
+    const sub1SpawnOffset = rotateOffset(sub1FormationOffset.x * 0.5, sub1FormationOffset.y * 0.5, facing);
+    const sub2SpawnOffset = rotateOffset(sub2FormationOffset.x * 0.5, sub2FormationOffset.y * 0.5, facing);
+
+    this.ships = {
+      main: new Ship(this, "main", spawnX, spawnY, facing, {
+        slotKey: "main",
+        characterId: this.loadout.main,
+      }),
+      sub1: new Ship(this, "sub1", spawnX + sub1SpawnOffset.x, spawnY + sub1SpawnOffset.y, facing, {
+        slotKey: "sub1",
+        characterId: this.loadout.sub1,
+      }),
+      sub2: new Ship(this, "sub2", spawnX + sub2SpawnOffset.x, spawnY + sub2SpawnOffset.y, facing, {
+        slotKey: "sub2",
+        characterId: this.loadout.sub2,
+      }),
+    };
+
+    this.ships.sub1.formationOffset = sub1FormationOffset;
+    this.ships.sub2.formationOffset = sub2FormationOffset;
+
+    this.extraShips = [];
+    this.radarPassive = {
+      epochAngle: normalizeAngle(facing),
+      angle: normalizeAngle(facing),
+      scanSequence: 0,
+      contacts: new Map(),
+    };
+    this.visionWaveSkill = createVisionWaveSkillState();
+    this.koizumiImpactWaves = [];
+    this.koizumiImpactWaveSequence = 0;
+
+    this.scouts = [];
+    this.wingmen = [];
+    this.beams = [];
+  }
+
+  mainCharacterId() {
+    return this.loadout.main;
+  }
+
+  hasYukiFlagship() {
+    return this.mainCharacterId() === "yuki";
+  }
+
+  hasKyonFlagship() {
+    return this.mainCharacterId() === "kyon";
+  }
+
+  hasTsuruyaFlagship() {
+    return this.mainCharacterId() === "tsuruya";
+  }
+
+  hasShamisenFlagship() {
+    return hasShamisenFlagship(this);
+  }
+
+  ensureShamisenHuntTarget(enemyTeam) {
+    return ensureShamisenHuntTarget(this, enemyTeam, rngFor(this.match).next);
+  }
+
+  isShamisenHuntTarget(target) {
+    return isShamisenHuntTarget(this, target);
+  }
+
+  future1096FormDefinition(form = this.future1096Form) {
+    return FUTURE_1096_FORMS[form] || FUTURE_1096_BASE_FORM;
+  }
+
+  future1096StatMultiplier(statKey) {
+    if (this.mainCharacterId() !== "future1096") {
+      return 1;
+    }
+    const form = this.future1096FormDefinition();
+    if (statKey === "speed") return form.speed;
+    if (statKey === "fireRate") return form.fireRate;
+    return 1;
+  }
+
+  future1096DamageTakenMultiplier() {
+    if (this.mainCharacterId() !== "future1096") {
+      return 1;
+    }
+    return this.future1096FormDefinition().damageTaken;
+  }
+
+  switchFuture1096Form() {
+    if (this.mainCharacterId() !== "future1096") {
+      return false;
+    }
+    const previous = this.future1096FormDefinition();
+    const nextForm = this.future1096Form === "A" ? "B" : "A";
+    const next = this.future1096FormDefinition(nextForm);
+    const speedRatio = next.speed / previous.speed;
+    this.future1096Form = nextForm;
+
+    for (const ship of this.getPlayerShips()) {
+      // 形态切换改变的是整套舰体性能，当前航速也按新旧上限同比换算。
+      // 否则 A 形态虽然目标航速已提升 50%，实际航速仍要用原加速度缓慢追赶，体感近乎没有变化。
+      ship.speed = ship.alive ? Math.max(0, ship.speed * speedRatio) : 0;
+      ship.cooldown = Math.max(0, ship.cooldown * (previous.fireRate / next.fireRate));
+      if (ship.alive) {
+        this.match.spawnFloatingTextKey(
+          ship.x + 10,
+          ship.y - 12,
+          `${nextForm}形态`,
+          {},
+          nextForm === "A" ? "#8eefff" : "#ffd28e",
+        );
+      }
+    }
+    return true;
+  }
+
+  hasActiveSponsor() {
+    return this.effects.sponsorUntil > this.match.elapsed;
+  }
+
+  hasActiveVisionWaveSkill() {
+    return this.visionWaveSkill.activeUntil > this.match.elapsed;
+  }
+
+  getPlayerShips() {
+    return [this.ships.main, this.ships.sub1, this.ships.sub2];
+  }
+
+  getAllShips() {
+    return [...this.getPlayerShips(), ...this.extraShips];
+  }
+
+  spawnBunnyCompanion(owner) {
+    return spawnBunnyCompanion(owner, (...args) => new Ship(...args));
+  }
+
+  // 难度数值缩放:按 mult 缩放本队所有舰船的最大/当前血量(伤害缩放在 effectiveDamage 中按 statMult 动态生效)。
+  // 幂等——以已生效的 statMult 为基准取比值,重复调用同一倍率不再叠加。
+  applyAiStatMult(mult) {
+    const m = Number(mult) > 0 ? Number(mult) : 1;
+    const prev = this.statMult || 1;
+    if (m !== prev) {
+      const ratio = m / prev;
+      for (const ship of this.getAllShips()) {
+        ship.maxHp = Math.max(1, Math.round(ship.maxHp * ratio));
+        ship.hp = Math.min(ship.maxHp, ship.hp * ratio);
+      }
+    }
+    this.statMult = m;
+    return this;
+  }
+
+  shipByKey(key) {
+    if (this.ships[key]) {
+      return this.ships[key];
+    }
+    return this.extraShips.find((ship) => ship.key === key || ship.slotKey === key) || null;
+  }
+
+  getEntities() {
+    const list = [];
+    for (const ship of this.getAllShips()) {
+      if (ship.alive) {
+        list.push(ship);
+      }
+    }
+    for (const scout of this.scouts) {
+      if (scout.alive) {
+        list.push(scout);
+      }
+    }
+    for (const wingman of this.wingmen) {
+      if (wingman.alive) {
+        list.push(wingman);
+      }
+    }
+    return list;
+  }
+
+  getVisionSources() {
+    const sources = [];
+    for (const ship of this.getAllShips()) {
+      if (ship.alive) {
+        if (ship.key !== "main" && ship.isAttached() && !ship.isAuxiliary) {
+          continue;
+        }
+        sources.push({
+          id: ship.id,
+          x: ship.x,
+          y: ship.y,
+          range: ship.effectiveVision(),
+        });
+      }
+    }
+    for (const scout of this.scouts) {
+      if (scout.alive) {
+        sources.push({
+          id: scout.id,
+          x: scout.x,
+          y: scout.y,
+          range: scout.vision,
+        });
+      }
+    }
+    for (const wingman of this.wingmen) {
+      if (wingman.alive) {
+        sources.push({
+          id: wingman.id,
+          x: wingman.x,
+          y: wingman.y,
+          range: wingman.vision,
+        });
+      }
+    }
+    return sources;
+  }
+
+  hasLivingShips() {
+    return this.getAllShips().some((ship) => ship.alive && countsForVictory(ship));
+  }
+
+  hullRatio() {
+    const ships = this.getAllShips().filter(countsForVictory);
+    const hp = ships.reduce((sum, ship) => sum + Math.max(0, ship.hp), 0);
+    const max = ships.reduce((sum, ship) => sum + ship.maxHp, 0);
+    return max <= 0 ? 0 : hp / max;
+  }
+
+  fleetKeyForShip(shipOrKey) {
+    const key = typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key;
+    if (isBunnyCompanion(typeof shipOrKey === "string" ? this.shipByKey(key) : shipOrKey)) return key;
+    if (key === "sub1" && this.splitLevel >= 1) {
+      return "sub1";
+    }
+    if (key === "sub2" && this.splitLevel >= 2) {
+      return "sub2";
+    }
+    return "main";
+  }
+
+  fleetMembersByKey(fleetKey) {
+    const members = [];
+    if (fleetKey === "main") {
+      if (this.ships.main.alive) {
+        members.push(this.ships.main);
+      }
+      if (this.splitLevel < 1 && this.ships.sub1.alive) {
+        members.push(this.ships.sub1);
+      }
+      if (this.splitLevel < 2 && this.ships.sub2.alive) {
+        members.push(this.ships.sub2);
+      }
+      for (const ship of this.extraShips) {
+        if (ship.alive && isFleetParticipant(ship)) {
+          members.push(ship);
+        }
+      }
+      return members;
+    }
+    const ship = this.ships[fleetKey] || this.extraShips.find((candidate) => candidate.key === fleetKey && isBunnyCompanion(candidate));
+    if (ship && ship.alive) {
+      members.push(ship);
+    }
+    return members;
+  }
+
+  fleetMembersForShip(shipOrKey) {
+    return this.fleetMembersByKey(this.fleetKeyForShip(shipOrKey));
+  }
+
+  fleetMemberCountForShip(shipOrKey) {
+    return this.fleetMembersForShip(shipOrKey).length;
+  }
+
+  turnModifierForShip(shipOrKey) {
+    const count = this.fleetMemberCountForShip(shipOrKey);
+    const penalty = FLAGSHIP_TURN_PENALTIES[count] || 0.62;
+    return count <= 1 ? 1.16 : penalty;
+  }
+
+  accelerationModifierForShip(shipOrKey) {
+    let value = 1;
+    if (this.hasKyonFlagship()) {
+      value *= 1.16;
+    }
+    return value;
+  }
+
+  fleetSpeedForShip(shipOrKey) {
+    const members = this.fleetMembersForShip(shipOrKey);
+    if (members.length === 0) {
+      return 0;
+    }
+    return members.reduce((min, ship) => Math.min(min, ship.baseSpeed()), Infinity);
+  }
+
+  fleetEnergyForShip(shipOrKey) {
+    const members = this.fleetMembersForShip(shipOrKey);
+    return {
+      current: members.reduce((sum, ship) => sum + Math.max(0, ship.energy), 0),
+      max: members.reduce((sum, ship) => sum + ship.maxEnergy, 0),
+    };
+  }
+
+  availableEnergyForShip(shipOrKey) {
+    return this.fleetEnergyForShip(shipOrKey).current;
+  }
+
+  spendEnergyForShip(shipOrKey, cost) {
+    const members = this.fleetMembersForShip(shipOrKey).filter((ship) => ship.alive && ship.energy > 0);
+    if (members.length === 0) {
+      return false;
+    }
+    const total = members.reduce((sum, ship) => sum + ship.energy, 0);
+    if (total < cost) {
+      return false;
+    }
+    let spent = 0;
+    for (let i = 0; i < members.length; i += 1) {
+      const ship = members[i];
+      const remaining = cost - spent;
+      if (remaining <= 0) {
+        break;
+      }
+      const slice = i === members.length - 1 ? remaining : Math.min(ship.energy, (cost * ship.energy) / total);
+      ship.energy = Math.max(0, ship.energy - slice);
+      spent += slice;
+    }
+    if (spent < cost) {
+      const richest = [...members].sort((a, b) => b.energy - a.energy)[0];
+      if (richest) {
+        richest.energy = Math.max(0, richest.energy - (cost - spent));
+      }
+    }
+    return true;
+  }
+
+  listShipBuffs(ship) {
+    return statusEffectNames(serializeShipStatusEffects(ship));
+  }
+
+  areSkillsDisabled() {
+    return this.forceSkillsDisabled || this.forceCharacterSkillsDisabled;
+  }
+
+  areScoutsDisabled() {
+    return this.forceSkillsDisabled || this.forceScoutsDisabled;
+  }
+
+  cooldownStep(dt) {
+    return dt * (this.hasActiveSponsor() ? 2 : 1);
+  }
+
+  setShipEffect(ship, key, duration) {
+    ship.effects[key] = this.match.elapsed + duration;
+    ship.markActiveSkillEffectStarted(key);
+  }
+
+  markActiveSkillEffectStarted(effectKey) {
+    this.activeSkillEffectStartedTicks[effectKey] = this.match.tick;
+  }
+
+  clearActiveTeamSkillBuffs({ preserveCurrentTick = true } = {}) {
+    let cleared = false;
+    const clearTeamEffect = (effectKey) => {
+      if (preserveCurrentTick && this.activeSkillEffectStartedTicks[effectKey] === this.match.tick) {
+        return;
+      }
+      if (Number(this.effects[effectKey] || 0) > this.match.elapsed) {
+        cleared = true;
+      }
+      this.effects[effectKey] = 0;
+      delete this.activeSkillEffectStartedTicks[effectKey];
+    };
+    clearTeamEffect("sponsorUntil");
+    clearTeamEffect("haruhiBoostUntil");
+    if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
+      cleared = true;
+    }
+    return cleared;
+  }
+
+  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+    let cleared = this.clearActiveTeamSkillBuffs({ preserveCurrentTick });
+    for (const ship of this.getAllShips()) {
+      if (ship.clearActiveSkillBuffs({ preserveCurrentTick })) {
+        cleared = true;
+      }
+    }
+    return cleared;
+  }
+
+  clearActiveSkillBuffsForShip(ship, { preserveCurrentTick = true } = {}) {
+    const teamCleared = this.clearActiveTeamSkillBuffs({ preserveCurrentTick });
+    const shipCleared = ship?.clearActiveSkillBuffs({ preserveCurrentTick }) || false;
+    return teamCleared || shipCleared;
+  }
+
+  configureAutoScout(enabled, zoneId = 5) {
+    this.autoScout.enabled = Boolean(enabled);
+    if (Number.isFinite(Number(zoneId))) {
+      this.autoScout.zoneId = clamp(Number(zoneId), 1, 9);
+    }
+    return true;
+  }
+
+  blinkShip(ship, targetX, targetY, maxRange = 240) {
+    if (!ship || !ship.alive) {
+      return false;
+    }
+    const fromX = ship.x;
+    const fromY = ship.y;
+    const aimX = Number.isFinite(targetX) ? targetX : ship.x;
+    const aimY = Number.isFinite(targetY) ? targetY : ship.y;
+    const dx = aimX - ship.x;
+    const dy = aimY - ship.y;
+    const len = Math.hypot(dx, dy);
+    const step = len > 1e-4 ? Math.min(len, maxRange) : 0;
+    const dirX = len > 1e-4 ? dx / len : Math.cos(ship.angle);
+    const dirY = len > 1e-4 ? dy / len : Math.sin(ship.angle);
+    const padding = Math.max(this.match.mapPadding, ship.radius + 4);
+    ship.x = this.match.clampX(ship.x + dirX * step, padding);
+    ship.y = this.match.clampY(ship.y + dirY * step, padding);
+    ship.command.x = ship.x;
+    ship.command.y = ship.y;
+    ship.route = null;
+    this.match.spawnBurst(fromX, fromY, "#d8f7ff", 8);
+    this.match.spawnBurst(ship.x, ship.y, "#9be0ff", 9);
+    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "闪现", {}, "#9be0ff");
+    return true;
+  }
+
+  sponsorRegeneration(dt) {
+    if (!this.hasActiveSponsor()) {
+      return;
+    }
+    for (const ship of this.getAllShips()) {
+      if (!ship.alive) {
+        continue;
+      }
+      ship.hp = Math.min(ship.maxHp, ship.hp + ship.maxHp * 0.01 * dt);
+    }
+  }
+
+  normalizeSplitLevel() {
+    let level = this.splitLevel;
+    while (level < 1 && !this.ships.sub1.alive) {
+      level = 1;
+    }
+    while (level < 2 && level >= 1 && !this.ships.sub2.alive) {
+      level = 2;
+    }
+    this.splitLevel = level;
+  }
+
+  releaseShipAfterFlagshipLoss(ship, lateralSign = 1) {
+    if (!ship || !ship.alive) {
+      return;
+    }
+    const padding = Math.max(this.match.mapPadding, ship.radius + 6);
+    const forwardX = Math.cos(ship.angle || 0);
+    const forwardY = Math.sin(ship.angle || 0);
+    const sideX = -forwardY;
+    const sideY = forwardX;
+    ship.setBezierRoute(
+      undefined,
+      undefined,
+      this.match.clampX(ship.x + forwardX * 90 + sideX * 88 * lateralSign, padding),
+      this.match.clampY(ship.y + forwardY * 90 + sideY * 88 * lateralSign, padding),
+      1,
+      false,
+    );
+  }
+
+  resolvePostCasualtyState(match = null) {
+    this.normalizeSplitLevel();
+
+    if (!this.ships.main.alive) {
+      if (this.splitLevel < 1) {
+        this.splitLevel = 1;
+        this.releaseShipAfterFlagshipLoss(this.ships.sub1, 1);
+      }
+      this.normalizeSplitLevel();
+      if (this.splitLevel < 2) {
+        this.splitLevel = 2;
+        this.releaseShipAfterFlagshipLoss(this.ships.sub2, -1);
+      }
+    }
+
+    this.normalizeSplitLevel();
+  }
+
+  split(level) {
+    this.resolvePostCasualtyState();
+    const releasedShip = level === 1 ? this.ships.sub1 : level === 2 ? this.ships.sub2 : null;
+    if (
+      this.ships.main.isControlLocked()
+      || releasedShip?.isControlLocked()
+    ) {
+      return false;
+    }
+    if (level === 1 && this.splitLevel === 0 && this.ships.sub1.alive) {
+      this.splitLevel = 1;
+      this.ships.sub1.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y + 100, 1, false);
+      this.match.recordAction(this.seat, "split");
+      return true;
+    }
+    if (level === 2 && this.splitLevel === 1 && this.ships.sub2.alive) {
+      this.splitLevel = 2;
+      this.ships.sub2.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y - 100, 1, false);
+      this.match.recordAction(this.seat, "split");
+      return true;
+    }
+    return false;
+  }
+
+  updateEnergy(dt) {
+    for (const ship of this.getAllShips()) {
+      if (!ship.alive) {
+        continue;
+      }
+      const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
+      const energyRate = ship.bunnyStageExposure
+        ? bunnyEnergyRate(ship.bunnyStageExposure, ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle, bunnyStageEnabled(ship))
+        : energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
+      ship.energy = clamp(ship.energy + energyRate * dt, 0, ship.maxEnergy);
+    }
+  }
+
+  update(dt) {
+    this.resolvePostCasualtyState();
+    const cooldownStep = this.cooldownStep(dt);
+    this.cooldowns.scout = Math.max(0, this.cooldowns.scout - cooldownStep);
+    this.cooldowns.flagship = Math.max(0, this.cooldowns.flagship - cooldownStep);
+    this.cooldowns.sub1 = Math.max(0, this.cooldowns.sub1 - cooldownStep);
+    this.cooldowns.sub2 = Math.max(0, this.cooldowns.sub2 - cooldownStep);
+
+    this.sponsorRegeneration(dt);
+    this.updateEnergy(dt);
+    for (const ship of this.getAllShips()) {
+      ship.update(dt);
+    }
+    updateHaruhiFlagship(this, {
+      dt,
+      launchAlienWingmen: (ship) => this.launchHaruhiAlienWingmen(ship),
+      launchRandomBeam: (ship) => this.launchHaruhiRandomBeam(ship),
+    });
+    if (this.match.bunnyHaruhiActive) updateBunnyTeamSupports(this, dt);
+    updateTeamVisionWaveSkill(this);
+    this.maybeAutoLaunchScout();
+    for (const scout of this.scouts) {
+      scout.update(dt);
+    }
+    for (const wingman of this.wingmen) {
+      wingman.update(dt);
+    }
+    for (const beam of this.beams) {
+      if (beam.phase === "charge") {
+        const ship = this.shipByKey(beam.shipKey);
+        if (!ship || !ship.alive || ship.isAttached()) {
+          beam.fired = true;
+          beam.phase = "cancel";
+          beam.life = 0;
+          continue;
+        }
+        beam.x1 = ship.x;
+        beam.y1 = ship.y;
+        beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
+        beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
+        beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
+        if (ship.isControlLocked()) {
+          continue;
+        }
+      }
+      beam.life -= dt;
+    }
+
+    this.scouts = this.scouts.filter((scout) => scout.alive);
+    this.wingmen = this.wingmen.filter((wingman) => wingman.alive);
+    this.beams = this.beams.filter((beam) => beam.life > 0 || (beam.phase === "charge" && !beam.fired));
+  }
+
+  maybeAutoLaunchScout() {
+    if (!this.autoScout.enabled) {
+      return false;
+    }
+    return this.launchScout(this.autoScout.zoneId, {
+      cooldownMultiplier: AUTO_SCOUT_COOLDOWN_MULTIPLIER,
+    });
+  }
+
+  assignScoutMission(scout, options = {}) {
+    if (!scout?.alive || scout.team !== this) {
+      return false;
+    }
+    const zone = this.match.zoneById(options.zoneId || scout.zone?.id || 5);
+    const seekPoint = options.seekPoint && Number.isFinite(options.seekPoint.x) && Number.isFinite(options.seekPoint.y)
+      ? options.seekPoint
+      : { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+    scout.zone = zone;
+    scout.pattern = "zone";
+    scout.mission = options.mission || scout.mission || "patrol";
+    scout.patrolCenter = options.patrolCenter && Number.isFinite(options.patrolCenter.x) && Number.isFinite(options.patrolCenter.y)
+      ? { x: options.patrolCenter.x, y: options.patrolCenter.y }
+      : { x: seekPoint.x, y: seekPoint.y };
+    scout.patrolRadius = Number.isFinite(options.patrolRadius) ? Math.max(24, options.patrolRadius) : scout.patrolRadius;
+    scout.command = { x: seekPoint.x, y: seekPoint.y };
+    scout.mode = "transit";
+    scout.patrolTimer = rngFor(this.match).range(1, 2.1);
+    return true;
+  }
+
+  launchScout(zoneId, options = {}) {
+    if (isBunnyCompanion(this.shipByKey(options.fromShipKey))) return false;
+    const cost = SCOUT_LAUNCH_COST;
+    const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
+    if (this.areScoutsDisabled()) {
+      return false;
+    }
+    if (this.cooldowns.scout > 0) {
+      return false;
+    }
+    // 侦察机从「指定舰船」处发出(默认主舰)——前出的分离舰可更快把侦察部署到位。
+    // 能量从该舰所属能量池扣除(分离后副舰用自己的池)。
+    const requested = options.fromShipKey ? this.ships[options.fromShipKey] : null;
+    if (requested && requested.isControlLocked()) {
+      return false;
+    }
+    const source = (requested && requested.alive ? requested : null)
+      || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
+    if (!source || source.isControlLocked() || !canBunnyLaunchScout(source.bunnyHaruhi)) {
+      return false;
+    }
+    if (!this.spendEnergyForShip(source.key || "main", cost)) {
+      return false;
+    }
+    const zone = this.match.zoneById(zoneId);
+    const launchCount = this.hasYukiFlagship() ? YUKI_COMBAT_SCOUT_LAUNCH_COUNT : 1;
+    const lateralAngle = source.angle + Math.PI * 0.5;
+    const lateralDistance = source.radius + 6;
+    for (let index = 0; index < launchCount; index += 1) {
+      const side = launchCount === 1 ? 0 : index * 2 - 1;
+      const x = this.match.clampX(source.x + Math.cos(lateralAngle) * lateralDistance * side, 8);
+      const y = this.match.clampY(source.y + Math.sin(lateralAngle) * lateralDistance * side, 8);
+      this.scouts.push(new Scout(this, x, y, {
+        zone,
+        seekPoint: options.seekPoint,
+        mission: options.mission,
+        patrolCenter: options.patrolCenter,
+        patrolRadius: options.patrolRadius,
+      }));
+    }
+    this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
+    this.match.recordAction(this.seat, options.cooldownMultiplier ? "auto_scout" : "launch_scout");
+    return true;
+  }
+
+  launchWingman(zoneId) {
+    const cost = 55;
+    if (this.cooldowns.flagship > 0) {
+      return false;
+    }
+    if (!this.spendEnergyForShip("main", cost)) {
+      return false;
+    }
+    const zone = this.match.zoneById(zoneId);
+    const main = this.ships.main;
+    if (!main.alive) {
+      return false;
+    }
+    this.wingmen.push(new Wingman(this, main.x, main.y, zone));
+    return true;
+  }
+
+  launchBurstScouts(ship) {
+    const directions = 8;
+    for (let i = 0; i < directions; i += 1) {
+      const angle = (TAU / directions) * i;
+      for (const offset of [-0.07, 0.07]) {
+        const targetAngle = angle + offset;
+        const anchor = {
+          x: this.match.clampX(ship.x + Math.cos(targetAngle) * 230, 22),
+          y: this.match.clampY(ship.y + Math.sin(targetAngle) * 230, 22),
+        };
+        this.scouts.push(
+          new Scout(this, ship.x, ship.y, {
+            pattern: "burst",
+            anchor,
+            anchorRadius: 18,
+            speed: 118,
+            vision: 82,
+            life: 10.5,
+            radius: 3,
+          }),
+        );
+      }
+    }
+  }
+
+  zoneForPoint(x, y) {
+    return this.match.zones.find((zone) => zoneContains(zone, x, y)) || this.match.zones[4];
+  }
+
+  launchHaruhiAlienWingmen(ship) {
+    const zone = this.zoneForPoint(ship.x, ship.y);
+    const releaseAngle = rngFor(this.match).range(0, TAU);
+    const spawnRadius = ship.radius + 12;
+    const x = this.match.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
+    const y = this.match.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
+    this.scouts.push(new Scout(this, x, y, { zone, combatCapable: true }));
+    this.match.spawnBurst(x, y, "#8fe8ff", 5);
+  }
+
+  launchHaruhiRandomBeam(ship) {
+    const angle = rngFor(this.match).range(0, TAU);
+    return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
+  }
+
+  castFlagshipSkill(zoneId = 5) {
+    if (this.ships.main.bunnyHaruhi) return false;
+    const characterId = this.loadout.main;
+    const meta = skillMetaForCharacter(characterId, "flagship");
+    if (!meta || meta.type !== "active") {
+      return false;
+    }
+    if (!this.ships.main.alive || !this.ships.main.canControl()) {
+      return false;
+    }
+    if (this.ships.main.isSilenced()) {
+      return false;
+    }
+    if (this.areSkillsDisabled()) {
+      return false;
+    }
+    if (this.cooldowns.flagship > 0) {
+      return false;
+    }
+
+    let ok = false;
+    if (characterId === "haruhi") {
+      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
+        return false;
+      }
+      const main = this.ships.main;
+      const boostWasActive = haruhiBoostActive(this);
+      const supporter = activateHaruhiFlagship(this, meta.duration || 16, rngFor(this.match).next);
+      if (!boostWasActive) {
+        for (const ship of this.getPlayerShips()) {
+          if (ship.alive) {
+            ship.speed *= 1.15;
+            ship.cooldown /= 1.15;
+          }
+        }
+      }
+      this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里！", {}, "#ffe59a");
+      this.match.spawnBurst(main.x, main.y, "#ffe59a", Math.max(16, main.radius * 1.7));
+      if (supporter) {
+        const key = HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter];
+        this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, key, {}, "#fff3c5");
+      }
+      ok = true;
+    } else if (characterId === "future1096") {
+      ok = this.switchFuture1096Form();
+    } else if (characterId === "tsuruya") {
+      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
+        return false;
+      }
+      this.effects.sponsorUntil = this.match.elapsed + (meta.duration || 8);
+      this.markActiveSkillEffectStarted("sponsorUntil");
+      for (const ship of this.getAllShips()) {
+        if (!ship.alive) {
+          continue;
+        }
+        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "赞助", {}, "#ffd27e");
+      }
+      ok = true;
+    } else if (characterId === "asakura") {
+      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
+        return false;
+      }
+      activateTeamVisionWaveSkill(this, {
+        duration: meta.duration || 6,
+        interval: meta.pulseInterval || 1,
+      });
+      ok = true;
+    }
+
+    if (!ok) {
+      return false;
+    }
+    this.cooldowns.flagship = meta.cooldown || 0;
+    this.match.recordAction(this.seat, "flagship_skill");
+    this.revealCasterIfSeen(this.ships.main); // 旗舰技由主舰施放:若此刻正被敌方看见,永久暴露其名字
+    return true;
+  }
+
+  // 施放技能的舰船若此刻正处于敌方视野内,则永久暴露它的名字(仅用于名牌显示)
+  revealCasterIfSeen(ship) {
+    if (!ship || ship.nameRevealed) {
+      return;
+    }
+    const enemyTeam = this.match.enemyTeamBySeat(this.seat);
+    if (enemyTeam && enemyTeam.visibleEnemyIds && enemyTeam.visibleEnemyIds.has(ship.id)) {
+      ship.nameRevealed = true;
+    }
+  }
+
+  castSubSkill(shipKey, options = {}) {
+    const ship = this.ships[shipKey];
+    if (ship?.bunnyHaruhi) return commitBunnyTransform(ship);
+    if (!ship || !ship.alive || ship.isAttached() || !ship.canControl()) {
+      return false;
+    }
+    if (ship.isSilenced() || ship.isKoizumiOrbActive()) {
+      return false;
+    }
+    if (this.areSkillsDisabled()) {
+      return false;
+    }
+    const meta = skillMetaForCharacter(ship.characterId, "sub");
+    if (!meta || meta.type !== "active") {
+      return false;
+    }
+    if ((this.cooldowns[shipKey] || 0) > 0) {
+      return false;
+    }
+    if (!this.spendEnergyForShip(ship, meta.cost || 0)) {
+      return false;
+    }
+
+    let ok = false;
+    if (ship.characterId === "haruhi") {
+      this.match.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
+        id: nextEntityId(this.match),
+        ship,
+        now: this.match.elapsed,
+        worldSize: this.match.worldSize,
+        meta,
+      }));
+      ok = true;
+    } else if (ship.characterId === "koizumi") {
+      ok = activateKoizumiOrb(ship, meta.duration || 8);
+      if (ok) ship.markActiveSkillEffectStarted("koizumiOrb");
+    } else if (ship.characterId === "yuki") {
+      this.launchBurstScouts(ship);
+      ok = true;
+    } else if (ship.characterId === "future1096") {
+      ok = this.castBeamFromShip(shipKey, options.targetX, options.targetY);
+      if (!ok) {
+        ship.energy = clamp(ship.energy + (meta.cost || 0), 0, ship.maxEnergy);
+      }
+    } else if (ship.characterId === "kyon") {
+      this.setShipEffect(ship, "reliableUntil", meta.duration || 14);
+      ship.hp = Math.min(ship.maxHp, ship.hp + ship.maxHp * 0.18);
+      ok = true;
+    } else if (ship.characterId === "tsuruya") {
+      ok = this.bribeZone(ship, Number(options.zoneId) || 5);
+      if (!ok) {
+        ship.energy = clamp(ship.energy + (meta.cost || 0), 0, ship.maxEnergy);
+      }
+    } else if (ship.characterId === "asakura") {
+      this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
+      ship.speed = Math.max(ship.speed, ship.minimumFlightSpeed());
+      ok = true;
+    } else if (ship.characterId === "shamisen") {
+      this.setShipEffect(ship, "catPawUntil", meta.duration || 12);
+      ok = true;
+    }
+
+    if (!ok) {
+      return false;
+    }
+    this.cooldowns[shipKey] = meta.cooldown || 0;
+    this.match.recordAction(this.seat, "sub_skill");
+    this.revealCasterIfSeen(ship); // 分舰技由该舰施放:若此刻正被敌方看见,永久暴露其名字
+    return true;
+  }
+
+  castBeamFromShip(shipKey, directionX, directionY) {
+    const ship = this.ships[shipKey];
+    if (!ship || ship.isAttached() || !ship.alive) {
+      return false;
+    }
+    const aimDx = Number(directionX) - ship.x;
+    const aimDy = Number(directionY) - ship.y;
+    const aimLen = Math.hypot(aimDx, aimDy);
+    if (!Number.isFinite(aimLen) || aimLen < 1e-4) {
+      return false;
+    }
+    const dirX = aimDx / aimLen;
+    const dirY = aimDy / aimLen;
+    return this.queueBeamDirection(ship, dirX, dirY);
+  }
+
+  queueBeamDirection(ship, dirX, dirY) {
+    if (!ship || !ship.alive || ship.isAttached()) {
+      return false;
+    }
+    const dirLen = Math.hypot(dirX, dirY);
+    if (!Number.isFinite(dirLen) || dirLen < 1e-4) {
+      return false;
+    }
+    const unitX = dirX / dirLen;
+    const unitY = dirY / dirLen;
+    const range = BEAM_BASE_RANGE;
+    const beam = {
+      id: nextEntityId(this.match),
+      shipKey: ship.key,
+      phase: "charge",
+      x1: ship.x,
+      y1: ship.y,
+      x2: this.match.clampX(ship.x + unitX * range, 0),
+      y2: this.match.clampY(ship.y + unitY * range, 0),
+      dirX: unitX,
+      dirY: unitY,
+      range,
+      color: "#8ef8ff",
+      life: BEAM_CHARGE_DURATION,
+      maxLife: BEAM_CHARGE_DURATION,
+      progress: 0,
+      fired: false,
+    };
+    this.beams.push(beam);
+    return true;
+  }
+
+  bribeZone(ship, zoneId) {
+    const zone = this.match.zoneById(zoneId);
+    const enemyTeam = this.match.enemyTeamBySeat(this.seat);
+    let converted = 0;
+
+    for (const scout of enemyTeam.scouts) {
+      if (!scout.alive || !zoneContains(zone, scout.x, scout.y)) {
+        continue;
+      }
+      scout.team = this;
+      this.scouts.push(scout);
+      scout.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+      converted += 1;
+    }
+    enemyTeam.scouts = enemyTeam.scouts.filter((scout) => scout.team === enemyTeam);
+
+    for (const wingman of enemyTeam.wingmen) {
+      if (!wingman.alive || !zoneContains(zone, wingman.x, wingman.y)) {
+        continue;
+      }
+      wingman.team = this;
+      wingman.zone = zone;
+      wingman.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+      this.wingmen.push(wingman);
+      converted += 1;
+    }
+    enemyTeam.wingmen = enemyTeam.wingmen.filter((wingman) => wingman.team === enemyTeam);
+
+    // 使用固定集合，避免原地转移遗漏实体；普通飞行器保留原永久策反语义。
+    for (const companion of [...enemyTeam.extraShips]) {
+      if (companion.alive && zoneContains(zone, companion.x, companion.y)
+        && convertBunnyCompanion(companion, this, zone)) converted += 1;
+    }
+    if (this.match.bunnyHaruhiActive && converted > 0) refreshBunnyVisibility(this.match);
+
+    if (converted > 0) {
+      this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "钞能力 x{count}", { count: converted }, "#ffd27e", `钞能力 x${converted}`);
+    }
+    return converted > 0;
+  }
+
+  spawnBeamHitParticles(x, y) {
+    this.match.spawnBurst(x, y, "#8ef8ff", 11);
+    for (let i = 0; i < 7; i += 1) {
+      const angle = rngFor(this.match).range(0, TAU);
+      const offset = rngFor(this.match).range(4, 28);
+      const px = this.match.clampX(x + Math.cos(angle) * offset, 0);
+      const py = this.match.clampY(y + Math.sin(angle) * offset, 0);
+      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", rngFor(this.match).range(3.5, 7.5));
+    }
+  }
+
+  resolveChargedBeams(enemyTeam) {
+    for (const beam of this.beams) {
+      if (beam.phase !== "charge" || beam.life > 0 || beam.fired) {
+        continue;
+      }
+      const ship = this.shipByKey(beam.shipKey);
+      if (!ship || !ship.alive || ship.isAttached()) {
+        beam.fired = true;
+        beam.phase = "cancel";
+        beam.life = 0;
+        continue;
+      }
+
+      beam.fired = true;
+      beam.phase = "fire";
+      beam.life = BEAM_VISUAL_DURATION;
+      beam.maxLife = BEAM_VISUAL_DURATION;
+      beam.progress = 1;
+      beam.x1 = ship.x;
+      beam.y1 = ship.y;
+      beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
+      beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
+
+      const barrierImpact = koizumiBarrierBeamImpact(beam, enemyTeam);
+      if (barrierImpact) {
+        consumeKoizumiBarrierHit(enemyTeam, barrierImpact, this.seat);
+        beam.x2 = barrierImpact.x;
+        beam.y2 = barrierImpact.y;
+        beam.blockedByBarrier = true;
+        beam.barrierTeamSeat = enemyTeam.seat;
+        this.match.spawnKoizumiBarrierImpact({
+          ...barrierImpact,
+          teamSeat: enemyTeam.seat,
+          sourceSeat: this.seat,
+          kind: "beam",
+        });
+      }
+
+      // 先固定本次光线的完整命中集合，再按数量选择统一倍率，避免边结算边击毁目标时
+      // 后续目标因存活数量变化而使用不同伤害档位。护盾已在上方截断射线，因此这里
+      // 统计的就是屏障之后真正能被光线触及的舰船。
+      const hitTargets = enemyTeam.getAllShips().filter((target) => {
+        if (!target.alive || !target.isTargetableByFire() || bunnyOwnerDamageBlocked(ship, target)) return false;
+        const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
+        return probe.dist <= target.radius + BEAM_HIT_RADIUS && probe.t >= 0 && probe.t <= 1;
+      });
+      const damageRatio = beamDamageRatioForHitCount(hitTargets.length);
+      this.match.recordAttack(this.seat, "beam", hitTargets.length);
+      for (const target of hitTargets) {
+        const damage = target.maxHp * damageRatio;
+        const displayedDamage = damage;
+        const damageImmune = target.isDamageImmune();
+        target.takeDamage(damage, ship, this.match, { kind: DAMAGE_KIND.SKILL });
+        if (damageImmune) {
+          this.match.spawnFloatingTextKey(target.x + 8, target.y - 10, "免疫", {}, "#ffc5cf");
+        } else {
+          this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(displayedDamage)}`, "#ffb7a8");
+        }
+        this.spawnBeamHitParticles(target.x, target.y);
+      }
+
+      if (hitTargets.length === 0) {
+        this.match.spawnBurst(beam.x2, beam.y2, "#78dfff", 9);
+      }
+    }
+  }
+
+  radarMaxDistanceFrom(source) {
+    return teamRadarMaxDistanceFrom(this, source);
+  }
+
+  createRadarContact(target, source) {
+    return createTeamRadarContact(this, target, source);
+  }
+
+  updateRadarPassive(enemyTeam, dt) {
+    updateTeamRadarPassive(this, enemyTeam, dt);
+  }
+
+  serializeRadarPassive() {
+    return serializeTeamRadarPassive(this);
+  }
+
+  serializeVisionWaves() {
+    return serializeTeamVisionWaves(this);
+  }
+
+  computeVisibility(enemyTeam) {
+    computeTeamVisibility(this, enemyTeam);
+  }
+
+  // 某攻击者当前可开火的候选目标:已过滤"真实可见 + 进射程",并带上距离与射界密度。
+  // 取最近/锁血/集火分配都基于这同一份候选,确保 AI 与玩家走完全一致的命中判定口径。
+  fireCandidates(attacker, enemyTeam) {
+    return teamFireCandidates(this, attacker, enemyTeam);
+  }
+
+  focusDamageBudget(attacker) {
+    return attackerFocusDamageBudget(attacker);
+  }
+
+  isFocusWorthy(target) {
+    return isTeamFocusWorthy(this, target);
+  }
+
+  assignFocusTargets(enemyTeam) {
+    assignTeamFocusTargets(this, enemyTeam);
+  }
+
+  pickTargetFor(attacker, enemyTeam) {
+    return pickTeamTarget(this, attacker, enemyTeam);
+  }
+
+  stepCombat(enemyTeam) {
+    stepTeamCombat(this, enemyTeam);
+  }
+
+  serialize() {
+    return {
+      seat: this.seat,
+      name: this.name,
+      color: this.color,
+      splitLevel: this.splitLevel,
+      loadout: this.match.bunnyHaruhiActive ? { ...this.loadout } : cloneLoadout(this.loadout),
+      ...(this.ships.main.bunnyHaruhi ? { bunnyStage: this.bunnyStage ? { ...this.bunnyStage } : null } : {}),
+      energy: this.fleetEnergyForShip("main").current,
+      maxEnergy: this.fleetEnergyForShip("main").max,
+      hullRatio: this.hullRatio(),
+      future1096Form: this.future1096Form,
+      haruhiFlagship: serializeHaruhiFlagship(this),
+      koizumiBarrier: serializeKoizumiBarrier(this),
+      shamisenHunt: serializeShamisenHunt(this),
+      skillsDisabled: this.areSkillsDisabled(),
+      autoScout: {
+        enabled: this.autoScout.enabled,
+        zoneId: this.autoScout.zoneId,
+      },
+      cooldowns: {
+        scout: this.cooldowns.scout,
+        flagship: this.cooldowns.flagship,
+        sub1: this.cooldowns.sub1,
+        sub2: this.cooldowns.sub2,
+      },
+      visibleEnemyIds: Array.from(this.visibleEnemyIds),
+      radarSweep: serializeTeamRadarSweep(this),
+      visionWaves: this.serializeVisionWaves(),
+      koizumiImpactWaves: serializeKoizumiImpactWaves(this),
+      ships: {
+        main: this.ships.main.serialize(),
+        sub1: this.ships.sub1.serialize(),
+        sub2: this.ships.sub2.serialize(),
+      },
+      extraShips: this.extraShips.map((ship) => ship.serialize()),
+      scouts: this.scouts.filter((item) => item.alive).map((item) => item.serialize()),
+      wingmen: this.wingmen.filter((item) => item.alive).map((item) => item.serialize()),
+      beams: this.beams.map((beam) => ({
+        id: beam.id,
+        shipKey: beam.shipKey,
+        phase: beam.phase || "fire",
+        x1: beam.x1,
+        y1: beam.y1,
+        x2: beam.x2,
+        y2: beam.y2,
+        progress: Number.isFinite(beam.progress) ? beam.progress : 1,
+        color: beam.color,
+        life: beam.life,
+        maxLife: beam.maxLife || beam.life,
+        blockedByBarrier: Boolean(beam.blockedByBarrier),
+        barrierTeamSeat: beam.barrierTeamSeat || null,
+      })),
+    };
+  }
+}
