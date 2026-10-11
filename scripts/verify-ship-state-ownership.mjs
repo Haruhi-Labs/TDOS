@@ -6,7 +6,7 @@ const match = new MatchSimulation({ mode: "pvp", seed: 911 });
 const a = match.teamA;
 const b = match.teamB;
 const ship = a.ships.main;
-for (const key of ["hp", "energy", "maxHp", "maxEnergy", "x", "y", "angle", "speed", "throttle", "alive", "team", "formationOffset", "id", "key", "slotKey", "isAuxiliary"]) {
+for (const key of ["hp", "energy", "maxHp", "maxEnergy", "x", "y", "angle", "speed", "throttle", "alive", "team", "formationOffset", "id", "key", "slotKey", "isAuxiliary", "name", "roleLabel"]) {
   assert.throws(() => { ship[key] = null; }, TypeError, `${key} 不得绕过所有者直接写入`);
 }
 assert.throws(() => { ship.formationOffset.x = 5; }, TypeError);

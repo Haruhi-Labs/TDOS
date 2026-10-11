@@ -87,8 +87,11 @@ export class Ship {
     });
     this.#base = options.baseStats
       ? freezePlainData(copyPlainData(options.baseStats)) : this.character.stats;
-    this.roleLabel = options.roleLabel || slotLabel(this.slotKey);
-    this.name = `${this.roleLabel}·${this.character.name}`;
+    const roleLabel = options.roleLabel || slotLabel(this.slotKey);
+    Object.defineProperties(this, {
+      roleLabel: { enumerable: true, value: roleLabel },
+      name: { enumerable: true, value: `${roleLabel}·${this.character.name}` },
+    });
 
     this.#x = x;
     this.#y = y;

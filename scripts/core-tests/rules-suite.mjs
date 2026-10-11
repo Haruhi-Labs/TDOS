@@ -335,7 +335,7 @@ function yukiFlagshipCombatScoutCheck() {
   for (const [index, scout] of yukiTeam.scouts.entries()) {
     setScenarioField(scout, 'x', 680);
     setScenarioField(scout, 'y', 712 + index * 16);
-    scout.cooldown = 0;
+    scout.resetAttackCycle(0);
   }
   setScenarioField(enemyMain, 'x', 800);
   setScenarioField(enemyMain, 'y', 720);
@@ -358,7 +358,7 @@ function yukiFlagshipCombatScoutCheck() {
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
 
-  for (const scout of yukiTeam.scouts) scout.cooldown = 0;
+  for (const scout of yukiTeam.scouts) scout.resetAttackCycle(0);
   setScenarioField(enemyMain, 'x', combatScout.x + combatScout.vision + 10);
   setScenarioField(enemyMain, 'y', combatScout.y);
   yukiSim.projectiles = [];
@@ -1694,17 +1694,17 @@ function haruhiHeroPowerCheck() {
     const angle = (index / allAircraft.length) * Math.PI * 2;
     setScenarioField(aircraft, 'x', 720 + Math.cos(angle) * 92);
     setScenarioField(aircraft, 'y', 720 + Math.sin(angle) * 92);
-    aircraft.command = { x: aircraft.x, y: aircraft.y };
+    aircraft.guideTo({ x: aircraft.x, y: aircraft.y });
     setScenarioField(aircraft, 'speed', 0);
   }
   const ownOutsideScout = teamA.scouts.at(-1);
   const enemyOutsideScout = teamB.scouts.at(-1);
   setScenarioField(ownOutsideScout, 'x', 1100);
   setScenarioField(ownOutsideScout, 'y', 1080);
-  ownOutsideScout.command = { x: ownOutsideScout.x, y: ownOutsideScout.y };
+  ownOutsideScout.guideTo({ x: ownOutsideScout.x, y: ownOutsideScout.y });
   setScenarioField(enemyOutsideScout, 'x', 1160);
   setScenarioField(enemyOutsideScout, 'y', 1080);
-  enemyOutsideScout.command = { x: enemyOutsideScout.x, y: enemyOutsideScout.y };
+  enemyOutsideScout.guideTo({ x: enemyOutsideScout.x, y: enemyOutsideScout.y });
 
   const castOk = teamA.castSubSkill("sub1");
   assert(castOk, "春日‘勇者之力’释放失败");

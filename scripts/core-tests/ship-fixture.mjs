@@ -1,7 +1,15 @@
+import { Scout } from "../../shared/game/model/scout.js";
+import { Wingman } from "../../shared/game/model/wingman.js";
 import { Ship } from "../../shared/game/model/ship.js";
 
 // 场景布置也走实体操作；快照等普通数据仍按原值构造，不开放生产私有存储。
 export function setScenarioField(target, key, value) {
+  if (target instanceof Scout || target instanceof Wingman) {
+    if (key === "x" || key === "y") target.displaceTo(key === "x" ? value : target.x, key === "y" ? value : target.y);
+    else if (key === "speed") target.setFlightSpeed(value);
+    else throw new Error(`飞行器场景字段 ${key} 需要使用领域操作`);
+    return value;
+  }
   if (!(target instanceof Ship)) { target[key] = value; return value; }
   if (key === "x" || key === "y") target.displaceTo(key === "x" ? value : target.x, key === "y" ? value : target.y);
   else if (key === "hp" || key === "energy") target.applyResourcePlan({ [key]: value });

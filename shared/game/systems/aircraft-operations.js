@@ -13,17 +13,27 @@ export class AircraftOperations {
   get scouts() { return this.#scoutView ??= Object.freeze([...this.#scouts]); }
   get wingmen() { return this.#wingmanView ??= Object.freeze([...this.#wingmen]); }
   get autoScout() { return this.#autoScout; }
+  acceptsScout(scout) { return this.#accepts(scout, "scout", this.#scouts); }
+  acceptsWingman(wingman) { return this.#accepts(wingman, "wingman", this.#wingmen); }
+  #accepts(entity, kind, members) {
+    return Boolean(entity && entity.kind === kind && this.#port.sameMatch(entity)
+      && !members.some((member) => member === entity || member.id === entity.id));
+  }
   addScout(scout) {
+    if (!this.acceptsScout(scout) || !this.#port.owns(scout)) return false;
     this.#scoutView = undefined;
     this.#scouts.push(scout);
+    return true;
   }
   removeScout(scout) {
     this.#scoutView = undefined;
     this.#scouts = this.#scouts.filter((item) => item !== scout);
   }
   addWingman(wingman) {
+    if (!this.acceptsWingman(wingman) || !this.#port.owns(wingman)) return false;
     this.#wingmanView = undefined;
     this.#wingmen.push(wingman);
+    return true;
   }
   removeWingman(wingman) {
     this.#wingmanView = undefined;
@@ -96,7 +106,7 @@ export class AircraftOperations {
       const side = launchCount === 1 ? 0 : index * 2 - 1;
       const x = this.#port.world.clampX(source.x + Math.cos(lateralAngle) * lateralDistance * side, 8);
       const y = this.#port.world.clampY(source.y + Math.sin(lateralAngle) * lateralDistance * side, 8);
-      this.#scouts.push(this.#port.createScout(x, y, {
+      this.addScout(this.#port.createScout(x, y, {
         zone,
         seekPoint: options.seekPoint,
         mission: options.mission,
@@ -123,7 +133,7 @@ export class AircraftOperations {
     if (!main.alive) {
       return false;
     }
-    this.#wingmen.push(this.#port.createWingman(main.x, main.y, zone));
+    this.addWingman(this.#port.createWingman(main.x, main.y, zone));
     return true;
   }
 
@@ -138,7 +148,7 @@ export class AircraftOperations {
           x: this.#port.world.clampX(ship.x + Math.cos(targetAngle) * 230, 22),
           y: this.#port.world.clampY(ship.y + Math.sin(targetAngle) * 230, 22),
         };
-        this.#scouts.push(
+        this.addScout(
           this.#port.createScout(ship.x, ship.y, {
             pattern: "burst",
             anchor,
@@ -160,7 +170,7 @@ export class AircraftOperations {
     const spawnRadius = ship.radius + 12;
     const x = this.#port.world.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
     const y = this.#port.world.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
-    this.#scouts.push(this.#port.createScout(x, y, { zone, combatCapable: true }));
+    this.addScout(this.#port.createScout(x, y, { zone, combatCapable: true }));
     this.#port.world.spawnBurst(x, y, "#8fe8ff", 5);
   }
 

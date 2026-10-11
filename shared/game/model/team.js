@@ -65,11 +65,13 @@ export class Team {
   #beamSystem;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.#roster = new FleetRoster(this);
-    this.match = match;
-    this.seat = seat;
-    this.name = name;
-    this.color = TEAM_COLORS[seat];
-    this.projectileColor = TEAM_PROJECTILE_COLORS[seat];
+    Object.defineProperties(this, {
+      match: { enumerable: true, value: match },
+      seat: { enumerable: true, value: seat },
+      name: { enumerable: true, value: name },
+      color: { enumerable: true, value: TEAM_COLORS[seat] },
+      projectileColor: { enumerable: true, value: TEAM_PROJECTILE_COLORS[seat] },
+    });
     Object.defineProperty(this, "loadout", {
       enumerable: true,
       value: Object.freeze(normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT)),
@@ -192,9 +194,11 @@ export class Team {
     return [this.ships.main, this.ships.sub1, this.ships.sub2];
   }
 
-  addScout(scout) { this.#aircraft.addScout(scout); }
+  canAcceptScout(scout) { return this.#aircraft.acceptsScout(scout); }
+  addScout(scout) { return this.#aircraft.addScout(scout); }
   removeScout(scout) { this.#aircraft.removeScout(scout); }
-  addWingman(wingman) { this.#aircraft.addWingman(wingman); }
+  canAcceptWingman(wingman) { return this.#aircraft.acceptsWingman(wingman); }
+  addWingman(wingman) { return this.#aircraft.addWingman(wingman); }
   removeWingman(wingman) { this.#aircraft.removeWingman(wingman); }
 
   activateHaruhiSupport(duration, random) {

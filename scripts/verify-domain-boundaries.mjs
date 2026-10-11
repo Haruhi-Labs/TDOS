@@ -131,8 +131,8 @@ assert.equal(destinationTeam.scouts.filter((entity) => entity === scout).length,
 assert.equal(destinationTeam.wingmen.filter((entity) => entity === wingman).length, 1);
 assert.equal(scout.team, destinationTeam);
 assert.equal(wingman.team, destinationTeam);
-assert.equal(scout.zone, sourceZone, "侦察机策反只改变下一目标，保留原巡逻区域语义");
-assert.equal(wingman.zone, targetZone);
+assert.deepEqual(scout.zone, sourceZone, "侦察机策反只改变下一目标，保留原巡逻区域语义");
+assert.deepEqual(wingman.zone, targetZone);
 assert.equal(sourceTeam.assignScoutMission(scout, { zoneId: 2 }), false, "原所有者不得继续指挥已转移实体");
 console.log("实体所有权校验通过：任务输入隔离，策反同时移交实体与集合归属。");
 

@@ -13,16 +13,14 @@ export function convertZoneSupport(ship, zoneId) {
     if (!scout.alive || !zoneContains(zone, scout.x, scout.y)) {
       continue;
     }
-    scout.transferToTeam(team, zone);
-    converted += 1;
+    if (scout.transferToTeam(team, zone)) converted += 1;
   }
 
   for (const wingman of [...enemyTeam.wingmen]) {
     if (!wingman.alive || !zoneContains(zone, wingman.x, wingman.y)) {
       continue;
     }
-    wingman.transferToTeam(team, zone);
-    converted += 1;
+    if (wingman.transferToTeam(team, zone)) converted += 1;
   }
 
   // 使用固定集合，避免原地转移遗漏实体；普通飞行器保留原永久策反语义。

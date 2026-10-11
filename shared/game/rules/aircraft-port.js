@@ -9,6 +9,8 @@ export function createAircraftPort(team) {
     launchAvailable: team.match.rules.scoutLaunchAvailable(ship),
   });
   return Object.freeze({
+    sameMatch: (entity) => entity.team?.match === team.match,
+    owns: (entity) => entity.team === team,
     source: (key) => source(team.ships[key]), sources: () => team.getAllShips().map(source),
     orderAvailable: (key) => team.match.rules.scoutOrderAvailable(team.shipByKey(key)),
     disabled: () => team.areScoutsDisabled(), launchCount: () => team.match.rules.scoutLaunchCount(team),

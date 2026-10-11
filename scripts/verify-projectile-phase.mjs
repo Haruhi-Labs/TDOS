@@ -62,7 +62,8 @@ ship.broadsideMultiplier = () => 1;
 const requests = [];
 firing.spawnProjectile = (profile) => { requests.push(profile); };
 for (const actor of [ship, scout, wingman]) {
-  actor.cooldown = 0;
+  if (actor === ship) actor.cooldown = 0;
+  else actor.resetAttackCycle(0);
   actor.tryAttack(firing, enemy);
 }
 assert.deepEqual(requests.map((request) => request.source), [ship, scout, wingman]);
