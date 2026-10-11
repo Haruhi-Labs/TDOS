@@ -1,11 +1,11 @@
 // 能量管理：能量池状态、推进档位护栏与支出许可。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import { energyRateForThrottle, throttleForGear, throttleGearForValue } from "../../throttle.js";
 
 export const energyMethods = {
-  energyProfile(shipOrKey) {
-    const members = this.fleetMembers(shipOrKey).filter((ship) => ship.alive);
-    const pool = this.fleetEnergy(shipOrKey);
+  energyProfile({ fleetMembers: capFleetMembers, fleetEnergy: capFleetEnergy, params: policyParams }, shipOrKey) {
+    const members = capFleetMembers(shipOrKey).filter((ship) => ship.alive);
+    const pool = capFleetEnergy(shipOrKey);
     const ratio = pool.current / Math.max(pool.max, 1);
     const regen = members.reduce((sum, ship) => sum + ship.stats.energyRegen, 0);
     const moveLoad = members.reduce((sum, ship) => sum + ship.stats.moveDrain, 0);
@@ -23,75 +23,69 @@ export const energyMethods = {
       moveLoad,
       sustainCruise,
       sustainRecover,
-      high: ratio >= this.params.energy.profile.highRatio,
-      low: ratio <= this.params.energy.profile.lowRatio,
-      critical: ratio <= this.params.energy.profile.criticalRatio,
+      high: ratio >= policyParams.energy.profile.highRatio,
+      low: ratio <= policyParams.energy.profile.lowRatio,
+      critical: ratio <= policyParams.energy.profile.criticalRatio,
     };
   },
 
-  energyThrottleGearCap(shipOrKey) {
-    const profile = this.energyProfile(shipOrKey);
-    const ship = typeof shipOrKey === "string" ? this.obs.self.ships[shipOrKey] : shipOrKey;
-    if (profile.ratio <= this.params.energy.gear.criticalRatio) {
+  energyThrottleGearCap({ energyProfile: capEnergyProfile, obs: policyObs, params: policyParams, hasEffect: capHasEffect }, shipOrKey) {
+    const profile = capEnergyProfile(shipOrKey);
+    const ship = typeof shipOrKey === "string" ? policyObs.self.ships[shipOrKey] : shipOrKey;
+    if (profile.ratio <= policyParams.energy.gear.criticalRatio) {
       return 1;
     }
     // 刀锋期间优先以四档迅速穿入敌阵；接触伤害固定，危险能量线前仍降档保留后续机动。
-    if (this.hasEffect(ship, "bladeQueenUntil")) {
+    if (capHasEffect(ship, "bladeQueenUntil")) {
       return 4;
     }
-    if (profile.ratio <= this.params.energy.gear.lowRatio) {
+    if (profile.ratio <= policyParams.energy.gear.lowRatio) {
       return 2;
     }
     const currentGear = throttleGearForValue(ship?.throttle);
     const overdriveThreshold = currentGear === 4
-      ? this.params.energy.gear.overdriveStopRatio
-      : this.params.energy.gear.overdriveStartRatio;
+      ? policyParams.energy.gear.overdriveStopRatio
+      : policyParams.energy.gear.overdriveStartRatio;
     return profile.ratio >= overdriveThreshold ? 4 : 3;
   },
 
-  energyAwareThrottleForShip(ship, requestedThrottle) {
+  energyAwareThrottleForShip({ energyThrottleGearCap: capEnergyThrottleGearCap }, ship, requestedThrottle) {
     const intendedGear = requestedThrottle > 1
       ? 4
       : throttleGearForValue(requestedThrottle);
-    return throttleForGear(Math.min(intendedGear, this.energyThrottleGearCap(ship)));
+    return throttleForGear(Math.min(intendedGear, capEnergyThrottleGearCap(ship)));
   },
 
-  enforceEnergyThrottleCaps() {
-    for (const ship of Object.values(this.obs.self.ships)) {
-      if (!ship?.alive || ship.attached) {
-        continue;
-      }
-      const currentGear = throttleGearForValue(ship.throttle);
-      const gearCap = this.energyThrottleGearCap(ship);
-      if (currentGear > gearCap) {
-        this.writeThrottle(ship.key, throttleForGear(gearCap));
-      }
-    }
+  planEnergyThrottleCap({ energyThrottleGearCap: capEnergyThrottleGearCap }, ship) {
+    if (!ship?.alive || ship.attached) return null;
+    const gearCap = capEnergyThrottleGearCap(ship);
+    return throttleGearForValue(ship.throttle) > gearCap
+      ? { shipKey: ship.key, throttle: throttleForGear(gearCap) } : null;
   },
 
-  energyRatioAfterSpend(shipOrKey, cost) {
-    const profile = this.energyProfile(shipOrKey);
+  energyRatioAfterSpend({ energyProfile: capEnergyProfile }, shipOrKey, cost) {
+    const profile = capEnergyProfile(shipOrKey);
     if (profile.max <= 0) {
       return 0;
     }
     return (profile.current - cost) / profile.max;
   },
 
-  allowEnergyCommit(shipOrKey, cost, context, {
+  allowEnergyCommit({ energyProfile: capEnergyProfile, energyRatioAfterSpend: capEnergyRatioAfterSpend, params: policyParams }, shipOrKey, cost, context, {
     emergencyFloor = 0.05,
     normalFloor = 0.14,
     conserveFloor = 0.24,
   } = {}) {
-    const profile = this.energyProfile(shipOrKey);
+    const profile = capEnergyProfile(shipOrKey);
     if (profile.current < cost) {
       return false;
     }
-    const afterRatio = this.energyRatioAfterSpend(shipOrKey, cost);
+    const afterRatio = capEnergyRatioAfterSpend(shipOrKey, cost);
     const floor = context?.emergencyCommit
       ? emergencyFloor
-      : context?.energyRecoveryNeed > this.params.energy.commit.conserveAbove
+      : context?.energyRecoveryNeed > policyParams.energy.commit.conserveAbove
         ? conserveFloor
-        : normalFloor - Math.min(this.params.energy.commit.surplusDiscountMax, (context?.energySurplus || 0) * this.params.energy.commit.surplusDiscount);
+        : normalFloor - Math.min(policyParams.energy.commit.surplusDiscountMax, (context?.energySurplus || 0) * policyParams.energy.commit.surplusDiscount);
     return afterRatio >= floor || profile.high;
   },
 };

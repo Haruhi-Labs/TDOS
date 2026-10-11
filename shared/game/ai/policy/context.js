@@ -1,15 +1,24 @@
 // 焦点目标选择与战术上下文。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import { clamp, distance } from "../../math.js";
 import { buildKoizumiBarrierTactics, characterTargetPriorityBonus } from "./tactics/character-counterplay.js";
 import { buildShamisenHuntTactics } from "./tactics/shamisen-hunt.js";
 
 export const contextMethods = {
-  selectEnemyFocus(main) {
-    const F = this.params.focus;
-    const contacts = this.knownEnemyContacts({ maxAge: F.maxAge });
+  selectEnemyFocus({
+    params: policyParams,
+    knownEnemyContacts: capKnownEnemyContacts,
+    primaryEnemyEstimate: capPrimaryEnemyEstimate,
+    contactHpRatio: capContactHpRatio,
+    enemyIsolationScore: capEnemyIsolationScore,
+    friendlyPowerAround: capFriendlyPowerAround,
+    enemyThreatAround: capEnemyThreatAround,
+    obs: policyObs,
+  }, main) {
+    const F = policyParams.focus;
+    const contacts = capKnownEnemyContacts({ maxAge: F.maxAge });
     if (contacts.length === 0) {
-      return this.primaryEnemyEstimate();
+      return capPrimaryEnemyEstimate();
     }
 
     let best = null;
@@ -21,10 +30,10 @@ export const contextMethods = {
       const dist = distance(main.x, main.y, contact.x, contact.y);
       const proximity = clamp(1 - dist / Math.max(main.stats.range * F.proximityRangeMult, 1), F.proximityMin, F.proximityMax);
       const freshness = clamp(1 - contact.age / F.freshnessWindow, 0, 1);
-      const vulnerability = 1 - this.contactHpRatio(contact);
-      const isolation = this.enemyIsolationScore(contact, F.isolationMaxAge);
+      const vulnerability = 1 - capContactHpRatio(contact);
+      const isolation = capEnemyIsolationScore(contact, F.isolationMaxAge);
       const overwhelmOpportunity = clamp(
-        (this.friendlyPowerAround(contact.x, contact.y, F.overwhelmFriendlyRadius) + 0.2) / Math.max(this.enemyThreatAround(contact.x, contact.y, F.overwhelmEnemyRadius, 6) + 0.2, 0.2) - 1,
+        (capFriendlyPowerAround(contact.x, contact.y, F.overwhelmFriendlyRadius) + 0.2) / Math.max(capEnemyThreatAround(contact.x, contact.y, F.overwhelmEnemyRadius, 6) + 0.2, 0.2) - 1,
         F.overwhelmMin,
         F.overwhelmMax,
       );
@@ -40,35 +49,52 @@ export const contextMethods = {
         + overwhelmOpportunity * F.overwhelm
         + visibleBias
         + huntBias
-        + (this.params.features.characterPriority ? characterTargetPriorityBonus(contact, this.obs.time) : 0)
+        + (policyParams.features.characterPriority ? characterTargetPriorityBonus(contact, policyObs.time) : 0)
         - uncertaintyPenalty;
       if (score > bestScore) {
         bestScore = score;
         best = contact;
       }
     }
-    return best || this.primaryEnemyEstimate();
+    return best || capPrimaryEnemyEstimate();
   },
 
-  buildTacticalContext(main, focus) {
-    const X = this.params.context;
-    const fleetEnergy = this.energyProfile("main");
+  buildTacticalContext({
+    params: policyParams,
+    energyProfile: capEnergyProfile,
+    obs: policyObs,
+    friendlyPowerAround: capFriendlyPowerAround,
+    enemyThreatAround: capEnemyThreatAround,
+    ownShips: capOwnShips,
+    knownEnemyContacts: capKnownEnemyContacts,
+    contactHpRatio: capContactHpRatio,
+    shipThreatSnapshot: capShipThreatSnapshot,
+    preferredFlankSign: capPreferredFlankSign,
+    arcDensityFromState: capArcDensityFromState,
+    enemyIsolationScore: capEnemyIsolationScore,
+    projectContact: capProjectContact,
+    rememberedMain: policyRememberedMain,
+    usesAdvancedSkillCounterplay: capUsesAdvancedSkillCounterplay,
+    edgePressure: capEdgePressure,
+  }, main, focus) {
+    const X = policyParams.context;
+    const fleetEnergy = capEnergyProfile("main");
     const rangeRef = main.stats.range;
     const dist = distance(main.x, main.y, focus.x, focus.y);
     const mainHull = main.hp / Math.max(main.maxHp, 1);
     const mainEnergyRatio = clamp(main.energy / Math.max(main.maxEnergy, 1), 0, 1);
-    const fleetHull = this.obs.self.hullRatio;
+    const fleetHull = policyObs.self.hullRatio;
     const energyRatio = fleetEnergy.ratio;
-    const friendlyLocal = this.friendlyPowerAround(focus.x, focus.y, X.localRadius);
-    const friendlyEscort = this.friendlyPowerAround(main.x, main.y, X.escortRadius);
-    const enemyLocal = this.enemyThreatAround(focus.x, focus.y, X.localRadius, X.localMaxAge);
+    const friendlyLocal = capFriendlyPowerAround(focus.x, focus.y, X.localRadius);
+    const friendlyEscort = capFriendlyPowerAround(main.x, main.y, X.escortRadius);
+    const enemyLocal = capEnemyThreatAround(focus.x, focus.y, X.localRadius, X.localMaxAge);
     const localAdvantage = (friendlyLocal + friendlyEscort * X.escortWeight + X.advantageBias) / Math.max(enemyLocal + X.advantageBias, X.advantageBias);
     const shamisenHunt = buildShamisenHuntTactics({
-      obs: this.obs,
-      ships: this.ownShips(),
+      obs: policyObs,
+      ships: capOwnShips(),
       main,
       focus,
-      knownContacts: this.knownEnemyContacts({ maxAge: X.huntContactMaxAge }),
+      knownContacts: capKnownEnemyContacts({ maxAge: X.huntContactMaxAge }),
       localAdvantage,
     });
     const hiddenHuntTarget = Boolean(
@@ -83,16 +109,16 @@ export const contextMethods = {
       && focus.confidence >= X.solidMinConfidence
     );
     const searchRequired = hiddenHuntTarget || focus.source === "spawn" || focus.age > X.searchAgeAbove || focus.confidence < X.searchConfidenceBelow;
-    const killWindow = this.contactHpRatio(focus) < X.killHpBelow && dist < rangeRef * X.killRange;
+    const killWindow = capContactHpRatio(focus) < X.killHpBelow && dist < rangeRef * X.killRange;
     const broadsideWindow = dist > rangeRef * X.broadsideMinRange && dist < rangeRef * X.broadsideMaxRange && intelSolid;
-    const detachedShips = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
+    const detachedShips = [policyObs.self.ships.sub1, policyObs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
     const detachedSpread = detachedShips.reduce((max, ship) => Math.max(max, distance(ship.x, ship.y, main.x, main.y)), 0);
     const overextended = detachedSpread > X.overextendedSpread && localAdvantage < X.overextendedAdvantage;
     const shipThreats = {};
     let maxShipThreat = 0;
     let overwhelmedShipKey = null;
     for (const ship of [main, ...detachedShips]) {
-      const threat = this.shipThreatSnapshot(ship);
+      const threat = capShipThreatSnapshot(ship);
       shipThreats[ship.key] = threat;
       if (threat.danger > maxShipThreat) {
         maxShipThreat = threat.danger;
@@ -104,16 +130,16 @@ export const contextMethods = {
     const defensivePressure = (localAdvantage < X.defensiveAdvantage && dist < rangeRef * X.defensiveRange)
       || mainHull < X.defensiveHull
       || Boolean(shamisenHunt.defense?.active && shamisenHunt.defense.huntedHpRatio < X.defensiveHuntedHp);
-    const flankSign = this.preferredFlankSign(main, focus);
-    const ownArcDensity = this.arcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, this.obs.self.flags.kyonFlagship);
-    const enemyArcDensity = this.arcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, this.obs.privileged.enemyHasKyonFlagship);
+    const flankSign = capPreferredFlankSign(main, focus);
+    const ownArcDensity = capArcDensityFromState(main.angle, main.x, main.y, focus.x, focus.y, policyObs.self.flags.kyonFlagship);
+    const enemyArcDensity = capArcDensityFromState(focus.angle, focus.x, focus.y, main.x, main.y, policyObs.privileged.enemyHasKyonFlagship);
     const arcAdvantage = ownArcDensity - enemyArcDensity;
     const enemyBroadsideRisk = enemyArcDensity >= X.broadsideRiskDensity;
     const safeExchange = enemyArcDensity <= 1 && ownArcDensity >= 1;
     const focusFreshness = clamp(1 - focus.age / X.freshnessWindow, 0, 1);
     const trackableIntel = !intelSolid && focus.source !== "spawn" && focus.age <= X.trackableMaxAge && focus.confidence >= X.trackableMinConfidence;
     const intelUrgency = focus.visible ? X.intelUrgencyVisible : focus.source === "spawn" ? X.intelUrgencySpawn : clamp(X.intelUrgencyBase + focus.age / X.intelUrgencyAgeScale + (1 - focus.confidence) * X.intelUrgencyConfidence, X.intelUrgencyMin, X.intelUrgencyMax);
-    const isolatedTargetScore = clamp(this.enemyIsolationScore(focus, X.isolationMaxAge) + Math.max(0, localAdvantage - X.isolationAdvantageFloor) * X.isolationAdvantageWeight, X.isolatedMin, X.isolatedMax);
+    const isolatedTargetScore = clamp(capEnemyIsolationScore(focus, X.isolationMaxAge) + Math.max(0, localAdvantage - X.isolationAdvantageFloor) * X.isolationAdvantageWeight, X.isolatedMin, X.isolatedMax);
     const combatUrgency = clamp(
       (focus.visible ? X.combatUrgency.visible : X.combatUrgency.hidden)
       + (dist < rangeRef * X.combatUrgency.inRangeRatio ? X.combatUrgency.inRange : 0)
@@ -178,23 +204,23 @@ export const contextMethods = {
 
     // 收尾判断：是否占优(领先) + 是否到了该收尾的窗口(敌方濒临覆灭)。
     // 领先时不应因自身低血/低能转入防守，而应压制收尾——破解"双方都低血同时转防守"的平局僵局。
-    const enemyHullTeam = this.obs.privileged.enemyHullRatio;
-    const ownHullTeam = this.obs.self.hullRatio;
-    const enemyAliveCount = this.obs.privileged.enemyAliveCount;
-    const ownAliveCount = this.ownShips().filter((s) => s && s.alive).length;
-    const winning = !this.params.features.closeout ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + X.winningHullLead);
-    const closeoutWindow = !this.params.features.closeout ? false : (enemyAliveCount > 0
+    const enemyHullTeam = policyObs.privileged.enemyHullRatio;
+    const ownHullTeam = policyObs.self.hullRatio;
+    const enemyAliveCount = policyObs.privileged.enemyAliveCount;
+    const ownAliveCount = capOwnShips().filter((s) => s && s.alive).length;
+    const winning = !policyParams.features.closeout ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + X.winningHullLead);
+    const closeoutWindow = !policyParams.features.closeout ? false : (enemyAliveCount > 0
       && (enemyAliveCount < ownAliveCount || enemyHullTeam < X.closeoutEnemyHull || (killWindow && winning)));
-    const enemyMainContact = this.projectContact(this.rememberedMain, X.enemyMainLead);
-    const advancedCounterplay = this.usesAdvancedSkillCounterplay();
+    const enemyMainContact = capProjectContact(policyRememberedMain, X.enemyMainLead);
+    const advancedCounterplay = capUsesAdvancedSkillCounterplay();
     const barrierTactics = buildKoizumiBarrierTactics({
-      obs: this.obs,
-      ships: this.ownShips(),
+      obs: policyObs,
+      ships: capOwnShips(),
       enemyMainContact,
       main,
-      enemyContacts: this.knownEnemyContacts({ maxAge: X.barrierContactMaxAge }),
-      now: this.obs.time,
-      legacy: !this.params.features.barrierTactics,
+      enemyContacts: capKnownEnemyContacts({ maxAge: X.barrierContactMaxAge }),
+      now: policyObs.time,
+      legacy: !policyParams.features.barrierTactics,
       advanced: advancedCounterplay,
     });
 
@@ -219,7 +245,7 @@ export const contextMethods = {
       detachedSpread,
       overextended,
       defensivePressure,
-      edgePressure: this.edgePressure(main),
+      edgePressure: capEdgePressure(main),
       flankSign,
       ownArcDensity,
       enemyArcDensity,

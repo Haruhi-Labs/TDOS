@@ -1,5 +1,5 @@
 // 分离舰的角色分配与各角色的站位指令。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import {
   clamp,
   distance,
@@ -10,16 +10,20 @@ import { koizumiBarrierRoleDirective } from "./tactics/character-counterplay.js"
 import { characterProfile } from "./characters/index.js";
 
 export const detachedMethods = {
-  chooseDetachedIntelLead(detachedShips, enemyEstimate, context) {
-    const D = this.params.detached.intelLead;
+  chooseDetachedIntelLead({
+    params: policyParams,
+    estimateVisionRange: capEstimateVisionRange,
+    shipVitality: capShipVitality,
+  }, detachedShips, enemyEstimate, context) {
+    const D = policyParams.detached.intelLead;
     if (!enemyEstimate || !detachedShips.length) {
       return null;
     }
     let best = null;
     let bestScore = -Infinity;
-    const enemyVision = this.estimateVisionRange(enemyEstimate);
+    const enemyVision = capEstimateVisionRange(enemyEstimate);
     for (const ship of detachedShips) {
-      const vitality = this.shipVitality(ship);
+      const vitality = capShipVitality(ship);
       if (vitality.fragile) {
         continue;
       }
@@ -38,12 +42,12 @@ export const detachedMethods = {
     return bestScore > D.minScore ? best : null;
   },
 
-  detachedRetreatNeed(ship, enemyEstimate, context) {
-    const D = this.params.detached.retreat;
+  detachedRetreatNeed({ params: policyParams, shipVitality: capShipVitality }, ship, enemyEstimate, context) {
+    const D = policyParams.detached.retreat;
     if (!ship || !ship.alive || !enemyEstimate || !context) {
       return 0;
     }
-    const vitality = this.shipVitality(ship);
+    const vitality = capShipVitality(ship);
     const dist = distance(ship.x, ship.y, enemyEstimate.x, enemyEstimate.y);
     return clamp(
       (D.hpCeiling - vitality.hpRatio) * D.hpWeight
@@ -56,14 +60,20 @@ export const detachedMethods = {
     );
   },
 
-  planDetachedRoles(main, enemyEstimate, context) {
-    const detachedShips = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
-    const preferredSign = context?.flankSign || this.preferredFlankSign(main, enemyEstimate);
-    const intelLead = this.chooseDetachedIntelLead(detachedShips, enemyEstimate, context);
+  planDetachedRoles({
+    obs: policyObs,
+    preferredFlankSign: capPreferredFlankSign,
+    chooseDetachedIntelLead: capChooseDetachedIntelLead,
+    detachedRetreatNeed: capDetachedRetreatNeed,
+    shipVitality: capShipVitality,
+  }, main, enemyEstimate, context) {
+    const detachedShips = [policyObs.self.ships.sub1, policyObs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
+    const preferredSign = context?.flankSign || capPreferredFlankSign(main, enemyEstimate);
+    const intelLead = capChooseDetachedIntelLead(detachedShips, enemyEstimate, context);
     let retreatShip = null;
     let retreatScore = 0.72;
     for (const ship of detachedShips) {
-      const score = this.detachedRetreatNeed(ship, enemyEstimate, context);
+      const score = capDetachedRetreatNeed(ship, enemyEstimate, context);
       if (score > retreatScore && (!intelLead || ship.id !== intelLead.id)) {
         retreatScore = score;
         retreatShip = ship;
@@ -88,7 +98,7 @@ export const detachedMethods = {
         plan.roles[ship.key] = "rear";
       } else if (characterProfile(ship.characterId).detachedDefaultRole === "flank") {
         plan.roles[ship.key] = "flank";
-      } else if (this.shipVitality(ship).healthy && ((context?.pressureDrive || 0) > 0.42 || (context?.isolatedTargetScore || 0) > 0.34)) {
+      } else if (capShipVitality(ship).healthy && ((context?.pressureDrive || 0) > 0.42 || (context?.isolatedTargetScore || 0) > 0.34)) {
         plan.roles[ship.key] = "front";
       } else {
         plan.roles[ship.key] = (context?.pressureDrive || 0) > 0.72 ? "flank" : "fire";
@@ -107,7 +117,17 @@ export const detachedMethods = {
     return plan;
   },
 
-  computeDetachedDirective(ship, role, enemyEstimate, context, main, mainTarget, laneSign = 1) {
+  computeDetachedDirective({
+    shipVitality: capShipVitality,
+    shipThreatSnapshot: capShipThreatSnapshot,
+    estimateVisionRange: capEstimateVisionRange,
+    escapeTargetForShip: capEscapeTargetForShip,
+    evaluateArcExchange: capEvaluateArcExchange,
+    clampX: capClampX,
+    safeRoutePadding: capSafeRoutePadding,
+    clampY: capClampY,
+    broadsideIntentAngle: capBroadsideIntentAngle,
+  }, ship, role, enemyEstimate, context, main, mainTarget, laneSign = 1) {
     if (!ship || !ship.alive || !enemyEstimate) {
       return null;
     }
@@ -118,10 +138,10 @@ export const detachedMethods = {
     const side = { x: -toward.y, y: toward.x };
     const enemyForward = { x: Math.cos(enemyEstimate.angle), y: Math.sin(enemyEstimate.angle) };
     const enemySide = { x: -enemyForward.y, y: enemyForward.x };
-    const vitality = this.shipVitality(ship);
-    const threat = this.shipThreatSnapshot(ship, 7);
+    const vitality = capShipVitality(ship);
+    const threat = capShipThreatSnapshot(ship, 7);
     const ownVision = ship.stats.vision;
-    const enemyVision = this.estimateVisionRange(enemyEstimate);
+    const enemyVision = capEstimateVisionRange(enemyEstimate);
     const blindLower = enemyVision + 16;
     const blindUpper = ownVision - 8;
     const mainAngle = Math.atan2(mainTarget.y - enemyEstimate.y, mainTarget.x - enemyEstimate.x);
@@ -140,7 +160,7 @@ export const detachedMethods = {
     }
 
     if (emergencyEscape) {
-      const escape = this.escapeTargetForShip(ship, main.x, main.y, 7);
+      const escape = capEscapeTargetForShip(ship, main.x, main.y, 7);
       if (escape) {
         return {
           target: {
@@ -156,7 +176,7 @@ export const detachedMethods = {
     }
 
     const scoreCandidate = (candidate, exposureWeight) => {
-      const exchange = this.evaluateArcExchange(ship, enemyEstimate, candidate, exposureWeight);
+      const exchange = capEvaluateArcExchange(ship, enemyEstimate, candidate, exposureWeight);
       const candidateDist = distance(candidate.x, candidate.y, enemyEstimate.x, enemyEstimate.y);
       const candidateAngle = Math.atan2(candidate.y - enemyEstimate.y, candidate.x - enemyEstimate.x);
       const spread = Math.abs(shortestAngleDelta(candidateAngle, mainAngle));
@@ -203,8 +223,8 @@ export const detachedMethods = {
       for (const item of candidates) {
         const candidate = {
           ...item,
-          x: this.clampX(item.x, this.safeRoutePadding(10)),
-          y: this.clampY(item.y, this.safeRoutePadding(10)),
+          x: capClampX(item.x, capSafeRoutePadding(10)),
+          y: capClampY(item.y, capSafeRoutePadding(10)),
         };
         const score = scoreCandidate(candidate, exposureWeight);
         if (score > bestScore) {
@@ -270,7 +290,7 @@ export const detachedMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * 48 + enemySide.x * laneSign * 220,
           y: enemyEstimate.y - enemyForward.y * 48 + enemySide.y * laneSign * 220,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * 48 + enemySide.x * laneSign * 220,
             enemyEstimate.y - enemyForward.y * 48 + enemySide.y * laneSign * 220,
             enemyEstimate.x,
@@ -282,7 +302,7 @@ export const detachedMethods = {
         {
           x: enemyEstimate.x + enemyForward.x * 46 + enemySide.x * laneSign * 165,
           y: enemyEstimate.y + enemyForward.y * 46 + enemySide.y * laneSign * 165,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x + enemyForward.x * 46 + enemySide.x * laneSign * 165,
             enemyEstimate.y + enemyForward.y * 46 + enemySide.y * laneSign * 165,
             enemyEstimate.x,
@@ -294,7 +314,7 @@ export const detachedMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * 210 + enemySide.x * laneSign * 150,
           y: enemyEstimate.y - enemyForward.y * 210 + enemySide.y * laneSign * 150,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * 210 + enemySide.x * laneSign * 150,
             enemyEstimate.y - enemyForward.y * 210 + enemySide.y * laneSign * 150,
             enemyEstimate.x,
@@ -332,7 +352,7 @@ export const detachedMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * (screenRange * 0.84) + enemySide.x * laneSign * 175,
           y: enemyEstimate.y - enemyForward.y * (screenRange * 0.84) + enemySide.y * laneSign * 175,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * (screenRange * 0.84) + enemySide.x * laneSign * 175,
             enemyEstimate.y - enemyForward.y * (screenRange * 0.84) + enemySide.y * laneSign * 175,
             enemyEstimate.x,
@@ -349,7 +369,7 @@ export const detachedMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * 72 + enemySide.x * laneSign * 210,
           y: enemyEstimate.y - enemyForward.y * 72 + enemySide.y * laneSign * 210,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * 72 + enemySide.x * laneSign * 210,
             enemyEstimate.y - enemyForward.y * 72 + enemySide.y * laneSign * 210,
             enemyEstimate.x,

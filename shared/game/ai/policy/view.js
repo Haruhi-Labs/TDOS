@@ -1,39 +1,39 @@
 // 观测访问助手：己方舰船索引、编队能量池、可见敌方编号与世界边界钳制。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import { clamp } from "../../math.js";
 
 export const viewMethods = {
-  ownShip(shipOrKey) {
+  ownShip({ obs: policyObs, ownShips: capOwnShips, ownShipById: capOwnShipById }, shipOrKey) {
     if (typeof shipOrKey === "string") {
-      return this.obs.self.ships[shipOrKey] || this.ownShips().find((ship) => ship.key === shipOrKey) || null;
+      return policyObs.self.ships[shipOrKey] || capOwnShips().find((ship) => ship.key === shipOrKey) || null;
     }
-    return shipOrKey ? this.ownShipById(shipOrKey.id) : null;
+    return shipOrKey ? capOwnShipById(shipOrKey.id) : null;
   },
 
-  fleetMembers(shipOrKey) {
-    const ship = this.ownShip(shipOrKey);
-    return ship ? ship.fleet.memberIds.map((id) => this.ownShipById(id)).filter(Boolean) : [];
+  fleetMembers({ ownShip: capOwnShip, ownShipById: capOwnShipById }, shipOrKey) {
+    const ship = capOwnShip(shipOrKey);
+    return ship ? ship.fleet.memberIds.map((id) => capOwnShipById(id)).filter(Boolean) : [];
   },
 
-  fleetEnergy(shipOrKey) {
-    const ship = this.ownShip(shipOrKey);
+  fleetEnergy({ ownShip: capOwnShip }, shipOrKey) {
+    const ship = capOwnShip(shipOrKey);
     return ship ? { current: ship.fleet.energy, max: ship.fleet.maxEnergy } : { current: 0, max: 0 };
   },
 
-  hasEffect(ship, effectKey) {
-    return Number(ship?.effects?.[effectKey] || 0) > this.obs.time;
+  hasEffect({ obs: policyObs }, ship, effectKey) {
+    return Number(ship?.effects?.[effectKey] || 0) > policyObs.time;
   },
 
-  clampX(x, padding = 0) {
-    return clamp(x, padding, this.obs.world.size - padding);
+  clampX({ obs: policyObs }, x, padding = 0) {
+    return clamp(x, padding, policyObs.world.size - padding);
   },
 
-  clampY(y, padding = 0) {
-    return clamp(y, padding, this.obs.world.size - padding);
+  clampY({ obs: policyObs }, y, padding = 0) {
+    return clamp(y, padding, policyObs.world.size - padding);
   },
 
-  zoneById(zoneId) {
+  zoneById({ obs: policyObs }, zoneId) {
     const safeId = clamp(Number(zoneId) || 5, 1, 9);
-    return this.obs.world.zones.find((zone) => zone.id === safeId) || this.obs.world.zones[4];
+    return policyObs.world.zones.find((zone) => zone.id === safeId) || policyObs.world.zones[4];
   },
 };

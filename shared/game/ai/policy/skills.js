@@ -7,28 +7,35 @@ import { characterProfile } from "./characters/index.js";
 import { barrierBlocksRangedAttack } from "./tactics/character-counterplay.js";
 
 export const skillsMethods = {
-  characterSkillFacts(ship = null) {
+  characterSkillFacts({
+    obs: policyObs,
+    mode: policyMode,
+    energyProfile: capEnergyProfile,
+    params: policyParams,
+    safeRoutePadding: capSafeRoutePadding,
+    searchZoneId: policySearchZoneId,
+  }, ship = null) {
     return characterDecisionFacts({
-      obs: this.obs, mode: this.mode, energyHigh: ship ? this.energyProfile(ship).high : false,
-      skillAimLead: this.params.features.skillAimLead, aimPadding: this.safeRoutePadding(4), searchZoneId: this.searchZoneId,
+      obs: policyObs, mode: policyMode, energyHigh: ship ? capEnergyProfile(ship).high : false,
+      skillAimLead: policyParams.features.skillAimLead, aimPadding: capSafeRoutePadding(4), searchZoneId: policySearchZoneId,
     });
   },
-  usesAdvancedSkillCounterplay() {
-    return this.params.features.advancedCounterplay;
+  usesAdvancedSkillCounterplay({ params: policyParams }) {
+    return policyParams.features.advancedCounterplay;
   },
 
-  incomingVisionWaveWillPurge(ships, buffDuration) {
-    if (!this.usesAdvancedSkillCounterplay()) {
+  incomingVisionWaveWillPurge({ usesAdvancedSkillCounterplay: capUsesAdvancedSkillCounterplay, obs: policyObs }, ships, buffDuration) {
+    if (!capUsesAdvancedSkillCounterplay()) {
       return false;
     }
     const targets = ships.filter((ship) => ship?.alive);
-    const state = this.obs.enemy.visionWave;
+    const state = policyObs.enemy.visionWave;
     const horizon = Math.max(0.2, Number(buffDuration) || 0);
     if (targets.length === 0 || !state) {
       return false;
     }
 
-    const now = this.obs.time;
+    const now = policyObs.time;
     const waves = state.waves.filter((wave) => wave.expiresAt > now);
     const willReachWithin = (wave, ship, delay = 0) => {
       const speed = Math.max(1, Number(wave.speed) || 480);
@@ -66,26 +73,33 @@ export const skillsMethods = {
     return targets.some((ship) => willReachWithin(projectedWave, ship, nextPulseDelay));
   },
 
-  shouldDelayFlagshipBuff(characterId, meta) {
+  shouldDelayFlagshipBuff({ ownShips: capOwnShips, incomingVisionWaveWillPurge: capIncomingVisionWaveWillPurge }, characterId, meta) {
     if (!characterProfile(characterId).flagship?.purgeableBuff) {
       return false;
     }
-    const targets = this.ownShips();
-    return this.incomingVisionWaveWillPurge(targets, meta?.duration || 6);
+    const targets = capOwnShips();
+    return capIncomingVisionWaveWillPurge(targets, meta?.duration || 6);
   },
 
-  shouldDelaySubBuff(ship, meta) {
+  shouldDelaySubBuff({ incomingVisionWaveWillPurge: capIncomingVisionWaveWillPurge }, ship, meta) {
     if (!ship || !characterProfile(ship.characterId).sub?.purgeableBuff) {
       return false;
     }
     const usefulDuration = meta?.duration || 6;
-    return this.incomingVisionWaveWillPurge([ship], usefulDuration);
+    return capIncomingVisionWaveWillPurge([ship], usefulDuration);
   },
 
-  shouldCastFlagshipSkill(estimate, context = this.currentContext) {
-    const K = this.params.skills.flagship;
-    const main = this.obs.self.ships.main;
-    const characterId = this.obs.self.loadout.main;
+  shouldCastFlagshipSkill({
+    currentContext: policyCurrentContext,
+    params: policyParams,
+    obs: policyObs,
+    shouldDelayFlagshipBuff: capShouldDelayFlagshipBuff,
+    allowEnergyCommit: capAllowEnergyCommit,
+    characterSkillFacts: capCharacterSkillFacts,
+  }, estimate, context = policyCurrentContext) {
+    const K = policyParams.skills.flagship;
+    const main = policyObs.self.ships.main;
+    const characterId = policyObs.self.loadout.main;
     if (!estimate || !main.alive) {
       return false;
     }
@@ -93,31 +107,37 @@ export const skillsMethods = {
     if (!meta || meta.type !== "active") {
       return false; // 被动旗舰(阿虚/有希):没有可主动释放的技能,别空试
     }
-    if (this.shouldDelayFlagshipBuff(characterId, meta)) {
+    if (capShouldDelayFlagshipBuff(characterId, meta)) {
       return false;
     }
     const profile = characterProfile(characterId).flagship;
     const energyFloors = profile?.energyFloors?.(K)
       || { emergencyFloor: K.emergencyFloor, normalFloor: K.normalFloor, conserveFloor: K.conserveFloor };
-    if (meta?.cost && !this.allowEnergyCommit("main", meta.cost, context, energyFloors)) {
+    if (meta?.cost && !capAllowEnergyCommit("main", meta.cost, context, energyFloors)) {
       return false;
     }
     const dist = distance(main.x, main.y, estimate.x, estimate.y);
-    return profile?.shouldCast ? profile.shouldCast(this.characterSkillFacts(), characterDecisionInput({ K, main, estimate, context, dist })) : true;
+    return profile?.shouldCast ? profile.shouldCast(capCharacterSkillFacts(), characterDecisionInput({ K, main, estimate, context, dist })) : true;
   },
 
-  shouldCastSubSkill(ship, estimate, context = this.currentContext) {
-    const K = this.params.skills.sub;
+  shouldCastSubSkill({
+    currentContext: policyCurrentContext,
+    params: policyParams,
+    characterSkillFacts: capCharacterSkillFacts,
+    shouldDelaySubBuff: capShouldDelaySubBuff,
+    allowEnergyCommit: capAllowEnergyCommit,
+  }, ship, estimate, context = policyCurrentContext) {
+    const K = policyParams.skills.sub;
     if (!ship || !ship.alive) {
       return false;
     }
     const profile = characterProfile(ship.characterId).sub;
-    if (profile?.decideAlone) return profile.decideAlone(this.characterSkillFacts(ship), characterDecisionInput({ ship, estimate, context }));
+    if (profile?.decideAlone) return profile.decideAlone(capCharacterSkillFacts(ship), characterDecisionInput({ ship, estimate, context }));
     const meta = skillMetaForCharacter(ship.characterId, "sub");
-    if (this.shouldDelaySubBuff(ship, meta)) {
+    if (capShouldDelaySubBuff(ship, meta)) {
       return false;
     }
-    if (meta?.cost && !this.allowEnergyCommit(ship, meta.cost, context, { emergencyFloor: K.emergencyFloor, normalFloor: K.normalFloor, conserveFloor: K.conserveFloor })) {
+    if (meta?.cost && !capAllowEnergyCommit(ship, meta.cost, context, { emergencyFloor: K.emergencyFloor, normalFloor: K.normalFloor, conserveFloor: K.conserveFloor })) {
       return false;
     }
     const dist = estimate ? distance(ship.x, ship.y, estimate.x, estimate.y) : Infinity;
@@ -131,7 +151,7 @@ export const skillsMethods = {
       : dist;
     const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, K.barrierBlockMargin);
     return profile?.shouldCast
-      ? profile.shouldCast(this.characterSkillFacts(ship), characterDecisionInput({ K, ship, estimate, context, dist, assignedToBreach, breachDistance, blockedByBarrier }))
+      ? profile.shouldCast(capCharacterSkillFacts(ship), characterDecisionInput({ K, ship, estimate, context, dist, assignedToBreach, breachDistance, blockedByBarrier }))
       : true;
   },
 };

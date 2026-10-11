@@ -1,19 +1,19 @@
 // 主舰目标点：搜索、包围与各走位模式的候选点，以及视野交火距离修正。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import { clamp, distance, lerp } from "../../math.js";
 
 export const targetsMethods = {
-  combatCenter(enemyEstimate) {
-    const worldCenter = this.obs.world.size * 0.5;
+  combatCenter({ obs: policyObs }, enemyEstimate) {
+    const worldCenter = policyObs.world.size * 0.5;
     return {
       x: lerp(worldCenter, enemyEstimate.x, 0.24),
       y: lerp(worldCenter, enemyEstimate.y, 0.24),
     };
   },
 
-  computeRecoveryTarget(main, enemyEstimate) {
-    const padding = this.safeRoutePadding(24);
-    const worldSize = this.obs.world.size;
+  computeRecoveryTarget({ safeRoutePadding: capSafeRoutePadding, obs: policyObs }, main, enemyEstimate) {
+    const padding = capSafeRoutePadding(24);
+    const worldSize = policyObs.world.size;
     const inwardX = clamp(main.x, padding, worldSize - padding);
     const inwardY = clamp(main.y, padding, worldSize - padding);
     const toEnemyX = enemyEstimate.x - main.x;
@@ -28,7 +28,7 @@ export const targetsMethods = {
     };
   },
 
-  computeSearchTarget(main, enemyEstimate, searchCenter) {
+  computeSearchTarget({ searchSweepSign: readSearchSweepSign, rng: capRng }, main, enemyEstimate, searchCenter) {
     // 直奔 belief 占据图给出的最高概率区(searchCenter 已含"预测扩散+排除看过的")，
     // 仅叠加小幅横扫提升覆盖。不再按"敌朝向"额外外推——belief 已含预测，再外推会把搜索带偏
     // (静止/朝我之敌会被推过头而错过)，这正是原搜索找不到龟缩敌人的根因。
@@ -36,7 +36,7 @@ export const targetsMethods = {
     if (visible) {
       // 看得见时(罕见进此分支)：贴近其估计位置
       const t = Math.atan2(enemyEstimate.y - main.y, enemyEstimate.x - main.x);
-      const sweep = this.searchSweepSign * 90;
+      const sweep = readSearchSweepSign() * 90;
       return {
         x: enemyEstimate.x + Math.cos(t + Math.PI * 0.5) * sweep,
         y: enemyEstimate.y + Math.sin(t + Math.PI * 0.5) * sweep,
@@ -46,23 +46,23 @@ export const targetsMethods = {
     const spread = clamp(64 + unc * 0.4, 64, 190);
     const toward = Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
     const perp = toward + Math.PI * 0.5;
-    const sweepOffset = this.searchSweepSign * spread * 0.34;
+    const sweepOffset = readSearchSweepSign() * spread * 0.34;
     return {
-      x: searchCenter.x + Math.cos(perp) * sweepOffset + this.rng.range(-spread * 0.14, spread * 0.14),
-      y: searchCenter.y + Math.sin(perp) * sweepOffset + this.rng.range(-spread * 0.14, spread * 0.14),
+      x: searchCenter.x + Math.cos(perp) * sweepOffset + capRng.range(-spread * 0.14, spread * 0.14),
+      y: searchCenter.y + Math.sin(perp) * sweepOffset + capRng.range(-spread * 0.14, spread * 0.14),
     };
   },
 
-  computeSearchAssignments(main, focus, searchCenter) {
+  computeSearchAssignments({ obs: policyObs, searchSweepSign: policySearchSweepSign }, main, focus, searchCenter) {
     const basisAngle = Number.isFinite(focus?.angle)
       ? focus.angle
       : Math.atan2(searchCenter.y - main.y, searchCenter.x - main.x);
     const sideAngle = basisAngle + Math.PI * 0.5;
-    const zoneSpan = this.obs.world.size / 3;
+    const zoneSpan = policyObs.world.size / 3;
     const spawnFactor = focus?.source === "spawn" ? 1.48 : 1;
     const wingReach = clamp((zoneSpan * 0.54 + (focus?.uncertainty || 0) * 0.32) * spawnFactor, 160, 430);
     const forwardReach = clamp((zoneSpan * 0.36 + (focus?.uncertainty || 0) * 0.22) * (focus?.source === "spawn" ? 1.16 : 1), 120, 300);
-    const feintBias = this.searchSweepSign * clamp(zoneSpan * (focus?.source === "spawn" ? 0.22 : 0.14), 54, 150);
+    const feintBias = policySearchSweepSign * clamp(zoneSpan * (focus?.source === "spawn" ? 0.22 : 0.14), 54, 150);
 
     return {
       main: {
@@ -80,7 +80,7 @@ export const targetsMethods = {
     };
   },
 
-  computeSectorEncirclement(main, focus, searchCenter, pressure = 1) {
+  computeSectorEncirclement({ searchSweepSign: policySearchSweepSign }, main, focus, searchCenter, pressure = 1) {
     const target = focus || searchCenter;
     const basisAngle = Number.isFinite(focus?.angle)
       ? focus.angle
@@ -90,7 +90,7 @@ export const targetsMethods = {
     const forwardReach = clamp(main.stats.range * (0.7 + pressure * 0.18) + uncertainty * 0.42, 190, 430);
     const wingReach = clamp(main.stats.range * 0.56 + uncertainty * 0.42 + pressure * 56, 165, 390);
     const centerReach = clamp(forwardReach * 0.86, 150, 360);
-    const mainBias = this.searchSweepSign * clamp(54 + uncertainty * 0.1, 54, 118);
+    const mainBias = policySearchSweepSign * clamp(54 + uncertainty * 0.1, 54, 118);
 
     return {
       main: {
@@ -108,7 +108,15 @@ export const targetsMethods = {
     };
   },
 
-  computeMainTarget(mode, main, enemyEstimate, center) {
+  computeMainTarget({
+    preferredFlankSign: capPreferredFlankSign,
+    clampX: capClampX,
+    safeRoutePadding: capSafeRoutePadding,
+    clampY: capClampY,
+    evaluateArcExchange: capEvaluateArcExchange,
+    computeRecoveryTarget: capComputeRecoveryTarget,
+    broadsideIntentAngle: capBroadsideIntentAngle,
+  }, mode, main, enemyEstimate, center) {
     const toEnemyX = enemyEstimate.x - main.x;
     const toEnemyY = enemyEstimate.y - main.y;
     const len = Math.max(1, Math.hypot(toEnemyX, toEnemyY));
@@ -116,7 +124,7 @@ export const targetsMethods = {
     const side = { x: -toward.y, y: toward.x };
     const enemyForward = { x: Math.cos(enemyEstimate.angle), y: Math.sin(enemyEstimate.angle) };
     const enemySide = { x: -enemyForward.y, y: enemyForward.x };
-    const broadsideSign = this.preferredFlankSign(main, enemyEstimate);
+    const broadsideSign = capPreferredFlankSign(main, enemyEstimate);
     const preferredRange = clamp(main.stats.range * 0.88, 180, 340);
 
     const pickBest = (candidates, exposureWeight = 1) => {
@@ -125,10 +133,10 @@ export const targetsMethods = {
       for (const item of candidates) {
         const candidate = {
           ...item,
-          x: this.clampX(item.x, this.safeRoutePadding()),
-          y: this.clampY(item.y, this.safeRoutePadding()),
+          x: capClampX(item.x, capSafeRoutePadding()),
+          y: capClampY(item.y, capSafeRoutePadding()),
         };
-        const exchange = this.evaluateArcExchange(main, enemyEstimate, candidate, exposureWeight);
+        const exchange = capEvaluateArcExchange(main, enemyEstimate, candidate, exposureWeight);
         if (exchange.score > bestScore) {
           bestScore = exchange.score;
           best = candidate;
@@ -138,7 +146,7 @@ export const targetsMethods = {
     };
 
     if (mode === "recover") {
-      return this.computeRecoveryTarget(main, enemyEstimate);
+      return capComputeRecoveryTarget(main, enemyEstimate);
     }
     if (mode === "harvest") {
       const conserveRange = clamp(main.stats.range * 1.22, 240, 420);
@@ -195,7 +203,7 @@ export const targetsMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * 54 + enemySide.x * broadsideSign * 150,
           y: enemyEstimate.y - enemyForward.y * 54 + enemySide.y * broadsideSign * 150,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * 54 + enemySide.x * broadsideSign * 150,
             enemyEstimate.y - enemyForward.y * 54 + enemySide.y * broadsideSign * 150,
             enemyEstimate.x,
@@ -219,7 +227,7 @@ export const targetsMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * rearOffset + enemySide.x * broadsideSign * sideOffset,
           y: enemyEstimate.y - enemyForward.y * rearOffset + enemySide.y * broadsideSign * sideOffset,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * rearOffset + enemySide.x * broadsideSign * sideOffset,
             enemyEstimate.y - enemyForward.y * rearOffset + enemySide.y * broadsideSign * sideOffset,
             enemyEstimate.x,
@@ -231,7 +239,7 @@ export const targetsMethods = {
         {
           x: enemyEstimate.x - enemyForward.x * (rearOffset + 54) + enemySide.x * broadsideSign * (sideOffset * 0.9),
           y: enemyEstimate.y - enemyForward.y * (rearOffset + 54) + enemySide.y * broadsideSign * (sideOffset * 0.9),
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x - enemyForward.x * (rearOffset + 54) + enemySide.x * broadsideSign * (sideOffset * 0.9),
             enemyEstimate.y - enemyForward.y * (rearOffset + 54) + enemySide.y * broadsideSign * (sideOffset * 0.9),
             enemyEstimate.x,
@@ -247,7 +255,7 @@ export const targetsMethods = {
         {
           x: enemyEstimate.x + enemyForward.x * 250 + enemySide.x * broadsideSign * 110,
           y: enemyEstimate.y + enemyForward.y * 250 + enemySide.y * broadsideSign * 110,
-          intentAngle: this.broadsideIntentAngle(
+          intentAngle: capBroadsideIntentAngle(
             enemyEstimate.x + enemyForward.x * 250 + enemySide.x * broadsideSign * 110,
             enemyEstimate.y + enemyForward.y * 250 + enemySide.y * broadsideSign * 110,
             enemyEstimate.x,
@@ -268,7 +276,7 @@ export const targetsMethods = {
       {
         x: enemyEstimate.x - enemyForward.x * 96 + enemySide.x * broadsideSign * 90,
         y: enemyEstimate.y - enemyForward.y * 96 + enemySide.y * broadsideSign * 90,
-        intentAngle: this.broadsideIntentAngle(
+        intentAngle: capBroadsideIntentAngle(
           enemyEstimate.x - enemyForward.x * 96 + enemySide.x * broadsideSign * 90,
           enemyEstimate.y - enemyForward.y * 96 + enemySide.y * broadsideSign * 90,
           enemyEstimate.x,
@@ -286,7 +294,7 @@ export const targetsMethods = {
       {
         x: enemyEstimate.x - enemyForward.x * 70 - enemySide.x * broadsideSign * 110,
         y: enemyEstimate.y - enemyForward.y * 70 - enemySide.y * broadsideSign * 110,
-        intentAngle: this.broadsideIntentAngle(
+        intentAngle: capBroadsideIntentAngle(
           enemyEstimate.x - enemyForward.x * 70 - enemySide.x * broadsideSign * 110,
           enemyEstimate.y - enemyForward.y * 70 - enemySide.y * broadsideSign * 110,
           enemyEstimate.x,
@@ -301,8 +309,15 @@ export const targetsMethods = {
   // U1 视野收尾：交火落点常停在"打得到却看不见"的盲区(vision≈166 ≪ range≈505)，
   // 双方互相失明便不开火、拖成平局。此处在进攻意图下把落点从盲区沿原方向(保留侧舷角)
   // 拉进视野距离，使舰真正夺取目标并持续开火。仅作用于进攻模式+愿意交战时。
-  engageTarget(ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
-    if (!this.params.features.visionEngage) return target; // 旧版AI：不做视野收尾压近
+  engageTarget({
+    params: policyParams,
+    estimateVisionRange: capEstimateVisionRange,
+    clampX: capClampX,
+    safeRoutePadding: capSafeRoutePadding,
+    clampY: capClampY,
+    obs: policyObs,
+  }, ship, enemy, target, mode, tactical, { combatRole = true } = {}) {
+    if (!policyParams.features.visionEngage) return target; // 旧版AI：不做视野收尾压近
     if (!target || !enemy || !ship) return target;
     // 情报前探、后卫和侧翼已有各自的距离契约；通用交火收尾只能改写正面火力角色，
     // 否则会把长门前探从视野边缘推回普通射击距离，反而丢失情报价值。
@@ -318,8 +333,8 @@ export const targetsMethods = {
     if (enemy.visible && !tactical.closeoutWindow && !barrierBreachWindow) {
       // 站在敌视野之外打：交火距离取"敌方视野×POKE_VISION_MULT"(刚好够不到我)，clamp 在射程内。
       // 比满射程远吊更靠前→火力更集中/压制更强，又仍在敌视野外→不挨打。
-      const enemyVis = this.estimateVisionRange(enemy);
-      const pokeR = clamp(enemyVis * this.params.movement.engage.pokeVisionMult, enemyVis + 30, ship.stats.range * 0.95);
+      const enemyVis = capEstimateVisionRange(enemy);
+      const pokeR = clamp(enemyVis * policyParams.movement.engage.pokeVisionMult, enemyVis + 30, ship.stats.range * 0.95);
       const px = target.x - enemy.x;
       const py = target.y - enemy.y;
       const pOff = Math.hypot(px, py);
@@ -327,8 +342,8 @@ export const targetsMethods = {
         const pk = pokeR / pOff;
         return {
           ...target,
-          x: this.clampX(enemy.x + px * pk, this.safeRoutePadding()),
-          y: this.clampY(enemy.y + py * pk, this.safeRoutePadding()),
+          x: capClampX(enemy.x + px * pk, capSafeRoutePadding()),
+          y: capClampY(enemy.y + py * pk, capSafeRoutePadding()),
         };
       }
     }
@@ -337,7 +352,7 @@ export const targetsMethods = {
     // 是否压近夺视野要judicious：常规敌人压近能吃到侧舷1.5倍密度，值得贴上去交火；
     // 但对手是阿虚(Kyon)旗舰时射界密度被抹平、贴脸纯比血厚——此时只有真正占优/收尾才压近，
     // 否则保持站位别一头扎进肉阵容被对耗(对抗实测的回归)。
-    const enemyFlatDensity = this.obs.privileged.enemyHasKyonFlagship;
+    const enemyFlatDensity = policyObs.privileged.enemyHasKyonFlagship;
     const want = tactical.killWindow || tactical.emergencyCommit || tactical.winning
       || (enemyFlatDensity
         ? tactical.localAdvantage >= 1.05
@@ -353,8 +368,8 @@ export const targetsMethods = {
     const k = visionEngage / off;
     return {
       ...target,
-      x: this.clampX(enemy.x + ox * k, this.safeRoutePadding()),
-      y: this.clampY(enemy.y + oy * k, this.safeRoutePadding()),
+      x: capClampX(enemy.x + ox * k, capSafeRoutePadding()),
+      y: capClampY(enemy.y + oy * k, capSafeRoutePadding()),
     };
   },
 };

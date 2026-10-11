@@ -1,12 +1,11 @@
+import { createFactCalculations } from "./fact-calculations.js";
+import { POLICY_PROGRAM_INPUTS } from "./policy-inputs.js";
 import { viewMethods } from "./view.js";
 import { commandsMethods } from "./commands.js";
 import { debugStateMethods } from "./debug-state.js";
-import { geometryMethods } from "./geometry.js";
-import { evaluationMethods } from "./evaluation.js";
 import { energyMethods } from "./energy.js";
 import { contextMethods } from "./context.js";
 import { splitMethods } from "./split.js";
-import { modeMethods } from "./mode.js";
 import { scoutMethods } from "./scout.js";
 import { skillsMethods } from "./skills.js";
 import { detachedMethods } from "./detached.js";
@@ -17,12 +16,9 @@ const METHODS = Object.freeze({
   ...viewMethods,
   ...commandsMethods,
   ...debugStateMethods,
-  ...geometryMethods,
-  ...evaluationMethods,
   ...energyMethods,
   ...contextMethods,
   ...splitMethods,
-  ...modeMethods,
   ...scoutMethods,
   ...skillsMethods,
   ...detachedMethods,
@@ -73,8 +69,6 @@ const OPERATIONS = Object.freeze([
 // 子调用总以自己的能力上下文运行，不能继承调用方的写权限。
 export const POLICY_PROGRAM_EFFECTS = Object.freeze(Object.fromEntries(Object.entries({
   ...Object.fromEntries(Object.keys(commandsMethods).map((name) => [name, ["port"]])),
-  enforceEnergyThrottleCaps: ["writeThrottle"],
-  executeSplit: ["writeSplit"],
   issueShipRoute: ["writeRoute", "writeThrottle", "writeRouteEndpoint"],
   executeOrbSteering: ["issueShipRoute"],
   executeMovement: ["issueShipRoute", "computeSearchTarget", "rng"],
@@ -84,32 +78,34 @@ export const POLICY_PROGRAM_EFFECTS = Object.freeze(Object.fromEntries(Object.en
 
 export function createPolicyProgram(read, invoke) {
   let visionWaveBuffDeferrals = 0;
-  const queries = Object.create(null);
+  const calculations = createFactCalculations(read, invoke);
   const contexts = new Map();
   const evaluate = (name, args) => {
-    const result = METHODS[name].apply(contexts.get(name) || queries, args);
+    const result = Object.hasOwn(calculations, name) ? calculations[name](...args) : METHODS[name](contexts.get(name), ...args);
     if (name === "incomingVisionWaveWillPurge" && result) visionWaveBuffDeferrals += 1;
     return result;
   };
-  for (const name of READS) Object.defineProperty(queries, name, { get: () => read(name) });
-  for (const name of OPERATIONS) queries[name] = (...args) => invoke(name, args);
   for (const name of Object.keys(METHODS)) {
-    if (!Object.hasOwn(POLICY_PROGRAM_EFFECTS, name)) queries[name] = (...args) => evaluate(name, args);
-  }
-  Object.freeze(queries);
-  for (const [name, capabilities] of Object.entries(POLICY_PROGRAM_EFFECTS)) {
-    const context = Object.create(queries);
-    for (const capability of capabilities) {
-      if (capability === "port" || capability === "rng")
-        Object.defineProperty(context, capability, { get: () => read(capability) });
-      else Object.defineProperty(context, capability, { value: (...args) => evaluate(capability, args) });
+    const context = Object.create(null);
+    for (const input of POLICY_PROGRAM_INPUTS[name]) {
+      const effects = POLICY_PROGRAM_EFFECTS[name] || [];
+      if (input === "port" || input === "rng" || Object.hasOwn(POLICY_PROGRAM_EFFECTS, input)) {
+        if (!effects.includes(input)) throw new Error(`策略计算 ${name} 未声明执行能力 ${input}`);
+      }
+      if (READS.includes(input)) {
+        if (Object.hasOwn(POLICY_PROGRAM_EFFECTS, name)) context[input] = () => read(input);
+        else Object.defineProperty(context, input, { get: () => read(input) });
+      } else if (input === "port" || input === "rng") Object.defineProperty(context, input, { get: () => read(input) });
+      else if (OPERATIONS.includes(input)) context[input] = (...args) => invoke(input, args);
+      else if (Object.hasOwn(METHODS, input) || Object.hasOwn(calculations, input)) context[input] = (...args) => evaluate(input, args);
+      else throw new Error(`策略计算 ${name} 存在未知输入 ${input}`);
     }
     contexts.set(name, Object.freeze(context));
   }
   return Object.freeze({
     get metrics() { return Object.freeze({ visionWaveBuffDeferrals }); },
     run(name, ...args) {
-      if (!Object.hasOwn(METHODS, name)) throw new Error(`未声明的策略计算：${name}`);
+      if (!Object.hasOwn(METHODS, name) && !Object.hasOwn(calculations, name)) throw new Error(`未声明的策略计算：${name}`);
       return evaluate(name, args);
     },
   });

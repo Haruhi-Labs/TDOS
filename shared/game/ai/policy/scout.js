@@ -1,28 +1,36 @@
 // 侦察机的发射判断、选区与长门侦察条令的接入。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import { skillMetaForCharacter } from "../../characters.js";
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { clamp, distance } from "../../math.js";
 
 export const scoutMethods = {
-  likelyProbeZoneId(focus) {
+  likelyProbeZoneId({
+    predictEnemyVector: capPredictEnemyVector,
+    profile: policyProfile,
+    obs: policyObs,
+    clampX: capClampX,
+    safeRoutePadding: capSafeRoutePadding,
+    clampY: capClampY,
+    zoneForPoint: capZoneForPoint,
+  }, focus) {
     if (!focus) {
       return null;
     }
-    const travel = this.predictEnemyVector(focus);
-    const probeDistance = clamp((140 + (focus.uncertainty || 0) * 0.9) * this.profile.probeDistanceMultiplier, 150, this.obs.world.size / 2.6);
-    const probeX = this.clampX(focus.x + Math.cos(travel.angle) * probeDistance, this.safeRoutePadding());
-    const probeY = this.clampY(focus.y + Math.sin(travel.angle) * probeDistance, this.safeRoutePadding());
-    return this.zoneForPoint(probeX, probeY).id;
+    const travel = capPredictEnemyVector(focus);
+    const probeDistance = clamp((140 + (focus.uncertainty || 0) * 0.9) * policyProfile.probeDistanceMultiplier, 150, policyObs.world.size / 2.6);
+    const probeX = capClampX(focus.x + Math.cos(travel.angle) * probeDistance, capSafeRoutePadding());
+    const probeY = capClampY(focus.y + Math.sin(travel.angle) * probeDistance, capSafeRoutePadding());
+    return capZoneForPoint(probeX, probeY).id;
   },
 
   // 选侦察机起源舰：取离"敌方估计位置(或目标战区中心)"最近的存活舰，使侦察最快抵近目标(前出分离舰优先)
-  pickScoutSourceKey(zoneId, aimPoint = null) {
-    const c = (aimPoint && Number.isFinite(aimPoint.x)) ? aimPoint : this.zoneCenter(zoneId);
+  pickScoutSourceKey({ zoneCenter: capZoneCenter, obs: policyObs }, zoneId, aimPoint = null) {
+    const c = (aimPoint && Number.isFinite(aimPoint.x)) ? aimPoint : capZoneCenter(zoneId);
     let bestKey = "main";
     let bestD = Infinity;
     for (const key of ["main", "sub1", "sub2"]) {
-      const ship = this.obs.self.ships[key];
+      const ship = policyObs.self.ships[key];
       if (!ship || !ship.alive) continue;
       const d = c ? distance(ship.x, ship.y, c.x, c.y) : 0;
       if (d < bestD) { bestD = d; bestKey = key; }
@@ -30,49 +38,65 @@ export const scoutMethods = {
     return bestKey;
   },
 
-  planScoutDeployment(context = this.currentContext) {
-    if (!this.obs.self.flags.yukiFlagship || !this.obs.self.ships.main.alive) {
+  planScoutDeployment({
+    currentContext: policyCurrentContext,
+    obs: policyObs,
+    primaryEnemyEstimate: capPrimaryEnemyEstimate,
+    zoneForPoint: capZoneForPoint,
+    planYukiDeployment: capPlanYukiDeployment,
+    seat: policySeat,
+    knownEnemyContacts: capKnownEnemyContacts,
+    beliefZoneWeights: capBeliefZoneWeights,
+    likelyProbeZoneId: capLikelyProbeZoneId,
+  }, context = policyCurrentContext) {
+    if (!policyObs.self.flags.yukiFlagship || !policyObs.self.ships.main.alive) {
       return null;
     }
-    const focus = context?.focus || this.primaryEnemyEstimate();
-    const activeScouts = this.obs.self.scouts
+    const focus = context?.focus || capPrimaryEnemyEstimate();
+    const activeScouts = policyObs.self.scouts
       .filter((scout) => scout.alive && scout.combatCapable)
       .map((scout) => ({
         id: scout.id,
-        zoneId: scout.zoneId || this.zoneForPoint(scout.x, scout.y).id,
+        zoneId: scout.zoneId || capZoneForPoint(scout.x, scout.y).id,
         life: scout.life,
         mode: scout.mode,
         mission: scout.mission,
       }));
-    return this.planYukiDeployment({
-      zones: this.obs.world.zones,
-      worldSize: this.obs.world.size,
-      ownMain: this.obs.self.ships.main,
-      forwardSign: this.seat === "A" ? 1 : -1,
+    return capPlanYukiDeployment({
+      zones: policyObs.world.zones,
+      worldSize: policyObs.world.size,
+      ownMain: policyObs.self.ships.main,
+      forwardSign: policySeat === "A" ? 1 : -1,
       focus,
-      contacts: this.knownEnemyContacts({ maxAge: 12 }),
-      beliefZoneWeights: this.beliefZoneWeights(),
+      contacts: capKnownEnemyContacts({ maxAge: 12 }),
+      beliefZoneWeights: capBeliefZoneWeights(),
       activeScouts,
       context: context || {},
-      now: this.obs.time,
-      probeZoneId: this.likelyProbeZoneId(focus),
+      now: policyObs.time,
+      probeZoneId: capLikelyProbeZoneId(focus),
     });
   },
 
-  shouldLaunchScout(context = this.currentContext, scoutPlan = null) {
-    const SL = this.params.scout.launch;
-    if (this.shouldReserveEnergyForHaruhiFlagship()) {
+  shouldLaunchScout({
+    currentContext: policyCurrentContext,
+    params: policyParams,
+    shouldReserveEnergyForHaruhiFlagship: capShouldReserveEnergyForHaruhiFlagship,
+    energyProfile: capEnergyProfile,
+    obs: policyObs,
+  }, context = policyCurrentContext, scoutPlan = null) {
+    const SL = policyParams.scout.launch;
+    if (capShouldReserveEnergyForHaruhiFlagship()) {
       return false;
     }
     if (!context) {
       return true;
     }
-    const fleetEnergy = context.fleetEnergy || this.energyProfile("main");
+    const fleetEnergy = context.fleetEnergy || capEnergyProfile("main");
     if (fleetEnergy.current < SCOUT_LAUNCH_COST) {
       return false;
     }
-    if (this.obs.self.flags.yukiFlagship) {
-      const activeScouts = this.obs.self.scouts.filter((item) => item.alive && item.combatCapable).length;
+    if (policyObs.self.flags.yukiFlagship) {
+      const activeScouts = policyObs.self.scouts.filter((item) => item.alive && item.combatCapable).length;
       const desiredActive = scoutPlan?.desiredActive || SL.yukiDesiredActive;
       const maxActive = scoutPlan?.maxActive || SL.yukiMaxActive;
       if (activeScouts >= maxActive) {
@@ -98,21 +122,21 @@ export const scoutMethods = {
     return context.scoutPriority > SL.priority;
   },
 
-  shouldReserveEnergyForHaruhiFlagship() {
-    if (this.obs.self.loadout.main !== "haruhi" || !this.obs.self.ships.main.alive) {
+  shouldReserveEnergyForHaruhiFlagship({ obs: policyObs, flagshipTimer: policyFlagshipTimer, params: policyParams, energyProfile: capEnergyProfile }) {
+    if (policyObs.self.loadout.main !== "haruhi" || !policyObs.self.ships.main.alive) {
       return false;
     }
     const meta = skillMetaForCharacter("haruhi", "flagship");
     const cost = Number(meta?.cost) || 0;
     const readyIn = Math.max(
       0,
-      Number(this.obs.self.cooldowns.flagship) || 0,
-      Number(this.flagshipTimer) || 0,
+      Number(policyObs.self.cooldowns.flagship) || 0,
+      Number(policyFlagshipTimer) || 0,
     );
-    if (readyIn > this.params.skills.haruhiFlagship.energyReserveWindow) {
+    if (readyIn > policyParams.skills.haruhiFlagship.energyReserveWindow) {
       return false;
     }
-    const energy = this.energyProfile("main");
+    const energy = capEnergyProfile("main");
     // 即将可以施放时，侦察机不能抢走技能所需能量；仍保留5%余量，避免施放后立刻失去机动能力。
     return energy.current - SCOUT_LAUNCH_COST < cost + energy.max * 0.05;
   },

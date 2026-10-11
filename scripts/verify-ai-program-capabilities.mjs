@@ -24,7 +24,9 @@ for (let i = 0; i < 3; i++) {
   assert.equal(program.run('energyThrottleGearCap', ship), 1);
 }
 assert.equal(calls.length, 0, '嵌套能量求值不提交动作、不消费随机或策略调度');
-program.run('enforceEnergyThrottleCaps');
+const order = program.run('planEnergyThrottleCap', ship);
+assert.equal(calls.length, 0, '能量规划返回意图，不能下发动作');
+program.run('writeThrottle', order.shipKey, order.throttle);
 assert.equal(calls.length, 1, '执行阶段才通过专用命令能力换挡');
 assert.equal(calls[0].shipKey, 'main');
 assert.equal(obs.self.ships.main.throttle, 1.4, '动作不能直接修改观测');
@@ -32,8 +34,8 @@ assert.throws(() => program.run('chooseMode'), /未声明/);
 assert.throws(() => program.run('advanceSearchCenter'), /未声明/);
 assert.throws(() => program.run('toString'), /未声明/);
 assert.throws(() => POLICY_PROGRAM_EFFECTS.executeMovement.push('port'), TypeError);
-assert.deepEqual(POLICY_PROGRAM_EFFECTS.executeSplit, ['writeSplit']);
-assert.deepEqual(POLICY_PROGRAM_EFFECTS.enforceEnergyThrottleCaps, ['writeThrottle']);
+assert.equal(POLICY_PROGRAM_EFFECTS.executeSplit, undefined);
+assert.equal(POLICY_PROGRAM_EFFECTS.planEnergyThrottleCap, undefined);
 assert.deepEqual(POLICY_PROGRAM_EFFECTS.executeOrbSteering, ['issueShipRoute']);
 assert.ok(!POLICY_PROGRAM_EFFECTS.executeMovement.includes('chooseMode'));
 assert.ok(!POLICY_PROGRAM_EFFECTS.executeMovement.includes('advanceSearchCenter'));

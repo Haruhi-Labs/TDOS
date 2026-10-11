@@ -97,7 +97,12 @@ export class RulePolicy {
   energyProfile(...args) { return this.#program.run("energyProfile", ...args); }
   energyThrottleGearCap(...args) { return this.#program.run("energyThrottleGearCap", ...args); }
   energyAwareThrottleForShip(...args) { return this.#program.run("energyAwareThrottleForShip", ...args); }
-  enforceEnergyThrottleCaps(...args) { return this.#program.run("enforceEnergyThrottleCaps", ...args); }
+  enforceEnergyThrottleCaps() {
+    for (const ship of Object.values(this.obs.self.ships)) {
+      const order = this.#program.run("planEnergyThrottleCap", ship);
+      if (order) this.writeThrottle(order.shipKey, order.throttle);
+    }
+  }
   energyRatioAfterSpend(...args) { return this.#program.run("energyRatioAfterSpend", ...args); }
   allowEnergyCommit(...args) { return this.#program.run("allowEnergyCommit", ...args); }
   selectEnemyFocus(...args) { return this.#program.run("selectEnemyFocus", ...args); }
@@ -172,7 +177,15 @@ export class RulePolicy {
     this.#mode = result.mode; this.#modeTimer = result.modeTimer;
     return this.#mode;
   }
-  evaluateSplit(...args) { this.#lastSplitDecision = freezePlainData(copyPlainData(this.#program.run("executeSplit", ...args))); }
+  evaluateSplit(elapsed, context) {
+    const acted = [];
+    const attempt1 = this.shouldSplit(1, context, elapsed);
+    if (attempt1 && this.writeSplit(1)) acted.push(1);
+    // 第二次规划必须消费第一次动作之后的观测，不能提前批量规划两次分离。
+    const attempt2 = this.shouldSplit(2, context, elapsed);
+    if (attempt2 && this.writeSplit(2)) acted.push(2);
+    this.#lastSplitDecision = freezePlainData({ attempt1, attempt2, acted, level: this.obs.self.splitLevel, at: elapsed });
+  }
   updateStuckState(dt) {
     const result = this.#program.run("sampleStuckState", dt);
     this.#stuckTimer = result.stuckTimer; this.#lastMainPos = freezePlainData(copyPlainData(result.lastMainPos));

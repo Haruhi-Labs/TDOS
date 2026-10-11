@@ -1,23 +1,23 @@
 // 分离决策。
-// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 import { clamp } from "../../math.js";
 import { shamisenHuntNeedsSplit } from "./tactics/shamisen-hunt.js";
 import { characterProfile } from "./characters/index.js";
 
 export const splitMethods = {
-  splitUtilityForShip(ship, context) {
-    const SU = this.params.split.utility;
+  splitUtilityForShip({ params: policyParams, shipVitality: capShipVitality, estimateVisionRange: capEstimateVisionRange }, ship, context) {
+    const SU = policyParams.split.utility;
     if (!ship || !ship.alive || !context) {
       return 0;
     }
-    const vitality = this.shipVitality(ship);
-    const visionEdge = clamp((ship.stats.vision - this.estimateVisionRange(context.focus)) / SU.visionEdgeScale, SU.visionEdgeMin, SU.visionEdgeMax);
+    const vitality = capShipVitality(ship);
+    const visionEdge = clamp((ship.stats.vision - capEstimateVisionRange(context.focus)) / SU.visionEdgeScale, SU.visionEdgeMin, SU.visionEdgeMax);
     const characterBias = characterProfile(ship.characterId).splitBias?.(SU) ?? SU.otherBias;
     return vitality.value + visionEdge + characterBias;
   },
 
-  shouldSplit(level, context, elapsed) {
-    const SP = this.params.split;
+  shouldSplit({ params: policyParams, obs: policyObs, splitUtilityForShip: capSplitUtilityForShip }, level, context, elapsed) {
+    const SP = policyParams.split;
     if (!context) {
       return false;
     }
@@ -32,8 +32,8 @@ export const splitMethods = {
       return true;
     }
     if (level === 1) {
-      const ship = this.obs.self.ships.sub1;
-      if (this.obs.self.splitLevel !== 0 || !ship.alive) {
+      const ship = policyObs.self.ships.sub1;
+      if (policyObs.self.splitLevel !== 0 || !ship.alive) {
         return false;
       }
       if (
@@ -47,7 +47,7 @@ export const splitMethods = {
       ) {
         return true;
       }
-      const splitUtility = this.splitUtilityForShip(ship, context);
+      const splitUtility = capSplitUtilityForShip(ship, context);
       if ((context.mainHull < SP.level1.weakMainHull && context.mainEnergyRatio < SP.level1.weakMainEnergy) || context.fleetHull < SP.level1.weakFleetHull || context.energyRatio < SP.level1.weakEnergy || (context.defensivePressure && context.maxShipThreat > SP.level1.weakThreat)) {
         return elapsed > SP.level1.weakAfter && context.dist > context.rangeRef * SP.level1.weakMinRange;
       }
@@ -66,8 +66,8 @@ export const splitMethods = {
       );
     }
     if (level === 2) {
-      const ship = this.obs.self.ships.sub2;
-      if (this.obs.self.splitLevel !== 1 || !ship.alive) {
+      const ship = policyObs.self.ships.sub2;
+      if (policyObs.self.splitLevel !== 1 || !ship.alive) {
         return false;
       }
       if (
@@ -82,7 +82,7 @@ export const splitMethods = {
       ) {
         return true;
       }
-      const splitUtility = this.splitUtilityForShip(ship, context);
+      const splitUtility = capSplitUtilityForShip(ship, context);
       if ((context.mainHull < SP.level2.weakMainHull && context.mainEnergyRatio < SP.level2.weakMainEnergy) || context.fleetHull < SP.level2.weakFleetHull || context.energyRatio < SP.level2.weakEnergy || context.overextended || (context.defensivePressure && context.maxShipThreat > SP.level2.weakThreat)) {
         return elapsed > SP.level2.weakAfter && context.localAdvantage > SP.level2.weakAdvantage;
       }
@@ -102,22 +102,4 @@ export const splitMethods = {
     return false;
   },
 
-  executeSplit(elapsed, context) {
-    const acted = [];
-    const attempt1 = this.shouldSplit(1, context, elapsed);
-    if (attempt1 && this.writeSplit(1)) {
-      acted.push(1);
-    }
-    const attempt2 = this.shouldSplit(2, context, elapsed);
-    if (attempt2 && this.writeSplit(2)) {
-      acted.push(2);
-    }
-    return {
-      attempt1,
-      attempt2,
-      acted,
-      level: this.obs.self.splitLevel,
-      at: elapsed,
-    };
-  },
 };

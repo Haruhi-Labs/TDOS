@@ -254,3 +254,5 @@ await import("./verify-resource-ownership.mjs");
 await import("./verify-bunny-stage-runtime.mjs");
 
 await import("./verify-character-extensions.mjs");
+
+await import("./verify-ai-explicit-facts.mjs");
