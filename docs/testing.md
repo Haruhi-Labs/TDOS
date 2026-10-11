@@ -123,3 +123,5 @@ env -u NETWORK_WS_URL npm run test:network:load
 `test:architecture` 通过 `verify-character-boundaries.mjs` 追加角色内部边界检查：九角色轮换主副舰的重复只读查询、基础移动/属性/射击的能力替换、命中扩展与基础承伤顺序、投影不推进生命周期、侦察机出生采样与策反能力保持、专属变身与普通技能成功提交次数，以及破盾资格和消费失败。使用内存对局，不访问身份/统计存储或外部服务；它不证明全部角色状态已经私有，也不替代原基线回放及真实页面验收。
 
 角色生命周期边界检查随 `test:architecture` 执行：`verify-beam-lifecycle`、`verify-future-form`、`verify-sponsor-effect`、`verify-bunny-ownership`、`verify-support-ownership` 分别验证光线固定命中集合/恰好一次、形态先提交再换算、赞助同帧保护、伴随关系事务及支援嵌套集合的只读边界。它们是离线行为与写权限检查，不替代原 dev 回放、浏览器或性能对照。
+
+`verify-plain-data` 随 `test:architecture` 校验深层复制、嵌套冻结、历史节点复用及 `__proto__` 普通数据键。修改公共数据遍历时同步检查单人会话、房间输入、快照流和差量消费者，并保留性能优化前的样本，不以取消只读边界降低开销。

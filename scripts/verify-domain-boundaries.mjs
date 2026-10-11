@@ -186,3 +186,5 @@ await import("./verify-sponsor-effect.mjs");
 await import("./verify-bunny-ownership.mjs");
 
 await import("./verify-support-ownership.mjs");
+
+await import("./verify-plain-data.mjs");

@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { copyPlainData, freezePlainData } from "../shared/data/plain-data.js";
+
+const original = JSON.parse('{"__proto__":{"polluted":true},"constructor":{"id":4},"nested":[null,{"x":3}]}');
+original.optional = undefined;
+const copy = copyPlainData(original);
+assert.deepEqual(copy, original);
+assert.equal(Object.getPrototypeOf(copy), Object.prototype);
+assert.equal(Object.hasOwn(copy, "__proto__"), true);
+assert.equal(copy.polluted, undefined, "协议键不得改变接收对象的原型");
+copy.__proto__.polluted = false;
+copy.nested[1].x = 99;
+copy.constructor.id = 5;
+assert.equal(original.__proto__.polluted, true);
+assert.equal(original.nested[1].x, 3);
+assert.equal(original.constructor.id, 4);
+const frozen = freezePlainData(original);
+assert.equal(frozen, original);
+assert.equal(freezePlainData(frozen), frozen);
+assert.throws(() => { frozen.nested[1].x = 99; }, TypeError);
+assert.throws(() => { frozen.__proto__.polluted = false; }, TypeError);
+assert.throws(() => frozen.nested.push(1), TypeError);
+const next = freezePlainData({ retained: frozen.nested, added: { x: 1 } });
+assert.equal(next.retained, frozen.nested, "冻结帧可继续共享只读历史节点");
+assert.throws(() => { next.added.x = 2; }, TypeError);
+assert.deepEqual(copyPlainData(frozen), frozen, "只读投影仍可复制为独立消费数据");
+console.log("普通数据边界校验通过：深层别名隔离、原型键安全、只读嵌套与历史节点共享。");
