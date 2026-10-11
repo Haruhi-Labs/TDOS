@@ -184,7 +184,11 @@ export class RulePolicy {
     if (timer !== undefined) this.#koizumiOrbSteerTimer = timer;
   }
   issueMovement(context = this.#currentContext) {
-    const result = this.#program.run("executeMovement", context);
+    const prepared = this.#program.run("prepareMovement", context);
+    if (!prepared) return;
+    const searchCenter = this.advanceSearchCenter(prepared.main, prepared.enemyEstimate);
+    const mode = this.chooseMode(prepared.tactical);
+    const result = this.#program.run("executeMovement", prepared, searchCenter, mode);
     if (result) this.#lastTacticalPlan = freezePlainData(copyPlainData(result));
   }
 

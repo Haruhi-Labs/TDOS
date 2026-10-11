@@ -31,7 +31,6 @@ const METHODS = Object.freeze({
 });
 const READS = Object.freeze([
   "obs",
-  "port",
   "currentContext",
   "lastTacticalPlan",
   "rememberedMain",
@@ -53,7 +52,6 @@ const READS = Object.freeze([
   "lastSplitDecision",
   "params",
   "searchSweepSign",
-  "rng",
   "profile",
   "stuckTimer",
   "lastMainPos",
@@ -61,7 +59,6 @@ const READS = Object.freeze([
   "reactionMult",
 ]);
 const OPERATIONS = Object.freeze([
-  "chooseMode",
   "ownShips",
   "ownShipById",
   "knownEnemyContacts",
@@ -70,26 +67,50 @@ const OPERATIONS = Object.freeze([
   "predictEnemyVector",
   "planYukiDeployment",
   "beliefZoneWeights",
-  "advanceSearchCenter",
 ]);
 
-// 启发式只能读取事实并调用列出的领域操作，不能取得策略对象或写入其字段。
+// 查询算法没有动作端口、随机流或其他执行算法。每个执行入口只获得声明的副作用能力。
+// 子调用总以自己的能力上下文运行，不能继承调用方的写权限。
+export const POLICY_PROGRAM_EFFECTS = Object.freeze(Object.fromEntries(Object.entries({
+  ...Object.fromEntries(Object.keys(commandsMethods).map((name) => [name, ["port"]])),
+  enforceEnergyThrottleCaps: ["writeThrottle"],
+  executeSplit: ["writeSplit"],
+  issueShipRoute: ["writeRoute", "writeThrottle", "writeRouteEndpoint"],
+  executeOrbSteering: ["issueShipRoute"],
+  executeMovement: ["issueShipRoute", "computeSearchTarget", "rng"],
+  computeSearchTarget: ["rng"],
+  planMode: ["rng"],
+}).map(([name, capabilities]) => [name, Object.freeze(capabilities)])));
+
 export function createPolicyProgram(read, invoke) {
   let visionWaveBuffDeferrals = 0;
-  const context = {};
+  const queries = Object.create(null);
+  const contexts = new Map();
   const evaluate = (name, args) => {
-    const result = METHODS[name].apply(context, args);
+    const result = METHODS[name].apply(contexts.get(name) || queries, args);
     if (name === "incomingVisionWaveWillPurge" && result) visionWaveBuffDeferrals += 1;
     return result;
   };
-  for (const name of READS) Object.defineProperty(context, name, { get: () => read(name) });
-  for (const name of OPERATIONS) context[name] = (...args) => invoke(name, args);
-  for (const name of Object.keys(METHODS)) context[name] = (...args) => evaluate(name, args);
-  Object.freeze(context);
+  for (const name of READS) Object.defineProperty(queries, name, { get: () => read(name) });
+  for (const name of OPERATIONS) queries[name] = (...args) => invoke(name, args);
+  for (const name of Object.keys(METHODS)) {
+    if (!Object.hasOwn(POLICY_PROGRAM_EFFECTS, name)) queries[name] = (...args) => evaluate(name, args);
+  }
+  Object.freeze(queries);
+  for (const [name, capabilities] of Object.entries(POLICY_PROGRAM_EFFECTS)) {
+    const context = Object.create(queries);
+    for (const capability of capabilities) {
+      if (capability === "port" || capability === "rng")
+        Object.defineProperty(context, capability, { get: () => read(capability) });
+      else Object.defineProperty(context, capability, { value: (...args) => evaluate(capability, args) });
+    }
+    contexts.set(name, Object.freeze(context));
+  }
   return Object.freeze({
     get metrics() { return Object.freeze({ visionWaveBuffDeferrals }); },
     run(name, ...args) {
-    if (!Object.hasOwn(METHODS, name)) throw new Error(`未声明的策略计算：${name}`);
-    return evaluate(name, args);
-  } });
+      if (!Object.hasOwn(METHODS, name)) throw new Error(`未声明的策略计算：${name}`);
+      return evaluate(name, args);
+    },
+  });
 }

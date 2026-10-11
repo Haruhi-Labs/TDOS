@@ -246,3 +246,5 @@ await import("./verify-ai-memory-ownership.mjs");
 await import("./verify-targeting-ownership.mjs");
 
 await import("./verify-ai-skill-ownership.mjs");
+
+await import("./verify-ai-program-capabilities.mjs");

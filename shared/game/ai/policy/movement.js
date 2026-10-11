@@ -106,7 +106,7 @@ export const movementMethods = {
     return clamp(0.18 * Math.sqrt(this.reactionMult || 1), 0.18, 0.48);
   },
 
-  executeMovement(context = this.currentContext) {
+  prepareMovement(context = this.currentContext) {
     const main = this.obs.self.ships.main;
     if (!main.alive) {
       return;
@@ -118,8 +118,10 @@ export const movementMethods = {
     }
 
     const tactical = context || this.buildTacticalContext(main, enemyEstimate);
-    const searchCenter = this.advanceSearchCenter(main, enemyEstimate);
-    const mode = this.chooseMode(tactical);
+    return { main, enemyEstimate, tactical };
+  },
+
+  executeMovement({ main, enemyEstimate, tactical }, searchCenter, mode) {
     const center = mode === "search" ? searchCenter : this.combatCenter(enemyEstimate);
     const sectorPlan = ((mode === "search" || mode === "cutoff" || mode === "collapse" || mode === "press") && (tactical.trackableIntel || tactical.searchRequired || tactical.isolatedTargetScore > 0.28 || !tactical.intelSolid))
       ? this.computeSectorEncirclement(main, enemyEstimate, searchCenter, tactical.encirclePressure)
