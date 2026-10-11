@@ -136,3 +136,6 @@ env -u NETWORK_WS_URL npm run test:network:load
 `verify-expanding-wave` 与 `verify-throttle-constraint` 随架构专项执行：前者验证共享几何脱离技能状态后的载荷与覆盖边界；后者验证基础运动所有者的存储、读写约束差异，以及兔女郎封印解除和锁档到期。角色来源仍由核心行为测试及原 dev 回放覆盖，不能只以可替换接口测试代替实际技能回归。
 
 `verify-ai-debug-projection` 随架构专项验证策略计划、动态决策与侦察方案的嵌套引用隔离，覆盖消费方修改和策略后续修改两个方向。优化序列化复制范围时仍需原始回放与单人完整帧性能对照。
+
+
+`verify-haruhi-flagship-runtime` 覆盖强化寿命私有化、同帧保护、解锁先于运动换算、续期不重乘及净化保留常驻支援。`verify-vision-wave-phase` 覆盖四组双边目标先采样、独立只读句柄、伪造句柄与错误所有者拒绝、净化顺序、有效反馈和可替换端口；同时用真实朝仓镜像对局防止先结算一席吞掉另一席命中。两项随 `test:architecture` 执行。
