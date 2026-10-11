@@ -12,7 +12,8 @@ import { BUNNY_HARUHI_CONFIG as C } from "../shared/game/bunny-haruhi-config.js"
 import { DAMAGE_KIND } from "../shared/game/damage.js";
 
 const root = resolve(import.meta.dirname, "..");
-const output = resolve(root, "bench/bunny-haruhi-acceptance");
+// 可指定隔离的验收输出目录，避免局部复测覆盖已归档证据。
+const output = resolve(root, process.argv.find((arg) => arg.startsWith("--output-dir="))?.slice("--output-dir=".length) || "bench/bunny-haruhi-acceptance");
 const quantile = (values, p) => [...values].sort((a, b) => a - b)[Math.floor((values.length - 1) * p)];
 const fixed = (number) => Math.round(number * 10000) / 10000;
 const loadout = (main = "kyon", sub1 = "bunny_haruhi", sub2 = "yuki") => ({ main, sub1, sub2 });
@@ -214,8 +215,9 @@ if (process.argv[2] === "--worker") {
             } });
           };
           for (const team of [sim.teamA, sim.teamB]) {
-            const spawn = team.spawnBunnyCompanion.bind(team);
-            team.spawnBunnyCompanion = (...args) => { const result = spawn(...args); team.extraShips.forEach(observe); return result; };
+            const publish = team.addAuxiliaryShip.bind(team);
+            // 只观察集合所有者的发布，不重新挂回已移除的角色生成入口。
+            team.addAuxiliaryShip = (ship) => { const result = publish(ship); observe(ship); return result; };
             const beam = team.launchHaruhiRandomBeam.bind(team);
             team.launchHaruhiRandomBeam = (...args) => { metrics.beamLaunches++; return beam(...args); };
             const cast = team.castFlagshipSkill.bind(team);
