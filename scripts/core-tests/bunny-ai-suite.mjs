@@ -63,10 +63,10 @@ export function runBunnyAiSuite() {
     const outside = bunnyStageRoute(ship, target, stage, 20);
     assert.ok(Math.hypot(outside.x - 400, outside.y - 400) > 172);
     assert.equal(bunnyStageRoute(ship, target, { ...stage, visible: false, age: 5 }, 20), target, "不能精准绕开失效记忆中的舞台");
-    ship.bunnyStageExposure = { inside: true, enteredAt: 11, phase: "speechless" };
-    assert.equal(bunnyStageRoute(ship, target, stage, 20), target, "健康舰允许撑到入迷");
-    ship.hp = ship.maxHp * 0.4;
-    assert.notEqual(bunnyStageRoute(ship, target, stage, 20), target);
+    const stageView = { ...observeOwnShip(ship), stageExposure: { inside: true, enteredAt: 11, phase: "speechless" } };
+    assert.equal(bunnyTactics.bunnyStageRoute(stageView, target, stage, 20), target, "健康舰允许撑到入迷");
+    stageView.hp = stageView.maxHp * 0.4;
+    assert.notEqual(bunnyTactics.bunnyStageRoute(stageView, target, stage, 20), target);
     assert.equal(Object.hasOwn(snapshotVisibleCharacterTactics(sim.teamA.ships.main, 20), "bunnyStageRadius"), false);
   });
   // 真正运行 Bot 的指定主/副舰阵容；两边都用同一规则入口，不给阿虚创建 Bot 舰位。

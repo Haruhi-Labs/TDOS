@@ -9,14 +9,37 @@ import {
 } from "./bunny-haruhi.js";
 import { rngFor } from "./rng.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
-import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.js";
-import { supportOrbGeometry, supportOtherworlderReady } from "./haruhi-support.js";
+import { bunnyCompanions, bunnyCompanionOwner, createBunnyCompanion } from "./bunny-companion-runtime.js";
+import { supportOrbGeometry, supportOtherworlderReady, clearSupportQueue } from "./haruhi-support.js";
 
 export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
 
+const forms = new WeakMap();
+const exposures = new WeakMap();
+
+function commitForm(ship, state) {
+  forms.set(ship, Object.freeze(state));
+}
+
+function commitExposure(ship, state) {
+  exposures.set(ship, Object.freeze(state));
+}
+
+// 母舰关系与舰队发布在一个同步事务内提交；伴随舰工厂不反向修改母舰状态。
+export function spawnBunnyCompanion(owner, createShip) {
+  if (!owner.alive || owner.bunnyHaruhi?.form !== "encore" || owner.bunnyHaruhi.companionId !== null
+    || !["sub1", "sub2"].includes(owner.key) || owner.team.ships[owner.key] !== owner) return null;
+  const ship = createBunnyCompanion(owner, createShip);
+  owner.team.addAuxiliaryShip(ship);
+  commitForm(owner, { ...owner.bunnyHaruhi, companionId: ship.id, companionSpawned: true });
+  return ship;
+}
+
 export function initializeBunnyShip(ship) {
+  Object.defineProperty(ship, "bunnyStageExposure", { enumerable: true, get: () => exposures.get(ship) });
   if (ship.character !== BUNNY_HARUHI_CHARACTER) return;
-  ship.bunnyHaruhi = createBunnyHaruhiState();
+  Object.defineProperty(ship, "bunnyHaruhi", { enumerable: true, get: () => forms.get(ship) });
+  commitForm(ship, createBunnyHaruhiState());
   // 保留锁档的实时读取与最终落值语义，覆盖已有动作、航线和兼容调用。
   let throttle = ship.throttle;
   Object.defineProperty(ship, "throttle", {
@@ -27,14 +50,14 @@ export function initializeBunnyShip(ship) {
 }
 
 export function cleanseBunnyShipControl(ship) {
-  if (ship.bunnyStageExposure) ship.bunnyStageExposure = cleanseBunnyStageControl(ship.bunnyStageExposure);
+  if (ship.bunnyStageExposure) commitExposure(ship, cleanseBunnyStageControl(ship.bunnyStageExposure));
 }
 
 export function purgeBunnyShipForm(ship, preservedTick) {
   if (!ship.bunnyHaruhi) return false;
   const old = ship.bunnyHaruhi;
   const next = purgeBunnyForm(old, preservedTick);
-  ship.bunnyHaruhi = next;
+  commitForm(ship, next);
   return next.positiveSuppressed !== old.positiveSuppressed || next.immunityUntil !== old.immunityUntil;
 }
 
@@ -74,7 +97,7 @@ export function commitBunnyTransform(ship) {
     const source = { ...bunnyHaruhiSupportSource(ship, true), state: result.state.support };
     unlockBunnyHaruhiSupport(source, match.elapsed, rngFor(match).next);
   }
-  ship.bunnyHaruhi = result.state;
+  commitForm(ship, result.state);
   ship.applyResourcePlan(result);
   ship.setThrottle(resolveBunnyThrottle(result.state, oldThrottle, true, match.elapsed));
   ship.rescaleCombatTiming(oldSpeed, oldRate);
@@ -110,7 +133,7 @@ export function resolveBunnyStages(match) {
       const resolved = resolveBunnyStageExposure(ship.bunnyStageExposure || createBunnyStageExposure(), {
         inside, sourceShipId: sample?.sourceShipId, now: match.elapsed, tick: match.tick,
       });
-      ship.bunnyStageExposure = resolved.state;
+      commitExposure(ship, resolved.state);
       if (resolved.healRatio && ship.alive) ship.restoreHull(ship.maxHp * resolved.healRatio);
       if (!ship.isControlImmune() && isBunnyControlLocked(resolved.state, match.elapsed)) ship.setFlightSpeed(0);
     }
@@ -152,10 +175,10 @@ export function cleanupBunnySources(match) {
   for (const team of [match.teamA, match.teamB]) {
     for (const ship of team.getPlayerShips()) {
       if (ship.bunnyHaruhi && !ship.alive) {
-        ship.bunnyHaruhi = clearBunnyFormWindows(ship.bunnyHaruhi);
-        ship.bunnyHaruhi.support.queuedBeamAt.length = 0;
+        commitForm(ship, clearBunnyFormWindows(ship.bunnyHaruhi));
+        clearSupportQueue(ship.bunnyHaruhi.support);
       }
-      if (ship.bunnyStageExposure?.inside && !bunnyStageEnabled(ship)) ship.bunnyStageExposure = leaveBunnyStage(ship.bunnyStageExposure);
+      if (ship.bunnyStageExposure?.inside && !bunnyStageEnabled(ship)) commitExposure(ship, leaveBunnyStage(ship.bunnyStageExposure));
     }
     if (team.bunnyStage && (!team.ships.main.alive || team.areSkillsDisabled())) team.bunnyStage = null;
   }

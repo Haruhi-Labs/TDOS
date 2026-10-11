@@ -27,6 +27,22 @@ export function createSupportState(initialAngle = 0) {
   };
 }
 
+export function clearSupportQueue(state) {
+  state.queuedBeamAt.length = 0;
+}
+
+// 新来源选择封印后重新计时；旧旗舰仍保留原有追帧规则。
+export function suspendSupportSchedule(state) {
+  state.suspended = true;
+}
+
+export function resumeSupportSchedule(state, now) {
+  if (!state.suspended) return;
+  state.timeTravelerNextAt = state.supporters.has("time_traveler") ? now + HARUHI_TIME_TRAVELER_INTERVAL : 0;
+  clearSupportQueue(state);
+  delete state.suspended;
+}
+
 /** eligibleIds由可信角色配置提供有序、无重复的池；只有实际解锁才取一次随机数。 */
 export function unlockSupport(state, eligibleIds, now, random) {
   const remaining = eligibleIds.filter((id) => !state.supporters.has(id));
@@ -49,7 +65,7 @@ export function tickSupportSource(source, now, dt, hooks = {}) {
   if (!source) return;
   const { sourceShip, state, enabled } = source;
   if (!enabled || !sourceShip?.alive) {
-    state.queuedBeamAt.length = 0;
+    clearSupportQueue(state);
     return;
   }
   if (state.supporters.has("alien")) {

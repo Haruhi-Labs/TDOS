@@ -19,8 +19,8 @@ import { createKoizumiBarrierState, serializeKoizumiBarrier } from "../koizumi-b
 import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
 import { isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
-import { spawnBunnyCompanion, convertBunnyCompanion } from "../bunny-companion-runtime.js";
-import { updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { convertBunnyCompanion } from "../bunny-companion-runtime.js";
+import { spawnBunnyCompanion, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";

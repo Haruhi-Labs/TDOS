@@ -5,11 +5,28 @@ import {
 } from "./bunny-haruhi-companion.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 
+// 伴随舰和接收者效果由该运行时独占写入，实体只提供冻结读视图。
+const companions = new WeakMap();
+const reliableEffects = new WeakMap();
+
+export function initializeBunnyReliableReceiver(ship) {
+  Object.defineProperty(ship, "bunnyReliable", { enumerable: true, get: () => reliableEffects.get(ship) });
+}
+
+function commitCompanionState(ship, state) {
+  const followOffset = Object.isFrozen(state.followOffset) ? state.followOffset : Object.freeze({ ...state.followOffset });
+  companions.set(ship, Object.freeze({ ...state, followOffset }));
+}
+
+function commitReliableEffect(ship, state) {
+  reliableEffects.set(ship, Object.freeze(state));
+}
+
 export function purgeBunnyReliableEffect(ship, preservedTick) {
   if (!ship.bunnyReliable) return false;
   const old = ship.bunnyReliable;
   const next = purgeBunnyReliable(old, preservedTick);
-  ship.bunnyReliable = next;
+  commitReliableEffect(ship, next);
   return next.suppressed !== old.suppressed;
 }
 
@@ -37,9 +54,7 @@ function followPoint(owner, offset) {
 }
 
 /** Ship 工厂由舰队注入，角色规则不反向导入实体实现。 */
-export function spawnBunnyCompanion(owner, createShip) {
-  if (!owner.alive || owner.bunnyHaruhi?.form !== "encore" || owner.bunnyHaruhi.companionId !== null
-    || !["sub1", "sub2"].includes(owner.key) || owner.team.ships[owner.key] !== owner) return null;
+export function createBunnyCompanion(owner, createShip) {
   const { team } = owner;
   const point = followPoint(owner, C.companion.followOffset);
   const key = `bunny_kyon_${owner.id}`;
@@ -47,12 +62,10 @@ export function spawnBunnyCompanion(owner, createShip) {
     characterId: "kyon", slotKey: key, isAuxiliary: true, attachToMain: false,
     entityRole: C.companionRole, baseStats: deriveBunnyCompanionBase(owner.base), roleLabel: "伴随舰",
   });
-  ship.bunnyCompanion = createBunnyCompanionState(owner.id, team.seat, team.match.elapsed);
+  Object.defineProperty(ship, "bunnyCompanion", { enumerable: true, get: () => companions.get(ship) });
+  commitCompanionState(ship, createBunnyCompanionState(owner.id, team.seat, team.match.elapsed));
   ship.resetHullCapacity(Math.max(1, Math.round(ship.base.hp * (team.statMult || 1))));
   ship.setThrottle(owner.throttle);
-  team.addAuxiliaryShip(ship);
-  owner.bunnyHaruhi.companionId = ship.id;
-  owner.bunnyHaruhi.companionSpawned = true;
   return ship;
 }
 
@@ -74,11 +87,10 @@ export function bunnyReliableState(ship) {
 function clearCompanionReliable(ship) {
   for (const team of [ship.team.match.teamA, ship.team.match.teamB]) {
     for (const receiver of team.getAllShips()) {
-      if (receiver.bunnyReliable?.sourceCompanionId === ship.id) delete receiver.bunnyReliable;
+      if (receiver.bunnyReliable?.sourceCompanionId === ship.id) reliableEffects.delete(receiver);
     }
   }
-  ship.bunnyCompanion.reliableUntil = 0;
-  ship.bunnyCompanion.reliableStartedTick = -1;
+  commitCompanionState(ship, { ...ship.bunnyCompanion, reliableUntil: 0, reliableStartedTick: -1 });
 }
 
 function clearCompanionProjectiles(ship) {
@@ -91,7 +103,7 @@ function transferCompanion(ship, destination, nextState) {
   clearCompanionReliable(ship);
   clearCompanionProjectiles(ship);
   ship.transferToTeam(destination);
-  ship.bunnyCompanion = nextState;
+  commitCompanionState(ship, nextState);
   // 位置与生命不因换阵营重算；伤害等查询读取当前阵营，禁止重复难度缩放。
   ship.clearRoute();
   ship.rescaleCombatTiming(oldSpeed, oldRate);
@@ -127,14 +139,13 @@ export function cleanupBunnyCompanions(match) {
     const owner = bunnyCompanionOwner(ship);
     if (ship.alive && owner?.alive) continue;
     ship.retireWithoutLoss();
-    ship.bunnyCompanion.nextReliableAt = null;
-    ship.bunnyCompanion.convertedUntil = 0;
+    commitCompanionState(ship, { ...ship.bunnyCompanion, nextReliableAt: null, convertedUntil: 0 });
     clearCompanionReliable(ship);
     clearCompanionProjectiles(ship);
   }
   for (const team of [match.teamA, match.teamB]) {
     for (const receiver of team.getAllShips()) {
-      if (receiver.bunnyReliable && !bunnyReliableState(receiver)) delete receiver.bunnyReliable;
+      if (receiver.bunnyReliable && !bunnyReliableState(receiver)) reliableEffects.delete(receiver);
     }
   }
 }
@@ -153,11 +164,11 @@ export function prepareBunnyCompanions(match) {
       enabled: !ship.team.areSkillsDisabled(),
     });
     if (result.returnToOwner) returnCompanion(ship, match.elapsed);
-    else ship.bunnyCompanion = result.state;
+    else commitCompanionState(ship, result.state);
     if (result.triggerReliable) {
       for (const receiver of [owner, ship]) {
         receiver.applyResourcePlan(bunnyReliableRecovery(receiver));
-        receiver.bunnyReliable = createBunnyReliableState(ship.id, match.elapsed, match.tick);
+        commitReliableEffect(receiver, createBunnyReliableState(ship.id, match.elapsed, match.tick));
       }
     }
     if (ship.bunnyCompanion.convertedUntil) continue;

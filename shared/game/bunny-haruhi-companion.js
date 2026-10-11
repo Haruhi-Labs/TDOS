@@ -132,7 +132,7 @@ export function purgeBunnyReliable(state, tick) {
   return !state || state.startedTick === tick ? state : { ...state, suppressed: true };
 }
 
-/** 来源死亡、策反或不再同阵营时sourceValid=false；返回null时由适配器删除字段。 */
+/** 来源死亡、策反或不再同阵营时sourceValid=false；返回null时由适配器清除接收者效果。 */
 export function expireBunnyReliable(state, now, sourceValid = true) {
   return state && sourceValid && now < state.until ? state : null;
 }

@@ -1,5 +1,5 @@
 import { BUNNY_HARUHI_CONFIG } from "./bunny-haruhi-config.js";
-import { HARUHI_TIME_TRAVELER_INTERVAL, tickSupportSource, unlockSupport } from "./haruhi-support.js";
+import { tickSupportSource, unlockSupport, suspendSupportSchedule, resumeSupportSchedule } from "./haruhi-support.js";
 
 /**
  * 显式副舰来源适配。拒绝主舰、普通春日、额外实体和未初始化状态。
@@ -32,16 +32,11 @@ export function updateBunnyHaruhiSupport(source, now, dt, hooks = {}) {
   if (!source) return;
   const { state } = source;
   if (!source.enabled || !source.sourceShip?.alive) {
-    state.suspended = true;
+    suspendSupportSchedule(state);
     tickSupportSource(source, now, dt, hooks);
     return;
   }
-  if (state.suspended) {
-    // 只重排定期发射，不返还碰撞冷却，不补发封印期间的光线。
-    state.timeTravelerNextAt = state.supporters.has("time_traveler")
-      ? now + HARUHI_TIME_TRAVELER_INTERVAL : 0;
-    state.queuedBeamAt.length = 0;
-    delete state.suspended;
-  }
+  // 恢复只重排发射日程，不返还冲撞冷却或补发封印期间的光线。
+  resumeSupportSchedule(state, now);
   tickSupportSource(source, now, dt, hooks);
 }
