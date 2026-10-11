@@ -200,3 +200,5 @@ await import("./verify-expanding-wave.mjs");
 await import("./verify-throttle-constraint.mjs");
 
 await import("./verify-ai-debug-projection.mjs");
+
+await import("./verify-haruhi-flagship-runtime.mjs");

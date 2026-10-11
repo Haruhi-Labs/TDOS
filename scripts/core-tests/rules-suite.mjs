@@ -2002,7 +2002,7 @@ function haruhiFlagshipReworkCheck() {
   assert(!target.forcedKnockback, "异世界人击退完成后仍在锁定敌方控制");
   assert(target.speed < 2, "异世界人击退完成后敌舰没有从接近零速重新加速");
 
-  teamA.effects.haruhiBoostUntil = sim.elapsed;
+  sim.elapsed = Math.max(sim.elapsed, teamA.effects.haruhiBoostUntil);
   for (const ship of teamA.getAllShips()) {
     ship.x = 120;
     ship.y = 120;

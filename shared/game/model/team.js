@@ -1,3 +1,4 @@
+import { createTeamHaruhiFlagship } from "../rules/haruhi-flagship-port.js";
 import { ownSupportState } from "../haruhi-support.js";
 import { createTeamSponsor } from "../rules/sponsor-port.js";
 import { createTeamFutureForm } from "../rules/future-form-port.js";
@@ -17,7 +18,7 @@ import { isFocusWorthy } from "../targeting-system.js";
 import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
 import { activateKoizumiOrb, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { createKoizumiBarrierState, serializeKoizumiBarrier } from "../koizumi-barrier.js";
-import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
+import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
 import { isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
 import { convertBunnyCompanion } from "../bunny-companion-runtime.js";
@@ -25,12 +26,13 @@ import { spawnBunnyCompanion, updateBunnyTeamSupports, refreshBunnyVisibility } 
 import { Ship } from "../model/ship.js";
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";
-import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS } from "../model/model-support.js";
+import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
   #beamSystem;
   #futureForm;
   #sponsor;
+  #haruhi;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.match = match;
     this.seat = seat;
@@ -68,9 +70,11 @@ export class Team {
     };
 
     this.#sponsor = createTeamSponsor(this);
-    this.effects = {
-      haruhiBoostUntil: 0,
-    };
+    this.#haruhi = createTeamHaruhiFlagship(this);
+    this.effects = {};
+    Object.defineProperty(this.effects, "haruhiBoostUntil", {
+      enumerable: true, get: () => this.#haruhi.expiresAt,
+    });
     Object.defineProperty(this.effects, "sponsorUntil", {
       enumerable: true, get: () => this.#sponsor.expiresAt,
     });
@@ -80,7 +84,6 @@ export class Team {
     });
     this.koizumiBarrier = createKoizumiBarrierState();
     this.shamisenHunt = createShamisenHuntState();
-    this.activeSkillEffectStartedTicks = Object.create(null);
 
     const sub1FormationOffset = { x: -36, y: 22 };
     const sub2FormationOffset = { x: -36, y: -22 };
@@ -200,9 +203,8 @@ export class Team {
     this.wingmen = this.wingmen.filter((candidate) => candidate !== wingman);
   }
 
-  activateTimedEffect(key, duration) {
-    this.effects[key] = this.match.elapsed + duration;
-    this.markActiveSkillEffectStarted(key);
+  activateHaruhiSupport(duration, random) {
+    return this.#haruhi.activate(duration, random);
   }
 
   addAuxiliaryShip(ship) {
@@ -452,23 +454,9 @@ export class Team {
     ship.activateTimedEffect(key, duration);
   }
 
-  markActiveSkillEffectStarted(effectKey) {
-    this.activeSkillEffectStartedTicks[effectKey] = this.match.tick;
-  }
-
   clearActiveTeamSkillBuffs({ preserveCurrentTick = true } = {}) {
     let cleared = this.#sponsor.clear({ preserveCurrentTick });
-    const clearTeamEffect = (effectKey) => {
-      if (preserveCurrentTick && this.activeSkillEffectStartedTicks[effectKey] === this.match.tick) {
-        return;
-      }
-      if (Number(this.effects[effectKey] || 0) > this.match.elapsed) {
-        cleared = true;
-      }
-      this.effects[effectKey] = 0;
-      delete this.activeSkillEffectStartedTicks[effectKey];
-    };
-    clearTeamEffect("haruhiBoostUntil");
+    if (this.#haruhi.clear({ preserveCurrentTick })) cleared = true;
     if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
       cleared = true;
     }
@@ -770,21 +758,7 @@ export class Team {
     return {
       spendEnergy: (cost) => this.spendEnergyForShip("main", cost),
       switchForm: () => this.switchFuture1096Form(),
-      activateSupport: (duration) => {
-        const main = this.ships.main;
-        const boostWasActive = haruhiBoostActive(this);
-        const supporter = activateHaruhiFlagship(this, duration, rngFor(this.match).next);
-        if (!boostWasActive) {
-          for (const ship of this.getPlayerShips()) {
-            if (ship.alive) ship.boostCombatTempo(1.15);
-          }
-        }
-        this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里！", {}, "#ffe59a");
-        this.match.spawnBurst(main.x, main.y, "#ffe59a", Math.max(16, main.radius * 1.7));
-        if (supporter) {
-          this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter], {}, "#fff3c5");
-        }
-      },
+      activateSupport: (duration) => this.#haruhi.cast(duration),
       activateSponsor: (duration) => this.#sponsor.activate(duration),
       activateVisionWave: (options) => activateTeamVisionWaveSkill(this, options),
     };

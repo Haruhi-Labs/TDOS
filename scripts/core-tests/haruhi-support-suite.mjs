@@ -1,3 +1,4 @@
+import { HaruhiFlagshipRuntime } from "../../shared/game/haruhi-flagship-runtime.js";
 import assert from "node:assert/strict";
 import * as legacy from "../../shared/game/haruhi-flagship.js";
 import {
@@ -11,11 +12,17 @@ import { createBunnyHaruhiState } from "../../shared/game/bunny-haruhi.js";
 
 function fixture() {
   const team = {
-    match: { elapsed: 0 }, effects: {}, marks: [], ships: {},
+    match: { elapsed: 0, tick: 0 }, effects: {}, ships: {},
     mainCharacterId: () => "haruhi", haruhiFlagship: legacy.createHaruhiFlagshipState(),
-    activateTimedEffect(key, duration) { this.effects[key] = this.match.elapsed + duration; this.markActiveSkillEffectStarted(key); },
-    markActiveSkillEffectStarted(key) { this.marks.push(key); },
+
   };
+  team.flagshipRuntime = new HaruhiFlagshipRuntime({
+    enabled: () => team.mainCharacterId() === "haruhi",
+    now: () => team.match.elapsed, tick: () => team.match.tick,
+    unlockSupport: (now, random) => unlockSupport(team.haruhiFlagship, legacy.HARUHI_SUPPORTS, now, random),
+  });
+  team.activateHaruhiSupport = (duration, random) => team.flagshipRuntime.activate(duration, random);
+  Object.defineProperty(team.effects, "haruhiBoostUntil", { get: () => team.flagshipRuntime.expiresAt });
   team.ships.main = {
     id: 1, characterId: "haruhi", slotKey: "main", team, alive: true,
     x: 100, y: 200, radius: 10, effectiveVision: () => 100,
@@ -58,7 +65,8 @@ function factoryAndUnlockCheck() {
   // 已与抽取前实现核对；此夹具不包含Match构造时的随机数消费。
   assert.deepEqual(results, ["esper", "alien", "time_traveler", "otherworlder", null]);
   assert.equal(oldRandom.calls, 4);
-  assert.equal(team.marks.length, 5);
+  assert.equal(team.flagshipRuntime.clear(), false, "多次续期仍保留同帧净化保护");
+  assert.equal(team.effects.haruhiBoostUntil, 16);
   team.match.elapsed = 20;
   assert.equal(legacy.activateHaruhiFlagship(team, 16, oldRandom.next), null);
   assert.equal(oldRandom.calls, 4);

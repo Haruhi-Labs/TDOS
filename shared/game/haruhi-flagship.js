@@ -1,6 +1,6 @@
 import { distance, linePointDistance } from "./math.js";
 import {
-  HARUHI_SUPPORTS, createSupportState, unlockSupport, tickSupportSource,
+  HARUHI_SUPPORTS, createSupportState, tickSupportSource,
   supportOrbGeometry, supportOtherworlderReady, triggerSupportOtherworlder,
 } from "./haruhi-support.js";
 
@@ -37,10 +37,7 @@ export function activateHaruhiFlagship(team, duration, random = Math.random) {
   if (!team || team.mainCharacterId() !== "haruhi") {
     return null;
   }
-  const now = team.match.elapsed;
-  team.activateTimedEffect("haruhiBoostUntil", Math.max(0, Number(duration) || 0));
-
-  return unlockSupport(team.haruhiFlagship, HARUHI_SUPPORTS, now, random);
+  return team.activateHaruhiSupport(duration, random);
 }
 
 export function haruhiBoostActive(team) {
