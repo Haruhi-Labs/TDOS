@@ -141,3 +141,26 @@ assert.deepEqual(completions.map(([key]) => key), ["sub1", "sub2"]);
 assert.equal(casters.cooldowns.sub1, completions[0][1]);
 assert.equal(casters.cooldowns.sub2, completions[1][1]);
 console.log("角色创建与施放边界校验通过：机体能力在出生采样，技能成功统一由舰队提交且拒绝不重复消费。");
+
+// 屏障只处理碰撞和自身状态；新的冲撞能力不要求在屏障模块加入角色分支。
+const { koizumiBarrierGeometry } = await import("../shared/game/koizumi-barrier.js");
+const barrier = new MatchSimulation({ seed: 331, teamLoadouts: { B: { main: "koizumi", sub1: "yuki", sub2: "kyon" } } });
+const defender = barrier.teamB.ships.main;
+const rammer = barrier.teamA.ships.main;
+const radius = koizumiBarrierGeometry(barrier.teamB).radius;
+defender.previousX = defender.x; defender.previousY = defender.y;
+rammer.x = defender.x + radius - 1; rammer.y = defender.y;
+rammer.previousX = defender.x + radius + 10; rammer.previousY = defender.y;
+barrier.rules = { ...barrier.rules, barrierRamProfile: (source) => source === rammer ? { ramKind: "测试冲撞", extraRadius: 0 } : null };
+const attempts = [];
+let accepted = false;
+barrier.shipEffects = { ...barrier.shipEffects, consumeBarrierRam: (source, team, kind) => {
+  attempts.push(kind); assert.equal(source, rammer); assert.equal(team, barrier.teamA); return accepted;
+} };
+barrier.resolveKoizumiBarrierRamContacts();
+assert.equal(barrier.teamB.koizumiBarrier.remainingHits, 15, "未成功消费冲撞能力不能破盾");
+accepted = true;
+barrier.resolveKoizumiBarrierRamContacts();
+assert.equal(barrier.teamB.koizumiBarrier.remainingHits, 0);
+assert.deepEqual(attempts, ["测试冲撞", "测试冲撞"]);
+console.log("跨角色交互边界校验通过：护盾仅消费冲撞描述及成功提交结果，无需识别攻击方角色。");

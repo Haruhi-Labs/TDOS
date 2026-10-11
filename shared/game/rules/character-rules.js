@@ -3,7 +3,7 @@
 import { CHARACTER_DEFS } from "../characters.js";
 import { energyRateForThrottle, throttleForGear } from "../throttle.js";
 import { isKoizumiOrbActive, isKoizumiOrbReturning } from "../koizumi-orb.js";
-import { haruhiBoostActive, haruhiStatMultiplier, haruhiDamageTakenMultiplier } from "../haruhi-flagship.js";
+import { haruhiOtherworlderReady, haruhiBoostActive, haruhiStatMultiplier, haruhiDamageTakenMultiplier } from "../haruhi-flagship.js";
 import { haruhiHeroPowerSpeedFactor, haruhiHeroPowerDamageTakenMultiplier, isHaruhiHeroPowerControlLocked } from "../haruhi-hero-power.js";
 import { bunnyStatMultiplier, bunnyDamageTakenMultiplier, isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor, bunnyEnergyRate, isBunnyEncoreLocked, canBunnyLaunchScout } from "../bunny-haruhi.js";
 import { bunnyStageEnabled, bunnyBroadcastsShip } from "../bunny-haruhi-runtime.js";
@@ -15,8 +15,21 @@ import { SOLO_FIRE_RATE_BONUS, YUKI_COMBAT_SCOUT_STATS, YUKI_COMBAT_SCOUT_LAUNCH
 
 import { activeClawMarks } from "../shamisen-claw.js";
 
+import { bunnyHaruhiSupportSource } from "../bunny-haruhi-support.js";
+import { supportOtherworlderReady } from "../haruhi-support.js";
+import { haruhiOtherworlderAuraForwardReach, haruhiRamApproachEligible } from "../contact-geometry.js";
+
 export const CHARACTER_RULES = Object.freeze({
   activeClawMarks,
+  barrierRamProfile(source, attackerTeam, defendingMain) {
+    if (isKoizumiOrbActive(source)) return { ramKind: "koizumi_orb", extraRadius: source.radius };
+    if (source.hasEffect?.("bladeQueenUntil")) return { ramKind: "blade_queen", extraRadius: source.radius };
+    const bunny = source.bunnyHaruhi ? bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()) : null;
+    const ready = bunny ? supportOtherworlderReady(bunny, attackerTeam.match.elapsed)
+      : source === attackerTeam.ships.main && haruhiOtherworlderReady(attackerTeam);
+    if (!ready || !haruhiRamApproachEligible(source, defendingMain.x, defendingMain.y)) return null;
+    return { ramKind: "haruhi_otherworlder", bow: true, bowOffset: haruhiOtherworlderAuraForwardReach(source), extraRadius: 5 };
+  },
   scoutProfile(team, config, pattern) {
     const combatCapable = config.combatCapable ?? team.hasYukiFlagship();
     const vision = combatCapable ? YUKI_COMBAT_SCOUT_STATS.vision : config.vision || (pattern === "burst" ? 86 : 95);

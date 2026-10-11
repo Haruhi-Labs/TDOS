@@ -1,17 +1,7 @@
 import { clamp } from "./math.js";
-import { bunnyHaruhiSupportSource } from "./bunny-haruhi-support.js";
-import { supportOtherworlderReady, triggerSupportOtherworlder } from "./haruhi-support.js";
-import { isKoizumiOrbActive } from "./koizumi-orb.js";
-import { haruhiOtherworlderAuraForwardReach, haruhiRamApproachEligible } from "./contact-geometry.js";
-import {
-  haruhiOtherworlderReady,
-  triggerHaruhiOtherworlder,
-} from "./haruhi-flagship.js";
-
 export const KOIZUMI_BARRIER_DISABLE_SECONDS = 5;
 export const KOIZUMI_BARRIER_MAX_HITS = 15;
 
-const HARUHI_BARRIER_CONTACT_TOLERANCE = 5;
 const ENTRY_EPSILON = 0.35;
 const RECOVERY_EFFECT_SECONDS = 0.9;
 
@@ -298,46 +288,6 @@ export function koizumiBarrierBeamImpact(beam, defendingTeam) {
   );
 }
 
-function haruhiCanRamBarrier(source, attackerTeam, defendingMain, geometry) {
-  const bunny = source.bunnyHaruhi ? bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()) : null;
-  const ready = bunny ? supportOtherworlderReady(bunny, attackerTeam.match.elapsed)
-    : source === attackerTeam.ships.main && haruhiOtherworlderReady(attackerTeam);
-  if (!ready) {
-    return null;
-  }
-  if (!haruhiRamApproachEligible(source, defendingMain.x, defendingMain.y)) {
-    return null;
-  }
-  return movingCircleImpact(source, defendingMain, geometry, {
-    bow: true,
-    bowOffset: haruhiOtherworlderAuraForwardReach(source),
-    extraRadius: HARUHI_BARRIER_CONTACT_TOLERANCE,
-  });
-}
-
-function ramBarrierImpact(source, attackerTeam, defendingMain, geometry) {
-  if (isKoizumiOrbActive(source)) {
-    return {
-      impact: movingCircleImpact(source, defendingMain, geometry, {
-        extraRadius: source.radius,
-      }),
-      ramKind: "koizumi_orb",
-    };
-  }
-  if (source.hasEffect?.("bladeQueenUntil")) {
-    return {
-      impact: movingCircleImpact(source, defendingMain, geometry, {
-        extraRadius: source.radius,
-      }),
-      ramKind: "blade_queen",
-    };
-  }
-  return {
-    impact: haruhiCanRamBarrier(source, attackerTeam, defendingMain, geometry),
-    ramKind: "haruhi_otherworlder",
-  };
-}
-
 function breakKoizumiBarrier(team, impact, { sourceSeat = null, ramKind = null, kind = "break" } = {}) {
   const now = team.match.elapsed;
   team.koizumiBarrier.remainingHits = 0;
@@ -384,21 +334,12 @@ export function resolveKoizumiBarrierRamContacts(match) {
       if (!source?.alive) {
         continue;
       }
-      const { impact, ramKind } = ramBarrierImpact(
-        source,
-        attackerTeam,
-        defendingMain,
-        geometry,
-      );
-      if (!impact) {
-        continue;
-      }
-      if (ramKind === "haruhi_otherworlder") {
-        const consumed = source.bunnyHaruhi
-          ? triggerSupportOtherworlder(bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()), match.elapsed)
-          : triggerHaruhiOtherworlder(attackerTeam);
-        if (!consumed) continue;
-      }
+      const profile = match.rules.barrierRamProfile(source, attackerTeam, defendingMain);
+      if (!profile) continue;
+      const impact = movingCircleImpact(source, defendingMain, geometry, profile);
+      if (!impact) continue;
+      const ramKind = profile.ramKind;
+      if (!match.shipEffects.consumeBarrierRam(source, attackerTeam, ramKind)) continue;
       if (disruptKoizumiBarrier(defendingTeam, impact, {
         sourceSeat: attackerTeam.seat,
         ramKind,

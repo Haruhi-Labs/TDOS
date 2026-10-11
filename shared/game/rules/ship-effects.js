@@ -4,9 +4,19 @@ import { initializeBunnyShip, cleanseBunnyShipControl, purgeBunnyShipForm, commi
 import { purgeBunnyReliableEffect } from "../bunny-companion-runtime.js";
 import { initializeClawMarks, clearClawMarks, activeClawMarks, expireClawMarks, registerClawHit } from "../shamisen-claw.js";
 
+import { bunnyHaruhiSupportSource } from "../bunny-haruhi-support.js";
+import { triggerSupportOtherworlder } from "../haruhi-support.js";
+import { triggerHaruhiOtherworlder } from "../haruhi-flagship.js";
+
 // 角色写入适配：在实体的确定阶段同步调用，不把伤害或控制推迟到帧尾。
 // 组件由各专属模块更新；基础血量、位移与定时效果仍通过实体操作提交。
 export const SHIP_EFFECTS = Object.freeze({
+  consumeBarrierRam(source, attackerTeam, ramKind) {
+    if (ramKind !== "haruhi_otherworlder") return true;
+    return source.bunnyHaruhi
+      ? triggerSupportOtherworlder(bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()), attackerTeam.match.elapsed)
+      : triggerHaruhiOtherworlder(attackerTeam);
+  },
   // null 表示使用公共能量施放路径；false 表示专属路径已处理但拒绝。
   castExclusiveSubSkill(ship) {
     return ship?.bunnyHaruhi ? commitBunnyTransform(ship) : null;

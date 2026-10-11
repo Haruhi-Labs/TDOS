@@ -8,6 +8,9 @@ import { HARUHI_OTHERWORLDER_DAMAGE_RATIO, HARUHI_OTHERWORLDER_KNOCKBACK_DURATIO
 import { DAMAGE_KIND } from "./damage.js";
 import { CHARACTER_DEFS } from "./characters.js";
 
+// 刀锋接触历史属于该效果，不能向普通舰船挂载外部可改写的临时字段。
+const bladeHitHistory = new WeakMap();
+
 const TAU = Math.PI * 2;
 const BLADE_QUEEN_SKILL = CHARACTER_DEFS.asakura.subSkill;
 export const BLADE_QUEEN_RANGE_MULTIPLIER = BLADE_QUEEN_SKILL.rangeMultiplier;
@@ -94,7 +97,11 @@ export function resolveBladeQueenContacts(match) {
   for (const [team, enemyTeam] of pairs) {
     for (const ship of team.getAllShips()) {
       if (!ship.alive || !ship.hasEffect("bladeQueenUntil")) continue;
-      const hitLog = ship._bladeHitAt || (ship._bladeHitAt = new Map());
+      let hitLog = bladeHitHistory.get(ship);
+      if (!hitLog) {
+        hitLog = new Map();
+        bladeHitHistory.set(ship, hitLog);
+      }
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive) continue;
         const hitRadius = (ship.radius + 4) * BLADE_QUEEN_RANGE_MULTIPLIER + target.radius;
