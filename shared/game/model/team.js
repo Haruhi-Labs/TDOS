@@ -1,3 +1,4 @@
+import { CHARACTER_ASSEMBLY } from "../rules/character-assembly.js";
 import { FleetRoster } from "../systems/fleet-roster.js";
 import { FleetPerception } from "../systems/visibility.js";
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
@@ -7,27 +8,18 @@ import { SkillCycle } from "../systems/skill-cycle.js";
 import { createTeamSkillPort } from "../rules/team-skill-port.js";
 import { FleetFormation } from "../systems/fleet-formation.js";
 import { createFormationPort } from "../rules/formation-port.js";
-import { createTeamHaruhiFlagship } from "../rules/haruhi-flagship-port.js";
-import { initializeSupport, readSupportState } from "../haruhi-support.js";
-import { createTeamSponsor } from "../rules/sponsor-port.js";
-import { createTeamFutureForm } from "../rules/future-form-port.js";
-import { futureFormDefinition } from "../future-flagship-form.js";
 import { BeamSystem } from "../systems/beam-system.js";
 import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
 // 舰队状态所有者与领域操作。
-import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../characters.js";
+import { DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../characters.js";
 import { rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
-import { initializeRadar, visibilityInputs, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
-import { cancelVisionWaveSkill as cancelTeamVisionWaveSkill, initializeVisionWaves, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
+import { visibilityInputs, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
+import { serializeVisionWaves as serializeTeamVisionWaves } from "../vision-wave.js";
 import { FleetFireControl } from "../targeting-system.js";
 import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../rules/fire-control.js";
-import { initializeKoizumiImpactWaves, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
-import { initializeKoizumiBarrier, serializeKoizumiBarrier } from "../koizumi-barrier.js";
-import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
-import { initializeShamisenHunt, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
-import { updateBunnyTeamSupports } from "../bunny-haruhi-runtime.js";
+import { ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget } from "../shamisen-hunt.js";
 import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
@@ -56,14 +48,8 @@ export class Team {
   #fireControl = new FleetFireControl();
   get visibleEnemyIds() { return this.#perception.visibleIds; }
 
-  #effectView;
-  get effects() {
-    const haruhiBoostUntil = this.#haruhi.expiresAt;
-    const sponsorUntil = this.#sponsor.expiresAt;
-    if (!this.#effectView || this.#effectView.haruhiBoostUntil !== haruhiBoostUntil || this.#effectView.sponsorUntil !== sponsorUntil)
-      this.#effectView = Object.freeze({ haruhiBoostUntil, sponsorUntil });
-    return this.#effectView;
-  }
+  #characters;
+  get effects() { return this.#characters.effects; }
   #roster;
   get extraShips() { return this.#roster.extra; }
   get ships() { return this.#roster.ships; }
@@ -77,9 +63,6 @@ export class Team {
   #formation;
   get splitLevel() { return this.#formation.level; }
   #beamSystem;
-  #futureForm;
-  #sponsor;
-  #haruhi;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.#roster = new FleetRoster(this);
     this.match = match;
@@ -109,22 +92,14 @@ export class Team {
     // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
     this.#focusHpFrac = 0.5;
     this.#skills = new SkillCycle(createTeamSkillPort(this, {
-      activateSupport: (duration) => this.#haruhi.cast(duration),
-      activateSponsor: (duration) => this.#sponsor.activate(duration),
+      activateSupport: (duration) => this.#characters.castSupport(duration),
+      activateSponsor: (duration) => this.#characters.activateSponsor(duration),
     }));
     this.#aircraft = new AircraftOperations(createAircraftPort(this), {
       autoCooldownMultiplier: AUTO_SCOUT_COOLDOWN_MULTIPLIER, scoutCooldown: MANUAL_SCOUT_COOLDOWN, scoutCost: SCOUT_LAUNCH_COST,
     });
 
-    this.#sponsor = createTeamSponsor(this);
-    this.#haruhi = createTeamHaruhiFlagship(this);
-    this.#futureForm = createTeamFutureForm(this);
-    initializeSupport(this, createHaruhiFlagshipState(facing));
-    Object.defineProperty(this, "haruhiFlagship", {
-      enumerable: true, get: () => readSupportState(this),
-    });
-    initializeKoizumiBarrier(this);
-    initializeShamisenHunt(this);
+    this.#characters = CHARACTER_ASSEMBLY.createTeam(this, facing);
 
     const sub1FormationOffset = { x: -36, y: 22 };
     const sub2FormationOffset = { x: -36, y: -22 };
@@ -148,9 +123,7 @@ export class Team {
       }),
     });
 
-    initializeRadar(this, facing);
-    initializeVisionWaves(this);
-    initializeKoizumiImpactWaves(this);
+    this.#characters.initializeMembers();
 
     this.#beamSystem = new BeamSystem(createTeamBeamPort(this), {
       range: BEAM_BASE_RANGE, chargeDuration: BEAM_CHARGE_DURATION,
@@ -188,27 +161,27 @@ export class Team {
   }
 
   get future1096Form() {
-    return this.#futureForm.current;
+    return this.#characters.form;
   }
 
   future1096FormDefinition(form = this.future1096Form) {
-    return futureFormDefinition(form);
+    return this.#characters.formDefinition(form);
   }
 
   future1096StatMultiplier(statKey) {
-    return this.#futureForm.statMultiplier(statKey);
+    return this.#characters.statMultiplier(statKey);
   }
 
   future1096DamageTakenMultiplier() {
-    return this.#futureForm.damageTakenMultiplier();
+    return this.#characters.damageMultiplier();
   }
 
   switchFuture1096Form() {
-    return this.#futureForm.switch();
+    return this.#characters.switchForm();
   }
 
   hasActiveSponsor() {
-    return this.#sponsor.active();
+    return this.#characters.sponsorActive();
   }
 
   hasActiveVisionWaveSkill() {
@@ -225,7 +198,7 @@ export class Team {
   removeWingman(wingman) { this.#aircraft.removeWingman(wingman); }
 
   activateHaruhiSupport(duration, random) {
-    return this.#haruhi.activate(duration, random);
+    return this.#characters.activateSupport(duration, random);
   }
 
   addAuxiliaryShip(ship) {
@@ -375,16 +348,11 @@ export class Team {
   }
 
   cooldownStep(dt) {
-    return this.#sponsor.cooldownStep(dt);
+    return this.#characters.cooldownStep(dt);
   }
 
   clearActiveTeamSkillBuffs({ preserveCurrentTick = true } = {}) {
-    let cleared = this.#sponsor.clear({ preserveCurrentTick });
-    if (this.#haruhi.clear({ preserveCurrentTick })) cleared = true;
-    if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
-      cleared = true;
-    }
-    return cleared;
+    return this.#characters.clearPositive(preserveCurrentTick);
   }
 
   clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
@@ -407,7 +375,7 @@ export class Team {
   configureAutoScout(enabled, zoneId = 5) { return this.#aircraft.configureAutoScout(enabled, zoneId); }
 
   sponsorRegeneration(dt) {
-    this.#sponsor.regenerate(dt);
+    this.#characters.regenerate(dt);
   }
 
   configureFormation(level) { this.#formation.configure(level); }
@@ -435,13 +403,7 @@ export class Team {
     for (const ship of this.getAllShips()) {
       ship.update(dt);
     }
-    updateHaruhiFlagship(this, {
-      dt,
-      launchAlienWingmen: (ship) => this.launchHaruhiAlienWingmen(ship),
-      launchRandomBeam: (ship) => this.launchHaruhiRandomBeam(ship),
-    });
-    if (this.match.bunnyHaruhiActive) updateBunnyTeamSupports(this, dt);
-    updateTeamVisionWaveSkill(this);
+    this.#characters.afterMovement(dt);
     this.#aircraft.advance(dt);
     this.advanceBeams(dt);
     this.#aircraft.collectRetired();
@@ -537,45 +499,7 @@ export class Team {
     for (const scout of this.scouts) scout.tryAttack(this.match, enemyTeam);
   }
 
-  serialize() {
-    return {
-      seat: this.seat,
-      name: this.name,
-      color: this.color,
-      splitLevel: this.splitLevel,
-      loadout: this.match.bunnyHaruhiActive ? { ...this.loadout } : cloneLoadout(this.loadout),
-      ...(this.ships.main.bunnyHaruhi ? { bunnyStage: this.bunnyStage ? { ...this.bunnyStage } : null } : {}),
-      energy: this.fleetEnergyForShip("main").current,
-      maxEnergy: this.fleetEnergyForShip("main").max,
-      hullRatio: this.hullRatio(),
-      future1096Form: this.future1096Form,
-      haruhiFlagship: serializeHaruhiFlagship(this),
-      koizumiBarrier: serializeKoizumiBarrier(this),
-      shamisenHunt: serializeShamisenHunt(this),
-      skillsDisabled: this.areSkillsDisabled(),
-      autoScout: {
-        enabled: this.autoScout.enabled,
-        zoneId: this.autoScout.zoneId,
-      },
-      cooldowns: {
-        scout: this.cooldowns.scout,
-        flagship: this.cooldowns.flagship,
-        sub1: this.cooldowns.sub1,
-        sub2: this.cooldowns.sub2,
-      },
-      visibleEnemyIds: Array.from(this.visibleEnemyIds),
-      radarSweep: serializeTeamRadarSweep(this),
-      visionWaves: this.serializeVisionWaves(),
-      koizumiImpactWaves: serializeKoizumiImpactWaves(this),
-      ships: {
-        main: this.ships.main.serialize(),
-        sub1: this.ships.sub1.serialize(),
-        sub2: this.ships.sub2.serialize(),
-      },
-      extraShips: this.extraShips.map((ship) => ship.serialize()),
-      scouts: this.scouts.filter((item) => item.alive).map((item) => item.serialize()),
-      wingmen: this.wingmen.filter((item) => item.alive).map((item) => item.serialize()),
-      beams: this.#beamSystem.serialize(),
-    };
-  }
+  serializeBeams() { return this.#beamSystem.serialize(); }
+
+  serialize() { return CHARACTER_ASSEMBLY.projectTeam(this); }
 }

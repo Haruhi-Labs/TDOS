@@ -1,13 +1,10 @@
+import { CHARACTER_ASSEMBLY } from "../rules/character-assembly.js";
 import { createMatchFeedback } from "../rules/match-feedback.js";
 import { resolveShipDestruction } from "../rules/ship-destruction.js";
 import { createProjectilePhase } from "../rules/projectile-phase.js";
 import { advanceProjectiles } from "../systems/projectile-system.js";
 import { Projectile } from "../model/projectile.js";
-import { createHeroPowerRuntime } from "../rules/hero-power-runtime.js";
 import { createHullCollisionPort } from "../rules/collision-port.js";
-import { SHIP_EFFECTS } from "../rules/ship-effects.js";
-import { projectShip } from "../rules/ship-projection.js";
-import { CHARACTER_RULES } from "../rules/character-rules.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../constants.js";
 import { DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../characters.js";
@@ -17,13 +14,7 @@ import { createAiRunner } from "../ai/bridge/runner.js";
 import { aiHandicapFor } from "../ai/params/index.js";
 import { applyMatchAction } from "../action-dispatcher.js";
 import { resolveScoutClashes as resolveMatchScoutClashes, resolveShipCollisions as resolveMatchShipCollisions } from "../collision-system.js";
-import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, resolveBladeQueenContacts as resolveMatchBladeQueenContacts } from "../character-contacts.js";
-import { resolveVisionWavePurges as resolveWavePurges } from "../vision-wave-purge.js";
 import { createVisionWavePurgePort } from "../rules/vision-wave-port.js";
-import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
-import { resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
-import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
-import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { createMatchTelemetry, recordTelemetryAction, recordTelemetryAttack, recordTelemetryDamage, recordTelemetryShipLoss, serializeMatchTelemetry } from "../match-telemetry.js";
 import { FloatingText } from "../model/floating-text.js";
 import { Burst } from "../model/burst.js";
@@ -31,7 +22,7 @@ import { Team } from "../model/team.js";
 import { normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 
 export class MatchSimulation {
-  #heroPowers;
+  #characters;
   #feedback;
   constructor(options = {}) {
     const mode = options.mode || "pvp";
@@ -48,9 +39,9 @@ export class MatchSimulation {
       B: options.teamLoadouts?.B || (aiSeats.includes("B") ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
     };
 
-    this.rules = CHARACTER_RULES;
-    this.shipEffects = SHIP_EFFECTS;
-    this.projectShip = projectShip;
+    this.rules = CHARACTER_ASSEMBLY.rules;
+    this.shipEffects = CHARACTER_ASSEMBLY.shipEffects;
+    this.projectShip = CHARACTER_ASSEMBLY.projectShip;
     this.createProjectilePhase = createProjectilePhase;
     this.visionWavePurgePort = createVisionWavePurgePort(this);
     this.mode = mode;
@@ -91,16 +82,10 @@ export class MatchSimulation {
 
     this.projectiles = [];
     this.bursts = [];
-    this.#heroPowers = createHeroPowerRuntime(this);
     this.#feedback = createMatchFeedback({ now: () => this.elapsed, nextId: () => nextEntityId(this) });
     this.floatingTexts = [];
     this.telemetry = createMatchTelemetry();
-    if (initializeBunnyBattle(this)) {
-      resolveBunnyStages(this);
-      refreshBunnyVisibility(this);
-    }
-    this.teamA.ensureShamisenHuntTarget(this.teamB);
-    this.teamB.ensureShamisenHuntTarget(this.teamA);
+    this.#characters = CHARACTER_ASSEMBLY.createBattle(this);
     this.bots = {};
     this.aiRunners = {};
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
@@ -133,11 +118,11 @@ export class MatchSimulation {
   }
 
   queueHeroPower(ship, meta) {
-    this.#heroPowers.enqueue(ship, meta);
+    this.#characters.enqueueHeroPower(ship, meta);
   }
 
   get haruhiHeroPowerEffects() {
-    return this.#heroPowers.inspect();
+    return this.#characters.inspectHeroPowers();
   }
 
   discardProjectilesFrom(sourceId) {
@@ -276,15 +261,15 @@ export class MatchSimulation {
   }
 
   resolveHaruhiOtherworlderContacts() {
-    resolveMatchHaruhiOtherworlderContacts(this);
+    this.#characters.run("haruhiRam");
   }
 
   resolveKoizumiOrbContacts() {
-    resolveMatchKoizumiOrbContacts(this);
+    this.#characters.run("orbContacts");
   }
 
   resolveKoizumiBarrierRamContacts() {
-    resolveMatchKoizumiBarrierRamContacts(this);
+    this.#characters.run("barrierRam");
   }
 
   resolveScoutClashes() {
@@ -299,12 +284,11 @@ export class MatchSimulation {
   }
 
   resolveBladeQueenContacts() {
-    resolveMatchBladeQueenContacts(this);
+    this.#characters.run("bladeContacts");
   }
 
   refreshShamisenHunts() {
-    this.teamA.ensureShamisenHuntTarget(this.teamB);
-    this.teamB.ensureShamisenHuntTarget(this.teamA);
+    this.#characters.run("hunts");
   }
 
   onShipDestroyed(ship) {
@@ -388,11 +372,11 @@ export class MatchSimulation {
   }
 
   updateHaruhiHeroPowers() {
-    this.#heroPowers.advance();
+    this.#characters.run("heroPower");
   }
 
   resolveVisionWavePurges() {
-    resolveWavePurges(this.visionWavePurgePort);
+    this.#characters.run("purges");
   }
 
   update(dt = TICK_DT) {
@@ -403,10 +387,7 @@ export class MatchSimulation {
     const safeDt = clamp(dt, 0, 0.05);
     this.tick += 1;
     this.elapsed += safeDt;
-    if (this.bunnyHaruhiActive) advanceBunnyRules(this);
-    if (this.bunnyHaruhiActive) prepareBunnyCompanions(this);
-
-    this.refreshShamisenHunts();
+    this.#characters.advance("beforeAi", safeDt);
 
     for (const [seat, runner] of Object.entries(this.aiRunners)) {
       if (this.aiEnabled[seat] !== false) runner.update(safeDt, this.elapsed);
@@ -414,24 +395,14 @@ export class MatchSimulation {
 
     this.teamA.update(safeDt);
     this.teamB.update(safeDt);
-    // 在开火前结算冲击：同一逻辑帧被震慑的舰船不会再补射一发。
-    this.updateHaruhiHeroPowers();
-
-    this.resolveKoizumiBarrierRamContacts();
-    this.resolveKoizumiOrbContacts();
-    updateKoizumiImpactWaves(this);
-    this.resolveHaruhiOtherworlderContacts();
-    if (this.bunnyHaruhiActive) resolveBunnyOtherworlderContacts(this);
+    this.#characters.advance("afterTeams", safeDt);
     this.resolveShipCollisions();
-    this.resolveBladeQueenContacts();
+    this.#characters.advance("afterHull", safeDt);
     this.resolveScoutClashes();
-    if (this.bunnyHaruhiActive) resolveBunnyStages(this);
-    this.resolveVisionWavePurges();
-    if (this.bunnyHaruhiActive) cleanupBunnySources(this);
+    this.#characters.advance("beforeVisibility", safeDt);
     this.teamA.computeVisibility(this.teamB);
     this.teamB.computeVisibility(this.teamA);
-    this.teamA.updateRadarPassive(this.teamB, safeDt);
-    this.teamB.updateRadarPassive(this.teamA, safeDt);
+    this.#characters.advance("beforeBeams", safeDt);
     this.teamA.resolveChargedBeams(this.teamB);
     this.teamB.resolveChargedBeams(this.teamA);
 
@@ -440,11 +411,7 @@ export class MatchSimulation {
     this.updateProjectiles(safeDt);
     this.updateVisualEffects(safeDt);
 
-    if (this.bunnyHaruhiActive) {
-      cleanupBunnyCompanions(this);
-      cleanupBunnySources(this);
-      refreshBunnyVisibility(this);
-    }
+    this.#characters.advance("afterVisuals", safeDt);
 
     this.checkVictory();
   }
@@ -466,7 +433,7 @@ export class MatchSimulation {
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
-      haruhiHeroPowerEffects: this.#heroPowers.serialize(),
+      haruhiHeroPowerEffects: this.#characters.projectHeroPowers(),
       shamisenHuntKillEffects: this.#feedback.serializeHuntKills(),
       koizumiBarrierImpacts: this.#feedback.serializeBarrierImpacts(),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
