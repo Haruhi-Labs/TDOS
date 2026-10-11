@@ -116,7 +116,7 @@ env -u NETWORK_WS_URL npm run test:network:load
 - `test:architecture`：纯选敌读模型、能力替换、查询无副作用、快照引用隔离、碰撞实时几何与接触历史、任务输入复制、策反集合归属、技能失败退款和效果顺序。它验证受限接口的行为，不把模块没有循环导入等同于语义解耦。
 - `test:server:stream`：无真实 socket 的确定性会话测试，验证内部基线不可访问、非法 ACK 拒绝、全量/差量还原、补帧、握手升级、降频与重置。与 `test:server:runtime`、真实回环 `test:network:guards` 互补，已加入 `test:logic`。
 - `test:solo:session`：无 DOM 的本地会话测试，验证权威对象不外泄、帧间即时输入、冻结快照复用、插值不回写、暂停、追帧上限与重开，已加入 `test:logic`。浏览器单人状态夹具只在测试 Vite 插件中取得模拟并显式使缓存失效，生产代码没有调试后门。
-- `node scripts/measure-solo-session.mjs`：按需离线对照原始 dev 基线和当前单人帧管线，独立进程交替五轮，各 1,800 个 60Hz 显示帧；逐帧比较权威及插值结果，计时包含模拟、序列化和插值，排除摘要计算、DOM、Canvas 与 GPU。结果保存在忽略目录 `bench/architecture-acceptance/solo-session-performance.json`。5% 是建议线，超过时保留结果并解释，不改阈值或重刷行为基线。
+- `node scripts/measure-solo-session.mjs`：按需离线对照原始 dev 基线和当前单人帧管线，独立进程交替五轮，各 1,800 个 60Hz 显示帧；逐帧比较权威及插值结果，计时包含模拟、序列化和插值，排除摘要计算、DOM、Canvas 与 GPU。保留混合帧指标，并额外按权威时间是否推进分类记录模拟帧、仅插值帧和结束帧的数量、中位数、p95、均值及总耗时；分类在计时区间外，不能替换原指标。结果连同 CPU、Git 提交和前后负载保存在忽略目录 `bench/architecture-acceptance/solo-session-performance.json`。5% 是建议线，超过时保留结果并解释，不改阈值或重刷行为基线。
 
 `test:ui:result` 自建回环前端并夹具化 API/WebSocket，覆盖玩家/观战、桌面/触屏的胜者和双侧阵容、重复终局不重建视图、关闭倒计时与返回大厅清理。它已加入浏览器门禁；不会连接现有游戏、身份或统计服务。
 

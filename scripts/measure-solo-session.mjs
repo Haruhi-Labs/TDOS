@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { cpus, loadavg, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -39,21 +39,41 @@ async function measure(moduleRoot, current) {
     };
   }
   const samples = [];
+  const phases = { simulation: [], interpolation: [], finished: [] };
+  let previousElapsed = 0;
+  const summarize = (values) => {
+    if (!values.length) return { count: 0 };
+    const sorted = [...values].sort((a, b) => a - b);
+    const totalMs = values.reduce((total, value) => total + value, 0);
+    return { count: values.length, medianMs: sorted[Math.floor(sorted.length / 2)],
+      p95Ms: sorted[Math.floor(sorted.length * 0.95)], maxMs: sorted.at(-1),
+      meanMs: totalMs / values.length, totalMs };
+  };
   const hash = createHash("sha256");
   for (let frame = 1; frame <= 1800; frame += 1) {
     const begin = performance.now();
     const value = advance(frame * 1000 / 60);
     const duration = performance.now() - begin;
-    if (frame > 120) samples.push(duration);
+    // 分类和摘要都在计时区间外；保留混合帧指标，不能用分类结果替换原验收口径。
+    const phase = value.state.elapsed !== previousElapsed ? "simulation"
+      : value.state.phase === "finished" ? "finished" : "interpolation";
+    previousElapsed = value.state.elapsed;
+    if (frame > 120) {
+      samples.push(duration);
+      phases[phase].push(duration);
+    }
     hash.update(JSON.stringify(value));
   }
-  samples.sort((a, b) => a - b);
-  return { medianMs: samples[Math.floor(samples.length / 2)], p95Ms: samples[Math.floor(samples.length * 0.95)], maxMs: samples.at(-1), digest: hash.digest("hex") };
+  return { ...summarize(samples),
+    phases: Object.fromEntries(Object.entries(phases).map(([phase, values]) => [phase, summarize(values)])),
+    digest: hash.digest("hex") };
 }
 if (process.argv[2] === "--worker") {
   console.log(JSON.stringify(await measure(process.argv[3], process.argv[4] === "after")));
 } else {
   const directory = mkdtempSync(join(tmpdir(), "solo-session-performance-"));
+  const environment = { measuredAt: new Date().toISOString(), cpu: cpus()[0]?.model, loadBefore: loadavg(),
+    head: execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim() };
   const runs = { before: [], after: [] };
   try {
     const archive = join(directory, "baseline.tar");
@@ -68,9 +88,17 @@ if (process.argv[2] === "--worker") {
     const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
     const summaries = Object.fromEntries(Object.entries(runs).map(([side, values]) => [side, {
       medianMs: median(values.map((value) => value.medianMs)), p95Ms: median(values.map((value) => value.p95Ms)), maxMs: Math.max(...values.map((value) => value.maxMs)),
+      meanMs: median(values.map((value) => value.meanMs)), totalMs: median(values.map((value) => value.totalMs)),
+      phases: Object.fromEntries(Object.keys(values[0].phases).map((phase) => [phase,
+        Object.fromEntries(Object.keys(values[0].phases[phase]).map((key) => [key,
+          key === "maxMs" ? Math.max(...values.map((value) => value.phases[phase][key]))
+            : median(values.map((value) => value.phases[phase][key])),
+        ])),
+      ])),
     }]));
     const regressionPercent = Object.fromEntries(["medianMs", "p95Ms"].map((key) => [key, (summaries.after[key] / summaries.before[key] - 1) * 100]));
-    const output = { baseline, node: process.version, runs, summaries, regressionPercent, withinSuggestedFivePercent: Object.values(regressionPercent).every((value) => value <= 5) };
+    const output = { baseline, node: process.version, environment: { ...environment, loadAfter: loadavg() },
+      runs, summaries, regressionPercent, withinSuggestedFivePercent: Object.values(regressionPercent).every((value) => value <= 5) };
     mkdirSync(join(root, "bench/architecture-acceptance"), { recursive: true });
     writeFileSync(join(root, "bench/architecture-acceptance/solo-session-performance.json"), JSON.stringify(output, null, 2));
     console.log(JSON.stringify({ summaries, regressionPercent, withinSuggestedFivePercent: output.withinSuggestedFivePercent }, null, 2));
