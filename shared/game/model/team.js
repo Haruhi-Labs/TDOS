@@ -1,3 +1,4 @@
+import { executeFlagshipEffect, executeSubEffect } from "../rules/active-skills.js";
 // 舰队状态所有者与领域操作。
 import { energyRateForThrottle } from "../throttle.js";
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
@@ -12,7 +13,6 @@ import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDama
 import { activateKoizumiOrb, isKoizumiOrbActive, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { createKoizumiBarrierState, consumeKoizumiBarrierHit, koizumiBarrierBeamImpact, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
-import { createHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
 import { DAMAGE_KIND } from "../damage.js";
 import { isBunnyCompanion, countsForVictory, isFleetParticipant, bunnyOwnerDamageBlocked } from "../bunny-haruhi-companion.js";
@@ -801,6 +801,53 @@ export class Team {
     return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
   }
 
+  flagshipSkillPort() {
+    return {
+      spendEnergy: (cost) => this.spendEnergyForShip("main", cost),
+      switchForm: () => this.switchFuture1096Form(),
+      activateSupport: (duration) => {
+        const main = this.ships.main;
+        const boostWasActive = haruhiBoostActive(this);
+        const supporter = activateHaruhiFlagship(this, duration, rngFor(this.match).next);
+        if (!boostWasActive) {
+          for (const ship of this.getPlayerShips()) {
+            if (ship.alive) ship.boostCombatTempo(1.15);
+          }
+        }
+        this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里！", {}, "#ffe59a");
+        this.match.spawnBurst(main.x, main.y, "#ffe59a", Math.max(16, main.radius * 1.7));
+        if (supporter) {
+          this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter], {}, "#fff3c5");
+        }
+      },
+      activateSponsor: (duration) => {
+        this.activateTimedEffect("sponsorUntil", duration);
+        for (const ship of this.getAllShips()) {
+          if (ship.alive) this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "赞助", {}, "#ffd27e");
+        }
+      },
+      activateVisionWave: (options) => activateTeamVisionWaveSkill(this, options),
+    };
+  }
+
+  subSkillPort(ship, options) {
+    return {
+      emitHeroPower: (meta) => this.match.queueHeroPower(ship, meta),
+      activateOrb: (duration) => {
+        const ok = activateKoizumiOrb(ship, duration);
+        if (ok) ship.markActiveSkillEffectStarted("koizumiOrb");
+        return ok;
+      },
+      launchBurstScouts: () => this.launchBurstScouts(ship),
+      castBeam: () => this.castBeamFromShip(ship.key, options.targetX, options.targetY),
+      refundEnergy: (amount) => ship.restoreEnergy(amount),
+      activateEffect: (key, duration) => ship.activateTimedEffect(key, duration),
+      restoreHullFraction: (fraction) => ship.restoreHull(ship.maxHp * fraction),
+      bribeZone: () => this.bribeZone(ship, Number(options.zoneId) || 5),
+      ensureMinimumSpeed: () => ship.setFlightSpeed(Math.max(ship.speed, ship.minimumFlightSpeed())),
+    };
+  }
+
   castFlagshipSkill(zoneId = 5) {
     if (this.ships.main.bunnyHaruhi) return false;
     const characterId = this.loadout.main;
@@ -821,52 +868,7 @@ export class Team {
       return false;
     }
 
-    let ok = false;
-    if (characterId === "haruhi") {
-      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
-        return false;
-      }
-      const main = this.ships.main;
-      const boostWasActive = haruhiBoostActive(this);
-      const supporter = activateHaruhiFlagship(this, meta.duration || 16, rngFor(this.match).next);
-      if (!boostWasActive) {
-        for (const ship of this.getPlayerShips()) {
-          if (ship.alive) {
-            ship.boostCombatTempo(1.15);
-          }
-        }
-      }
-      this.match.spawnAnnouncementKey(main.x, main.y - main.radius - 18, "我在这里！", {}, "#ffe59a");
-      this.match.spawnBurst(main.x, main.y, "#ffe59a", Math.max(16, main.radius * 1.7));
-      if (supporter) {
-        const key = HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter];
-        this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, key, {}, "#fff3c5");
-      }
-      ok = true;
-    } else if (characterId === "future1096") {
-      ok = this.switchFuture1096Form();
-    } else if (characterId === "tsuruya") {
-      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
-        return false;
-      }
-      this.activateTimedEffect("sponsorUntil", meta.duration || 8);
-      for (const ship of this.getAllShips()) {
-        if (!ship.alive) {
-          continue;
-        }
-        this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "赞助", {}, "#ffd27e");
-      }
-      ok = true;
-    } else if (characterId === "asakura") {
-      if (!this.spendEnergyForShip("main", meta.cost || 0)) {
-        return false;
-      }
-      activateTeamVisionWaveSkill(this, {
-        duration: meta.duration || 6,
-        interval: meta.pulseInterval || 1,
-      });
-      ok = true;
-    }
+    const ok = executeFlagshipEffect(characterId, this.flagshipSkillPort(), meta);
 
     if (!ok) {
       return false;
@@ -911,44 +913,7 @@ export class Team {
       return false;
     }
 
-    let ok = false;
-    if (ship.characterId === "haruhi") {
-      this.match.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
-        id: nextEntityId(this.match),
-        ship,
-        now: this.match.elapsed,
-        worldSize: this.match.worldSize,
-        meta,
-      }));
-      ok = true;
-    } else if (ship.characterId === "koizumi") {
-      ok = activateKoizumiOrb(ship, meta.duration || 8);
-      if (ok) ship.markActiveSkillEffectStarted("koizumiOrb");
-    } else if (ship.characterId === "yuki") {
-      this.launchBurstScouts(ship);
-      ok = true;
-    } else if (ship.characterId === "future1096") {
-      ok = this.castBeamFromShip(shipKey, options.targetX, options.targetY);
-      if (!ok) {
-        ship.restoreEnergy(meta.cost || 0);
-      }
-    } else if (ship.characterId === "kyon") {
-      this.setShipEffect(ship, "reliableUntil", meta.duration || 14);
-      ship.restoreHull(ship.maxHp * 0.18);
-      ok = true;
-    } else if (ship.characterId === "tsuruya") {
-      ok = this.bribeZone(ship, Number(options.zoneId) || 5);
-      if (!ok) {
-        ship.restoreEnergy(meta.cost || 0);
-      }
-    } else if (ship.characterId === "asakura") {
-      this.setShipEffect(ship, "bladeQueenUntil", meta.duration || 10);
-      ship.setFlightSpeed(Math.max(ship.speed, ship.minimumFlightSpeed()));
-      ok = true;
-    } else if (ship.characterId === "shamisen") {
-      this.setShipEffect(ship, "catPawUntil", meta.duration || 12);
-      ok = true;
-    }
+    const ok = executeSubEffect(ship.characterId, this.subSkillPort(ship, options), meta);
 
     if (!ok) {
       return false;

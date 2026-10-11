@@ -1,3 +1,4 @@
+import { createHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
 import { createHullCollisionPort } from "../rules/collision-port.js";
 import { CHARACTER_RULES } from "../rules/character-rules.js";
 // 权威对局的装配与阶段编排。
@@ -126,6 +127,12 @@ export class MatchSimulation {
     if (this.tutorialMode) {
       this.configureTutorialBattle();
     }
+  }
+
+  queueHeroPower(ship, meta) {
+    this.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
+      id: nextEntityId(this), ship, now: this.elapsed, worldSize: this.worldSize, meta,
+    }));
   }
 
   discardProjectilesFrom(sourceId) {

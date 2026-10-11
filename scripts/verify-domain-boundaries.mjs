@@ -150,3 +150,19 @@ assert.equal(hullPort.team, undefined);
 assert.equal(hullPort.effects, undefined);
 assert.equal(hullPort.hp, undefined);
 assert.throws(() => { hullPort.x = 0; }, TypeError, "碰撞几何只能通过位移操作提交");
+
+const { executeFlagshipEffect, executeSubEffect } = await import("../shared/game/rules/active-skills.js");
+const effectCalls = [];
+assert.equal(executeFlagshipEffect("haruhi", { spendEnergy: () => false, activateSupport: () => { throw new Error("能量不足不得执行技能"); } }, { cost: 30 }), false);
+assert.equal(executeFlagshipEffect("future1096", { switchForm: () => true }, {}), true, "形态切换保留无额外扣费语义");
+assert.equal(executeSubEffect("future1096", { castBeam: () => false, refundEnergy: (cost) => effectCalls.push(["refund", cost]) }, { cost: 20 }), false);
+assert.deepEqual(effectCalls, [["refund", 20]], "瞄准失败仍按既有路径返还能量");
+effectCalls.length = 0;
+assert.equal(executeSubEffect("asakura", {
+  activateEffect: (key, duration) => effectCalls.push([key, duration]),
+  ensureMinimumSpeed: () => effectCalls.push(["speed"]),
+}, { duration: 10 }), true);
+assert.deepEqual(effectCalls, [["bladeQueenUntil", 10], ["speed"]], "先激活效果，再按生效属性提升航速");
+assert.equal(executeSubEffect("未注册角色", {}, {}), false);
+assert.equal(executeSubEffect("constructor", {}, {}), false);
+console.log("技能端口校验通过：无需模拟对象，保留扣费拒绝、失败退款与即时效果顺序。");
