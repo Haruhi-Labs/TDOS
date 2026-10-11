@@ -166,3 +166,11 @@ assert.deepEqual(effectCalls, [["bladeQueenUntil", 10], ["speed"]], "先激活�
 assert.equal(executeSubEffect("未注册角色", {}, {}), false);
 assert.equal(executeSubEffect("constructor", {}, {}), false);
 console.log("技能端口校验通过：无需模拟对象，保留扣费拒绝、失败退款与即时效果顺序。");
+
+assert.equal(createHullCollisionPort(left, match.rules), hullPort, "同一实体和能力契约复用碰撞句柄");
+assert.notEqual(createHullCollisionPort(left, { ...match.rules }), hullPort, "替换能力契约必须更新句柄");
+assert.throws(() => { hullPort.displaceTo = () => {}; }, TypeError, "消费者不得替换缓存句柄的操作");
+const originalTeam = left.team;
+left.team = match.teamB;
+assert.equal(hullPort.seat, "B", "转队后复用句柄仍应读取当前阵营");
+left.team = originalTeam;
