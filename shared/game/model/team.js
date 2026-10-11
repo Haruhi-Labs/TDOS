@@ -1,3 +1,5 @@
+import { createTeamFutureForm } from "../rules/future-form-port.js";
+import { futureFormDefinition } from "../future-flagship-form.js";
 import { BeamSystem } from "../systems/beam-system.js";
 import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
 import { executeFlagshipEffect, executeSubEffect } from "../rules/active-skills.js";
@@ -21,10 +23,11 @@ import { updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi
 import { Ship } from "../model/ship.js";
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";
-import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS } from "../model/model-support.js";
+import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS } from "../model/model-support.js";
 
 export class Team {
   #beamSystem;
+  #futureForm;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.match = match;
     this.seat = seat;
@@ -65,7 +68,7 @@ export class Team {
       sponsorUntil: 0,
       haruhiBoostUntil: 0,
     };
-    this.future1096Form = null;
+    this.#futureForm = createTeamFutureForm(this);
     this.haruhiFlagship = createHaruhiFlagshipState(facing);
     this.koizumiBarrier = createKoizumiBarrierState();
     this.shamisenHunt = createShamisenHuntState();
@@ -141,52 +144,24 @@ export class Team {
     return isShamisenHuntTarget(this, target);
   }
 
+  get future1096Form() {
+    return this.#futureForm.current;
+  }
+
   future1096FormDefinition(form = this.future1096Form) {
-    return FUTURE_1096_FORMS[form] || FUTURE_1096_BASE_FORM;
+    return futureFormDefinition(form);
   }
 
   future1096StatMultiplier(statKey) {
-    if (this.mainCharacterId() !== "future1096") {
-      return 1;
-    }
-    const form = this.future1096FormDefinition();
-    if (statKey === "speed") return form.speed;
-    if (statKey === "fireRate") return form.fireRate;
-    return 1;
+    return this.#futureForm.statMultiplier(statKey);
   }
 
   future1096DamageTakenMultiplier() {
-    if (this.mainCharacterId() !== "future1096") {
-      return 1;
-    }
-    return this.future1096FormDefinition().damageTaken;
+    return this.#futureForm.damageTakenMultiplier();
   }
 
   switchFuture1096Form() {
-    if (this.mainCharacterId() !== "future1096") {
-      return false;
-    }
-    const previous = this.future1096FormDefinition();
-    const nextForm = this.future1096Form === "A" ? "B" : "A";
-    const next = this.future1096FormDefinition(nextForm);
-    const speedRatio = next.speed / previous.speed;
-    this.future1096Form = nextForm;
-
-    for (const ship of this.getPlayerShips()) {
-      // 形态切换改变的是整套舰体性能，当前航速也按新旧上限同比换算。
-      // 否则 A 形态虽然目标航速已提升 50%，实际航速仍要用原加速度缓慢追赶，体感近乎没有变化。
-      ship.rescaleFormMotion(speedRatio, previous.fireRate / next.fireRate);
-      if (ship.alive) {
-        this.match.spawnFloatingTextKey(
-          ship.x + 10,
-          ship.y - 12,
-          `${nextForm}形态`,
-          {},
-          nextForm === "A" ? "#8eefff" : "#ffd28e",
-        );
-      }
-    }
-    return true;
+    return this.#futureForm.switch();
   }
 
   hasActiveSponsor() {

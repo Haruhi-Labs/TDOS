@@ -2327,7 +2327,10 @@ function asakuraBladeQueenFlightCheck() {
       assert(ship.speed >= minimum, "震慑施加瞬间把刀锋航速归零");
       if (scenario === "震慑恢复减速") sim.elapsed = 2.1;
     }
-    if (scenario === "防御形态减速") sim.teamA.future1096Form = "B";
+    if (scenario === "防御形态减速") {
+      sim.teamA.switchFuture1096Form();
+      sim.teamA.switchFuture1096Form();
+    }
     if (scenario === "转弯减速") ship.setBezierRoute(600, 820, 400, 720, throttleForGear(1), false);
     if (scenario === "旧击退") ship.forcedKnockback = { startedAt: 0, endsAt: 0.6, fromX: 720, fromY: 720, toX: 620, toY: 720 };
     if (ship.isControlLocked()) {

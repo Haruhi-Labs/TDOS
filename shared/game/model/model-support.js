@@ -14,11 +14,7 @@ export const BEAM_DAMAGE_RATIOS = Object.freeze({
 // 护盾逐颗结算剩余次数，但受击动画无需跟着炮弹数量无限增长。
 // 15 次/秒已经能连续表现密集火力，同时把单人绘制和多人状态同步控制在稳定上限。
 export const KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL = 1 / 15;
-export const FUTURE_1096_FORMS = Object.freeze({
-  A: Object.freeze({ damageTaken: 2, speed: 1.5, fireRate: 2 }),
-  B: Object.freeze({ damageTaken: 0.5, speed: 0.5, fireRate: 0.5 }),
-});
-export const FUTURE_1096_BASE_FORM = Object.freeze({ damageTaken: 1, speed: 1, fireRate: 1 });
+export { FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM } from "../future-flagship-form.js";
 export const DEG_TO_RAD = Math.PI / 180;
 
 export function beamDamageRatioForHitCount(hitCount) {
