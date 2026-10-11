@@ -207,3 +207,39 @@ assert.deepEqual(buildServerUrlCandidates({
   locationObject: { host: "haruyuki.cn", hostname: "haruyuki.cn", protocol: "https:", search: "?ws=wss://star.haruyuki.cn/ws/" },
   baseUrl: "/test-game/",
 }), ["wss://haruyuki.cn/test-game/ws/"], "测试服不得回落或被查询参数改向正式联机服务");
+
+// 结算视图持有自身显示生命周期，外部只提供冻结读模型和显式事件回调。
+const { createOnlineResultView } = await import("../src/online/result-view.js");
+const oldDocument = globalThis.document;
+const subtitle = { textContent: "" };
+globalThis.document = { getElementById: (id) => id === "resultSub" ? subtitle : null };
+try {
+  const classes = new Set();
+  const ui = {
+    overlay: { classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } },
+    overlayTitle: { textContent: "" },
+  };
+  const context = Object.freeze({ seat: "A", spectating: false, room: Object.freeze({ roomId: "test-result", closesAt: 0 }) });
+  const winners = [];
+  const logs = [];
+  const result = createOnlineResultView({ getContext: () => context, ui, log: (value) => logs.push(value), onWinner: (winner) => winners.push(winner) });
+  result.show("A");
+  result.show("A");
+  assert.equal(logs.length, 1, "重复快照不得重复记录结算");
+  assert.deepEqual(winners, ["A", "A"]);
+  assert.equal(classes.has("hidden"), false);
+  result.close();
+  assert.equal(classes.has("hidden"), true);
+  result.show("B");
+  assert.equal(logs.length, 2, "关闭后下一次展示应重新生成结算");
+  result.reset();
+  result.show(null);
+  assert.equal(logs.length, 3, "重开应清除显示去重状态");
+  assert.equal(winners.at(-1), null);
+  assert.equal(context.seat, "A", "视图不能反写会话上下文");
+  result.close();
+} finally {
+  if (oldDocument === undefined) delete globalThis.document;
+  else globalThis.document = oldDocument;
+}
+console.log("结算视图边界通过：冻结上下文、显式事件、显示去重与重置。");

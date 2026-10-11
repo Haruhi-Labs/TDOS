@@ -1,3 +1,4 @@
+import { copyPlainData, freezePlainData } from "../shared/data/plain-data.js";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../shared/game/characters.js";
 import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
 import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
@@ -229,7 +230,6 @@ function initApp() {
   pendingSubSkillAim: null,
   destructionEffects: createShipDestructionEffects(),
   lastWinnerSeat: null,
-  gameOverLogged: false,
   connectAttemptId: 0,
   playerLoadout: readStoredLoadout(),
   pointer: { x: LOGICAL * 0.5, y: LOGICAL * 0.5 },
@@ -246,12 +246,13 @@ function initApp() {
     getPlayerLoadout: () => app.playerLoadout,
   });
   resultView = createOnlineResultView({
-    app,
+    getContext: resultContext,
+    onWinner: (winner) => { app.lastWinnerSeat = winner; },
     ui,
     log,
     now: () => stateSync?.estimateServerNowMs?.() ?? Date.now(),
   });
-  lobbyView = createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer, isRulesetCompatible: () => snapshotTransport.state.rulesetCompatible });
+  lobbyView = createOnlineLobbyView({ getContext: lobbyContext, ui, socketSend, syncLoadoutToServer, isRulesetCompatible: () => snapshotTransport.state.rulesetCompatible });
   snapshotTransport = createOnlineSnapshotTransport({ nowMs, socketSend, updateConnectionUi, log, isConnected: () => app.connected, onPlayerId: (id) => { app.playerId = id; } });
   throttleCommandState = createThrottleCommandState();
   stateSync = createOnlineStateSync({
@@ -423,6 +424,15 @@ function bindPressButton(button, handler) {
   });
 }
 
+// 视图消费独立读模型，不能沿页面对象触达连接、输入或权威时间轴。
+function lobbyContext() {
+  return freezePlainData(copyPlainData({ connected: app.connected, room: app.room, spectating: app.spectating }));
+}
+
+function resultContext() {
+  return freezePlainData(copyPlainData({ room: app.room, seat: app.seat, spectating: app.spectating, playerLoadout: app.playerLoadout }));
+}
+
 function clearMatchRuntime() {
   snapshotTransport.resetMatchState();
   stateSync.reset();
@@ -437,7 +447,7 @@ function clearMatchRuntime() {
   app.pendingSubSkillAim = null;
   resetShipDestructionEffects(app.destructionEffects);
   app.lastWinnerSeat = null;
-  app.gameOverLogged = false;
+  resultView?.reset();
 }
 
 async function connectServer() {

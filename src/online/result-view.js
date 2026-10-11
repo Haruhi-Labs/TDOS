@@ -62,9 +62,10 @@ function resultSideHtml(loadout, faction, sideLabel, sideClass, sideId = "") {
   );
 }
 
-export function createOnlineResultView({ app, ui, log, now = Date.now }) {
+export function createOnlineResultView({ getContext, ui, log, onWinner = () => {}, now = Date.now }) {
   let closeCountdownTimer = null;
   let resultSubtitle = "";
+  let shown = false;
 
   function stopCloseCountdown() {
     if (closeCountdownTimer !== null) {
@@ -75,7 +76,7 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
 
   function updateCloseCountdown() {
     const subElement = document.getElementById("resultSub");
-    const closesAt = Number(app.room?.closesAt) || 0;
+    const closesAt = Number(getContext().room?.closesAt) || 0;
     if (!subElement || !resultSubtitle || closesAt <= 0) {
       if (subElement && resultSubtitle) subElement.textContent = resultSubtitle;
       stopCloseCountdown();
@@ -87,7 +88,7 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
 
   function syncCloseCountdown() {
     updateCloseCountdown();
-    if (Number(app.room?.closesAt) > 0 && closeCountdownTimer === null) {
+    if (Number(getContext().room?.closesAt) > 0 && closeCountdownTimer === null) {
       closeCountdownTimer = setInterval(updateCloseCountdown, 200);
     }
   }
@@ -97,17 +98,18 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
     resultSubtitle = "";
     ui.overlay.classList.add("hidden");
     ui.overlayTitle.textContent = "";
-    app.gameOverLogged = false;
+    reset();
   }
 
   function show(winnerSeat) {
-    app.lastWinnerSeat = winnerSeat || null;
+    onWinner(winnerSeat || null);
     ui.overlay.classList.remove("hidden");
-    if (app.gameOverLogged) {
+    if (shown) {
       syncCloseCountdown();
       return;
     }
-    app.gameOverLogged = true;
+    shown = true;
+    const context = getContext();
 
     const card = document.getElementById("resultCard");
     const eyebrowElement = document.getElementById("resultEyebrow");
@@ -120,14 +122,14 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
     let title;
     let subtitle;
     let logLine;
-    if (app.spectating) {
+    if (context.spectating) {
       const winnerName = winnerSeat ? fleetSideLabel(winnerSeat) : "";
       className = "result-draw";
       eyebrow = "SPECTATE";
       title = winnerName ? t("{seat}获胜", { seat: winnerName }) : t("战斗结束");
       subtitle = t("观战结束");
       logLine = winnerName ? t("战斗结束：{seat}获胜", { seat: winnerName }) : t("战斗结束：平局");
-    } else if (winnerSeat && winnerSeat === app.seat) {
+    } else if (winnerSeat && winnerSeat === context.seat) {
       className = "result-win";
       eyebrow = "VICTORY";
       title = t("胜利");
@@ -157,7 +159,7 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
     if (subElement) subElement.textContent = resultSubtitle;
     syncCloseCountdown();
     if (metaElement) {
-      const roomId = app.room ? app.room.roomId : "-";
+      const roomId = context.room ? context.room.roomId : "-";
       const winnerText = winnerSeat ? fleetSideLabel(winnerSeat) : t("平局");
       metaElement.innerHTML =
         `<span class="result-diff-label">${t("房间ID")}</span>` +
@@ -167,10 +169,10 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
     }
 
     if (versusElement) {
-      const players = (app.room && app.room.players) || [];
+      const players = (context.room && context.room.players) || [];
       const rowA = players.find((player) => player.seat === "A");
       const rowB = players.find((player) => player.seat === "B");
-      const loadoutA = (rowA && rowA.loadout) || app.playerLoadout;
+      const loadoutA = (rowA && rowA.loadout) || context.playerLoadout;
       const loadoutB = rowB && rowB.loadout;
       const nameA = (rowA && localizedServerName(rowA.name, rowA.isBot)) || fleetSideLabel("A");
       const nameB = (rowB && localizedServerName(rowB.name, rowB.isBot)) || fleetSideLabel("B");
@@ -188,5 +190,9 @@ export function createOnlineResultView({ app, ui, log, now = Date.now }) {
     log(logLine);
   }
 
-  return { close, show };
+  function reset() {
+    shown = false;
+  }
+
+  return { close, show, reset };
 }

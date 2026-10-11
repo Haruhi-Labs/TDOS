@@ -16,26 +16,27 @@ function roomStatusText(status) {
   return t("未知");
 }
 
-export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer, isRulesetCompatible }) {
+export function createOnlineLobbyView({ getContext, ui, socketSend, syncLoadoutToServer, isRulesetCompatible }) {
   function updateRoomSummary() {
-    if (!app.room) {
+    const context = getContext();
+    if (!context.room) {
       ui.roomSummary.textContent = t("未进入房间");
       ui.leaveRoomBtn.disabled = true;
       return;
     }
 
     const rows = [];
-    rows.push(t("房间ID：{id}", { id: app.room.roomId }));
-    rows.push(t("类型：{type}", { type: app.room.kind === "tournament" ? t("比赛房间") : app.room.mode === "ai" ? t("AI 训练") : t("玩家对战") }));
-    rows.push(t("可见性：{visibility}", { visibility: app.room.visibility === "private" ? t("私人") : t("公开") }));
-    if (app.room.visibility === "private" && app.room.code) {
-      rows.push(t("房间号：{code}", { code: app.room.code }));
+    rows.push(t("房间ID：{id}", { id: context.room.roomId }));
+    rows.push(t("类型：{type}", { type: context.room.kind === "tournament" ? t("比赛房间") : context.room.mode === "ai" ? t("AI 训练") : t("玩家对战") }));
+    rows.push(t("可见性：{visibility}", { visibility: context.room.visibility === "private" ? t("私人") : t("公开") }));
+    if (context.room.visibility === "private" && context.room.code) {
+      rows.push(t("房间号：{code}", { code: context.room.code }));
     }
-    rows.push(t("状态：{status}", { status: roomStatusText(app.room.status) }));
-    if (Number(app.room.spectatorCount) > 0 || app.spectating) {
-      rows.push(t("观战：{count}", { count: Number(app.room.spectatorCount) || 0 }));
+    rows.push(t("状态：{status}", { status: roomStatusText(context.room.status) }));
+    if (Number(context.room.spectatorCount) > 0 || context.spectating) {
+      rows.push(t("观战：{count}", { count: Number(context.room.spectatorCount) || 0 }));
     }
-    for (const playerRow of app.room.players || []) {
+    for (const playerRow of context.room.players || []) {
       const seatText = playerRow.seat === "A" ? t("A位") : t("B位");
       const suffix = playerRow.isBot ? t("（AI）") : "";
       const displayName = localizedServerName(playerRow.name, playerRow.isBot);
@@ -55,6 +56,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
   }
 
   function renderRooms(rooms) {
+    const context = getContext();
     ui.roomList.innerHTML = "";
     if (!rooms || rooms.length === 0) {
       const empty = document.createElement("div");
@@ -96,7 +98,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const joinButton = document.createElement("button");
       joinButton.textContent = t("加入");
-      joinButton.disabled = !app.connected || !isRulesetCompatible() || Boolean(app.room) || room.status !== "waiting" || room.count >= room.capacity;
+      joinButton.disabled = !context.connected || !isRulesetCompatible() || Boolean(context.room) || room.status !== "waiting" || room.count >= room.capacity;
       joinButton.addEventListener("click", () => {
         syncLoadoutToServer(false);
         socketSend({ type: "join_room", roomId: room.roomId });
@@ -104,7 +106,7 @@ export function createOnlineLobbyView({ app, ui, socketSend, syncLoadoutToServer
 
       const spectateButton = document.createElement("button");
       spectateButton.textContent = t("观战");
-      spectateButton.disabled = !app.connected || !isRulesetCompatible() || Boolean(app.room) || !(room.status === "running" || room.kind === "tournament" && ["waiting", "countdown"].includes(room.status));
+      spectateButton.disabled = !context.connected || !isRulesetCompatible() || Boolean(context.room) || !(room.status === "running" || room.kind === "tournament" && ["waiting", "countdown"].includes(room.status));
       spectateButton.addEventListener("click", () => {
         socketSend({ type: "spectate_room", roomId: room.roomId });
       });
