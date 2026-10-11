@@ -1,3 +1,4 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 // 离线验收：只在内存模拟和 bench 输出，不连接游戏、身份或统计服务。
 import assert from "node:assert/strict";
 import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
@@ -143,7 +144,7 @@ if (process.argv[2] === "--worker") {
               for (const unit of team.getAllShips()) {
                 originals.push([unit, unit.takeDamage]);
                 unit.takeDamage = () => {};
-                unit.throttle = unit.speed = 0;
+                setScenarioField(unit, 'throttle', setScenarioField(unit, 'speed', 0));
               }
             }
             let casts = 0;
@@ -158,8 +159,8 @@ if (process.argv[2] === "--worker") {
             for (const team of [sim.teamA, sim.teamB]) {
               sim.combatEnabled[team.seat] = true;
               if (scenario.bribe) team.getAllShips().forEach((unit, index) => {
-                unit.x = team === own ? 650 : 780;
-                unit.y = 620 + index * 30;
+                setScenarioField(unit, 'x', team === own ? 650 : 780);
+                setScenarioField(unit, 'y', 620 + index * 30);
                 unit.command = { x: unit.x, y: unit.y };
               });
             }

@@ -27,7 +27,7 @@ activateKoizumiOrb(ship);
 const orb = ship.koizumiOrb;
 assert.equal(orb.hitAt, undefined, "命中历史不能通过查询获得");
 assert.throws(() => { orb.previousX = -1; }, TypeError);
-ship.x += 30;
+ship.displaceTo(ship.x + 30, ship.y);
 sampleKoizumiOrbMotion(ship);
 assert.equal(ship.koizumiOrb.previousX, ship.x);
 assert.notEqual(orb.previousX, ship.x);

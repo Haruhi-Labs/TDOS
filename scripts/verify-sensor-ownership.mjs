@@ -6,8 +6,7 @@ const match = new MatchSimulation({ seed: 76, teamLoadouts: { A: { main: "yuki",
 const team = match.teamA;
 assert.equal(team.radarPassive, undefined, "雷达内部回波 Map 不公开");
 const enemy = match.teamB.ships.main;
-enemy.x = team.ships.main.x + 500;
-enemy.y = team.ships.main.y;
+enemy.displaceTo(team.ships.main.x + 500, team.ships.main.y);
 match.elapsed = 3;
 team.updateRadarPassive(match.teamB, 3);
 const radar = team.serializeRadarPassive();

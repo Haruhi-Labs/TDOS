@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import { HaruhiFlagshipRuntime } from "../../shared/game/haruhi-flagship-runtime.js";
 import assert from "node:assert/strict";
 import * as legacy from "../../shared/game/haruhi-flagship.js";
@@ -122,7 +123,7 @@ function legacySchedulingCheck() {
   team.match.elapsed = 30.3 - 5e-10;
   legacy.updateHaruhiFlagship(team, hooks);
   assert.equal(calls, 17, "保留旧时间比较容差");
-  team.ships.main.alive = false;
+  setScenarioField(team.ships.main, 'alive', false);
   team.match.elapsed = 50;
   legacy.updateHaruhiFlagship(team, hooks);
   assert.equal(calls, 17);
@@ -175,7 +176,7 @@ function geometryAndCooldownCheck() {
   assert.deepEqual(legacy.haruhiEsperOrb(team), oldOrb);
   assert.equal(supportOrbGeometry({ ...source, enabled: false }), null);
   assert.equal(triggerSupportOtherworlder({ ...source, enabled: false }, 8), false);
-  team.ships.sub1.alive = false;
+  setScenarioField(team.ships.sub1, 'alive', false);
   assert.equal(supportOrbGeometry(source), null);
   assert.equal(supportOtherworlderReady(source, 8), false);
 }
@@ -216,7 +217,7 @@ function explicitSourceCheck() {
   assert.equal(emitters.length, 2, "封印恢复不补发积压或取消的光线");
   updateBunnyHaruhiSupport(source, 110, 0, hooks);
   assert.equal(emitters.length, 3);
-  ship.alive = false;
+  setScenarioField(ship, 'alive', false);
   updateBunnyHaruhiSupport(source, 110.3, 0, hooks);
   assert.equal(emitters.length, 3);
   assert.deepEqual(source.state.queuedBeamAt, []);

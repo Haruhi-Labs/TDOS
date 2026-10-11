@@ -1,3 +1,4 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { MatchSimulation, CHARACTER_ORDER } from "../shared/game-core.js";
 
@@ -38,8 +39,8 @@ const ship = team.ships.sub2;
 team.split(1);
 team.split(2);
 ship.activateTimedEffect("catPawUntil", 10);
-ship.speed = 20;
-ship.energy = 0;
+setScenarioField(ship, 'speed', 20);
+setScenarioField(ship, 'energy', 0);
 simulation.rules = {
   ...simulation.rules,
   effectiveVision: () => 123,
@@ -62,10 +63,10 @@ assert.equal(ship.speed, 0);
 team.updateEnergy(2);
 assert.equal(ship.energy, 10);
 ship.cooldown = 0;
-ship.angle = Math.PI / 2;
-ship.x = 600; ship.y = 600;
+setScenarioField(ship, 'angle', Math.PI / 2);
+setScenarioField(ship, 'x', 600); setScenarioField(ship, 'y', 600);
 const target = simulation.teamB.ships.main;
-target.x = 650; target.y = 600;
+setScenarioField(target, 'x', 650); setScenarioField(target, 'y', 600);
 team.pickTargetFor = () => target;
 ship.tryAttack(simulation, simulation.teamB);
 assert.equal(simulation.projectiles.length, 1);
@@ -151,9 +152,9 @@ const barrier = new MatchSimulation({ seed: 331, teamLoadouts: { B: { main: "koi
 const defender = barrier.teamB.ships.main;
 const rammer = barrier.teamA.ships.main;
 const radius = koizumiBarrierGeometry(barrier.teamB).radius;
-defender.previousX = defender.x; defender.previousY = defender.y;
-rammer.x = defender.x + radius - 1; rammer.y = defender.y;
-rammer.previousX = defender.x + radius + 10; rammer.previousY = defender.y;
+setScenarioField(defender, 'previousX', defender.x); setScenarioField(defender, 'previousY', defender.y);
+setScenarioField(rammer, 'x', defender.x + radius - 1); setScenarioField(rammer, 'y', defender.y);
+setScenarioField(rammer, 'previousX', defender.x + radius + 10); setScenarioField(rammer, 'previousY', defender.y);
 barrier.rules = { ...barrier.rules, barrierRamProfile: (source) => source === rammer ? { ramKind: "测试冲撞", extraRadius: 0 } : null };
 const attempts = [];
 let accepted = false;

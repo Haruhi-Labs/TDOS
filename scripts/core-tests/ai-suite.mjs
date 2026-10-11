@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import { SearchBelief } from "../../shared/game/ai/policy/belief.js";
 import { cancelVisionWaveSkill } from "../../shared/game/vision-wave.js";
@@ -39,8 +40,8 @@ function aiFogOfWarCheck() {
   const enemyMain = sim.teamA.ships.main;
   const knownSpawn = { x: enemyMain.x, y: enemyMain.y };
 
-  enemyMain.x = 180;
-  enemyMain.y = 240;
+  setScenarioField(enemyMain, 'x', 180);
+  setScenarioField(enemyMain, 'y', 240);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -62,9 +63,9 @@ function aiReactionDelayCheck() {
   const spawnIntel = { x: bot.rememberedMain.x, y: bot.rememberedMain.y };
 
   // 反应延迟测试显式把目标放进视野；出生点距离属于独立平衡参数。
-  enemyMain.x = aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65);
-  enemyMain.y = aiMain.y;
-  enemyMain.angle = Math.PI;
+  setScenarioField(enemyMain, 'x', aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65));
+  setScenarioField(enemyMain, 'y', aiMain.y);
+  setScenarioField(enemyMain, 'angle', Math.PI);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -98,8 +99,8 @@ function aiSearchSweepCheck() {
     ship.command = { ...ship.command, y: ship.y };
   }
 
-  enemyMain.x = 180;
-  enemyMain.y = 240;
+  setScenarioField(enemyMain, 'x', 180);
+  setScenarioField(enemyMain, 'y', 240);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -125,16 +126,16 @@ function aiRetreatJudgementCheck() {
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  aiMain.x = 980;
-  aiMain.y = 720;
-  aiMain.hp = aiMain.maxHp * 0.22;
-  aiMain.energy = aiMain.maxEnergy * 0.14;
+  setScenarioField(aiMain, 'x', 980);
+  setScenarioField(aiMain, 'y', 720);
+  setScenarioField(aiMain, 'hp', aiMain.maxHp * 0.22);
+  setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.14);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  enemyMain.x = 860;
-  enemyMain.y = 720;
+  setScenarioField(enemyMain, 'x', 860);
+  setScenarioField(enemyMain, 'y', 720);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -157,13 +158,13 @@ function aiFocusSelectionCheck() {
   const enemySub1 = sim.teamA.ships.sub1;
 
   sim.teamA.split(1);
-  aiMain.x = 1040;
-  aiMain.y = 720;
-  enemyMain.x = 760;
-  enemyMain.y = 720;
-  enemySub1.x = 900;
-  enemySub1.y = 690;
-  enemySub1.hp = enemySub1.maxHp * 0.16;
+  setScenarioField(aiMain, 'x', 1040);
+  setScenarioField(aiMain, 'y', 720);
+  setScenarioField(enemyMain, 'x', 760);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemySub1, 'x', 900);
+  setScenarioField(enemySub1, 'y', 690);
+  setScenarioField(enemySub1, 'hp', enemySub1.maxHp * 0.16);
 
   bot.rememberContact(enemyMain, "visible");
   bot.rememberContact(enemySub1, "visible");
@@ -178,8 +179,8 @@ function aiSplitDisciplineCheck() {
   const aiMain = sim.teamB.ships.main;
 
   sim.elapsed = 26;
-  aiMain.hp = aiMain.maxHp * 0.28;
-  aiMain.energy = aiMain.maxEnergy * 0.12;
+  setScenarioField(aiMain, 'hp', aiMain.maxHp * 0.28);
+  setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.12);
 
   const context = bot.buildTacticalContext(aiMain, bot.primaryEnemyEstimate());
   bot.evaluateSplit(sim.elapsed, context);
@@ -208,16 +209,16 @@ function aiFireArcAwarenessCheck() {
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  aiMain.x = 1080;
-  aiMain.y = 720;
-  aiMain.angle = Math.PI;
+  setScenarioField(aiMain, 'x', 1080);
+  setScenarioField(aiMain, 'y', 720);
+  setScenarioField(aiMain, 'angle', Math.PI);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  enemyMain.x = 760;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI * 0.5;
+  setScenarioField(enemyMain, 'x', 760);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', Math.PI * 0.5);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -249,9 +250,9 @@ function aiProbePressureCheck() {
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  enemyMain.x = 640;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI;
+  setScenarioField(enemyMain, 'x', 640);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', Math.PI);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -289,9 +290,9 @@ function aiSplitInitiativeCheck() {
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  enemyMain.x = 760;
-  enemyMain.y = 720;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 760);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -327,21 +328,21 @@ function aiYukiVisionLeadCheck() {
 
   aiTeam.split(1);
 
-  aiMain.x = 1100;
-  aiMain.y = 760;
+  setScenarioField(aiMain, 'x', 1100);
+  setScenarioField(aiMain, 'y', 760);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  yuki.x = 1030;
-  yuki.y = 700;
+  setScenarioField(yuki, 'x', 1030);
+  setScenarioField(yuki, 'y', 700);
   yuki.command = { ...yuki.command, x: yuki.x };
   yuki.command = { ...yuki.command, y: yuki.y };
   yuki.route = null;
 
-  enemyMain.x = 790;
-  enemyMain.y = 720;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 790);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -384,8 +385,8 @@ function aiYukiRadarIntelCheck() {
   const enemyMain = sim.teamA.ships.main;
   const radarPoint = { x: 260, y: 250 };
 
-  enemyMain.x = 150;
-  enemyMain.y = 160;
+  setScenarioField(enemyMain, 'x', 150);
+  setScenarioField(enemyMain, 'y', 160);
   enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
   enemyMain.route = null;
   sim.elapsed = 1;
@@ -466,15 +467,15 @@ function aiYukiScoutDoctrineCheck() {
 
   for (const scout of team.scouts) team.removeScout(scout);
   for (const zoneId of [2, 5, 8]) {
-    for (const ship of team.fleetMembersForShip("main")) ship.energy = ship.maxEnergy;
+    for (const ship of team.fleetMembersForShip("main")) setScenarioField(ship, 'energy', ship.maxEnergy);
     team.startCooldown("scout", 0);
     assert(team.launchScout(zoneId), `长门AI战场调度测试未能在${zoneId}战区建立警戒点`);
   }
 
-  enemyMain.x = 930;
-  enemyMain.y = 240;
-  enemyMain.angle = 0;
-  enemyMain.speed = 31;
+  setScenarioField(enemyMain, 'x', 930);
+  setScenarioField(enemyMain, 'y', 240);
+  setScenarioField(enemyMain, 'angle', 0);
+  setScenarioField(enemyMain, 'speed', 31);
   enemyMain.command = { x: 1200, y: 240 };
   enemyMain.route = null;
   bot.rememberContact(enemyMain, "visible");
@@ -539,8 +540,8 @@ function aiCombatScoutThreatCheck() {
   const aiMain = sim.teamA.ships.main;
   assert(sim.teamB.launchScout(5), "AI威胁测试未能生成长门战斗僚机");
   const combatScout = sim.teamB.scouts[0];
-  combatScout.x = aiMain.x + 120;
-  combatScout.y = aiMain.y;
+  setScenarioField(combatScout, 'x', aiMain.x + 120);
+  setScenarioField(combatScout, 'y', aiMain.y);
   bot.rememberContact(combatScout, "visible");
 
   const contact = bot.knownEnemyContacts().find((item) => item.id === combatScout.id);
@@ -569,13 +570,13 @@ function aiAsakuraVisionWaveDecisionCheck() {
   const enemyTeam = sim.teamA;
   const enemyMain = enemyTeam.ships.main;
 
-  aiMain.x = 900;
-  aiMain.y = 720;
+  setScenarioField(aiMain, 'x', 900);
+  setScenarioField(aiMain, 'y', 720);
   aiMain.command = { x: aiMain.x, y: aiMain.y };
   aiMain.route = null;
   for (const ship of enemyTeam.getAllShips()) {
-    ship.x = 760;
-    ship.y = 720;
+    setScenarioField(ship, 'x', 760);
+    setScenarioField(ship, 'y', 720);
     ship.command = { x: ship.x, y: ship.y };
     ship.route = null;
   }
@@ -614,19 +615,19 @@ function aiVisionWaveBuffCounterplayCheck() {
     const aiMain = sim.teamB.ships.main;
     const kyon = sim.teamB.ships.sub1;
     sim.teamB.split(1);
-    enemyMain.x = 760;
-    enemyMain.y = 720;
+    setScenarioField(enemyMain, 'x', 760);
+    setScenarioField(enemyMain, 'y', 720);
     enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
     enemyMain.route = null;
-    aiMain.x = 900;
-    aiMain.y = 720;
+    setScenarioField(aiMain, 'x', 900);
+    setScenarioField(aiMain, 'y', 720);
     aiMain.command = { x: aiMain.x, y: aiMain.y };
     aiMain.route = null;
-    kyon.x = 920;
-    kyon.y = 748;
+    setScenarioField(kyon, 'x', 920);
+    setScenarioField(kyon, 'y', 748);
     kyon.command = { x: kyon.x, y: kyon.y };
     kyon.route = null;
-    kyon.hp = kyon.maxHp * 0.6;
+    setScenarioField(kyon, 'hp', kyon.maxHp * 0.6);
     sim.teamB.computeVisibility(sim.teamA);
     bot.rememberContact(enemyMain, "visible");
     assert(sim.teamA.castFlagshipSkill(), `${difficulty} 场景下朝仓视野波释放失败`);
@@ -686,29 +687,29 @@ function aiWoundedDetachedRetreatCheck() {
   aiTeam.split(1);
   aiTeam.split(2);
 
-  aiMain.x = 1080;
-  aiMain.y = 720;
+  setScenarioField(aiMain, 'x', 1080);
+  setScenarioField(aiMain, 'y', 720);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  sub1.x = 1020;
-  sub1.y = 780;
+  setScenarioField(sub1, 'x', 1020);
+  setScenarioField(sub1, 'y', 780);
   sub1.command = { ...sub1.command, x: sub1.x };
   sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
-  sub1.hp = sub1.maxHp * 0.22;
-  sub1.energy = sub1.maxEnergy * 0.14;
+  setScenarioField(sub1, 'hp', sub1.maxHp * 0.22);
+  setScenarioField(sub1, 'energy', sub1.maxEnergy * 0.14);
 
-  sub2.x = 1020;
-  sub2.y = 660;
+  setScenarioField(sub2, 'x', 1020);
+  setScenarioField(sub2, 'y', 660);
   sub2.command = { ...sub2.command, x: sub2.x };
   sub2.command = { ...sub2.command, y: sub2.y };
   sub2.route = null;
 
-  enemyMain.x = 790;
-  enemyMain.y = 720;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 790);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -739,9 +740,9 @@ function aiSectorEncirclementCheck() {
   aiTeam.split(1);
   aiTeam.split(2);
 
-  enemyMain.x = 760;
-  enemyMain.y = 520;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 760);
+  setScenarioField(enemyMain, 'y', 520);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -750,8 +751,8 @@ function aiSectorEncirclementCheck() {
   // 时间推进自然老化情报，不能直接篡改已确认记录。
   sim.elapsed += 6.4;
 
-  enemyMain.x = 180;
-  enemyMain.y = 200;
+  setScenarioField(enemyMain, 'x', 180);
+  setScenarioField(enemyMain, 'y', 200);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -807,27 +808,27 @@ function aiBacklineFlankCheck() {
   aiTeam.split(1);
   aiTeam.split(2);
 
-  aiMain.x = 1080;
-  aiMain.y = 720;
+  setScenarioField(aiMain, 'x', 1080);
+  setScenarioField(aiMain, 'y', 720);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  sub1.x = 1020;
-  sub1.y = 770;
+  setScenarioField(sub1, 'x', 1020);
+  setScenarioField(sub1, 'y', 770);
   sub1.command = { ...sub1.command, x: sub1.x };
   sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
 
-  sub2.x = 1020;
-  sub2.y = 670;
+  setScenarioField(sub2, 'x', 1020);
+  setScenarioField(sub2, 'y', 670);
   sub2.command = { ...sub2.command, x: sub2.x };
   sub2.command = { ...sub2.command, y: sub2.y };
   sub2.route = null;
 
-  enemyMain.x = 780;
-  enemyMain.y = 720;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 780);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -859,36 +860,36 @@ function aiOverwhelmedEscapeCheck() {
   aiTeam.split(1);
   aiTeam.split(2);
 
-  aiMain.x = 1100;
-  aiMain.y = 720;
+  setScenarioField(aiMain, 'x', 1100);
+  setScenarioField(aiMain, 'y', 720);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  sub1.x = 890;
-  sub1.y = 740;
+  setScenarioField(sub1, 'x', 890);
+  setScenarioField(sub1, 'y', 740);
   sub1.command = { ...sub1.command, x: sub1.x };
   sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
-  sub1.hp = sub1.maxHp * 0.42;
-  sub1.energy = sub1.maxEnergy * 0.24;
+  setScenarioField(sub1, 'hp', sub1.maxHp * 0.42);
+  setScenarioField(sub1, 'energy', sub1.maxEnergy * 0.24);
 
-  sub2.x = 1060;
-  sub2.y = 650;
+  setScenarioField(sub2, 'x', 1060);
+  setScenarioField(sub2, 'y', 650);
   sub2.command = { ...sub2.command, x: sub2.x };
   sub2.command = { ...sub2.command, y: sub2.y };
   sub2.route = null;
 
-  enemyMain.x = 760;
-  enemyMain.y = 700;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 760);
+  setScenarioField(enemyMain, 'y', 700);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
-  enemySub1.x = 790;
-  enemySub1.y = 785;
-  enemySub1.angle = 0;
+  setScenarioField(enemySub1, 'x', 790);
+  setScenarioField(enemySub1, 'y', 785);
+  setScenarioField(enemySub1, 'angle', 0);
   enemySub1.command = { ...enemySub1.command, x: enemySub1.x };
   enemySub1.command = { ...enemySub1.command, y: enemySub1.y };
   enemySub1.route = null;
@@ -925,12 +926,12 @@ function aiEnergyRecoveryModeCheck() {
   const enemyMain = sim.teamA.ships.main;
 
   for (const ship of aiTeam.getAllShips()) {
-    ship.energy = ship.maxEnergy * 0.08;
+    setScenarioField(ship, 'energy', ship.maxEnergy * 0.08);
   }
 
-  enemyMain.x = 640;
-  enemyMain.y = 360;
-  enemyMain.angle = 0;
+  setScenarioField(enemyMain, 'x', 640);
+  setScenarioField(enemyMain, 'y', 360);
+  setScenarioField(enemyMain, 'angle', 0);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -968,18 +969,18 @@ function aiEnergyThrottleHysteresisCheck() {
   const aiMain = aiTeam.ships.main;
   const setFleetEnergyRatio = (ratio) => {
     for (const ship of aiTeam.getAllShips()) {
-      ship.energy = ship.maxEnergy * ratio;
+      setScenarioField(ship, 'energy', ship.maxEnergy * ratio);
     }
   };
 
   setFleetEnergyRatio(0.75);
-  aiMain.throttle = throttleForGear(3);
+  setScenarioField(aiMain, 'throttle', throttleForGear(3));
   assert(bot.energyThrottleGearCap(aiMain) === 4, "AI能量充裕时未允许启动前进4档");
 
   setFleetEnergyRatio(0.6);
-  aiMain.throttle = throttleForGear(3);
+  setScenarioField(aiMain, 'throttle', throttleForGear(3));
   assert(bot.energyThrottleGearCap(aiMain) === 3, "AI能量不足启动阈值时仍会新开前进4档");
-  aiMain.throttle = throttleForGear(4);
+  setScenarioField(aiMain, 'throttle', throttleForGear(4));
   assert(bot.energyThrottleGearCap(aiMain) === 4, "AI前进4档迟滞区间未能稳定保持档位");
 
   setFleetEnergyRatio(0.5);
@@ -987,7 +988,7 @@ function aiEnergyThrottleHysteresisCheck() {
   assert(aiMain.throttle === throttleForGear(3), "AI前进4档降至退出阈值后未及时回到前进3档");
 
   setFleetEnergyRatio(0.75);
-  aiMain.throttle = throttleForGear(4);
+  setScenarioField(aiMain, 'throttle', throttleForGear(4));
   let minimumRatio = 1;
   for (let i = 0; i < 30 / TICK_DT; i += 1) {
     aiTeam.updateEnergy(TICK_DT);
@@ -1006,15 +1007,15 @@ function aiScoutEnergyReserveCheck() {
 
   aiTeam.split(1);
   const scoutSource = aiTeam.ships.sub1;
-  scoutSource.x = 620;
-  scoutSource.y = 720;
+  setScenarioField(scoutSource, 'x', 620);
+  setScenarioField(scoutSource, 'y', 720);
   scoutSource.command = { ...scoutSource.command, x: scoutSource.x };
   scoutSource.command = { ...scoutSource.command, y: scoutSource.y };
   scoutSource.route = null;
-  scoutSource.energy = SCOUT_LAUNCH_COST + scoutSource.maxEnergy * 0.08;
+  setScenarioField(scoutSource, 'energy', SCOUT_LAUNCH_COST + scoutSource.maxEnergy * 0.08);
   bot.scoutTimer = 0;
-  enemyMain.x = scoutSource.x - 60;
-  enemyMain.y = scoutSource.y;
+  setScenarioField(enemyMain, 'x', scoutSource.x - 60);
+  setScenarioField(enemyMain, 'y', scoutSource.y);
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiTeam.ships.main, bot.selectEnemyFocus(aiTeam.ships.main));
   const zoneId = bot.pickScoutZoneId(aiTeam.ships.main, context.focus);
@@ -1054,28 +1055,28 @@ function aiHighEnergySkillAggressionCheck() {
   const enemyMain = sim.teamA.ships.main;
 
   aiTeam.split(1);
-  aiMain.x = 980;
-  aiMain.y = 720;
+  setScenarioField(aiMain, 'x', 980);
+  setScenarioField(aiMain, 'y', 720);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  aiTeam.ships.sub1.x = 948;
-  aiTeam.ships.sub1.y = 764;
+  setScenarioField(aiTeam.ships.sub1, 'x', 948);
+  setScenarioField(aiTeam.ships.sub1, 'y', 764);
   aiTeam.ships.sub1.command = { ...aiTeam.ships.sub1.command, x: aiTeam.ships.sub1.x };
   aiTeam.ships.sub1.command = { ...aiTeam.ships.sub1.command, y: aiTeam.ships.sub1.y };
   aiTeam.ships.sub1.route = null;
 
-  enemyMain.x = 770;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI;
+  setScenarioField(enemyMain, 'x', 770);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', Math.PI);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
-  aiMain.energy = aiMain.maxEnergy * 0.9;
-  aiTeam.ships.sub1.energy = aiTeam.ships.sub1.maxEnergy * 0.88;
-  aiTeam.ships.sub2.energy = aiTeam.ships.sub2.maxEnergy * 0.9;
+  setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.9);
+  setScenarioField(aiTeam.ships.sub1, 'energy', aiTeam.ships.sub1.maxEnergy * 0.88);
+  setScenarioField(aiTeam.ships.sub2, 'energy', aiTeam.ships.sub2.maxEnergy * 0.9);
   bot.scheduleSkillDecision("flagship", 0);
   bot.scheduleSkillDecision("sub1", 0);
 
@@ -1110,7 +1111,7 @@ function aiHaruhiFlagshipAggressionCheck() {
     unlockSupport(team, [supporter], 0, () => 0);
   }
   for (const ship of team.fleetMembersForShip("main")) {
-    ship.energy = ship.maxEnergy;
+    setScenarioField(ship, 'energy', ship.maxEnergy);
   }
   team.startCooldown("flagship", 0);
   bot.scheduleSkillDecision("flagship", 0);
@@ -1120,9 +1121,9 @@ function aiHaruhiFlagshipAggressionCheck() {
 
   const meta = CHARACTER_DEFS.haruhi.flagshipSkill;
   for (const ship of team.fleetMembersForShip("main")) {
-    ship.energy = 0;
+    setScenarioField(ship, 'energy', 0);
   }
-  team.ships.main.energy = meta.cost + SCOUT_LAUNCH_COST - 1;
+  setScenarioField(team.ships.main, 'energy', meta.cost + SCOUT_LAUNCH_COST - 1);
   team.startCooldown("flagship", 2);
   bot.scheduleSkillDecision("flagship", 2);
   assert(bot.shouldReserveEnergyForHaruhiFlagship(), "春日旗舰技能即将冷却完成时没有预留施放能量");
@@ -1143,16 +1144,16 @@ function aiKoizumiOrbSteeringCheck() {
   const koizumi = team.ships.sub1;
   const target = sim.teamA.ships.main;
   team.split(1);
-  koizumi.x = 980;
-  koizumi.y = 720;
-  koizumi.angle = Math.PI;
+  setScenarioField(koizumi, 'x', 980);
+  setScenarioField(koizumi, 'y', 720);
+  setScenarioField(koizumi, 'angle', Math.PI);
   koizumi.command = { x: koizumi.x, y: koizumi.y };
   koizumi.route = null;
-  koizumi.energy = koizumi.maxEnergy;
-  target.x = 650;
-  target.y = 760;
-  target.angle = 0;
-  target.speed = 0;
+  setScenarioField(koizumi, 'energy', koizumi.maxEnergy);
+  setScenarioField(target, 'x', 650);
+  setScenarioField(target, 'y', 760);
+  setScenarioField(target, 'angle', 0);
+  setScenarioField(target, 'speed', 0);
   target.command = { x: target.x, y: target.y };
   target.route = null;
 
@@ -1193,16 +1194,16 @@ function aiKoizumiBarrierDefenseCheck() {
   const enemyMain = sim.teamA.ships.main;
   team.split(1);
   team.split(2);
-  main.x = 980;
-  main.y = 720;
+  setScenarioField(main, 'x', 980);
+  setScenarioField(main, 'y', 720);
   main.command = { x: main.x, y: main.y };
   main.route = null;
-  team.ships.sub1.x = 1010;
-  team.ships.sub1.y = 680;
-  team.ships.sub2.x = 1010;
-  team.ships.sub2.y = 760;
-  enemyMain.x = 650;
-  enemyMain.y = 720;
+  setScenarioField(team.ships.sub1, 'x', 1010);
+  setScenarioField(team.ships.sub1, 'y', 680);
+  setScenarioField(team.ships.sub2, 'x', 1010);
+  setScenarioField(team.ships.sub2, 'y', 760);
+  setScenarioField(enemyMain, 'x', 650);
+  setScenarioField(enemyMain, 'y', 720);
   enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
   enemyMain.route = null;
 
@@ -1250,15 +1251,15 @@ function aiKoizumiBarrierThreatEvasionCheck() {
   const enemyMain = sim.teamA.ships.main;
   const asakura = sim.teamA.ships.sub1;
   sim.teamA.split(1);
-  ownMain.x = 900;
-  ownMain.y = 720;
-  enemyMain.x = 590;
-  enemyMain.y = 720;
-  asakura.x = ownMain.x - ownMain.effectiveVision() - 80;
-  asakura.y = 720;
-  asakura.energy = asakura.maxEnergy;
+  setScenarioField(ownMain, 'x', 900);
+  setScenarioField(ownMain, 'y', 720);
+  setScenarioField(enemyMain, 'x', 590);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(asakura, 'x', ownMain.x - ownMain.effectiveVision() - 80);
+  setScenarioField(asakura, 'y', 720);
+  setScenarioField(asakura, 'energy', asakura.maxEnergy);
   assert(sim.teamA.castSubSkill("sub1"), "破盾威胁测试未能开启刀锋女王");
-  asakura.speed = asakura.effectiveSpeed();
+  setScenarioField(asakura, 'speed', asakura.effectiveSpeed());
 
   bot.rememberContact(enemyMain, "visible");
   bot.rememberContact(asakura, "visible");
@@ -1290,14 +1291,14 @@ function aiKoizumiBarrierBreachCheck() {
   const defendingMain = sim.teamA.ships.main;
   const asakura = sim.teamB.ships.sub1;
   sim.teamB.split(1);
-  defendingMain.x = 650;
-  defendingMain.y = 720;
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
   defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
   defendingMain.route = null;
-  asakura.x = 940;
-  asakura.y = 720;
-  asakura.angle = Math.PI;
-  asakura.energy = asakura.maxEnergy;
+  setScenarioField(asakura, 'x', 940);
+  setScenarioField(asakura, 'y', 720);
+  setScenarioField(asakura, 'angle', Math.PI);
+  setScenarioField(asakura, 'energy', asakura.maxEnergy);
   asakura.command = { x: asakura.x, y: asakura.y };
   asakura.route = null;
 
@@ -1363,9 +1364,9 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration = 
     const dx = x - team.ships.main.x;
     const dy = y - team.ships.main.y;
     for (const ship of team.getPlayerShips()) {
-      ship.x += dx;
-      ship.y += dy;
-      ship.angle = angle;
+      setScenarioField(ship, 'x', ship.x + (dx));
+      setScenarioField(ship, 'y', ship.y + (dy));
+      setScenarioField(ship, 'angle', angle);
       ship.command = { x: ship.x, y: ship.y };
       ship.route = null;
     }
@@ -1448,10 +1449,10 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration = 
   const normalBot = aiFixture(normalSim, "B");
   const normalDefender = normalSim.teamA.ships.main;
   const normalAttacker = normalSim.teamB.ships.main;
-  normalDefender.x = 650;
-  normalDefender.y = 720;
-  normalAttacker.x = 892;
-  normalAttacker.y = 720;
+  setScenarioField(normalDefender, 'x', 650);
+  setScenarioField(normalDefender, 'y', 720);
+  setScenarioField(normalAttacker, 'x', 892);
+  setScenarioField(normalAttacker, 'y', 720);
   normalBot.rememberContact(normalDefender, "visible");
   const normalContext = normalBot.buildTacticalContext(
     normalAttacker,
@@ -1484,11 +1485,11 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
   const future1096 = sim.teamB.ships.sub2;
   sim.teamB.split(1);
   sim.teamB.split(2);
-  defendingMain.x = 650;
-  defendingMain.y = 720;
-  future1096.x = 940;
-  future1096.y = 720;
-  future1096.energy = future1096.maxEnergy;
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
+  setScenarioField(future1096, 'x', 940);
+  setScenarioField(future1096, 'y', 720);
+  setScenarioField(future1096, 'energy', future1096.maxEnergy);
   bot.rememberContact(defendingMain, "visible");
   let context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
   context.skillAggression = 1.4;
@@ -1500,14 +1501,14 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
     sim.teamB.ships.main.route.p2.y - defendingMain.y,
   );
 
-  future1096.x = defendingMain.x + 80;
-  future1096.y = defendingMain.y;
+  setScenarioField(future1096, 'x', defendingMain.x + 80);
+  setScenarioField(future1096, 'y', defendingMain.y);
   assert(bot.shouldCastSubSkill(future1096, context.focus, context), "1096 AI进入盾内后仍错误保留光线");
 
   // 关闭护盾后验证蓄力射线会对移动目标做前置量，而非瞄准旧位置。
   disruptKoizumiBarrier(sim.teamA, { x: defendingMain.x, y: defendingMain.y, normalX: 1, normalY: 0 });
-  defendingMain.angle = Math.PI * 0.5;
-  defendingMain.speed = 40;
+  setScenarioField(defendingMain, 'angle', Math.PI * 0.5);
+  setScenarioField(defendingMain, 'speed', 40);
   bot.rememberContact(defendingMain, "visible");
   context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
   context.skillAggression = 1.4;
@@ -1543,10 +1544,10 @@ function aiHaruhiOtherworlderBarrierBreachCheck() {
   const defendingMain = sim.teamA.ships.main;
   unlockSupport(sim.teamB, ["otherworlder"], sim.elapsed, () => 0);
 
-  haruhi.x = 980;
-  haruhi.y = 720;
-  defendingMain.x = 650;
-  defendingMain.y = 720;
+  setScenarioField(haruhi, 'x', 980);
+  setScenarioField(haruhi, 'y', 720);
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
   bot.rememberContact(defendingMain, "visible");
   const context = bot.buildTacticalContext(haruhi, bot.selectEnemyFocus(haruhi));
   assert(context.barrierTactics.breachShipKey === "main", "春日获得异世界人后没有被选为破盾手");
@@ -1583,7 +1584,7 @@ function aiFuture1096FormDecisionCheck() {
   assert(aiTeam.future1096Form === "A", "1096 AI 接敌时未主动进入A形态");
 
   for (const ship of aiTeam.getPlayerShips()) {
-    ship.hp = ship.maxHp * 0.5;
+    setScenarioField(ship, 'hp', ship.maxHp * 0.5);
   }
   aiTeam.startCooldown("flagship", 0);
   bot.scheduleSkillDecision("flagship", 0);
@@ -1618,22 +1619,22 @@ function aiEmergencyEnergyReserveCheck() {
   const aiMain = aiTeam.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  aiMain.x = 960;
-  aiMain.y = 720;
+  setScenarioField(aiMain, 'x', 960);
+  setScenarioField(aiMain, 'y', 720);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  enemyMain.x = 790;
-  enemyMain.y = 720;
-  enemyMain.angle = Math.PI;
+  setScenarioField(enemyMain, 'x', 790);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(enemyMain, 'angle', Math.PI);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
-  aiMain.energy = 30;
-  aiTeam.ships.sub1.energy = 20;
-  aiTeam.ships.sub2.energy = 30;
+  setScenarioField(aiMain, 'energy', 30);
+  setScenarioField(aiTeam.ships.sub1, 'energy', 20);
+  setScenarioField(aiTeam.ships.sub2, 'energy', 30);
   bot.scheduleSkillDecision("flagship", 0);
 
   bot.rememberContact(enemyMain, "visible");
@@ -1759,16 +1760,16 @@ function aiShamisenHuntAttackFormationCheck() {
   team.split(1);
   team.split(2);
 
-  team.ships.main.x = 300;
-  team.ships.main.y = 720;
-  team.ships.sub1.x = 320;
-  team.ships.sub1.y = 670;
-  team.ships.sub2.x = 320;
-  team.ships.sub2.y = 770;
-  target.x = 1120;
-  target.y = 720;
-  blocker.x = 690;
-  blocker.y = 720;
+  setScenarioField(team.ships.main, 'x', 300);
+  setScenarioField(team.ships.main, 'y', 720);
+  setScenarioField(team.ships.sub1, 'x', 320);
+  setScenarioField(team.ships.sub1, 'y', 670);
+  setScenarioField(team.ships.sub2, 'x', 320);
+  setScenarioField(team.ships.sub2, 'y', 770);
+  setScenarioField(target, 'x', 1120);
+  setScenarioField(target, 'y', 720);
+  setScenarioField(blocker, 'x', 690);
+  setScenarioField(blocker, 'y', 720);
   for (const ship of team.getAllShips()) {
     ship.route = null;
     ship.command = { x: ship.x, y: ship.y };
@@ -1791,8 +1792,8 @@ function aiShamisenHuntAttackFormationCheck() {
   )));
   assert(endpointSpread < 330, "三味线AI突破防线时舰队阵型过度散开");
 
-  team.ships.sub1.x = 1010;
-  team.ships.sub1.y = 720;
+  setScenarioField(team.ships.sub1, 'x', 1010);
+  setScenarioField(team.ships.sub1, 'y', 720);
   for (const ship of team.getAllShips()) {
     ship.route = null;
     ship.command = { x: ship.x, y: ship.y };
@@ -1826,14 +1827,14 @@ function aiShamisenHuntDefenseFormationCheck() {
   sim.elapsed = 8.2;
   team.match.elapsed = sim.elapsed;
 
-  enemyMain.x = 470;
-  enemyMain.y = 720;
-  team.ships.main.x = 980;
-  team.ships.main.y = 720;
-  team.ships.sub1.x = 990;
-  team.ships.sub1.y = 670;
-  hunted.x = 990;
-  hunted.y = 770;
+  setScenarioField(enemyMain, 'x', 470);
+  setScenarioField(enemyMain, 'y', 720);
+  setScenarioField(team.ships.main, 'x', 980);
+  setScenarioField(team.ships.main, 'y', 720);
+  setScenarioField(team.ships.sub1, 'x', 990);
+  setScenarioField(team.ships.sub1, 'y', 670);
+  setScenarioField(hunted, 'x', 990);
+  setScenarioField(hunted, 'y', 770);
   bot.rememberContact(enemyMain, "visible");
   const focus = bot.selectEnemyFocus(team.ships.main);
   const context = bot.buildTacticalContext(team.ships.main, focus);
@@ -1863,15 +1864,15 @@ function aiEdgeRecoveryCheck() {
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
-  aiMain.x = 1410;
-  aiMain.y = 720;
-  aiMain.angle = Math.PI;
+  setScenarioField(aiMain, 'x', 1410);
+  setScenarioField(aiMain, 'y', 720);
+  setScenarioField(aiMain, 'angle', Math.PI);
   aiMain.command = { ...aiMain.command, x: aiMain.x };
   aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
-  enemyMain.x = 760;
-  enemyMain.y = 720;
+  setScenarioField(enemyMain, 'x', 760);
+  setScenarioField(enemyMain, 'y', 720);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;

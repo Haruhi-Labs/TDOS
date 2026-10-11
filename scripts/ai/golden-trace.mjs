@@ -1,3 +1,4 @@
+import { setScenarioField } from '../core-tests/ship-fixture.mjs';
 import { observeEnemyEntity } from "../../shared/game/ai/bridge/observation.js";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 // AI 重构期的黄金轨迹工具：在固定随机序列下逐帧记录对局摘要，用于证明重构前后行为一致。
@@ -75,9 +76,9 @@ function loadoutAt(index) {
 }
 
 function holdShip(ship, x, y, angle = null) {
-  ship.x = x;
-  ship.y = y;
-  if (angle !== null) ship.angle = angle;
+  setScenarioField(ship, 'x', x);
+  setScenarioField(ship, 'y', y);
+  if (angle !== null) setScenarioField(ship, 'angle', angle);
   ship.command = { x, y };
   ship.route = null;
 }
@@ -113,9 +114,9 @@ function buildBarrierBreach(breakerKind) {
   }
   holdShip(defendingMain, 650, 720);
   holdShip(breaker, 940, 720, Math.PI);
-  breaker.energy = breaker.maxEnergy;
-  attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
-  attackingTeam.ships.main.y = 720;
+  setScenarioField(breaker, 'energy', breaker.maxEnergy);
+  setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
+  setScenarioField(attackingTeam.ships.main, 'y', 720);
   bot.moveTimer = 0;
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;

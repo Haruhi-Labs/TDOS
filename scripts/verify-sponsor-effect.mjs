@@ -1,3 +1,4 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { SponsorEffect } from "../shared/game/sponsor-effect.js";
 import { MatchSimulation } from "../shared/game-core.js";
@@ -29,7 +30,7 @@ assert.throws(() => { effect.expiresAt = Infinity; }, TypeError);
 
 const match = new MatchSimulation({ seed: 534, teamLoadouts: { A: { main: "tsuruya", sub1: "kyon", sub2: "yuki" } } });
 const team = match.teamA;
-team.ships.main.hp -= 10;
+setScenarioField(team.ships.main, 'hp', team.ships.main.hp - (10));
 assert.equal(team.castFlagshipSkill(), true);
 assert.throws(() => { team.effects = {}; }, TypeError, "不能替换效果投影来绕过所有者");
 assert.throws(() => { team.effects.sponsorUntil = 0; }, TypeError, "外部不能绕过赞助净化保护");

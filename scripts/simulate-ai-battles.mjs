@@ -1,3 +1,4 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import { observeEnemyEntity } from "../shared/game/ai/bridge/observation.js";
 import { unlockSupport } from "../shared/game/haruhi-support.js";
 import {
@@ -237,18 +238,18 @@ function runBarrierBreachScenario(breakerKind, seed) {
     bot.scheduleSkillDecision("sub1", 0);
   }
 
-  defendingMain.x = 650;
-  defendingMain.y = 720;
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
   defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
   defendingMain.route = null;
-  breaker.x = 940;
-  breaker.y = 720;
-  breaker.angle = Math.PI;
-  breaker.energy = breaker.maxEnergy;
+  setScenarioField(breaker, 'x', 940);
+  setScenarioField(breaker, 'y', 720);
+  setScenarioField(breaker, 'angle', Math.PI);
+  setScenarioField(breaker, 'energy', breaker.maxEnergy);
   breaker.command = { x: breaker.x, y: breaker.y };
   breaker.route = null;
-  attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
-  attackingTeam.ships.main.y = 720;
+  setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
+  setScenarioField(attackingTeam.ships.main, 'y', 720);
   bot.moveTimer = 0;
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
@@ -296,13 +297,13 @@ function runBarrierInfiltrationScenario(seed) {
   const attackingTeam = simulation.teamB;
   const attackingMain = attackingTeam.ships.main;
   const bot = simulation.botBySeat("B");
-  defendingMain.x = 650;
-  defendingMain.y = 720;
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
   defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
   defendingMain.route = null;
-  attackingMain.x = 930;
-  attackingMain.y = 720;
-  attackingMain.angle = Math.PI;
+  setScenarioField(attackingMain, 'x', 930);
+  setScenarioField(attackingMain, 'y', 720);
+  setScenarioField(attackingMain, 'angle', Math.PI);
   attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
   attackingMain.route = null;
   bot.moveTimer = 0;

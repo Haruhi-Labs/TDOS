@@ -1,3 +1,5 @@
+import "./verify-ship-state-ownership.mjs";
+import { setScenarioField, assignScenario } from './core-tests/ship-fixture.mjs';
 import "./verify-ai-search-ownership.mjs";
 import "./verify-ai-observation-ownership.mjs";
 import { convertZoneSupport } from "../shared/game/rules/support-conversion.js";
@@ -9,9 +11,9 @@ const match = new MatchSimulation({ mode: "pvp", seed: 741 });
 const left = match.teamA.ships.main;
 const right = match.teamB.ships.main;
 const originalRules = match.rules;
-left.x = right.x = 700;
-left.y = 700;
-right.y = 701;
+setScenarioField(left, 'x', setScenarioField(right, 'x', 700));
+setScenarioField(left, 'y', 700);
+setScenarioField(right, 'y', 701);
 sampleVisibility(match.teamA, [right.id]);
 
 // 未新增角色分支，仅替换能力契约即可改变通用碰撞、伤害资格与广播视野。
@@ -116,7 +118,7 @@ const scout = new Scout(sourceTeam, 700, 700, { zone: sourceZone });
 sourceTeam.addScout(scout);
 const patrol = { x: 701, y: 702 };
 assert.equal(sourceTeam.assignScoutMission(scout, { zoneId: 1, seekPoint: patrol, patrolCenter: patrol }), true);
-patrol.x = -999;
+setScenarioField(patrol, 'x', -999);
 assert.equal(scout.command.x, 701, "任务输入不能保留调用方的可写点引用");
 assert.equal(scout.patrolCenter.x, 701);
 const wingman = new Wingman(sourceTeam, 700, 700, sourceZone);
@@ -136,7 +138,7 @@ console.log("实体所有权校验通过：任务输入隔离，策反同时移�
 const { resolveShipCollisions } = await import("../shared/game/collision-system.js");
 const hulls = [100, 101, 102].map((x, index) => ({
   id: index + 1, x, y: 100, radius: 2, seat: index, participates: true, attached: false, collidesWithAttachedAllies: false,
-  displaceTo(nextX, nextY) { this.x = nextX; this.y = nextY; },
+  displaceTo(nextX, nextY) { setScenarioField(this, 'x', nextX); setScenarioField(this, 'y', nextY); },
   applyCollisionSlow(until) { this.slowUntil = until; },
 }));
 const oldContacts = new Set();
@@ -175,10 +177,14 @@ console.log("技能端口校验通过：无需模拟对象，保留扣费拒绝�
 assert.equal(createHullCollisionPort(left, match.rules), hullPort, "同一实体和能力契约复用碰撞句柄");
 assert.notEqual(createHullCollisionPort(left, { ...match.rules }), hullPort, "替换能力契约必须更新句柄");
 assert.throws(() => { hullPort.displaceTo = () => {}; }, TypeError, "消费者不得替换缓存句柄的操作");
-const originalTeam = left.team;
-left.team = match.teamB;
-assert.equal(hullPort.seat, "B", "转队后复用句柄仍应读取当前阵营");
-left.team = originalTeam;
+const auxiliary = new left.constructor(match.teamA, "transfer_probe", left.x, left.y, left.angle, {
+  characterId: "kyon", isAuxiliary: true,
+});
+match.teamA.addAuxiliaryShip(auxiliary);
+const transferPort = createHullCollisionPort(auxiliary, match.rules);
+assert.equal(auxiliary.transferToTeam(match.teamB), true);
+assert.equal(transferPort.seat, "B", "转队后复用句柄仍应读取当前阵营");
+assert.throws(() => { left.team = match.teamB; }, TypeError);
 
 await import("./verify-character-boundaries.mjs");
 

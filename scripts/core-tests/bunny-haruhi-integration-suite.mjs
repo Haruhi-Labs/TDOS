@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import assert from "node:assert/strict";
 import { MatchSimulation, __resetEntityIds, TICK_DT, CHARACTER_DEFS, CHARACTER_ORDER, energyRateForThrottle } from "../../shared/game-core.js";
@@ -22,10 +23,10 @@ function simulation(stage = false, enabled = true, opponentMain = "kyon") {
     team.configureFormation(2);
     sim.combatEnabled[team.seat] = false;
     team.getPlayerShips().forEach((ship, i) => {
-      ship.x = team.seat === "A" ? 200 : 1200;
-      ship.y = 300 + i * 300;
+      setScenarioField(ship, 'x', team.seat === "A" ? 200 : 1200);
+      setScenarioField(ship, 'y', 300 + i * 300);
       ship.command = { x: ship.x, y: ship.y };
-      ship.throttle = 0;
+      setScenarioField(ship, 'throttle', 0);
     });
   }
   return sim;
@@ -36,12 +37,12 @@ function exposureCheck() {
   const sim = simulation(true);
   const source = sim.teamA.ships.main;
   const target = sim.teamB.ships.sub1;
-  target.x = source.x + 172;
-  target.y = source.y;
+  setScenarioField(target, 'x', source.x + 172);
+  setScenarioField(target, 'y', source.y);
   target.command = { x: target.x, y: target.y };
-  target.hp = 300;
-  target.energy = 90;
-  target.throttle = 1;
+  setScenarioField(target, 'hp', 300);
+  setScenarioField(target, 'energy', 90);
+  setScenarioField(target, 'throttle', 1);
   const hpMax = target.maxHp;
   resolveBunnyStages(sim);
   assert.equal(target.isControlLocked(), true, "中心恰好在边界时入场");
@@ -50,7 +51,7 @@ function exposureCheck() {
   assert.equal(sim.applyActionForSeat("B", { type: "cast_sub_skill", shipKey: "sub1" }), false);
   sim.teamB.updateEnergy(0.1);
   near(target.energy, 90 - target.base.moveDrain * 0.1);
-  target.throttle = 0;
+  setScenarioField(target, 'throttle', 0);
   sim.teamB.updateEnergy(0.1);
   near(target.energy, 90 - target.base.moveDrain * 0.1);
   sim.teamB.configureFormation(0);
@@ -76,19 +77,19 @@ function exposureCheck() {
   sim.elapsed = 11;
   advanceBunnyRules(sim);
   near(target.hp, hp + hpMax * 0.004);
-  sim.teamB.forceCharacterSkillsDisabled = true;
+  sim.teamB.setRestrictions({ characters: true });
   near(target.statWithBuffs("damage", 10), 12, "目标封印不应关闭敌方光环");
-  target.x += 1;
+  setScenarioField(target, 'x', target.x + (1));
   resolveBunnyStages(sim);
   assert.equal(target.bunnyStageExposure.inside, false);
   assert.equal(target.bunnyStageExposure.firstEntranceHealConsumed, true);
-  target.x -= 1;
+  setScenarioField(target, 'x', target.x - (1));
   resolveBunnyStages(sim);
   assert.equal(target.isControlLocked(), false, "15秒内重入不触发锁定");
   sim.elapsed = 22;
   advanceBunnyRules(sim);
   assert.equal(target.bunnyStageExposure.firstEntranceHealConsumed, true);
-  source.alive = false;
+  setScenarioField(source, 'alive', false);
   cleanupBunnySources(sim);
   assert.equal(target.bunnyStageExposure.phase, "none");
   assert.equal(target.bunnyStageExposure.nextEntryControlAt, 15);
@@ -97,13 +98,13 @@ function exposureCheck() {
 function transformCheck() {
   const sim = simulation();
   const ship = sim.teamA.ships.sub1;
-  ship.energy = 0;
-  ship.hp = 132;
+  setScenarioField(ship, 'energy', 0);
+  setScenarioField(ship, 'hp', 132);
   const before = JSON.stringify(sim.serializeState());
   assert.equal(cast(sim), false);
   assert.equal(JSON.stringify(sim.serializeState()), before, "失败无资源/奖励/快照副作用");
-  ship.hp = 880;
-  ship.speed = 10;
+  setScenarioField(ship, 'hp', 880);
+  setScenarioField(ship, 'speed', 10);
   ship.cooldown = 2;
   const oldRate = ship.effectiveFireRate();
   assert.equal(cast(sim), true, "零能量仍可施放无能耗变身");
@@ -154,21 +155,21 @@ function transformCheck() {
   assert.equal(ship.bunnyHaruhi.companionSpawned, true);
   assert.equal(sim.teamA.extraShips[0].id, ship.bunnyHaruhi.companionId);
   assert.equal(ship.bunnyHaruhi.support.supporters.size, 3);
-  ship.throttle = 0;
+  setScenarioField(ship, 'throttle', 0);
   assert.equal(ship.throttle, 1.4, "直接赋值也必须锁档");
   sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "sub1", throttle: 0.4 });
   assert.equal(ship.throttle, 1.4);
   sim.applyActionForSeat("A", { type: "set_route", shipKey: "sub1", endX: 700, endY: 800, throttle: 0 });
   assert.equal(ship.throttle, 1.4);
-  sim.teamA.forceCharacterSkillsDisabled = true;
-  ship.throttle = 0.4;
+  sim.teamA.setRestrictions({ characters: true });
+  setScenarioField(ship, 'throttle', 0.4);
   assert.equal(ship.throttle, 0.4);
-  sim.teamA.forceCharacterSkillsDisabled = false;
+  sim.teamA.setRestrictions({ characters: false });
   assert.equal(ship.throttle, 1.4);
   sim.teamA.startCooldown("sub1", 0);
   assert.equal(cast(sim), true);
   assert.equal(ship.throttle, 1.4, "离开encore保留当前档位");
-  ship.throttle = 0.4;
+  setScenarioField(ship, 'throttle', 0.4);
   assert.equal(ship.throttle, 0.4);
   const snapshot = ship.serialize().bunnyHaruhi;
   assert.equal(Object.hasOwn(snapshot, "visitedForms"), false);
@@ -185,26 +186,26 @@ function encoreMovementCheck() {
     assert.equal(cast(sim), true);
   }
   const sampleSpeed = (target, energy) => {
-    target.x = 200;
-    target.y = 600;
-    target.angle = 0;
-    target.speed = 0;
+    setScenarioField(target, 'x', 200);
+    setScenarioField(target, 'y', 600);
+    setScenarioField(target, 'angle', 0);
+    setScenarioField(target, 'speed', 0);
     target.route = null;
     target.command = { x: 900, y: 600 };
-    target.throttle = 1.4;
-    target.energy = energy;
+    setScenarioField(target, 'throttle', 1.4);
+    setScenarioField(target, 'energy', energy);
     target.update(TICK_DT);
     return target.speed;
   };
   const fullSpeed = sampleSpeed(ship, 100);
   assert.ok(fullSpeed > 0);
   near(sampleSpeed(ship, 0), fullSpeed);
-  ship.energy = 100;
+  setScenarioField(ship, 'energy', 100);
   const energyRate = energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), 1.4);
   assert.ok(energyRate < 0);
   sim.teamA.updateEnergy(TICK_DT);
   near(ship.energy, 100 + energyRate * TICK_DT);
-  ship.energy = 0.001;
+  setScenarioField(ship, 'energy', 0.001);
   sim.teamA.updateEnergy(TICK_DT);
   assert.equal(ship.energy, 0, "耗尽后能量钳到0，不停止4档移动");
   near(sampleSpeed(ship, ship.energy), fullSpeed);
@@ -214,9 +215,9 @@ function encoreMovementCheck() {
   ship.stunUntil(91);
   assert.equal(sampleSpeed(ship, 0), 0, "激奏不免疫控制");
   ship.clearTimedEffect("stunnedUntil", false);
-  sim.teamA.forceCharacterSkillsDisabled = true;
+  sim.teamA.setRestrictions({ characters: true });
   near(sampleSpeed(ship, 0), fullSpeed * 0.15);
-  sim.teamA.forceCharacterSkillsDisabled = false;
+  sim.teamA.setRestrictions({ characters: false });
   sim.elapsed = 100 - TICK_DT;
   near(sampleSpeed(ship, 0), fullSpeed);
   const locked = ship.serialize();
@@ -233,9 +234,9 @@ function encoreMovementCheck() {
   assert.equal(ship.serialize().statusEffects.some(({ id }) => id === "bunny_encore"), false);
   sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "sub1", throttle: 0.4 });
   assert.equal(ship.throttle, 0.4);
-  sim.teamA.forceCharacterSkillsDisabled = true;
+  sim.teamA.setRestrictions({ characters: true });
   sim.elapsed += TICK_DT;
-  sim.teamA.forceCharacterSkillsDisabled = false;
+  sim.teamA.setRestrictions({ characters: false });
   assert.equal(ship.throttle, 0.4, "封印解除不能补发已到期锁档");
 }
 
@@ -256,22 +257,22 @@ function publicationAndBroadcastCheck() {
   assert.equal(cast(sim), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.main.id), false, "knows仅广播自身");
-  sim.teamA.forceSkillsDisabled = true;
+  sim.teamA.setRestrictions({ skills: true });
   refreshBunnyVisibility(sim);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), false);
-  sim.teamA.forceSkillsDisabled = false;
-  sim.teamA.ships.sub1.alive = false;
+  sim.teamA.setRestrictions({ skills: false });
+  setScenarioField(sim.teamA.ships.sub1, 'alive', false);
   sim.update(0);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.main.id), false);
   const stage = simulation(true);
   const main = stage.teamA.ships.main;
   const ally = stage.teamA.ships.sub1;
-  ally.x = main.x + 100;
-  ally.y = main.y;
+  setScenarioField(ally, 'x', main.x + 100);
+  setScenarioField(ally, 'y', main.y);
   refreshBunnyVisibility(stage);
   assert.equal(stage.teamB.visibleEnemyIds.has(main.id), true);
   assert.equal(stage.teamB.visibleEnemyIds.has(ally.id), true);
-  ally.x = main.x + 173;
+  setScenarioField(ally, 'x', main.x + 173);
   refreshBunnyVisibility(stage);
   assert.equal(stage.teamB.visibleEnemyIds.has(ally.id), false);
   assert.equal(stage.teamA.castSubSkill("main"), false);
@@ -282,12 +283,12 @@ function tickOrderingCheck() {
   const sim = simulation(true);
   const source = sim.teamA.ships.main;
   const target = sim.teamB.ships.sub1;
-  target.x = source.x + 172.1;
-  target.y = source.y;
-  target.angle = Math.PI;
+  setScenarioField(target, 'x', source.x + 172.1);
+  setScenarioField(target, 'y', source.y);
+  setScenarioField(target, 'angle', Math.PI);
   target.command = { x: source.x, y: source.y };
-  target.throttle = 1;
-  target.speed = 33;
+  setScenarioField(target, 'throttle', 1);
+  setScenarioField(target, 'speed', 33);
   target.cooldown = 0;
   sim.combatEnabled.B = true;
   resolveBunnyStages(sim);
@@ -297,18 +298,17 @@ function tickOrderingCheck() {
   assert.equal(target.isControlLocked(), true);
   assert.equal(target.speed, 0);
   assert.equal(sim.projectiles.length, 0, "移动后入场必须在开火前锁定");
-  const extra = Object.assign(Object.create(Object.getPrototypeOf(target)), target, {
-    id: 9999, key: "extra", slotKey: "extra", isAuxiliary: true, attachToMain: false,
+  const extra = new target.constructor(sim.teamB, "extra", target.x, target.y, target.angle, {
+    characterId: "kyon", isAuxiliary: true, attachToMain: false,
   });
-  delete extra.bunnyStageExposure;
   sim.teamB.addAuxiliaryShip(extra);
   resolveBunnyStages(sim);
   assert.equal(extra.bunnyStageExposure, undefined, "舞台不处理召唤物");
   const both = simulation(true, true, "bunny_haruhi");
   const a = both.teamA.ships.main;
   const b = both.teamB.ships.main;
-  b.x = a.x + 100;
-  b.y = a.y;
+  setScenarioField(b, 'x', a.x + 100);
+  setScenarioField(b, 'y', a.y);
   resolveBunnyStages(both);
   both.elapsed = 10;
   both.tick = 300;
@@ -331,10 +331,10 @@ function supportIntegrationCheck() {
   assert.equal(sim.teamA.beams.length, 1);
   assert.equal(sim.teamA.beams[0].shipKey, "sub1");
   near(sim.teamA.beams[0].x1, ship.x);
-  sim.teamA.forceSkillsDisabled = true;
+  sim.teamA.setRestrictions({ skills: true });
   sim.update(TICK_DT);
   assert.deepEqual(ship.bunnyHaruhi.support.queuedBeamAt, []);
-  sim.teamA.forceSkillsDisabled = false;
+  sim.teamA.setRestrictions({ skills: false });
   sim.update(TICK_DT);
   near(ship.bunnyHaruhi.support.timeTravelerNextAt, sim.elapsed + 10);
   const ram = simulation(false, true, "koizumi");
@@ -342,12 +342,12 @@ function supportIntegrationCheck() {
   const defender = ram.teamB.ships.main;
   const radius = defender.effectiveVision();
   unlockSupport(attacker, ["otherworlder"], 0, () => 0);
-  attacker.x = defender.x - radius + 1;
-  attacker.y = defender.y;
-  attacker.previousX = attacker.x - 2;
-  attacker.previousY = attacker.y;
-  attacker.angle = 0;
-  attacker.speed = 100;
+  setScenarioField(attacker, 'x', defender.x - radius + 1);
+  setScenarioField(attacker, 'y', defender.y);
+  setScenarioField(attacker, 'previousX', attacker.x - 2);
+  setScenarioField(attacker, 'previousY', attacker.y);
+  setScenarioField(attacker, 'angle', 0);
+  setScenarioField(attacker, 'speed', 100);
   ram.resolveKoizumiBarrierRamContacts();
   assert.equal(ram.teamB.koizumiBarrier.remainingHits, 0);
   assert.equal(attacker.bunnyHaruhi.support.otherworlderReadyAt, 8);
@@ -375,8 +375,8 @@ function authorityCheck() {
       } else sim.applyActionForSeat("A", action);
       if (i === 20) {
         const ship = sim.teamA.ships.sub1;
-        ship.x = sim.teamB.ships.main.x - 100;
-        ship.y = sim.teamB.ships.main.y;
+        setScenarioField(ship, 'x', sim.teamB.ships.main.x - 100);
+        setScenarioField(ship, 'y', sim.teamB.ships.main.y);
         ship.command = { x: ship.x, y: ship.y };
       }
       sim.update(TICK_DT);

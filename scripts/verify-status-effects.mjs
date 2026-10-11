@@ -1,3 +1,4 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import { selectShamisenHuntTarget } from "../shared/game/shamisen-hunt.js";
 import { unlockSupport } from "../shared/game/haruhi-support.js";
 import assert from "node:assert/strict";
@@ -35,7 +36,7 @@ const main = team.ships.main;
 main.stunUntil(12);
 main.silenceUntil(16);
 main.chargeNextShot(2);
-main.collisionSlowUntil = 14;
+setScenarioField(main, 'collisionSlowUntil', 14);
 main.forcedKnockback = { startedAt: 11, endsAt: 11.58 };
 for (let hit = 0; hit < 2; hit += 1) main.registerClawHit({ triggerHits: 4, markDuration: 8 }, simulation);
 applyHaruhiHeroPowerShock(main, 11);
@@ -54,7 +55,7 @@ assert.ok(cleaned.includes("haruhi_boost") && cleaned.includes("hunt"), "净化�
 team.clearActiveSkillBuffs({ preserveCurrentTick: false });
 assert.ok(!collect(main).some(({ id }) => id === "broadcast" || id === "haruhi_boost"));
 assert.ok(collect(main).some(({ id }) => id === "support_alien"), "涤除主动增益不能删除常驻支援");
-main.alive = false;
+setScenarioField(main, 'alive', false);
 assert.deepEqual(collect(main), [], "击沉后必须清空状态卡");
 
 for (const characterId of ["tsuruya", "asakura", "future1096", "koizumi", "kyon"]) {

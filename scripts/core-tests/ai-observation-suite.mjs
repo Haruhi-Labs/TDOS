@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT } from "../../shared/game-core.js";
 import { buildObservation, observeEnemySpawn } from "../../shared/game/ai/bridge/observation.js";
@@ -8,8 +9,8 @@ function createMatch(teamLoadouts, options = {}) {
 }
 
 function hold(ship, x, y) {
-  ship.x = x;
-  ship.y = y;
+  setScenarioField(ship, 'x', x);
+  setScenarioField(ship, 'y', y);
   ship.command = { x, y };
   ship.route = null;
 }
@@ -65,7 +66,7 @@ function fogCheck() {
   assert.ok(seen.enemy.visibleTeamBuffs, "看见敌舰后可以读取公开的编队增益");
 
   // 可见集合来自上一帧，观测不得包含已被击沉的实体。
-  enemyMain.alive = false;
+  setScenarioField(enemyMain, 'alive', false);
   assert.equal(buildObservation(sim, "B").enemy.visible.some((entity) => entity.id === enemyMain.id), false);
 }
 
@@ -162,7 +163,7 @@ function bunnyBroadcastCheck() {
   assert.equal(buildObservation(sim, "B").privileged.hasHiddenEnemyShip, true);
 
   // 技能被封印时广播停止，对手 AI 的观测随之清空。
-  fleet.forceSkillsDisabled = true;
+  fleet.setRestrictions({ skills: true });
   assert.deepEqual(visibleKeys(), []);
 }
 
@@ -183,9 +184,9 @@ function facadeCheck() {
   assert.equal(bot.port.observeLive, undefined);
   assert.equal(bot.port.observeTactics, undefined);
   assert.throws(() => bot.energyProfile(aiMain), /只接受观测数据/);
-  aiMain.energy = aiMain.maxEnergy * 0.5;
+  setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.5);
   const before = bot.energyProfile("main").current;
-  aiMain.energy = 0;
+  setScenarioField(aiMain, 'energy', 0);
   assert.ok(bot.energyProfile("main").current < before, "外部调用没有刷新观测");
   assert.equal(bot.energyProfile("main").current, sim.teamB.fleetEnergyForShip("main").current);
 }

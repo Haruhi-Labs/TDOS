@@ -1,3 +1,4 @@
+import { FleetRoster } from "../systems/fleet-roster.js";
 import { FleetPerception } from "../systems/visibility.js";
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
 import { AircraftOperations } from "../systems/aircraft-operations.js";
@@ -31,6 +32,26 @@ import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  #statMult;
+  get statMult() { return this.#statMult; }
+  #aiFocusLowHp;
+  get aiFocusLowHp() { return this.#aiFocusLowHp; }
+  #forceSkillsDisabled;
+  get forceSkillsDisabled() { return this.#forceSkillsDisabled; }
+  #forceCharacterSkillsDisabled;
+  get forceCharacterSkillsDisabled() { return this.#forceCharacterSkillsDisabled; }
+  #forceScoutsDisabled;
+  get forceScoutsDisabled() { return this.#forceScoutsDisabled; }
+  #damageFloorRatio;
+  get damageFloorRatio() { return this.#damageFloorRatio; }
+  #focusHpFrac;
+  get focusHpFrac() { return this.#focusHpFrac; }
+  setRestrictions({ skills = this.#forceSkillsDisabled, characters = this.#forceCharacterSkillsDisabled, scouts = this.#forceScoutsDisabled }) {
+    this.#forceSkillsDisabled = Boolean(skills);
+    this.#forceCharacterSkillsDisabled = Boolean(characters);
+    this.#forceScoutsDisabled = Boolean(scouts);
+  }
+
   #perception = new FleetPerception();
   #fireControl = new FleetFireControl();
   get visibleEnemyIds() { return this.#perception.visibleIds; }
@@ -43,10 +64,9 @@ export class Team {
       this.#effectView = Object.freeze({ haruhiBoostUntil, sponsorUntil });
     return this.#effectView;
   }
-  #extraShips = Object.freeze([]);
-  #ships;
-  get extraShips() { return this.#extraShips; }
-  get ships() { return this.#ships; }
+  #roster;
+  get extraShips() { return this.#roster.extra; }
+  get ships() { return this.#roster.ships; }
   #aircraft;
   get scouts() { return this.#aircraft.scouts; }
   get wingmen() { return this.#aircraft.wingmen; }
@@ -61,6 +81,7 @@ export class Team {
   #sponsor;
   #haruhi;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
+    this.#roster = new FleetRoster(this);
     this.match = match;
     this.seat = seat;
     this.name = name;
@@ -76,17 +97,17 @@ export class Team {
     //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
     //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
     // 玩家队没有 BotController,二者保持默认(1 / false),行为与既有完全一致。
-    this.statMult = 1;
-    this.aiFocusLowHp = false;
+    this.#statMult = 1;
+    this.#aiFocusLowHp = false;
     // 独立教程使用的安全门：敌军全程禁用技能，友军在自由战前锁血至 1/4。
     // 常规对战均保持默认值，不改变既有规则。
-    this.forceSkillsDisabled = false;
-    this.forceCharacterSkillsDisabled = false;
-    this.forceScoutsDisabled = false;
-    this.damageFloorRatio = 0;
+    this.#forceSkillsDisabled = false;
+    this.#forceCharacterSkillsDisabled = false;
+    this.#forceScoutsDisabled = false;
+    this.#damageFloorRatio = 0;
     // 极限集火只对"残血"目标生效(血量 ≤ 该值×自身上限才值得转火去收人头);
     // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
-    this.focusHpFrac = 0.5;
+    this.#focusHpFrac = 0.5;
     this.#skills = new SkillCycle(createTeamSkillPort(this, {
       activateSupport: (duration) => this.#haruhi.cast(duration),
       activateSponsor: (duration) => this.#sponsor.activate(duration),
@@ -110,7 +131,7 @@ export class Team {
     const sub1SpawnOffset = rotateOffset(sub1FormationOffset.x * 0.5, sub1FormationOffset.y * 0.5, facing);
     const sub2SpawnOffset = rotateOffset(sub2FormationOffset.x * 0.5, sub2FormationOffset.y * 0.5, facing);
 
-    this.#ships = Object.freeze({
+    this.#roster.initialize({
       main: new Ship(this, "main", spawnX, spawnY, facing, {
         slotKey: "main",
         characterId: this.loadout.main,
@@ -208,11 +229,13 @@ export class Team {
   }
 
   addAuxiliaryShip(ship) {
-    this.#extraShips = Object.freeze([...this.#extraShips, ship]);
+    return this.#roster.add(ship);
   }
 
+  canAcceptAuxiliaryShip(ship) { return this.#roster.accepts(ship); }
+
   removeAuxiliaryShip(ship) {
-    this.#extraShips = Object.freeze(this.#extraShips.filter((candidate) => candidate !== ship));
+    return this.#roster.remove(ship);
   }
 
   getAllShips() {
@@ -220,16 +243,16 @@ export class Team {
   }
 
   configureAiHandicap({ focusLowHp, statMult }) {
-    this.aiFocusLowHp = focusLowHp;
+    this.#aiFocusLowHp = focusLowHp;
     this.applyAiStatMult(statMult);
   }
 
   setTrainingDamageFloor(ratio) {
-    this.damageFloorRatio = ratio;
+    this.#damageFloorRatio = ratio;
   }
 
   configureTrainingFleet(stats, positions) {
-    this.forceCharacterSkillsDisabled = true;
+    this.#forceCharacterSkillsDisabled = true;
     this.configureFormation(2);
     for (const ship of this.getAllShips()) ship.configureTraining(stats, positions[ship.key] || positions.main);
   }
@@ -238,14 +261,14 @@ export class Team {
   // 幂等——以已生效的 statMult 为基准取比值,重复调用同一倍率不再叠加。
   applyAiStatMult(mult) {
     const m = Number(mult) > 0 ? Number(mult) : 1;
-    const prev = this.statMult || 1;
+    const prev = this.#statMult || 1;
     if (m !== prev) {
       const ratio = m / prev;
       for (const ship of this.getAllShips()) {
         ship.scaleHullCapacity(ratio);
       }
     }
-    this.statMult = m;
+    this.#statMult = m;
     return this;
   }
 
@@ -345,11 +368,11 @@ export class Team {
   }
 
   areSkillsDisabled() {
-    return this.forceSkillsDisabled || this.forceCharacterSkillsDisabled;
+    return this.#forceSkillsDisabled || this.#forceCharacterSkillsDisabled;
   }
 
   areScoutsDisabled() {
-    return this.forceSkillsDisabled || this.forceScoutsDisabled;
+    return this.#forceSkillsDisabled || this.#forceScoutsDisabled;
   }
 
   cooldownStep(dt) {
@@ -508,7 +531,7 @@ export class Team {
   }
 
   stepCombat(enemyTeam) {
-    if (this.aiFocusLowHp) this.#fireControl.prepare(projectVolleyAttackers(this, enemyTeam), this.focusHpFrac);
+    if (this.#aiFocusLowHp) this.#fireControl.prepare(projectVolleyAttackers(this, enemyTeam), this.#focusHpFrac);
     // 攻击立即结算；后续攻击者必须看见前一发造成的死亡和状态变化。
     for (const ship of this.getAllShips()) ship.tryAttack(this.match, enemyTeam);
     for (const wingman of this.wingmen) wingman.tryAttack(this.match, enemyTeam);

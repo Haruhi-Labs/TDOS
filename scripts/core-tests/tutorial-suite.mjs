@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import { MatchSimulation } from "../../shared/game-core.js";
 import {
   TUTORIAL_ATTACK_TARGET,
@@ -40,13 +41,13 @@ function tutorialBattleRulesCheck() {
   playerMain.takeDamage(playerMain.maxHp * 10, null, sim);
   assert(playerMain.alive && playerMain.hp >= playerMain.maxHp * 0.25, "教程友军1/4舰体锁定未生效");
 
-  playerMain.x = 720;
-  playerMain.y = 720;
+  setScenarioField(playerMain, 'x', 720);
+  setScenarioField(playerMain, 'y', 720);
   playerMain.command = { x: 720, y: 720 };
   playerMain.cooldown = 0;
   const enemyMain = sim.teamB.ships.main;
-  enemyMain.x = 840;
-  enemyMain.y = 720;
+  setScenarioField(enemyMain, 'x', 840);
+  setScenarioField(enemyMain, 'y', 720);
   enemyMain.command = { x: 840, y: 720 };
   sim.teamA.computeVisibility(sim.teamB);
   sim.projectiles = [];

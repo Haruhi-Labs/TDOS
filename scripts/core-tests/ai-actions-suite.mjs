@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { MatchSimulation, throttleForGear } from "../../shared/game-core.js";
 import { AI_ACTION_TYPES, aiActions } from "../../shared/game/ai/actions.js";
@@ -57,7 +58,7 @@ function portCheck() {
   assert.equal(port.submit(aiActions.setThrottle({ shipKey: "sub1", throttle: 0.72 })), true);
   assert.equal(team.ships.sub1.throttle, throttleForGear(2), "档位值必须归一到离散档");
 
-  team.ships.main.energy = team.ships.main.maxEnergy;
+  setScenarioField(team.ships.main, 'energy', team.ships.main.maxEnergy);
   assert.equal(port.submit(aiActions.launchScout({
     zoneId: 4,
     shipKey: "main",
@@ -85,7 +86,7 @@ function permissionCheck() {
   const sim = createMatch();
   const ship = sim.teamB.ships.main;
   const port = createActionPort(sim, "B");
-  ship.throttle = throttleForGear(4);
+  setScenarioField(ship, 'throttle', throttleForGear(4));
   ship.stunUntil(sim.elapsed + 5);
   // 即使调用方写入旧模式字段，也没有可切换的执行分支。
   port.mode = "direct";

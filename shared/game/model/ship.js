@@ -15,6 +15,44 @@ import { nextEntityId } from "../model/model-support.js";
 import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 
 export class Ship {
+  #team;
+  get team() { return this.#team; }
+  #x;
+  get x() { return this.#x; }
+  #y;
+  get y() { return this.#y; }
+  #angle;
+  get angle() { return this.#angle; }
+  #previousX;
+  get previousX() { return this.#previousX; }
+  #previousY;
+  get previousY() { return this.#previousY; }
+  #previousAngle;
+  get previousAngle() { return this.#previousAngle; }
+  #speed;
+  get speed() { return this.#speed; }
+  #maxHp;
+  get maxHp() { return this.#maxHp; }
+  #hp;
+  get hp() { return this.#hp; }
+  #maxEnergy;
+  get maxEnergy() { return this.#maxEnergy; }
+  #energy;
+  get energy() { return this.#energy; }
+  #radius;
+  get radius() { return this.#radius; }
+  #alive;
+  get alive() { return this.#alive; }
+  #collisionSlowUntil;
+  get collisionSlowUntil() { return this.#collisionSlowUntil; }
+  #formationOffset;
+  get formationOffset() { return this.#formationOffset; }
+  #nameRevealed;
+  get nameRevealed() { return this.#nameRevealed; }
+  #throttle;
+  #throttleConstraint = (value) => value;
+  get throttle() { return this.#throttleConstraint(this.#throttle); }
+
   #base;
   #status = new ShipStatus();
   get effects() { return this.#status.effects; }
@@ -32,11 +70,15 @@ export class Ship {
   get base() { return this.#base; }
 
   constructor(team, key, x, y, facing, options = {}) {
-    this.id = nextEntityId(team.match);
-    this.kind = "ship";
-    this.team = team;
-    this.key = key;
-    this.slotKey = options.slotKey || key;
+    this.#team = team;
+    Object.defineProperties(this, {
+      id: { enumerable: true, value: nextEntityId(team.match) },
+      kind: { enumerable: true, value: "ship" },
+      key: { enumerable: true, value: key },
+      slotKey: { enumerable: true, value: options.slotKey || key },
+      isAuxiliary: { enumerable: true, value: Boolean(options.isAuxiliary) },
+      attachToMain: { enumerable: true, value: options.attachToMain !== false },
+    });
     // 角色身份在创建时固定；换队、编队和形态属于独立的运行状态。
     Object.defineProperties(this, {
       characterId: { enumerable: true, value: options.characterId },
@@ -45,37 +87,35 @@ export class Ship {
     });
     this.#base = options.baseStats
       ? freezePlainData(copyPlainData(options.baseStats)) : this.character.stats;
-    this.isAuxiliary = Boolean(options.isAuxiliary);
-    this.attachToMain = options.attachToMain !== false;
     this.roleLabel = options.roleLabel || slotLabel(this.slotKey);
     this.name = `${this.roleLabel}·${this.character.name}`;
 
-    this.x = x;
-    this.y = y;
-    this.angle = facing;
-    this.previousX = x;
-    this.previousY = y;
-    this.previousAngle = facing;
-    this.speed = 0;
-    this.throttle = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR];
+    this.#x = x;
+    this.#y = y;
+    this.#angle = facing;
+    this.#previousX = x;
+    this.#previousY = y;
+    this.#previousAngle = facing;
+    this.#speed = 0;
+    this.#throttle = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR];
     this.#navigation = new ShipNavigation(createShipNavigationPort(this), { x, y });
     this.route = null;
 
-    this.maxHp = this.base.hp;
-    this.hp = this.maxHp;
-    this.maxEnergy = this.base.energy;
-    this.energy = this.maxEnergy;
-    this.radius = this.base.radius;
-    this.alive = true;
-    this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
+    this.#maxHp = this.base.hp;
+    this.#hp = this.#maxHp;
+    this.#maxEnergy = this.base.energy;
+    this.#energy = this.#maxEnergy;
+    this.#radius = this.base.radius;
+    this.#alive = true;
+    this.#collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
     this.forcedKnockback = null;
 
-    this.#weapon = new WeaponCycle(rngFor(this.team.match).range(0, 0.5));
-    this.formationOffset = { ...(options.formationOffset || { x: 0, y: 0 }) };
+    this.#weapon = new WeaponCycle(rngFor(this.#team.match).range(0, 0.5));
+    this.#formationOffset = Object.freeze({ ...(options.formationOffset || { x: 0, y: 0 }) });
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
-    this.nameRevealed = false;
+    this.#nameRevealed = false;
 
-    this.team.match.shipEffects.initialize(this, { createShip: (...args) => new Ship(...args) });
+    this.#team.match.shipEffects.initialize(this, { createShip: (...args) => new Ship(...args) });
   }
 
   isAttached() {
@@ -86,76 +126,76 @@ export class Ship {
       return false;
     }
     if (this.key === "sub1") {
-      return this.team.splitLevel < 1;
+      return this.#team.splitLevel < 1;
     }
     if (this.key === "sub2") {
-      return this.team.splitLevel < 2;
+      return this.#team.splitLevel < 2;
     }
     return true;
   }
 
   canControl() {
-    if (!this.alive || this.isAuxiliary) {
+    if (!this.#alive || this.isAuxiliary) {
       return false;
     }
     if (this.isControlLocked()) {
       return false;
     }
-    if (!this.team.match.rules.navigationAvailable(this)) {
+    if (!this.#team.match.rules.navigationAvailable(this)) {
       return false;
     }
     if (this.key === "main") {
       return true;
     }
     if (this.key === "sub1") {
-      return this.team.splitLevel >= 1;
+      return this.#team.splitLevel >= 1;
     }
     if (this.key === "sub2") {
-      return this.team.splitLevel >= 2;
+      return this.#team.splitLevel >= 2;
     }
     return false;
   }
 
   // 位移与碰撞副作用由舰船提交，规则模块只提供几何结果。
   displaceTo(x, y, padding = 0) {
-    this.x = this.team.match.clampX(x, padding);
-    this.y = this.team.match.clampY(y, padding);
+    this.#x = this.#team.match.clampX(x, padding);
+    this.#y = this.#team.match.clampY(y, padding);
   }
 
   applyCollisionSlow(until, floor) {
-    this.collisionSlowUntil = Math.max(this.collisionSlowUntil, until);
-    this.speed = Math.min(this.speed, this.effectiveSpeed() * floor);
+    this.#collisionSlowUntil = Math.max(this.#collisionSlowUntil, until);
+    this.#speed = Math.min(this.#speed, this.effectiveSpeed() * floor);
   }
 
   beginForcedKnockback(motion) {
     this.forcedKnockback = { ...motion };
-    this.speed = 0;
+    this.#speed = 0;
     this.route = null;
   }
 
-  applyResourcePlan({ hp = this.hp, energy = this.energy }) {
-    this.hp = hp;
-    this.energy = energy;
+  applyResourcePlan({ hp = this.#hp, energy = this.#energy }) {
+    this.#hp = hp;
+    this.#energy = energy;
   }
 
   scaleHullCapacity(ratio) {
-    this.maxHp = Math.max(1, Math.round(this.maxHp * ratio));
-    this.hp = Math.min(this.maxHp, this.hp * ratio);
+    this.#maxHp = Math.max(1, Math.round(this.#maxHp * ratio));
+    this.#hp = Math.min(this.#maxHp, this.#hp * ratio);
   }
 
   configureTraining(stats, position) {
     this.#base = freezePlainData({ ...this.#base, ...copyPlainData(stats) });
-    this.maxHp = this.hp = stats.hp;
-    this.maxEnergy = this.energy = stats.energy;
-    this.x = position.x;
-    this.y = position.y;
+    this.#maxHp = this.#hp = stats.hp;
+    this.#maxEnergy = this.#energy = stats.energy;
+    this.#x = position.x;
+    this.#y = position.y;
     this.command = { ...position };
     this.route = null;
-    this.speed = 0;
+    this.#speed = 0;
   }
 
   activateTimedEffect(key, duration) {
-    this.#status.activate(key, this.team.match.elapsed + duration, this.team.match.tick);
+    this.#status.activate(key, this.#team.match.elapsed + duration, this.#team.match.tick);
   }
 
   silenceUntil(until) { this.#status.extend("silencedUntil", until); }
@@ -163,126 +203,123 @@ export class Ship {
     this.#status.extend("stunnedUntil", until);
     this.applyControlSpeedLimit();
   }
-  chargeNextShot(multiplier) { this.#status.charge(multiplier, this.team.match.tick); }
+  chargeNextShot(multiplier) { this.#status.charge(multiplier, this.#team.match.tick); }
 
   boostCombatTempo(multiplier) {
-    this.speed *= multiplier;
+    this.#speed *= multiplier;
     this.cooldown /= multiplier;
   }
 
   advanceSpecialRoute(distance, minimumLength, captureRadius) { this.#navigation.advanceSpecialRoute(distance, minimumLength, captureRadius); }
 
   resetHullCapacity(maxHp) {
-    this.maxHp = maxHp;
-    this.hp = maxHp;
+    this.#maxHp = maxHp;
+    this.#hp = maxHp;
   }
 
   rescaleCombatTiming(previousSpeed, previousRate) {
-    if (previousSpeed > 0) this.speed *= this.effectiveSpeed() / previousSpeed;
+    if (previousSpeed > 0) this.#speed *= this.effectiveSpeed() / previousSpeed;
     this.cooldown *= previousRate / this.effectiveFireRate();
   }
 
   followTarget(point, throttle = this.throttle) {
     this.command = { ...point };
-    this.throttle = throttle;
+    this.#throttle = this.#throttleConstraint(throttle);
   }
 
   transferToTeam(destination) {
-    this.team.removeAuxiliaryShip(this);
-    this.team = destination;
+    if (!this.isAuxiliary || destination === this.#team || destination.match !== this.#team.match
+      || !this.#team.extraShips.includes(this) || !destination.canAcceptAuxiliaryShip(this)) return false;
+    this.#team.removeAuxiliaryShip(this);
+    this.#team = destination;
     destination.addAuxiliaryShip(this);
+    return true;
   }
 
   retireWithoutLoss() {
-    this.alive = false;
-    this.hp = 0;
-    this.speed = 0;
+    this.#alive = false;
+    this.#hp = 0;
+    this.#speed = 0;
     this.route = null;
   }
 
   restoreHull(amount) {
-    this.hp = Math.min(this.maxHp, this.hp + amount);
+    this.#hp = Math.min(this.#maxHp, this.#hp + amount);
   }
 
   drainHull(amount) {
-    this.hp -= amount;
+    this.#hp -= amount;
   }
 
   restoreEnergy(amount) {
-    this.energy = clamp(this.energy + amount, 0, this.maxEnergy);
+    this.#energy = clamp(this.#energy + amount, 0, this.#maxEnergy);
   }
 
   spendEnergy(amount) {
-    this.energy = Math.max(0, this.energy - amount);
+    this.#energy = Math.max(0, this.#energy - amount);
   }
 
   rescaleFormMotion(speedRatio, cooldownRatio) {
-    this.speed = this.alive ? Math.max(0, this.speed * speedRatio) : 0;
+    this.#speed = this.#alive ? Math.max(0, this.#speed * speedRatio) : 0;
     this.cooldown = Math.max(0, this.cooldown * cooldownRatio);
   }
 
   scaleMotion(speedRatio, cooldownRatio) {
-    this.speed *= speedRatio;
+    this.#speed *= speedRatio;
     this.cooldown *= cooldownRatio;
   }
 
   setFlightSpeed(speed) {
-    this.speed = speed;
+    this.#speed = speed;
   }
 
   setFlightHeading(angle) {
-    this.angle = angle;
+    this.#angle = angle;
   }
 
   navigateTo(point, throttle) {
     this.route = null;
     this.command = { ...point };
-    if (throttle !== undefined) this.throttle = throttle;
+    if (throttle !== undefined) this.#throttle = this.#throttleConstraint(throttle);
   }
 
   revealName() {
-    this.nameRevealed = true;
+    this.#nameRevealed = true;
   }
 
   setThrottle(value) {
-    this.throttle = normalizeThrottleToGear(value, this.throttle);
+    this.#throttle = this.#throttleConstraint(normalizeThrottleToGear(value, this.throttle));
   }
 
   configureThrottleConstraint(resolve) {
-    // 舰船持有档位存储；专属效果只提供实时约束，不替换基础属性。
-    let throttle = this.throttle;
-    Object.defineProperty(this, "throttle", {
-      enumerable: true, configurable: true,
-      get: () => resolve(throttle),
-      set: (value) => { throttle = resolve(value); },
-    });
+    this.#throttleConstraint = resolve;
   }
 
   hasEffect(effectKey) {
-    return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
+    return Number(this.effects[effectKey] || 0) > this.#team.match.elapsed;
   }
 
   isControlLocked() {
-    return this.team.match.rules.controlLocked(this);
+    return this.#team.match.rules.controlLocked(this);
   }
 
   isSilenced() {
-    return this.team.match.rules.silenced(this);
+    return this.#team.match.rules.silenced(this);
   }
 
   isControlImmune() {
-    return this.team.match.rules.controlImmune(this);
+    return this.#team.match.rules.controlImmune(this);
   }
 
   clearControlEffects() {
     this.#status.clearControl();
-    this.collisionSlowUntil = 0;
+    this.#collisionSlowUntil = 0;
     this.forcedKnockback = null;
-    this.team.match.shipEffects.clearControl(this);
+    this.#team.match.shipEffects.clearControl(this);
   }
 
   isKoizumiOrbActive() {
-    return this.team.match.rules.orbActive(this);
+    return this.#team.match.rules.orbActive(this);
   }
 
   isTargetableByFire() {
@@ -290,11 +327,11 @@ export class Ship {
   }
 
   isDamageImmune() {
-    return this.team.match.rules.damageImmune(this);
+    return this.#team.match.rules.damageImmune(this);
   }
 
   statWithBuffs(statKey, baseValue) {
-    return this.team.match.rules.statWithBuffs(this, statKey, baseValue);
+    return this.#team.match.rules.statWithBuffs(this, statKey, baseValue);
   }
 
   baseSpeed() {
@@ -318,30 +355,36 @@ export class Ship {
   }
 
   effectiveSpeed() {
-    return this.team.match.rules.effectiveSpeed(this);
+    return this.#team.match.rules.effectiveSpeed(this);
   }
 
   minimumFlightSpeed() {
-    return this.team.match.rules.minimumFlightSpeed(this);
+    return this.#team.match.rules.minimumFlightSpeed(this);
   }
 
   applyControlSpeedLimit() {
-    if (this.team.match.rules.controlStopsFlight(this)) {
-      this.speed = 0;
+    if (this.#team.match.rules.controlStopsFlight(this)) {
+      this.#speed = 0;
       return;
     }
     const minimumSpeed = this.minimumFlightSpeed();
-    this.speed = minimumSpeed > 0 ? Math.max(this.speed, minimumSpeed) : 0;
+    this.#speed = minimumSpeed > 0 ? Math.max(this.#speed, minimumSpeed) : 0;
+  }
+
+  captureFlightOrigin() {
+    this.#previousX = this.#x;
+    this.#previousY = this.#y;
+    this.#previousAngle = this.#angle;
   }
 
   advanceFlight(dt, padding = 8) {
-    this.displaceTo(this.x + Math.cos(this.angle) * this.speed * dt, this.y + Math.sin(this.angle) * this.speed * dt, padding);
+    this.displaceTo(this.#x + Math.cos(this.#angle) * this.#speed * dt, this.#y + Math.sin(this.#angle) * this.#speed * dt, padding);
   }
 
   // 导航提交航向/速度意图，舰船统一积分坐标；端口不具备逐字段写权限。
   advanceSteeredFlight(angle, speed, dt) {
-    this.angle = angle;
-    this.speed = speed;
+    this.#angle = angle;
+    this.#speed = speed;
     this.advanceFlight(dt);
   }
 
@@ -349,44 +392,44 @@ export class Ship {
     this.advanceSteeredFlight(angle, speed, dt);
     // 保留原顺序：先按边界约束飞行，再进行编队靠拢修正。
     if (settle) {
-      this.x = lerp(this.x, settle.x, settle.factor);
-      this.y = lerp(this.y, settle.y, settle.factor);
+      this.#x = lerp(this.#x, settle.x, settle.factor);
+      this.#y = lerp(this.#y, settle.y, settle.factor);
     }
   }
 
   applyKnockbackSample(x, y, completed) {
-    this.x = x;
-    this.y = y;
-    this.speed = 0;
-    if (completed) this.collisionSlowUntil = 0;
+    this.#x = x;
+    this.#y = y;
+    this.#speed = 0;
+    if (completed) this.#collisionSlowUntil = 0;
   }
 
   // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
   // 之后在 COLLISION_SLOW_DURATION 秒内线性回升到 1。
   collisionSpeedFactor() {
-    const now = this.team.match.elapsed;
-    if (!this.collisionSlowUntil || now >= this.collisionSlowUntil) {
+    const now = this.#team.match.elapsed;
+    if (!this.#collisionSlowUntil || now >= this.#collisionSlowUntil) {
       return 1;
     }
-    const remain = this.collisionSlowUntil - now; // 0..DURATION
+    const remain = this.#collisionSlowUntil - now; // 0..DURATION
     const progress = clamp(1 - remain / COLLISION_SLOW_DURATION, 0, 1); // 撞击瞬间0 → 结束1
     return COLLISION_SLOW_FLOOR + (1 - COLLISION_SLOW_FLOOR) * progress;
   }
 
   effectiveTurnRate() {
-    let value = this.baseTurnRate() * this.team.turnModifierForShip(this);
-    value *= this.team.match.rules.turnRateMultiplier(this.team);
+    let value = this.baseTurnRate() * this.#team.turnModifierForShip(this);
+    value *= this.#team.match.rules.turnRateMultiplier(this.#team);
     return value;
   }
 
   effectiveFormationTurnRate() {
     let value = this.baseTurnRate();
-    value *= this.team.match.rules.turnRateMultiplier(this.team, true);
-    return value * (this.team.fleetMemberCountForShip(this) >= 3 ? 1.55 : 1.28);
+    value *= this.#team.match.rules.turnRateMultiplier(this.#team, true);
+    return value * (this.#team.fleetMemberCountForShip(this) >= 3 ? 1.55 : 1.28);
   }
 
   effectiveVision() {
-    return this.team.match.rules.effectiveVision(this);
+    return this.#team.match.rules.effectiveVision(this);
   }
 
   effectiveRange() {
@@ -395,39 +438,39 @@ export class Ship {
 
   effectiveDamage() {
     // 末乘难度数值缩放(简单0.8/普通1.0/困难1.2/极限1.0);玩家队 statMult 恒为1,不受影响。
-    return this.statWithBuffs("damage", this.base.damage) * (this.team.statMult || 1);
+    return this.statWithBuffs("damage", this.base.damage) * (this.#team.statMult || 1);
   }
 
   effectiveFireRate() {
-    return this.team.match.rules.effectiveFireRate(this);
+    return this.#team.match.rules.effectiveFireRate(this);
   }
 
   damageTakenMultiplier() {
-    return this.team.match.rules.damageTakenMultiplier(this);
+    return this.#team.match.rules.damageTakenMultiplier(this);
   }
 
-  markActiveSkillEffectStarted(key) { this.#status.mark(key, this.team.match.tick); }
+  markActiveSkillEffectStarted(key) { this.#status.mark(key, this.#team.match.tick); }
   canClearActiveSkillEffect(key, preserveCurrentTick) {
-    return this.#status.canClear(key, preserveCurrentTick, this.team.match.tick);
+    return this.#status.canClear(key, preserveCurrentTick, this.#team.match.tick);
   }
   clearTimedEffect(key, preserveCurrentTick) {
-    return this.#status.clear(key, preserveCurrentTick, this.team.match.tick, this.team.match.elapsed);
+    return this.#status.clear(key, preserveCurrentTick, this.#team.match.tick, this.#team.match.elapsed);
   }
   forgetActiveSkillEffect(key) { this.#status.forget(key); }
   consumeNextShotMultiplier() { return this.#status.consumeCharge(); }
 
   clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
-    return this.team.match.shipEffects.clearPositive(this, preserveCurrentTick);
+    return this.#team.match.shipEffects.clearPositive(this, preserveCurrentTick);
   }
 
   clearNegativeEffects() {
     const cleared = this.isSilenced()
       || this.hasEffect("stunnedUntil")
-      || this.team.match.shipEffects.hasNegative(this)
-      || this.collisionSlowUntil > this.team.match.elapsed
+      || this.#team.match.shipEffects.hasNegative(this)
+      || this.#collisionSlowUntil > this.#team.match.elapsed
       || Boolean(this.forcedKnockback);
     this.clearControlEffects();
-    this.team.match.shipEffects.clearNegative(this);
+    this.#team.match.shipEffects.clearNegative(this);
     return cleared;
   }
 
@@ -437,27 +480,25 @@ export class Ship {
   setRouteEndpoint(endX, endY, resetProgress = false) { return this.#navigation.setRouteEndpoint(endX, endY, resetProgress); }
   clearRoute() { return this.#navigation.clearRoute(); }
   expireClawMarks() {
-    this.team.match.shipEffects.expireMarks(this);
+    this.#team.match.shipEffects.expireMarks(this);
   }
 
   activeClawMarks() {
-    return this.team.match.rules.activeClawMarks(this);
+    return this.#team.match.rules.activeClawMarks(this);
   }
 
   registerClawHit(claw, match, source = null) {
-    return this.team.match.shipEffects.registerClawHit(this, claw, match, source);
+    return this.#team.match.shipEffects.registerClawHit(this, claw, match, source);
   }
 
   update(dt) {
     this.expireClawMarks();
-    if (!this.alive) {
+    if (!this.#alive) {
       return;
     }
 
-    const match = this.team.match;
-    this.previousX = this.x;
-    this.previousY = this.y;
-    this.previousAngle = this.angle;
+    const match = this.#team.match;
+    this.captureFlightOrigin();
     this.#weapon.advance(dt);
 
     if (this.updateForcedKnockback()) {
@@ -471,7 +512,7 @@ export class Ship {
       return;
     }
 
-    if (this.team.match.shipEffects.advanceMovement(this, dt)) {
+    if (this.#team.match.shipEffects.advanceMovement(this, dt)) {
       return;
     }
 
@@ -481,9 +522,9 @@ export class Ship {
   updateForcedKnockback() { return this.#navigation.updateForcedKnockback(); }
 
   broadsideMultiplier(target) {
-    const toTarget = Math.atan2(target.y - this.y, target.x - this.x);
-    const relative = Math.abs(shortestAngleDelta(this.angle, toTarget));
-    return fireArcDensityMultiplier(relative, this.team.match.rules.improvedFireArcs(this.team));
+    const toTarget = Math.atan2(target.y - this.#y, target.x - this.#x);
+    const relative = Math.abs(shortestAngleDelta(this.#angle, toTarget));
+    return fireArcDensityMultiplier(relative, this.#team.match.rules.improvedFireArcs(this.#team));
   }
 
   tryAttack(match, enemyTeam) { return this.#weapon.fire(createWeaponPort(this, match, enemyTeam)); }
@@ -493,18 +534,18 @@ export class Ship {
   }
 
   applyHullDamage(amount, floor) {
-    const before = this.hp;
-    this.hp = Math.max(floor, this.hp - amount);
-    return before - this.hp;
+    const before = this.#hp;
+    this.#hp = Math.max(floor, this.#hp - amount);
+    return before - this.#hp;
   }
 
   retireAfterDamage() {
-    this.alive = false;
-    this.speed = 0;
+    this.#alive = false;
+    this.#speed = 0;
     this.clearRoute();
   }
 
   serialize() {
-    return this.team.match.projectShip(this);
+    return this.#team.match.projectShip(this);
   }
 }

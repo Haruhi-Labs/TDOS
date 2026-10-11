@@ -1,3 +1,4 @@
+import { setScenarioField, assignScenario } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import {
@@ -38,35 +39,35 @@ function closeRangeCombatCheck() {
   const aMain = sim.teamA.ships.main;
   const bMain = sim.teamB.ships.main;
 
-  aMain.x = 650;
-  aMain.y = 720;
+  setScenarioField(aMain, 'x', 650);
+  setScenarioField(aMain, 'y', 720);
   aMain.command = { ...aMain.command, x: aMain.x };
   aMain.command = { ...aMain.command, y: aMain.y };
   aMain.route = null;
-  aMain.throttle = 0.25;
+  setScenarioField(aMain, 'throttle', 0.25);
 
-  bMain.x = 770;
-  bMain.y = 720;
+  setScenarioField(bMain, 'x', 770);
+  setScenarioField(bMain, 'y', 720);
   bMain.command = { ...bMain.command, x: bMain.x };
   bMain.command = { ...bMain.command, y: bMain.y };
   bMain.route = null;
-  bMain.throttle = 0.25;
+  setScenarioField(bMain, 'throttle', 0.25);
 
   for (const ship of [sim.teamA.ships.sub1, sim.teamA.ships.sub2]) {
-    ship.x = aMain.x - 16;
-    ship.y = aMain.y + (ship.key === "sub1" ? 12 : -12);
+    setScenarioField(ship, 'x', aMain.x - 16);
+    setScenarioField(ship, 'y', aMain.y + (ship.key === "sub1" ? 12 : -12));
     ship.command = { ...ship.command, x: ship.x };
     ship.command = { ...ship.command, y: ship.y };
     ship.route = null;
-    ship.throttle = 0.25;
+    setScenarioField(ship, 'throttle', 0.25);
   }
   for (const ship of [sim.teamB.ships.sub1, sim.teamB.ships.sub2]) {
-    ship.x = bMain.x + 16;
-    ship.y = bMain.y + (ship.key === "sub1" ? 12 : -12);
+    setScenarioField(ship, 'x', bMain.x + 16);
+    setScenarioField(ship, 'y', bMain.y + (ship.key === "sub1" ? 12 : -12));
     ship.command = { ...ship.command, x: ship.x };
     ship.command = { ...ship.command, y: ship.y };
     ship.route = null;
-    ship.throttle = 0.25;
+    setScenarioField(ship, 'throttle', 0.25);
   }
 
   runSteps(sim, 10);
@@ -158,16 +159,16 @@ function throttleGearCheck() {
   runSteps(sim, 0.5);
   assert(main.x > startX, "从P档切入前进档后未沿原航线恢复航行");
 
-  main.energy = 50;
-  main.throttle = throttleForGear(0);
+  setScenarioField(main, 'energy', 50);
+  setScenarioField(main, 'throttle', throttleForGear(0));
   sim.teamA.updateEnergy(1);
   const parkedEnergy = main.energy;
   assert(
     Math.abs(parkedEnergy - 50 - energyRateForThrottle(main.baseEnergyRegen(), main.moveEnergyDrain(), 0)) < 1e-6,
     "权威模拟未按P档曲线回能",
   );
-  main.energy = 50;
-  main.throttle = throttleForGear(4);
+  setScenarioField(main, 'energy', 50);
+  setScenarioField(main, 'throttle', throttleForGear(4));
   sim.teamA.updateEnergy(1);
   assert(main.energy < 50, "权威模拟中的前进4档未实际消耗能量");
 }
@@ -185,10 +186,10 @@ function boundaryRouteThrottleCheck() {
   sim.teamA.configureFormation(1);
 
   const ship = sim.teamA.ships.sub1;
-  ship.x = 386.8224975466728;
-  ship.y = 81.78382992744446;
-  ship.angle = -1.8277443451855133;
-  ship.speed = 39.80041355709545;
+  setScenarioField(ship, 'x', 386.8224975466728);
+  setScenarioField(ship, 'y', 81.78382992744446);
+  setScenarioField(ship, 'angle', -1.8277443451855133);
+  setScenarioField(ship, 'speed', 39.80041355709545);
   ship.setBezierRoute(
     792.2996597643942,
     472.72552649490535,
@@ -222,7 +223,7 @@ function boundaryRouteThrottleCheck() {
 function removedBrakeCheck() {
   const sim = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
   const ship = sim.teamA.ships.main;
-  ship.speed = ship.effectiveSpeed();
+  setScenarioField(ship, 'speed', ship.effectiveSpeed());
   ship.command = { x: ship.x + 420, y: ship.y };
   const before = JSON.stringify(sim.serializeState());
   assert(!sim.applyActionForSeat("A", { type: "emergency_brake", shipKey: "main" }), "移除后旧急刹动作必须被拒绝");
@@ -332,12 +333,12 @@ function yukiFlagshipCombatScoutCheck() {
 
   const enemyMain = yukiSim.teamB.ships.main;
   for (const [index, scout] of yukiTeam.scouts.entries()) {
-    scout.x = 680;
-    scout.y = 712 + index * 16;
+    setScenarioField(scout, 'x', 680);
+    setScenarioField(scout, 'y', 712 + index * 16);
     scout.cooldown = 0;
   }
-  enemyMain.x = 800;
-  enemyMain.y = 720;
+  setScenarioField(enemyMain, 'x', 800);
+  setScenarioField(enemyMain, 'y', 720);
   for (const ship of yukiTeam.getAllShips()) ship.cooldown = 999;
   sampleVisibility(yukiTeam, [...yukiTeam.visibleEnemyIds, enemyMain.id]);
   yukiSim.projectiles = [];
@@ -358,8 +359,8 @@ function yukiFlagshipCombatScoutCheck() {
   assert(yukiSim.projectiles.length === 1, "长门战斗僚机无视攻击冷却连续开火");
 
   for (const scout of yukiTeam.scouts) scout.cooldown = 0;
-  enemyMain.x = combatScout.x + combatScout.vision + 10;
-  enemyMain.y = combatScout.y;
+  setScenarioField(enemyMain, 'x', combatScout.x + combatScout.vision + 10);
+  setScenarioField(enemyMain, 'y', combatScout.y);
   yukiSim.projectiles = [];
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(
@@ -374,11 +375,11 @@ function yukiFlagshipCombatScoutCheck() {
   const normalScout = normalTeam.scouts[0];
   assert(!normalScout.combatCapable, "非长门旗舰的侦察机被错误强化为战斗僚机");
   assert(normalScout.vision === 95, "非长门旗舰的普通侦察机视野被意外改动");
-  normalScout.x = 680;
-  normalScout.y = 720;
+  setScenarioField(normalScout, 'x', 680);
+  setScenarioField(normalScout, 'y', 720);
   const normalEnemy = normalSim.teamB.ships.main;
-  normalEnemy.x = 800;
-  normalEnemy.y = 720;
+  setScenarioField(normalEnemy, 'x', 800);
+  setScenarioField(normalEnemy, 'y', 720);
   for (const ship of normalTeam.getAllShips()) ship.cooldown = 999;
   sampleVisibility(normalTeam, [...normalTeam.visibleEnemyIds, normalEnemy.id]);
   normalSim.projectiles = [];
@@ -492,7 +493,7 @@ function future1096FormSwitchCheck() {
   const teamA = sim.teamA;
   const ships = teamA.getPlayerShips();
   for (const ship of ships) {
-    ship.speed = ship.baseSpeed() * 0.8;
+    setScenarioField(ship, 'speed', ship.baseSpeed() * 0.8);
   }
   const baseline = new Map(ships.map((ship) => [ship.id, {
     maxHp: ship.maxHp,
@@ -522,18 +523,18 @@ function future1096FormSwitchCheck() {
     const hpBeforeDamage = ship.hp;
     ship.takeDamage(20, null, sim, false);
     assert(Math.abs(hpBeforeDamage - ship.hp - 40) < 1e-9, "A形态易伤未在最终承伤阶段生效");
-    ship.hp = ship.maxHp * 0.4;
+    setScenarioField(ship, 'hp', ship.maxHp * 0.4);
     ship.cooldown = 0.25;
   }
 
   const maxHpDamageProbe = teamA.ships.main;
-  maxHpDamageProbe.hp = maxHpDamageProbe.maxHp;
+  setScenarioField(maxHpDamageProbe, 'hp', maxHpDamageProbe.maxHp);
   maxHpDamageProbe.takeDamage(maxHpDamageProbe.maxHp * 0.1, null, sim, false);
   assert(
     Math.abs(maxHpDamageProbe.hp - maxHpDamageProbe.maxHp * 0.8) < 1e-9,
     "A形态未对按最大生命值结算的伤害应用易伤，或仍在改写生命上限",
   );
-  maxHpDamageProbe.hp = maxHpDamageProbe.maxHp * 0.4;
+  setScenarioField(maxHpDamageProbe, 'hp', maxHpDamageProbe.maxHp * 0.4);
 
   const movingMain = teamA.ships.main;
   const movingMainBase = baseline.get(movingMain.id);
@@ -548,7 +549,7 @@ function future1096FormSwitchCheck() {
   // 还原为切换瞬间的状态，隔离后续 B 形态倍率断言。
   for (const ship of ships) {
     const base = baseline.get(ship.id);
-    ship.speed = base.actualSpeed * 1.5;
+    setScenarioField(ship, 'speed', base.actualSpeed * 1.5);
     ship.cooldown = 0.25;
   }
 
@@ -637,9 +638,9 @@ function yukiPassiveCheck() {
 
   const originalMainPose = { x: main.x, y: main.y, angle: main.angle };
   const angleBeforeMovement = initialRadar.angle;
-  main.x += 180;
-  main.y -= 110;
-  main.angle += 1.7;
+  setScenarioField(main, 'x', main.x + (180));
+  setScenarioField(main, 'y', main.y - (110));
+  setScenarioField(main, 'angle', main.angle + (1.7));
   sim.elapsed += 1;
   teamA.updateRadarPassive(sim.teamB, 1);
   const angleAfterMovement = sim.serializeRadarForSeat("A").angle;
@@ -648,7 +649,7 @@ function yukiPassiveCheck() {
     Math.abs(sweptAfterMovement - (Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS) < 1e-9,
     "长门雷达角速度受到旗舰位移、转向或速度状态影响",
   );
-  Object.assign(main, originalMainPose);
+  assignScenario(main, originalMainPose);
 
   const alignRadarToBearingZero = () => {
     // 时间推进到出生朝向对应的下一整圈，让真实扫线从零方位扫过目标。
@@ -661,8 +662,8 @@ function yukiPassiveCheck() {
 
   // 出生点间距属于对局平衡参数；雷达分档测试显式摆到「一个战区内」的适中距离，
   // 避免出生点调整意外改变本用例要验证的雷达语义。
-  enemyMain.x = main.x + zoneWidth * 0.85;
-  enemyMain.y = main.y;
+  setScenarioField(enemyMain, 'x', main.x + zoneWidth * 0.85);
+  setScenarioField(enemyMain, 'y', main.y);
   const energyBeforeScan = main.energy;
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
@@ -677,8 +678,8 @@ function yukiPassiveCheck() {
   assert(main.energy === energyBeforeScan, "长门被动雷达错误消耗了能量");
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达回波错误转化成了真实视野");
 
-  enemyMain.x = main.x + zoneWidth + 1;
-  enemyMain.y = main.y;
+  setScenarioField(enemyMain, 'x', main.x + zoneWidth + 1);
+  setScenarioField(enemyMain, 'y', main.y);
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   teamA.updateRadarPassive(sim.teamB, TICK_DT);
@@ -686,8 +687,8 @@ function yukiPassiveCheck() {
   assert(outsideIdentifyContact?.kind === "disturbance", "超过一个战区宽度后仍显示可辨识的舰队残影");
   assert(outsideIdentifyContact.characterId === null, "超过一个战区宽度后仍泄露角色身份");
 
-  enemyMain.x = sim.worldSize - 10;
-  enemyMain.y = main.y;
+  setScenarioField(enemyMain, 'x', sim.worldSize - 10);
+  setScenarioField(enemyMain, 'y', main.y);
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   teamA.updateRadarPassive(sim.teamB, TICK_DT);
@@ -701,8 +702,8 @@ function yukiPassiveCheck() {
     "雷达估算位置超出了声明的误差范围",
   );
 
-  enemyMain.x = main.x + 100;
-  enemyMain.y = main.y;
+  setScenarioField(enemyMain, 'x', main.x + 100);
+  setScenarioField(enemyMain, 'y', main.y);
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   assert(teamA.visibleEnemyIds.has(enemyMain.id), "近距离敌舰未进入任意常规视野");
@@ -713,7 +714,7 @@ function yukiPassiveCheck() {
   );
   assert(enemyMain.nameRevealed, "长门雷达扫过真实视野内敌舰后未永久确认角色名");
 
-  enemyMain.x = main.x + zoneWidth + 120;
+  setScenarioField(enemyMain, 'x', main.x + zoneWidth + 120);
   teamA.computeVisibility(sim.teamB);
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "角色名持续显示测试中的敌舰未离开真实视野");
   assert(
@@ -749,10 +750,10 @@ function koizumiFlagshipBarrierCheck() {
   const attacker = teamB.ships.main;
   sim.setCombatEnabled("A", false);
   sim.setCombatEnabled("B", false);
-  main.x = 720;
-  main.y = 720;
-  main.previousX = main.x;
-  main.previousY = main.y;
+  setScenarioField(main, 'x', 720);
+  setScenarioField(main, 'y', 720);
+  setScenarioField(main, 'previousX', main.x);
+  setScenarioField(main, 'previousY', main.y);
   main.command = { x: main.x, y: main.y };
   main.route = null;
 
@@ -767,9 +768,9 @@ function koizumiFlagshipBarrierCheck() {
     "古泉能量圈没有贴合主舰视野边界",
   );
 
-  attacker.x = main.x + initialBarrier.radius + 90;
-  attacker.y = main.y;
-  attacker.angle = Math.PI / 2;
+  setScenarioField(attacker, 'x', main.x + initialBarrier.radius + 90);
+  setScenarioField(attacker, 'y', main.y);
+  setScenarioField(attacker, 'angle', Math.PI / 2);
   attacker.command = { x: attacker.x, y: attacker.y };
   attacker.route = null;
   attacker.cooldown = 0;
@@ -848,9 +849,9 @@ function koizumiFlagshipBarrierCheck() {
 
   // 已经进入圈内的攻击不应被反向吞掉，保证能量圈是边界防护而非全域无敌。
   sim.projectiles = [];
-  attacker.x = main.x + initialBarrier.radius * 0.5;
-  attacker.y = main.y;
-  attacker.angle = Math.PI / 2;
+  setScenarioField(attacker, 'x', main.x + initialBarrier.radius * 0.5);
+  setScenarioField(attacker, 'y', main.y);
+  setScenarioField(attacker, 'angle', Math.PI / 2);
   attacker.cooldown = 0;
   const hullBeforeInsideShot = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
   attacker.tryAttack(sim, teamA);
@@ -878,10 +879,10 @@ function koizumiFlagshipBarrierCheck() {
     ramSim.setCombatEnabled("B", false);
     const defendingTeam = ramSim.teamA;
     const defendingMain = defendingTeam.ships.main;
-    defendingMain.x = 720;
-    defendingMain.y = 720;
-    defendingMain.previousX = defendingMain.x;
-    defendingMain.previousY = defendingMain.y;
+    setScenarioField(defendingMain, 'x', 720);
+    setScenarioField(defendingMain, 'y', 720);
+    setScenarioField(defendingMain, 'previousX', defendingMain.x);
+    setScenarioField(defendingMain, 'previousY', defendingMain.y);
     defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
     defendingMain.route = null;
 
@@ -895,17 +896,17 @@ function koizumiFlagshipBarrierCheck() {
     }
 
     const barrierRadius = defendingMain.effectiveVision();
-    source.angle = Math.PI;
-    source.previousAngle = source.angle;
-    source.y = defendingMain.y;
-    source.previousY = source.y;
+    setScenarioField(source, 'angle', Math.PI);
+    setScenarioField(source, 'previousAngle', source.angle);
+    setScenarioField(source, 'y', defendingMain.y);
+    setScenarioField(source, 'previousY', source.y);
     const contactPadding = haruhiRam ? source.radius + 5 : source.radius;
-    source.previousX = defendingMain.x + barrierRadius + contactPadding + 8;
-    source.x = defendingMain.x + barrierRadius + contactPadding - 2;
+    setScenarioField(source, 'previousX', defendingMain.x + barrierRadius + contactPadding + 8);
+    setScenarioField(source, 'x', defendingMain.x + barrierRadius + contactPadding - 2);
     source.command = { x: source.x - 300, y: source.y };
     source.route = null;
     if (haruhiRam) {
-      source.speed = source.effectiveSpeed() * throttleForGear(2) + 1;
+      setScenarioField(source, 'speed', source.effectiveSpeed() * throttleForGear(2) + 1);
     }
     const hullBeforeRam = defendingTeam.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
     ramSim.resolveKoizumiBarrierRamContacts();
@@ -947,14 +948,14 @@ function koizumiFlagshipBarrierCheck() {
   });
   const normalBarrierMain = normalSim.teamA.ships.main;
   const normalShip = normalSim.teamB.ships.main;
-  normalBarrierMain.previousX = normalBarrierMain.x;
-  normalBarrierMain.previousY = normalBarrierMain.y;
-  normalShip.angle = Math.PI;
-  normalShip.previousAngle = normalShip.angle;
-  normalShip.y = normalBarrierMain.y;
-  normalShip.previousY = normalShip.y;
-  normalShip.previousX = normalBarrierMain.x + normalBarrierMain.effectiveVision() + normalShip.radius + 8;
-  normalShip.x = normalBarrierMain.x + normalBarrierMain.effectiveVision() + normalShip.radius - 2;
+  setScenarioField(normalBarrierMain, 'previousX', normalBarrierMain.x);
+  setScenarioField(normalBarrierMain, 'previousY', normalBarrierMain.y);
+  setScenarioField(normalShip, 'angle', Math.PI);
+  setScenarioField(normalShip, 'previousAngle', normalShip.angle);
+  setScenarioField(normalShip, 'y', normalBarrierMain.y);
+  setScenarioField(normalShip, 'previousY', normalShip.y);
+  setScenarioField(normalShip, 'previousX', normalBarrierMain.x + normalBarrierMain.effectiveVision() + normalShip.radius + 8);
+  setScenarioField(normalShip, 'x', normalBarrierMain.x + normalBarrierMain.effectiveVision() + normalShip.radius - 2);
   normalSim.resolveKoizumiBarrierRamContacts();
   assert(normalSim.teamA.serialize().koizumiBarrier.active, "普通舰船接触错误击破了古泉能量圈");
   assert(normalSim.koizumiBarrierImpacts.length === 0, "普通舰船接触错误生成了破盾动画");
@@ -969,12 +970,12 @@ function koizumiBarrierChargesCheck() {
     sim.setCombatEnabled("A", false);
     sim.setCombatEnabled("B", false);
     const main = sim.teamA.ships.main;
-    main.x = main.previousX = 720;
-    main.y = main.previousY = 720;
+    setScenarioField(main, 'x', setScenarioField(main, 'previousX', 720));
+    setScenarioField(main, 'y', setScenarioField(main, 'previousY', 720));
     const attacker = sim.teamB.ships.main;
-    attacker.x = main.x + main.effectiveVision() + 90;
-    attacker.y = main.y;
-    attacker.angle = Math.PI / 2;
+    setScenarioField(attacker, 'x', main.x + main.effectiveVision() + 90);
+    setScenarioField(attacker, 'y', main.y);
+    setScenarioField(attacker, 'angle', Math.PI / 2);
     sampleVisibility(sim.teamB, [main.id]);
     const shot = (start = main.effectiveVision() + 40, end = 0, team = sim.teamB, y = 0) => {
       attacker.cooldown = 0;
@@ -982,11 +983,11 @@ function koizumiBarrierChargesCheck() {
       attacker.tryAttack(sim, sim.teamA);
       assert(sim.projectiles.length === previousCount + 1, "次数盾测试未生成真实炮弹");
       const projectile = sim.projectiles.at(-1);
-      projectile.x = main.x + start;
-      projectile.y = main.y + y;
+      setScenarioField(projectile, 'x', main.x + start);
+      setScenarioField(projectile, 'y', main.y + y);
       projectile.targetX = main.x + end;
       projectile.targetY = main.y + y;
-      projectile.speed = 1000;
+      setScenarioField(projectile, 'speed', 1000);
       projectile.team = team;
       return projectile;
     };
@@ -1049,18 +1050,18 @@ function koizumiBarrierChargesCheck() {
   assert(!crossing.barrier().active, "修复截止帧仍有敌弹穿越时提前恢复了护盾");
   crossing.sim.projectiles = [];
   crossing.sim.elapsed += 1;
-  crossing.main.previousX = crossing.main.x;
-  crossing.main.x += 60;
+  setScenarioField(crossing.main, 'previousX', crossing.main.x);
+  setScenarioField(crossing.main, 'x', crossing.main.x + (60));
   const movingShot = crossing.shot(130, 130);
-  movingShot.speed = 0;
+  setScenarioField(movingShot, 'speed', 0);
   crossing.sim.updateProjectiles(0.1);
   assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "移动护盾边界扫过敌弹没有重置计时");
   crossing.sim.projectiles = [];
-  crossing.main.previousX = crossing.main.x;
+  setScenarioField(crossing.main, 'previousX', crossing.main.x);
   crossing.sim.elapsed += 1;
   const smallCrossing = crossing.shot();
   const contactRadius = crossing.main.effectiveVision() + smallCrossing.radius;
-  smallCrossing.x = crossing.main.x + contactRadius + 0.1;
+  setScenarioField(smallCrossing, 'x', crossing.main.x + contactRadius + 0.1);
   smallCrossing.targetX = crossing.main.x + contactRadius - 0.1;
   crossing.sim.updateProjectiles(0.01);
   assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, `贴近边界的小幅敌弹穿越被入圈容差漏计：${crossing.barrier().disabledRemaining}`);
@@ -1098,17 +1099,17 @@ function koizumiImpactWaveCheck() {
       fleet.split(2);
     }
     const orb = team.ships.sub1;
-    orb.energy = orb.maxEnergy;
+    setScenarioField(orb, 'energy', orb.maxEnergy);
     assert(team.castSubSkill("sub1"), "古泉撞击波测试未能开启光球");
     const target = enemy.ships.main;
     const near = enemy.ships.sub1;
     const far = enemy.ships.sub2;
-    target.x = 400;
-    target.y = near.y = far.y = 720;
-    near.x = 700;
-    far.x = 1200;
-    orb.x = 410;
-    orb.y = 720;
+    setScenarioField(target, 'x', 400);
+    setScenarioField(target, 'y', setScenarioField(near, 'y', setScenarioField(far, 'y', 720)));
+    setScenarioField(near, 'x', 700);
+    setScenarioField(far, 'x', 1200);
+    setScenarioField(orb, 'x', 410);
+    setScenarioField(orb, 'y', 720);
     sampleOrbSweep(orb, 350, 720);
     const hpBefore = enemy.getAllShips().map((ship) => ship.hp);
     sim.resolveKoizumiOrbContacts();
@@ -1131,7 +1132,7 @@ function koizumiImpactWaveCheck() {
     assert(!enemy.launchScout(5, { fromShipKey: "sub1" }), "眩晕中的敌舰仍可发射侦察机");
     assert(!near.canControl(), "眩晕中的敌舰仍可控制");
     near.cooldown = 0;
-    near.speed = 40;
+    setScenarioField(near, 'speed', 40);
     const position = { x: near.x, y: near.y };
     near.update(TICK_DT);
     assert(near.speed === 0 && near.x === position.x && near.y === position.y, "眩晕期间敌舰仍可航行");
@@ -1178,15 +1179,15 @@ function koizumiOrbRamCheck() {
   const enemyMain = sim.teamB.ships.main;
 
   teamA.split(1);
-  sub1.energy = sub1.maxEnergy;
-  sub1.x = 720;
-  sub1.y = 720;
-  sub1.angle = 0;
+  setScenarioField(sub1, 'energy', sub1.maxEnergy);
+  setScenarioField(sub1, 'x', 720);
+  setScenarioField(sub1, 'y', 720);
+  setScenarioField(sub1, 'angle', 0);
   sub1.command = { ...sub1.command, x: sub1.x };
   sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
-  enemyMain.x = 790;
-  enemyMain.y = 730;
+  setScenarioField(enemyMain, 'x', 790);
+  setScenarioField(enemyMain, 'y', 730);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
@@ -1234,15 +1235,15 @@ function koizumiOrbRamCheck() {
   assert(Math.abs(sub1.koizumiOrb.angularVelocity) > 0.75, "古泉光球转向机动性没有提高50%");
   sub1.route = null;
   sim.elapsed += 1; // 等待命中保护自然结束，再验证下一次扫掠。
-  enemyMain.x = 790;
-  enemyMain.y = 720;
+  setScenarioField(enemyMain, 'x', 790);
+  setScenarioField(enemyMain, 'y', 720);
   enemyMain.forcedKnockback = null;
-  sub1.angle = 0;
+  setScenarioField(sub1, 'angle', 0);
 
   const hpBeforeRam = enemyMain.hp;
   sampleOrbSweep(sub1, 720, 720);
-  sub1.x = 810;
-  sub1.y = 720;
+  setScenarioField(sub1, 'x', 810);
+  setScenarioField(sub1, 'y', 720);
   sim.resolveKoizumiOrbContacts();
   assert(enemyMain.hp === hpBeforeRam, "古泉光球冲撞错误造成了伤害");
   assert(enemyMain.forcedKnockback, "古泉光球冲撞没有触发击飞");
@@ -1260,19 +1261,19 @@ function koizumiOrbRamCheck() {
   const firstSilenceUntil = enemyMain.effects.silencedUntil;
   sim.elapsed += 1;
   sampleOrbSweep(sub1, enemyMain.x - 50, enemyMain.y);
-  sub1.x = enemyMain.x + 50;
-  sub1.y = enemyMain.y;
+  setScenarioField(sub1, 'x', enemyMain.x + 50);
+  setScenarioField(sub1, 'y', enemyMain.y);
   sim.resolveKoizumiOrbContacts();
   assert(enemyMain.effects.silencedUntil > firstSilenceUntil + 0.9, "重复撞击没有刷新5秒沉默时间");
   assert(enemyMain.forcedKnockback.startedAt === sim.elapsed, "正面追击没有在命中冷却后再次触发击退");
 
   sim.elapsed += 1;
-  enemyMain.x = 790;
-  enemyMain.y = 738;
+  setScenarioField(enemyMain, 'x', 790);
+  setScenarioField(enemyMain, 'y', 738);
   enemyMain.forcedKnockback = null;
   sampleOrbSweep(sub1, 720, 720);
-  sub1.x = 810;
-  sub1.y = 720;
+  setScenarioField(sub1, 'x', 810);
+  setScenarioField(sub1, 'y', 720);
   sim.resolveKoizumiOrbContacts();
   const obliqueKnockbackX = enemyMain.forcedKnockback.toX - enemyMain.forcedKnockback.fromX;
   const obliqueKnockbackY = enemyMain.forcedKnockback.toY - enemyMain.forcedKnockback.fromY;
@@ -1291,11 +1292,11 @@ function koizumiOrbRamCheck() {
   });
   returnSim.teamA.split(1);
   const returning = returnSim.teamA.ships.sub1;
-  returning.x = 180;
-  returning.y = 260;
+  setScenarioField(returning, 'x', 180);
+  setScenarioField(returning, 'y', 260);
   returning.command = { x: 1200, y: 1180 };
-  returning.angle = -0.15;
-  returning.energy = returning.maxEnergy;
+  setScenarioField(returning, 'angle', -0.15);
+  setScenarioField(returning, 'energy', returning.maxEnergy);
   assert(returnSim.teamA.castSubSkill("sub1"), "古泉自动归航测试无法释放技能");
   runSteps(returnSim, 8.1);
   assert(returning.koizumiOrb?.phase === "returning", "8秒结束后古泉未进入光球归航阶段");
@@ -1327,13 +1328,13 @@ function koizumiControlImmunityCheck() {
     const ship = team.ships.sub1;
     applyHaruhiHeroPowerShock(ship, 0);
     sim.elapsed = 2.1;
-    ship.collisionSlowUntil = 5;
+    setScenarioField(ship, 'collisionSlowUntil', 5);
     ship.forcedKnockback = { startedAt: 2, endsAt: 3, fromX: 400, fromY: 500, toX: 600, toY: 500 };
     ship.registerClawHit({ sourceSeat: enemy.seat, triggerHits: 4, markDuration: 10 - sim.elapsed }, sim);
     assert(team.castSubSkill("sub1"), "光球免控测试未能施放技能");
     assert(ship.heroPowerShock.recoveryUntil === 0 && !ship.forcedKnockback && ship.collisionSlowUntil === 0, "进入光球没有清除已有控制");
     assert(ship.clawMarks.stacks === 1, "光球免控错误清除了非控制标记");
-    Object.assign(ship, { x: 420, y: 500, angle: 0, command: { x: 1200, y: 500 }, route: null });
+    assignScenario(ship, { x: 420, y: 500, angle: 0, command: { x: 1200, y: 500 }, route: null });
     sampleOrbSweep(ship, ship.x, ship.y);
     if (phase === "returning") beginKoizumiOrbReturn(ship);
     return { sim, team, enemy, ship };
@@ -1347,7 +1348,7 @@ function koizumiControlImmunityCheck() {
 
     const enemyOrb = enemy.ships.sub1;
     assert(enemy.castSubSkill("sub1"), "光球免控测试未能施放敌方光球");
-    Object.assign(enemyOrb, { x: ship.x + 10, y: ship.y });
+    assignScenario(enemyOrb, { x: ship.x + 10, y: ship.y });
     sampleOrbSweep(enemyOrb, ship.x - 60, ship.y);
     sim.resolveKoizumiOrbContacts();
     assert(!ship.forcedKnockback && !ship.isSilenced() && ship.effects.silencedUntil === 0, "光球仍受到敌方光球击退或沉默");
@@ -1359,8 +1360,8 @@ function koizumiControlImmunityCheck() {
     assert(Math.hypot(ship.x - positionBefore.x, ship.y - positionBefore.y) > 0, "光球受击后没有继续飞行");
 
     const purger = enemy.ships.main;
-    purger.x = ship.x;
-    purger.y = ship.y;
+    setScenarioField(purger, 'x', ship.x);
+    setScenarioField(purger, 'y', ship.y);
     assert(enemy.castFlagshipSkill(), "光球免控测试未能施放净化波");
     // 进入下一逻辑帧后，实际视野波扫到目标应直接解除形态。
     sim.tick += 1;
@@ -1375,7 +1376,7 @@ function koizumiControlImmunityCheck() {
 
     const ram = setup(seat, phase, "haruhi");
     const haruhi = ram.enemy.ships.main;
-    Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
+    assignScenario(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
     unlockSupport(ram.enemy, ["otherworlder"], 0, () => 0);
     const hpBefore = ram.ship.hp;
     ram.sim.resolveHaruhiOtherworlderContacts();
@@ -1406,14 +1407,14 @@ function beamSkillCheck() {
 
   teamA.split(1);
   teamA.split(2);
-  teamA.ships.sub2.energy = teamA.ships.sub2.maxEnergy;
+  setScenarioField(teamA.ships.sub2, 'energy', teamA.ships.sub2.maxEnergy);
 
   const sub2 = teamA.ships.sub2;
   const enemyMain = teamB.ships.main;
-  sub2.x = 680;
-  sub2.y = 700;
-  enemyMain.x = 840;
-  enemyMain.y = 700;
+  setScenarioField(sub2, 'x', 680);
+  setScenarioField(sub2, 'y', 700);
+  setScenarioField(enemyMain, 'x', 840);
+  setScenarioField(enemyMain, 'y', 700);
 
   const before = teamB.hullRatio();
   const enemyFleetHpBefore = teamB.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
@@ -1426,7 +1427,7 @@ function beamSkillCheck() {
     x: chargingBeam.x2 - chargingBeam.x1,
     y: chargingBeam.y2 - chargingBeam.y1,
   };
-  sub2.y += 90;
+  setScenarioField(sub2, 'y', sub2.y + (90));
   teamA.update(TICK_DT);
   const movedBeam = teamA.beams.find((beam) => beam.phase === "charge");
   assert(movedBeam, "1096光线在移动测试中提前结束蓄力");
@@ -1440,7 +1441,7 @@ function beamSkillCheck() {
       && initialBeamVector.x * movedBeamDx + initialBeamVector.y * movedBeamDy > 0,
     "1096光线随舰船移动时没有保持原始发射方向",
   );
-  sub2.y -= 90;
+  setScenarioField(sub2, 'y', sub2.y - (90));
   teamA.update(TICK_DT);
 
   runSteps(sim, 0.35);
@@ -1469,15 +1470,15 @@ function beamHitCountDamageCheck() {
     sourceTeam.split(1);
     sourceTeam.split(2);
     const source = sourceTeam.ships.sub2;
-    source.x = 300;
-    source.y = 700;
-    source.angle = 0;
+    setScenarioField(source, 'x', 300);
+    setScenarioField(source, 'y', 700);
+    setScenarioField(source, 'angle', 0);
 
     if (merged) {
       targetTeam.configureFormation(0);
-      Object.assign(targetTeam.ships.main, { x: 800, y: 700 });
-      Object.assign(targetTeam.ships.sub1, { x: 818, y: 689 });
-      Object.assign(targetTeam.ships.sub2, { x: 818, y: 711 });
+      assignScenario(targetTeam.ships.main, { x: 800, y: 700 });
+      assignScenario(targetTeam.ships.sub1, { x: 818, y: 689 });
+      assignScenario(targetTeam.ships.sub2, { x: 818, y: 711 });
     } else {
       targetTeam.configureFormation(2);
       const positions = [
@@ -1485,7 +1486,7 @@ function beamHitCountDamageCheck() {
         { x: 950, y: hitCount >= 2 ? 700 : 1040 },
         { x: 1100, y: hitCount >= 3 ? 700 : 360 },
       ];
-      targetTeam.getAllShips().forEach((ship, index) => Object.assign(ship, positions[index]));
+      targetTeam.getAllShips().forEach((ship, index) => assignScenario(ship, positions[index]));
     }
 
     const before = new Map(targetTeam.getAllShips().map((ship) => [ship.id, ship.hp]));
@@ -1541,7 +1542,7 @@ function tsuruyaFlagshipActiveCheck() {
   const teamA = sim.teamA;
   const main = teamA.ships.main;
 
-  main.hp = main.maxHp * 0.6;
+  setScenarioField(main, 'hp', main.maxHp * 0.6);
   teamA.startCooldown("sub1", 10);
   const beforeHp = main.hp;
   const castOk = teamA.castFlagshipSkill();
@@ -1558,12 +1559,12 @@ function fireArcDensityCheck() {
   const ship = sim.teamA.ships.main;
   const target = sim.teamB.ships.main;
 
-  ship.x = 720;
-  ship.y = 720;
-  ship.angle = 0;
+  setScenarioField(ship, 'x', 720);
+  setScenarioField(ship, 'y', 720);
+  setScenarioField(ship, 'angle', 0);
   ship.cooldown = 0;
-  target.x = 860;
-  target.y = 720;
+  setScenarioField(target, 'x', 860);
+  setScenarioField(target, 'y', 720);
   sim.teamA.computeVisibility(sim.teamB);
   ship.tryAttack(sim, sim.teamB);
   assert(sim.projectiles.length === 1, "前方射界应允许正常开火");
@@ -1572,8 +1573,8 @@ function fireArcDensityCheck() {
 
   sim.projectiles = [];
   ship.cooldown = 0;
-  target.x = 720;
-  target.y = 860;
+  setScenarioField(target, 'x', 720);
+  setScenarioField(target, 'y', 860);
   sim.teamA.computeVisibility(sim.teamB);
   ship.tryAttack(sim, sim.teamB);
   assert(sim.projectiles.length === 1, "侧舷射界应允许开火");
@@ -1582,8 +1583,8 @@ function fireArcDensityCheck() {
 
   sim.projectiles = [];
   ship.cooldown = 0;
-  target.x = 600;
-  target.y = 720;
+  setScenarioField(target, 'x', 600);
+  setScenarioField(target, 'y', 720);
   sim.teamA.computeVisibility(sim.teamB);
   ship.tryAttack(sim, sim.teamB);
   assert(sim.projectiles.length === 0, "舰尾 0 倍射界不应开火");
@@ -1603,9 +1604,9 @@ function kyonUniformFireRateCheck() {
   });
   const ship = sim.teamA.ships.main;
   const target = sim.teamB.ships.main;
-  ship.x = 720;
-  ship.y = 720;
-  ship.angle = 0;
+  setScenarioField(ship, 'x', 720);
+  setScenarioField(ship, 'y', 720);
+  setScenarioField(ship, 'angle', 0);
 
   const directions = [
     { x: 860, y: 720, label: "正前" },
@@ -1614,8 +1615,8 @@ function kyonUniformFireRateCheck() {
   ];
   const expectedCooldown = 1 / (ship.effectiveFireRate() * 1.5);
   for (const direction of directions) {
-    target.x = direction.x;
-    target.y = direction.y;
+    setScenarioField(target, 'x', direction.x);
+    setScenarioField(target, 'y', direction.y);
     assert(Math.abs(ship.broadsideMultiplier(target) - 1.5) < 1e-6, `阿虚旗舰${direction.label}方向射速不是1.5×`);
     ship.cooldown = 0;
     sim.projectiles = [];
@@ -1663,11 +1664,11 @@ function haruhiHeroPowerCheck() {
   teamB.configureFormation(2);
 
   const park = (ship, x, y) => {
-    ship.x = x;
-    ship.y = y;
+    setScenarioField(ship, 'x', x);
+    setScenarioField(ship, 'y', y);
     ship.command = { x, y };
     ship.route = null;
-    ship.speed = 0;
+    setScenarioField(ship, 'speed', 0);
   };
   park(haruhi, 720, 720);
   park(enemyMain, 850, 720);
@@ -1691,18 +1692,18 @@ function haruhiHeroPowerCheck() {
   ];
   for (const [index, aircraft] of allAircraft.entries()) {
     const angle = (index / allAircraft.length) * Math.PI * 2;
-    aircraft.x = 720 + Math.cos(angle) * 92;
-    aircraft.y = 720 + Math.sin(angle) * 92;
+    setScenarioField(aircraft, 'x', 720 + Math.cos(angle) * 92);
+    setScenarioField(aircraft, 'y', 720 + Math.sin(angle) * 92);
     aircraft.command = { x: aircraft.x, y: aircraft.y };
-    aircraft.speed = 0;
+    setScenarioField(aircraft, 'speed', 0);
   }
   const ownOutsideScout = teamA.scouts.at(-1);
   const enemyOutsideScout = teamB.scouts.at(-1);
-  ownOutsideScout.x = 1100;
-  ownOutsideScout.y = 1080;
+  setScenarioField(ownOutsideScout, 'x', 1100);
+  setScenarioField(ownOutsideScout, 'y', 1080);
   ownOutsideScout.command = { x: ownOutsideScout.x, y: ownOutsideScout.y };
-  enemyOutsideScout.x = 1160;
-  enemyOutsideScout.y = 1080;
+  setScenarioField(enemyOutsideScout, 'x', 1160);
+  setScenarioField(enemyOutsideScout, 'y', 1080);
   enemyOutsideScout.command = { x: enemyOutsideScout.x, y: enemyOutsideScout.y };
 
   const castOk = teamA.castSubSkill("sub1");
@@ -1810,8 +1811,8 @@ function haruhiFlagshipReworkCheck() {
   const haruhi = teamA.ships.main;
   const target = teamB.ships.main;
   for (const ship of [...teamA.getAllShips(), ...teamB.getAllShips()]) {
-    ship.throttle = 0;
-    ship.speed = 0;
+    setScenarioField(ship, 'throttle', 0);
+    setScenarioField(ship, 'speed', 0);
     ship.command = { x: ship.x, y: ship.y };
     ship.route = null;
   }
@@ -1853,7 +1854,7 @@ function haruhiFlagshipReworkCheck() {
 
   for (let cast = 1; cast < HARUHI_SUPPORTS.length; cast += 1) {
     teamA.startCooldown("flagship", 0);
-    for (const ship of teamA.getAllShips()) ship.energy = ship.maxEnergy;
+    for (const ship of teamA.getAllShips()) setScenarioField(ship, 'energy', ship.maxEnergy);
     assert(teamA.castFlagshipSkill(), `春日旗舰技能第${cast + 1}次释放失败`);
   }
   assert(teamA.haruhiFlagship.supporters.size === 4, "春日四次使用没有找到四种不重复的常驻支援");
@@ -1881,9 +1882,9 @@ function haruhiFlagshipReworkCheck() {
 
   const radialX = (orb.x - haruhi.x) / orb.orbitRadius;
   const radialY = (orb.y - haruhi.y) / orb.orbitRadius;
-  target.x = orb.x + radialX * 90;
-  target.y = orb.y + radialY * 90;
-  target.angle = Math.atan2(haruhi.y - target.y, haruhi.x - target.x);
+  setScenarioField(target, 'x', orb.x + radialX * 90);
+  setScenarioField(target, 'y', orb.y + radialY * 90);
+  setScenarioField(target, 'angle', Math.atan2(haruhi.y - target.y, haruhi.x - target.x));
   target.cooldown = 0;
   sampleVisibility(teamB, [haruhi.id]);
   const haruhiHpBeforeOrb = haruhi.hp;
@@ -1895,14 +1896,14 @@ function haruhiFlagshipReworkCheck() {
   }
   assert(sim.projectiles.length === 0 && haruhi.hp === haruhiHpBeforeOrb, "超能力者光球没有吸收附近的敌方子弹");
 
-  haruhi.x = 560;
-  haruhi.y = 720;
-  haruhi.angle = 0;
-  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
-  haruhi.throttle = throttleForGear(2);
+  setScenarioField(haruhi, 'x', 560);
+  setScenarioField(haruhi, 'y', 720);
+  setScenarioField(haruhi, 'angle', 0);
+  setScenarioField(haruhi, 'speed', haruhi.effectiveSpeed() * throttleForGear(2) + 1);
+  setScenarioField(haruhi, 'throttle', throttleForGear(2));
   haruhi.command = { x: 1000, y: haruhi.y };
-  target.x = haruhi.x - haruhi.radius - target.radius + 6;
-  target.y = haruhi.y;
+  setScenarioField(target, 'x', haruhi.x - haruhi.radius - target.radius + 6);
+  setScenarioField(target, 'y', haruhi.y);
   target.command = { x: target.x, y: target.y };
   const hpBeforeRearContact = target.hp;
   sim.update(TICK_DT);
@@ -1910,12 +1911,12 @@ function haruhiFlagshipReworkCheck() {
   assert(target.hp === hpBeforeRearContact, "异世界人舰尾碰撞错误造成了伤害");
   assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人舰尾碰撞错误消耗了8秒冷却");
 
-  haruhi.x = 560;
-  haruhi.y = 720;
-  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
+  setScenarioField(haruhi, 'x', 560);
+  setScenarioField(haruhi, 'y', 720);
+  setScenarioField(haruhi, 'speed', haruhi.effectiveSpeed() * throttleForGear(2) + 1);
   haruhi.command = { x: 1000, y: haruhi.y };
-  target.x = haruhi.x;
-  target.y = haruhi.y + haruhi.radius + target.radius - 6;
+  setScenarioField(target, 'x', haruhi.x);
+  setScenarioField(target, 'y', haruhi.y + haruhi.radius + target.radius - 6);
   target.command = { x: target.x, y: target.y };
   const hpBeforeSideContact = target.hp;
   sim.update(TICK_DT);
@@ -1923,13 +1924,13 @@ function haruhiFlagshipReworkCheck() {
   assert(target.hp === hpBeforeSideContact, "异世界人侧面碰撞错误造成了伤害");
   assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人侧面碰撞错误消耗了8秒冷却");
 
-  haruhi.x = 560;
-  haruhi.y = 720;
-  haruhi.speed = 0;
-  haruhi.throttle = 0;
+  setScenarioField(haruhi, 'x', 560);
+  setScenarioField(haruhi, 'y', 720);
+  setScenarioField(haruhi, 'speed', 0);
+  setScenarioField(haruhi, 'throttle', 0);
   haruhi.command = { x: haruhi.x, y: haruhi.y };
-  target.x = haruhi.x + haruhi.radius + target.radius - 1;
-  target.y = haruhi.y;
+  setScenarioField(target, 'x', haruhi.x + haruhi.radius + target.radius - 1);
+  setScenarioField(target, 'y', haruhi.y);
   target.command = { x: target.x, y: target.y };
   const hpBeforeStationaryBowContact = target.hp;
   sim.update(TICK_DT);
@@ -1937,12 +1938,12 @@ function haruhiFlagshipReworkCheck() {
   assert(target.hp === hpBeforeStationaryBowContact, "异世界人原地舰首接触错误造成了伤害");
   assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人原地舰首接触错误消耗了8秒冷却");
 
-  haruhi.x = 560;
-  haruhi.y = 720;
-  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) - 2;
+  setScenarioField(haruhi, 'x', 560);
+  setScenarioField(haruhi, 'y', 720);
+  setScenarioField(haruhi, 'speed', haruhi.effectiveSpeed() * throttleForGear(2) - 2);
   haruhi.command = { x: haruhi.x, y: haruhi.y };
-  target.x = haruhi.x + haruhi.radius + target.radius - 1;
-  target.y = haruhi.y;
+  setScenarioField(target, 'x', haruhi.x + haruhi.radius + target.radius - 1);
+  setScenarioField(target, 'y', haruhi.y);
   target.command = { x: target.x, y: target.y };
   const hpBeforeSlowBowContact = target.hp;
   sim.update(TICK_DT);
@@ -1950,13 +1951,13 @@ function haruhiFlagshipReworkCheck() {
   assert(target.hp === hpBeforeSlowBowContact, "异世界人低速舰首接触错误造成了伤害");
   assert(teamA.serialize().haruhiFlagship.otherworlderReady, "异世界人低速舰首接触错误消耗了8秒冷却");
 
-  haruhi.x = 560;
-  haruhi.y = 720;
-  haruhi.speed = haruhi.effectiveSpeed() * throttleForGear(2) + 1;
-  haruhi.throttle = throttleForGear(2);
+  setScenarioField(haruhi, 'x', 560);
+  setScenarioField(haruhi, 'y', 720);
+  setScenarioField(haruhi, 'speed', haruhi.effectiveSpeed() * throttleForGear(2) + 1);
+  setScenarioField(haruhi, 'throttle', throttleForGear(2));
   haruhi.command = { x: 1000, y: haruhi.y };
-  target.x = haruhi.x + haruhi.radius * 3.2;
-  target.y = haruhi.y + haruhi.radius * 1.05;
+  setScenarioField(target, 'x', haruhi.x + haruhi.radius * 3.2);
+  setScenarioField(target, 'y', haruhi.y + haruhi.radius * 1.05);
   target.command = { x: target.x, y: target.y };
   const hpBeforeImpact = target.hp;
   const impactStartX = target.x;
@@ -2000,12 +2001,12 @@ function haruhiFlagshipReworkCheck() {
 
   sim.elapsed = Math.max(sim.elapsed, teamA.effects.haruhiBoostUntil);
   for (const ship of teamA.getAllShips()) {
-    ship.x = 120;
-    ship.y = 120;
+    setScenarioField(ship, 'x', 120);
+    setScenarioField(ship, 'y', 120);
   }
   for (const ship of teamB.getAllShips()) {
-    ship.x = 1240;
-    ship.y = 1240;
+    setScenarioField(ship, 'x', 1240);
+    setScenarioField(ship, 'y', 1240);
   }
   teamB.computeVisibility(teamA);
   assert(
@@ -2046,17 +2047,17 @@ function asakuraFlagshipCheck() {
   runSteps(sim, TICK_DT);
 
   for (const ship of [...teamA.getAllShips(), ...teamB.getAllShips()]) {
-    ship.speed = 0;
-    ship.throttle = 0;
+    setScenarioField(ship, 'speed', 0);
+    setScenarioField(ship, 'throttle', 0);
     ship.command = { ...ship.command, x: ship.x };
     ship.command = { ...ship.command, y: ship.y };
     ship.route = null;
   }
-  enemyMain.x = ownMain.x + 500;
-  enemyMain.y = ownMain.y;
+  setScenarioField(enemyMain, 'x', ownMain.x + 500);
+  setScenarioField(enemyMain, 'y', ownMain.y);
   enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
-  enemySub1.x = ownMain.x + 900;
-  enemySub1.y = ownMain.y;
+  setScenarioField(enemySub1, 'x', ownMain.x + 900);
+  setScenarioField(enemySub1, 'y', ownMain.y);
   enemySub1.command = { x: enemySub1.x, y: enemySub1.y };
   sim.teamA.computeVisibility(sim.teamB);
   assert(!sim.teamA.visibleEnemyIds.has(enemyMain.id), "朝仓旗舰测试布置错误，敌方应处于视野外");
@@ -2111,14 +2112,14 @@ function asakuraAllyCleanseCheck() {
     const source = team.ships.main;
     const ally = team.ships.sub1;
     const distant = team.ships.sub2;
-    source.x = 400;
-    source.y = ally.y = distant.y = 720;
-    ally.x = 700;
-    distant.x = 1300;
+    setScenarioField(source, 'x', 400);
+    setScenarioField(source, 'y', setScenarioField(ally, 'y', setScenarioField(distant, 'y', 720)));
+    setScenarioField(ally, 'x', 700);
+    setScenarioField(distant, 'x', 1300);
     for (const ship of [source, ally, distant]) {
       ship.silenceUntil(10);
       applyHaruhiHeroPowerShock(ship, 0);
-      ship.collisionSlowUntil = 5;
+      setScenarioField(ship, 'collisionSlowUntil', 5);
       for (let hit = 0; hit < 3; hit += 1) {
         ship.registerClawHit({ sourceSeat: seat === "A" ? "B" : "A", triggerHits: 4, markDuration: 8 }, sim);
       }
@@ -2161,12 +2162,12 @@ function asakuraSimultaneousSkillPurgeCheck() {
     "同tick净化测试前置朝仓旗舰技能释放失败",
   );
   assert(asakuraSub.hasEffect("bladeQueenUntil"), "朝仓旗舰技能仍在施放瞬间清除刀锋女王");
-  asakuraSub.x = purgingTeam.ships.main.x;
-  asakuraSub.y = purgingTeam.ships.main.y;
+  setScenarioField(asakuraSub, 'x', purgingTeam.ships.main.x);
+  setScenarioField(asakuraSub, 'y', purgingTeam.ships.main.y);
   asakuraSub.command = { x: asakuraSub.x, y: asakuraSub.y };
   asakuraSub.route = null;
-  asakuraSub.speed = 0;
-  asakuraSub.throttle = 0;
+  setScenarioField(asakuraSub, 'speed', 0);
+  setScenarioField(asakuraSub, 'throttle', 0);
   runSteps(bladeSim, TICK_DT);
   assert(!asakuraSub.hasEffect("bladeQueenUntil"), "朝仓视野波扫到目标后未清除刀锋女王");
 
@@ -2180,13 +2181,13 @@ function asakuraSimultaneousSkillPurgeCheck() {
   });
   const mirrorMainA = mirrorSim.teamA.ships.main;
   const mirrorMainB = mirrorSim.teamB.ships.main;
-  mirrorMainA.x = mirrorMainB.x = 720;
-  mirrorMainA.y = mirrorMainB.y = 720;
+  setScenarioField(mirrorMainA, 'x', setScenarioField(mirrorMainB, 'x', 720));
+  setScenarioField(mirrorMainA, 'y', setScenarioField(mirrorMainB, 'y', 720));
   for (const ship of [mirrorMainA, mirrorMainB]) {
     ship.command = { x: ship.x, y: ship.y };
     ship.route = null;
-    ship.speed = 0;
-    ship.throttle = 0;
+    setScenarioField(ship, 'speed', 0);
+    setScenarioField(ship, 'throttle', 0);
   }
   assert(
     mirrorSim.applyActionForSeat("A", { type: "cast_flagship_skill" }),
@@ -2238,9 +2239,9 @@ function asakuraBladeQueenCheck() {
   teamB.split(2);
   sim.combatEnabled.A = false;
   sim.combatEnabled.B = false;
-  sub1.energy = sub1.maxEnergy;
-  sub1.x = 720;
-  sub1.y = 720;
+  setScenarioField(sub1, 'energy', sub1.maxEnergy);
+  setScenarioField(sub1, 'x', 720);
+  setScenarioField(sub1, 'y', 720);
   sub1.command = { ...sub1.command, x: sub1.x };
   sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
@@ -2248,15 +2249,15 @@ function asakuraBladeQueenCheck() {
   const originalEffectRadius = sub1.radius + 4;
   const originalHitRadius = originalEffectRadius + enemyMain.radius;
   const expandedHitRadius = originalEffectRadius * BLADE_QUEEN_RANGE_MULTIPLIER + enemyMain.radius;
-  enemyMain.x = sub1.x + (originalHitRadius + expandedHitRadius) / 2;
-  enemyMain.y = 720;
+  setScenarioField(enemyMain, 'x', sub1.x + (originalHitRadius + expandedHitRadius) / 2);
+  setScenarioField(enemyMain, 'y', 720);
   enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
   enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
   enemyMain.cooldown = 999;
   for (const enemy of [teamB.ships.sub1, teamB.ships.sub2]) {
-    enemy.x = 1200;
-    enemy.y = enemy.key === "sub1" ? 260 : 1080;
+    setScenarioField(enemy, 'x', 1200);
+    setScenarioField(enemy, 'y', enemy.key === "sub1" ? 260 : 1080);
     enemy.command = { x: enemy.x, y: enemy.y };
     enemy.route = null;
     enemy.cooldown = 999;
@@ -2278,8 +2279,8 @@ function asakuraBladeQueenCheck() {
   ];
   for (const [index, scenario] of damageScenarios.entries()) {
     if (index > 0) sim.elapsed += 0.02;
-    sub1.speed = scenario.speed;
-    enemyMain.hp = enemyMain.maxHp;
+    setScenarioField(sub1, 'speed', scenario.speed);
+    setScenarioField(enemyMain, 'hp', enemyMain.maxHp);
     sim.resolveBladeQueenContacts();
     assert(
       Math.abs(enemyMain.maxHp - enemyMain.hp - enemyMain.maxHp * 0.15) < 1e-7,
@@ -2294,7 +2295,7 @@ function asakuraBladeQueenCheck() {
   }
 
   sim.elapsed += 1.01;
-  enemyMain.x = sub1.x + expandedHitRadius + 0.01;
+  setScenarioField(enemyMain, 'x', sub1.x + expandedHitRadius + 0.01);
   const hpBeforeMiss = enemyMain.hp;
   sim.resolveBladeQueenContacts();
   assert(enemyMain.hp === hpBeforeMiss, "刀锋女王在扩大后的作用范围外仍错误命中敌舰");
@@ -2308,17 +2309,17 @@ function asakuraBladeQueenFlightCheck() {
     } });
     sim.teamA.configureFormation(2);
     const ship = sim.teamA.ships.sub1;
-    Object.assign(ship, { x: 720, y: 720, angle: 0, speed: 0, throttle: 0, route: null, command: { x: 720, y: 720 } });
+    assignScenario(ship, { x: 720, y: 720, angle: 0, speed: 0, throttle: 0, route: null, command: { x: 720, y: 720 } });
     assert(sim.teamA.castSubSkill("sub1"), "刀锋飞行测试施放失败");
     return { sim, ship, minimum: CHARACTER_DEFS.asakura.stats.speed * 1.45 * throttleForGear(3) };
   };
   for (const scenario of ["P档到点", "一档", "能量耗尽", "撞击减速", "眩晕", "震慑禁控", "震慑恢复减速", "防御形态减速", "转弯减速", "旧击退"]) {
     const { sim, ship, minimum } = setup();
     assert(ship.speed >= minimum, "开启刀锋未立即达到三档满能量航速");
-    ship.speed = 0;
-    if (scenario === "一档") ship.throttle = throttleForGear(1);
-    if (scenario === "能量耗尽") ship.energy = 0;
-    if (scenario === "撞击减速") ship.collisionSlowUntil = 3;
+    setScenarioField(ship, 'speed', 0);
+    if (scenario === "一档") setScenarioField(ship, 'throttle', throttleForGear(1));
+    if (scenario === "能量耗尽") setScenarioField(ship, 'energy', 0);
+    if (scenario === "撞击减速") setScenarioField(ship, 'collisionSlowUntil', 3);
     if (scenario === "眩晕") ship.stunUntil(2);
     if (scenario.startsWith("震慑")) {
       applyHaruhiHeroPowerShock(ship, 0);
@@ -2362,9 +2363,9 @@ function asakuraBladeQueenFlightCheck() {
     assert(ship.speed === 0 && ship.x === previousX, `刀锋${end}后没有恢复眩晕停船`);
   }
   const { ship, minimum } = setup();
-  ship.throttle = throttleForGear(4);
+  setScenarioField(ship, 'throttle', throttleForGear(4));
   ship.command = { x: 1200, y: 720 };
-  ship.speed = minimum * throttleForGear(4);
+  setScenarioField(ship, 'speed', minimum * throttleForGear(4));
   ship.update(TICK_DT);
   assert(ship.speed > minimum, "刀锋航速下限错误变成上限，阻止四档飞行");
 
@@ -2372,8 +2373,8 @@ function asakuraBladeQueenFlightCheck() {
   contact.sim.teamB.configureFormation(2);
   const orb = contact.sim.teamB.ships.sub1;
   assert(contact.sim.teamB.castSubSkill("sub1"), "刀锋受击测试未开启古泉光球");
-  orb.x = contact.ship.x + 10;
-  orb.y = contact.ship.y;
+  setScenarioField(orb, 'x', contact.ship.x + 10);
+  setScenarioField(orb, 'y', contact.ship.y);
   sampleOrbSweep(orb, contact.ship.x - 60, contact.ship.y);
   contact.sim.resolveKoizumiOrbContacts();
   assert(contact.ship.isSilenced(), "刀锋错误免除了光球沉默");
@@ -2387,7 +2388,7 @@ function asakuraBladeQueenFlightCheck() {
   const ram = setup();
   ram.sim.teamB.configureFormation(2);
   const haruhi = ram.sim.teamB.ships.main;
-  Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
+  assignScenario(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
   unlockSupport(ram.sim.teamB, ["otherworlder"], 0, () => 0);
   const hpBefore = ram.ship.hp;
   ram.sim.resolveHaruhiOtherworlderContacts();
@@ -2412,19 +2413,19 @@ function shamisenCatPawCheck() {
   const shamisen = teamA.ships.sub1;
   const target = teamB.ships.main;
 
-  shamisen.x = 560;
-  shamisen.y = 720;
-  shamisen.angle = 0;
+  setScenarioField(shamisen, 'x', 560);
+  setScenarioField(shamisen, 'y', 720);
+  setScenarioField(shamisen, 'angle', 0);
   shamisen.command = { x: shamisen.x, y: shamisen.y };
   shamisen.route = null;
-  target.x = 700;
-  target.y = 720;
-  target.angle = Math.PI;
+  setScenarioField(target, 'x', 700);
+  setScenarioField(target, 'y', 720);
+  setScenarioField(target, 'angle', Math.PI);
   target.command = { x: target.x, y: target.y };
   target.route = null;
   for (const ship of [teamB.ships.sub1, teamB.ships.sub2]) {
-    ship.x = 1200;
-    ship.y = ship.key === "sub1" ? 1200 : 1240;
+    setScenarioField(ship, 'x', 1200);
+    setScenarioField(ship, 'y', ship.key === "sub1" ? 1200 : 1240);
     ship.command = { x: ship.x, y: ship.y };
     ship.route = null;
   }
@@ -2451,12 +2452,12 @@ function shamisenCatPawCheck() {
     assert(sim.projectiles.length === 1, `三味线第${hit}发猫爪弹未生成`);
     const projectile = sim.projectiles[0];
     assert(projectile.visualKind === "cat_paw", "技能期间子弹没有切换为猫爪外观");
-    projectile.x = target.x;
-    projectile.y = target.y;
+    setScenarioField(projectile, 'x', target.x);
+    setScenarioField(projectile, 'y', target.y);
     projectile.targetX = target.x;
     projectile.targetY = target.y;
     projectile.resolveImpact(sim);
-    projectile.alive = false;
+    setScenarioField(projectile, 'alive', false);
 
     if (hit < triggerHits) {
       assert(target.clawMarks.stacks === hit, `第${hit}次命中后的抓痕层数异常`);
@@ -2472,8 +2473,8 @@ function shamisenCatPawCheck() {
   sim.projectiles = [];
   shamisen.tryAttack(sim, teamB);
   const expiringProjectile = sim.projectiles[0];
-  expiringProjectile.x = target.x;
-  expiringProjectile.y = target.y;
+  setScenarioField(expiringProjectile, 'x', target.x);
+  setScenarioField(expiringProjectile, 'y', target.y);
   expiringProjectile.resolveImpact(sim);
   assert(target.clawMarks.stacks === 1, "三味线爆发后的新抓痕无法重新计数");
   sim.elapsed += CHARACTER_DEFS.shamisen.subSkill.markDuration + 0.01;
@@ -2511,15 +2512,15 @@ function shamisenFlagshipHuntCheck() {
     assert(target?.alive, "三味线旗舰开局没有生成有效猎杀目标");
     assert(CHARACTER_DEFS.shamisen.flagshipSkill.type === "passive", "三味线“猫爪印记”没有配置为被动旗舰技能");
 
-    hunter.x = 500;
-    hunter.y = 720;
-    hunter.angle = Math.PI / 2;
+    setScenarioField(hunter, 'x', 500);
+    setScenarioField(hunter, 'y', 720);
+    setScenarioField(hunter, 'angle', Math.PI / 2);
     hunter.route = null;
-    target.x = 820;
-    target.y = 720;
+    setScenarioField(target, 'x', 820);
+    setScenarioField(target, 'y', 720);
     target.route = null;
-    decoy.x = 650;
-    decoy.y = 720;
+    setScenarioField(decoy, 'x', 650);
+    setScenarioField(decoy, 'y', 720);
     decoy.route = null;
 
     sampleVisibility(teamA, []);
@@ -2557,7 +2558,7 @@ function shamisenFlagshipHuntCheck() {
     assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猫爪印记错误放大了非目标伤害");
 
     sampleVisibility(teamA, []);
-    target.hp = 29;
+    setScenarioField(target, 'hp', 29);
     target.takeDamage(20, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
     assert(!target.alive, "猎杀目标在致命1.5倍伤害后仍存活");
     assert(sim.shamisenHuntKillEffects.length === 1, "猎杀目标被击毁时没有生成专属击杀特效状态");
@@ -2638,9 +2639,9 @@ export function runRulesSuite() {
 // 场景先采样运动起点，再放到碰撞终点；不直接伪造组件的历史字段。
 function sampleOrbSweep(ship, x, y) {
   const end = { x: ship.x, y: ship.y };
-  ship.x = x;
-  ship.y = y;
+  setScenarioField(ship, 'x', x);
+  setScenarioField(ship, 'y', y);
   sampleKoizumiOrbMotion(ship);
-  ship.x = end.x;
-  ship.y = end.y;
+  setScenarioField(ship, 'x', end.x);
+  setScenarioField(ship, 'y', end.y);
 }
