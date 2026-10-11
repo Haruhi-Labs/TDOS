@@ -35,3 +35,16 @@ assert.deepEqual(actual, {
   beforeBeams: ["radar"], afterVisuals: ["companionCleanup", "sourceCleanup", "stageVisibility"],
 });
 console.log("角色扩展契约通过：独立接入、冲突拒绝、冻结声明与完整同帧顺序");
+
+const { orderedProjection } = await import("../shared/game/rules/projection-order.js");
+assert.throws(() => orderedProjection({ hp: 100 }, { hp: 1 }, ["hp"]), /覆盖基础字段/);
+assert.deepEqual(orderedProjection({ hp: 100 }, { added: 1 }, ["hp"]), { hp: 100, added: 1 });
+
+const { compileActiveSkills } = await import("../shared/game/rules/extension-contract.js");
+const effectCalls = [];
+const skills = compileActiveSkills([{ id: "验证技能", activeSkills: { sub: (port, meta) => { port.submit(meta); return true; } } }]);
+assert.equal(skills.execute("sub", "验证技能", { submit: (meta) => effectCalls.push(meta) }, 7), true);
+assert.deepEqual(effectCalls, [7]);
+assert.equal(skills.execute("flagship", "未注册角色", {}, {}), false);
+assert.throws(() => compileActiveSkills([{ id: "重复" }, { id: "重复" }]), /编号重复/);
+assert.throws(() => compileActiveSkills([{ id: "非法", activeSkills: { arbitrary() {} } }]), /未声明/);

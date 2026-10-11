@@ -3,11 +3,9 @@ import { evaluateAttribute, evaluateControl, evaluateDamageImmunity, evaluateDam
 import { CHARACTER_EXTENSIONS } from "./extensions/index.js";
 import { composeCapabilities, compileHooks } from "./extension-contract.js";
 
-const capabilities = composeCapabilities(CHARACTER_EXTENSIONS.map((extension) => ({ capabilities: extension.rules })));
 const queries = compileHooks(CHARACTER_EXTENSIONS.map((extension) => ({ hooks: extension.queries })), ["barrierRamProfile", "fireRate", "hullCollision", "broadcast"]);
 
-export const CHARACTER_RULES = Object.freeze({
-  ...capabilities,
+const sharedRules = Object.freeze({
   barrierRamProfile: (...args) => queries.first("barrierRamProfile", null, ...args),
   effectiveFireRate: (ship) => queries.reduce("fireRate", ship.statWithBuffs("fireRate", ship.base.fireRate), ship),
   participatesInHullCollision: (ship) => !ship.forcedKnockback && queries.all("hullCollision", ship).every(Boolean),
@@ -42,3 +40,5 @@ export const CHARACTER_RULES = Object.freeze({
     return evaluateDamageTaken(sampleDamageFacts(ship));
   },
 });
+
+export const CHARACTER_RULES = Object.freeze({ ...composeCapabilities([{ capabilities: sharedRules }, ...CHARACTER_EXTENSIONS.map((extension) => ({ capabilities: extension.rules }))]) });

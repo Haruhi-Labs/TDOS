@@ -1,4 +1,11 @@
 export default {
+  activeSkills: {
+    sub: (port, meta) => {
+      port.activateEffect("reliableUntil", meta.duration || 14);
+      port.restoreHullFraction(0.18);
+      return true;
+    },
+  },
   rules: {
     turnRateMultiplier(team, formation = false) {
       return team.hasKyonFlagship() ? (formation ? 1.2 : 1.28) : 1;

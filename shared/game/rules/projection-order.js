@@ -1,5 +1,7 @@
 // 保留既有 JSON 字段顺序，避免纯装配调整改变快照字节与回放摘要；新字段自动追加。
-export function orderedProjection(fields, order) {
+export function orderedProjection(base, extension, order) {
+  for (const key of Object.keys(extension)) if (Object.hasOwn(base, key)) throw new Error(`角色投影覆盖基础字段：${key}`);
+  const fields = { ...base, ...extension };
   const result = {};
   for (const key of order) if (Object.hasOwn(fields, key)) result[key] = fields[key];
   for (const key of Object.keys(fields)) if (!Object.hasOwn(result, key)) result[key] = fields[key];

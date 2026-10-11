@@ -1,6 +1,9 @@
 import { YUKI_COMBAT_SCOUT_STATS, YUKI_COMBAT_SCOUT_LAUNCH_COUNT } from "../../model/model-support.js";
 import { initializeRadar, updateRadarPassive, serializeRadarSweep } from "../../visibility-radar.js";
 export default {
+  activeSkills: {
+    sub: (port) => { port.launchBurstScouts(); return true; },
+  },
   rules: {
     scoutProfile(team, config, pattern) {
       const combatCapable = config.combatCapable ?? team.hasYukiFlagship();

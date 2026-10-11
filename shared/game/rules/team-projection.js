@@ -35,6 +35,5 @@ export function projectTeam(team) {
       scouts: team.scouts.filter((item) => item.alive).map((item) => item.serialize()),
       wingmen: team.wingmen.filter((item) => item.alive).map((item) => item.serialize()),
       beams: team.serializeBeams(),
-      ...projectExtensions(CHARACTER_EXTENSIONS, "projectTeam", team),
-    }, TEAM_WIRE_FIELDS);
+    }, projectExtensions(CHARACTER_EXTENSIONS, "projectTeam", team), TEAM_WIRE_FIELDS);
 }

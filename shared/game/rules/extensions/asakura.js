@@ -2,6 +2,18 @@ import { initializeVisionWaves, cancelVisionWaveSkill, updateVisionWaveSkill, se
 import { resolveVisionWavePurges } from "../../vision-wave-purge.js";
 import { resolveBladeQueenContacts } from "../../character-contacts.js";
 export default {
+  activeSkills: {
+    flagship: (port, meta) => {
+      if (!port.spendEnergy(meta.cost || 0)) return false;
+      port.activateVisionWave({ duration: meta.duration || 6, interval: meta.pulseInterval || 1 });
+      return true;
+    },
+    sub: (port, meta) => {
+      port.activateEffect("bladeQueenUntil", meta.duration || 10);
+      port.ensureMinimumSpeed();
+      return true;
+    },
+  },
   queries: {
     barrierRamProfile: [[20, (source) => source.hasEffect?.("bladeQueenUntil") ? { ramKind: "blade_queen", extraRadius: source.radius } : null]],
     hullCollision: [[20, (ship) => !ship.hasEffect("bladeQueenUntil")]],

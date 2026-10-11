@@ -2,6 +2,9 @@ import { isKoizumiOrbActive, isKoizumiOrbReturning } from "../../koizumi-orb.js"
 import { initializeKoizumiOrb, dispelKoizumiOrb, updateKoizumiOrb, initializeKoizumiImpactWaves, resolveKoizumiOrbContacts, updateKoizumiImpactWaves, serializeKoizumiOrb, serializeKoizumiImpactWaves } from "../../koizumi-orb.js";
 import { initializeKoizumiBarrier, resolveKoizumiBarrierRamContacts, serializeKoizumiBarrier } from "../../koizumi-barrier.js";
 export default {
+  activeSkills: {
+    sub: (port, meta) => port.activateOrb(meta.duration || 8),
+  },
   queries: {
     barrierRamProfile: [[10, (source) => isKoizumiOrbActive(source) ? { ramKind: "koizumi_orb", extraRadius: source.radius } : null]],
     hullCollision: [[10, (ship) => !isKoizumiOrbActive(ship)]],

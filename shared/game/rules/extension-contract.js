@@ -73,3 +73,22 @@ export function projectExtensions(extensions, kind, entity) {
   }
   return fields;
 }
+
+export function compileActiveSkills(extensions) {
+  const entries = new Map();
+  for (const extension of extensions) {
+    if (entries.has(extension.id)) throw new Error(`角色编号重复：${extension.id}`);
+    const skills = extension.activeSkills || {};
+    for (const [slot, execute] of Object.entries(skills)) {
+      if (!["flagship", "sub"].includes(slot) || typeof execute !== "function") throw new Error(`未声明的主动技能槽位：${slot}`);
+    }
+    entries.set(extension.id, Object.freeze({ ...skills }));
+  }
+  return Object.freeze({
+    execute(slot, id, port, meta) {
+      if (!["flagship", "sub"].includes(slot)) throw new Error(`未声明的主动技能槽位：${slot}`);
+      const execute = entries.get(id)?.[slot];
+      return execute ? execute(port, meta) : false;
+    },
+  });
+}

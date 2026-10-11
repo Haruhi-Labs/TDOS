@@ -11,6 +11,14 @@ import { resolveHaruhiOtherworlderContacts } from "../../character-contacts.js";
 import { launchHaruhiAlienWingmen, launchHaruhiRandomBeam } from "../character-launch.js";
 
 export default {
+  activeSkills: {
+    flagship: (port, meta) => {
+      if (!port.spendEnergy(meta.cost || 0)) return false;
+      port.activateSupport(meta.duration || 16);
+      return true;
+    },
+    sub: (port, meta) => { port.emitHeroPower(meta); return true; },
+  },
   queries: {
     barrierRamProfile: [[30, (source, attackerTeam, defendingMain) => {
       const bunny = source.bunnyHaruhi ? bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()) : null;

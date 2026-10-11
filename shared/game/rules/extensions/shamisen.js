@@ -3,6 +3,9 @@ import { initializeClawMarks, clearClawMarks, activeClawMarks, expireClawMarks, 
 import { initializeShamisenHunt, ensureShamisenHuntTarget, serializeShamisenHunt } from "../../shamisen-hunt.js";
 import { rngFor } from "../../rng.js";
 export default {
+  activeSkills: {
+    sub: (port, meta) => { port.activateEffect("catPawUntil", meta.duration || 12); return true; },
+  },
   queries: {
     fireRate: [[10, (value, ship) => ship.characterId === "shamisen" && ship.hasEffect("catPawUntil") ? value * Math.max(0.01, Number(ship.character.subSkill.fireRateMultiplier) || 1) : value]],
   },

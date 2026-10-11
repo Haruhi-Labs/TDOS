@@ -39,7 +39,6 @@ export function projectShip(ship) {
     nameRevealed: ship.nameRevealed, // 角色名是否已被敌方永久确认
     buffs: statusEffectNames(statusEffects),
     statusEffects,
-    ...projectExtensions(CHARACTER_EXTENSIONS, "projectShip", ship),
     route: ship.route
       ? {
           anchorToMain: ship.route.anchorToMain,
@@ -49,5 +48,5 @@ export function projectShip(ship) {
           t: ship.route.t,
         }
       : null,
-  }, SHIP_WIRE_FIELDS);
+  }, projectExtensions(CHARACTER_EXTENSIONS, "projectShip", ship), SHIP_WIRE_FIELDS);
 }
