@@ -192,3 +192,5 @@ await import("./verify-plain-data.mjs");
 await import("./verify-projectile-phase.mjs");
 
 await import("./verify-hero-power-ownership.mjs");
+
+await import("./verify-feedback-ownership.mjs");

@@ -1,3 +1,5 @@
+import { createMatchFeedback } from "../rules/match-feedback.js";
+import { resolveShipDestruction } from "../rules/ship-destruction.js";
 import { createProjectilePhase } from "../rules/projectile-phase.js";
 import { advanceProjectiles } from "../systems/projectile-system.js";
 import { Projectile } from "../model/projectile.js";
@@ -19,17 +21,17 @@ import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderCont
 import { visionWavesCoverEntity as teamVisionWavesCoverEntity } from "../vision-wave.js";
 import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
 import { resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
-import { SHAMISEN_HUNT_KILL_EFFECT_SECONDS, ensureShamisenHuntTarget, resolveShamisenHuntKill } from "../shamisen-hunt.js";
 import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
 import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { createMatchTelemetry, recordTelemetryAction, recordTelemetryAttack, recordTelemetryDamage, recordTelemetryShipLoss, serializeMatchTelemetry } from "../match-telemetry.js";
 import { FloatingText } from "../model/floating-text.js";
 import { Burst } from "../model/burst.js";
 import { Team } from "../model/team.js";
-import { KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL, normalizeAiSeats, nextEntityId } from "../model/model-support.js";
+import { normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 
 export class MatchSimulation {
   #heroPowers;
+  #feedback;
   constructor(options = {}) {
     const mode = options.mode || "pvp";
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
@@ -88,9 +90,7 @@ export class MatchSimulation {
     this.projectiles = [];
     this.bursts = [];
     this.#heroPowers = createHeroPowerRuntime(this);
-    this.shamisenHuntKillEffects = [];
-    this.koizumiBarrierImpacts = [];
-    this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
+    this.#feedback = createMatchFeedback({ now: () => this.elapsed, nextId: () => nextEntityId(this) });
     this.floatingTexts = [];
     this.telemetry = createMatchTelemetry();
     if ([...this.teamA.getPlayerShips(), ...this.teamB.getPlayerShips()].some((ship) => ship.bunnyHaruhi)) {
@@ -309,29 +309,15 @@ export class MatchSimulation {
   }
 
   onShipDestroyed(ship) {
-    if (!ship) {
-      return;
-    }
-    if (this.bunnyHaruhiActive) cleanupBunnyCompanions(this);
-    const pairs = [[this.teamA, this.teamB], [this.teamB, this.teamA]];
-    for (const [hunter, huntedTeam] of pairs) {
-      if (hunter.shamisenHunt?.targetId !== ship.id) {
-        continue;
-      }
-      const effectId = nextEntityId(this);
-      this.shamisenHuntKillEffects.push({
-        id: effectId,
-        hunterSeat: hunter.seat,
-        targetId: ship.id,
-        x: ship.x,
-        y: ship.y,
-        radius: Math.max(10, Number(ship.radius) || 10),
-        seed: effectId * 0.61803398875,
-        life: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
-        maxLife: SHAMISEN_HUNT_KILL_EFFECT_SECONDS,
-      });
-      resolveShamisenHuntKill(hunter, huntedTeam, ship, this.rng.next);
-    }
+    resolveShipDestruction(this, ship, this.#feedback);
+  }
+
+  get shamisenHuntKillEffects() {
+    return this.#feedback.inspectHuntKills();
+  }
+
+  get koizumiBarrierImpacts() {
+    return this.#feedback.inspectBarrierImpacts();
   }
 
   checkVictory() {
@@ -373,35 +359,7 @@ export class MatchSimulation {
   }
 
   spawnKoizumiBarrierImpact(options = {}) {
-    const kind = options.kind || "projectile";
-    const teamSeat = options.teamSeat || null;
-    if (kind === "projectile" && teamSeat) {
-      const nextAt = Number(this.koizumiBarrierProjectileImpactNextAt[teamSeat]) || 0;
-      if (this.elapsed + 1e-9 < nextAt) {
-        return false;
-      }
-      this.koizumiBarrierProjectileImpactNextAt[teamSeat]
-        = this.elapsed + KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL;
-    }
-    const maxLife = kind === "ram" || kind === "break" ? 1.35 : kind === "beam" ? 0.9 : 0.62;
-    this.koizumiBarrierImpacts.push({
-      id: nextEntityId(this),
-      kind,
-      ramKind: options.ramKind || null,
-      teamSeat,
-      sourceSeat: options.sourceSeat || null,
-      x: Number(options.x) || 0,
-      y: Number(options.y) || 0,
-      centerX: Number(options.centerX) || 0,
-      centerY: Number(options.centerY) || 0,
-      radius: Math.max(1, Number(options.radius) || 1),
-      angle: Number(options.angle) || 0,
-      normalX: Number(options.normalX) || 0,
-      normalY: Number(options.normalY) || 0,
-      life: maxLife,
-      maxLife,
-    });
-    return true;
+    return this.#feedback.barrierImpact(options);
   }
 
   spawnProjectile(profile) {
@@ -422,15 +380,7 @@ export class MatchSimulation {
     }
     this.bursts = this.bursts.filter((burst) => burst.life > 0);
 
-    for (const effect of this.shamisenHuntKillEffects) {
-      effect.life -= dt;
-    }
-    this.shamisenHuntKillEffects = this.shamisenHuntKillEffects.filter((effect) => effect.life > 0);
-
-    for (const impact of this.koizumiBarrierImpacts) {
-      impact.life -= dt;
-    }
-    this.koizumiBarrierImpacts = this.koizumiBarrierImpacts.filter((impact) => impact.life > 0);
+    this.#feedback.advance(dt);
 
     for (const label of this.floatingTexts) {
       label.update(dt);
@@ -549,8 +499,8 @@ export class MatchSimulation {
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
       haruhiHeroPowerEffects: this.#heroPowers.serialize(),
-      shamisenHuntKillEffects: this.shamisenHuntKillEffects.map((effect) => ({ ...effect })),
-      koizumiBarrierImpacts: this.koizumiBarrierImpacts.map((impact) => ({ ...impact })),
+      shamisenHuntKillEffects: this.#feedback.serializeHuntKills(),
+      koizumiBarrierImpacts: this.#feedback.serializeBarrierImpacts(),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
       teams: {
         A: this.teamA.serialize(),
