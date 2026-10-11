@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { prepareBunnyCompanions, convertBunnyCompanion, cleanupBunnyCompanions } from "../shared/game/bunny-companion-runtime.js";
-import { resolveBunnyStages } from "../shared/game/bunny-haruhi-runtime.js";
+import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../shared/game/bunny-haruhi-runtime.js";
 
 const sim = new MatchSimulation({ seed: 188, teamLoadouts: { A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" } } });
 const team = sim.teamA;
@@ -70,4 +70,54 @@ target.displaceTo(50, 50);
 resolveBunnyStages(stage);
 assert.equal(target.bunnyStageExposure.inside, false);
 assert.equal(sampled.inside, true, "后续状态提交不修改已读取的历史视图");
-console.log("兔女郎所有权校验通过：关系一次提交、冻结状态、独立受益资格、策反归还、死亡和舞台读写分离。");
+
+const sampledStage = stage.teamB.bunnyStage;
+assert.throws(() => { stage.teamB.bunnyStage = null; }, TypeError);
+assert.throws(() => { sampledStage.radius = 999; }, TypeError);
+assert.throws(() => { stage.bunnyHaruhiActive = false; }, TypeError);
+assert.equal(Object.hasOwn(stage, "bunnySustainAt"), false, "结算游标不得泄露到对局公共状态");
+source.displaceTo(source.x + 10, source.y);
+const projected = stage.serializeState();
+projected.teams.B.bunnyStage.x = -999;
+assert.equal(stage.teamB.bunnyStage, sampledStage, "序列化只读取已提交的舞台样本");
+resolveBunnyStages(stage);
+assert.equal(stage.teamB.bunnyStage.x, sampledStage.x + 10);
+assert.notEqual(stage.teamB.bunnyStage, sampledStage, "新阶段提交不得修改旧样本");
+
+target.displaceTo(source.x, source.y);
+target.drainHull(target.hp - 300);
+resolveBunnyStages(stage);
+stage.elapsed = 10;
+advanceBunnyRules(stage);
+const firstHeal = target.hp;
+assert.ok(firstHeal > 300, "入迷阶段仍结算首次治疗");
+initializeBunnyBattle(stage);
+advanceBunnyRules(stage);
+assert.equal(target.hp, firstHeal, "重复初始化与阶段调用不得重置结算游标或重复治疗");
+stage.elapsed = 11;
+advanceBunnyRules(stage);
+assert.equal(target.hp, firstHeal + target.maxHp * 0.004, "下一秒持续治疗只消费新的时间区间");
+const advanced = target.hp;
+stage.serializeState(); resolveBunnyStages(stage); advanceBunnyRules(stage);
+assert.equal(target.hp, advanced, "重复投影与成员采样不得额外消费持续资源");
+source.retireWithoutLoss();
+cleanupBunnySources(stage);
+assert.equal(stage.teamB.bunnyStage, null);
+assert.equal(target.bunnyStageExposure.inside, false);
+assert.ok(sampledStage.radius > 0, "来源死亡清理不得改写历史样本");
+
+const independent = new MatchSimulation({ seed: 134, teamLoadouts: { B: { main: "bunny_haruhi", sub1: "koizumi", sub2: "kyon" } } });
+const independentTarget = independent.teamA.ships.main;
+independentTarget.displaceTo(independent.teamB.ships.main.x, independent.teamB.ships.main.y);
+independentTarget.drainHull(independentTarget.hp - 300);
+resolveBunnyStages(independent);
+independent.elapsed = 10;
+advanceBunnyRules(independent);
+assert.equal(independentTarget.hp, firstHeal, "不同对局不得共享持续结算游标");
+
+const ordinary = new MatchSimulation({ seed: 135 });
+assert.equal(initializeBunnyBattle(ordinary), false);
+advanceBunnyRules(ordinary); resolveBunnyStages(ordinary); cleanupBunnySources(ordinary);
+assert.equal(Object.hasOwn(ordinary, "bunnyHaruhiActive"), false);
+assert.equal(Object.hasOwn(ordinary.teamA, "bunnyStage"), false, "无舞台阵容不增加角色字段");
+console.log("兔女郎所有权校验通过：关系一次提交、冻结状态、独立受益资格、策反归还、死亡、舞台采样与持续结算所有权。");

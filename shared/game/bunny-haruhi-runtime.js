@@ -17,6 +17,23 @@ export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
 
 const forms = new WeakMap();
 const exposures = new WeakMap();
+const battles = new WeakMap();
+
+/** 对局只编排阶段；持续结算游标与舞台样本由角色运行时独占。 */
+export function initializeBunnyBattle(match) {
+  if (battles.has(match)) return true;
+  const teams = [match.teamA, match.teamB];
+  if (!teams.some((team) => team.getPlayerShips().some((ship) => ship.bunnyHaruhi))) return false;
+  const battle = { sustainAt: match.elapsed, stages: new Map() };
+  battles.set(match, battle);
+  Object.defineProperty(match, "bunnyHaruhiActive", { enumerable: true, value: true });
+  for (const team of teams) {
+    if (!team.ships.main.bunnyHaruhi) continue;
+    battle.stages.set(team, null);
+    Object.defineProperty(team, "bunnyStage", { enumerable: true, get: () => battle.stages.get(team) });
+  }
+  return true;
+}
 
 function commitForm(ship, state) {
   forms.set(ship, Object.freeze({ ...state,
@@ -117,15 +134,17 @@ export function refreshBunnyVisibility(match) {
 
 /** 先采样双方全部圆，再写目标状态，避免席位顺序反馈到同阶段半径。 */
 export function resolveBunnyStages(match) {
+  const battle = battles.get(match);
+  if (!battle) return;
   const samples = [match.teamA, match.teamB].map((team) => {
     const main = team.ships.main;
     return main.bunnyHaruhi && main.alive && !team.areSkillsDisabled()
-      ? { sourceShipId: main.id, seat: team.seat, x: main.x, y: main.y, radius: main.effectiveVision() } : null;
+      ? Object.freeze({ sourceShipId: main.id, seat: team.seat, x: main.x, y: main.y, radius: main.effectiveVision() }) : null;
   });
   for (let i = 0; i < 2; i += 1) {
     const team = i === 0 ? match.teamA : match.teamB;
     const sample = samples[1 - i];
-    if (team.ships.main.bunnyHaruhi) team.bunnyStage = samples[i];
+    if (team.ships.main.bunnyHaruhi) battle.stages.set(team, samples[i]);
     for (const ship of team.getPlayerShips()) {
       const inside = Boolean(sample && ship.alive
         && (ship.x - sample.x) ** 2 + (ship.y - sample.y) ** 2 <= sample.radius ** 2 + 1e-9);
@@ -142,7 +161,9 @@ export function resolveBunnyStages(match) {
 
 /** 每权威区间只结算一次；后续成员关系采样不重复结算持续资源。 */
 export function advanceBunnyRules(match) {
-  const from = match.bunnySustainAt;
+  const battle = battles.get(match);
+  if (!battle) return;
+  const from = battle.sustainAt;
   const to = match.elapsed;
   if (to > from) {
     for (const team of [match.teamA, match.teamB]) {
@@ -156,7 +177,7 @@ export function advanceBunnyRules(match) {
         }));
       }
     }
-    match.bunnySustainAt = to;
+    battle.sustainAt = to;
   }
   cleanupBunnySources(match);
   resolveBunnyStages(match);
@@ -172,6 +193,8 @@ export function updateBunnyTeamSupports(team, dt) {
 }
 
 export function cleanupBunnySources(match) {
+  const battle = battles.get(match);
+  if (!battle) return;
   for (const team of [match.teamA, match.teamB]) {
     for (const ship of team.getPlayerShips()) {
       if (ship.bunnyHaruhi && !ship.alive) {
@@ -180,7 +203,7 @@ export function cleanupBunnySources(match) {
       }
       if (ship.bunnyStageExposure?.inside && !bunnyStageEnabled(ship)) commitExposure(ship, leaveBunnyStage(ship.bunnyStageExposure));
     }
-    if (team.bunnyStage && (!team.ships.main.alive || team.areSkillsDisabled())) team.bunnyStage = null;
+    if (team.bunnyStage && (!team.ships.main.alive || team.areSkillsDisabled())) battle.stages.set(team, null);
   }
 }
 

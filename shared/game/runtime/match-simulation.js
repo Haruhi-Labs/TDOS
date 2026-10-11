@@ -23,7 +23,7 @@ import { createVisionWavePurgePort } from "../rules/vision-wave-port.js";
 import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
 import { resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
 import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
-import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { createMatchTelemetry, recordTelemetryAction, recordTelemetryAttack, recordTelemetryDamage, recordTelemetryShipLoss, serializeMatchTelemetry } from "../match-telemetry.js";
 import { FloatingText } from "../model/floating-text.js";
 import { Burst } from "../model/burst.js";
@@ -95,9 +95,7 @@ export class MatchSimulation {
     this.#feedback = createMatchFeedback({ now: () => this.elapsed, nextId: () => nextEntityId(this) });
     this.floatingTexts = [];
     this.telemetry = createMatchTelemetry();
-    if ([...this.teamA.getPlayerShips(), ...this.teamB.getPlayerShips()].some((ship) => ship.bunnyHaruhi)) {
-      this.bunnyHaruhiActive = true;
-      this.bunnySustainAt = 0;
+    if (initializeBunnyBattle(this)) {
       resolveBunnyStages(this);
       refreshBunnyVisibility(this);
     }

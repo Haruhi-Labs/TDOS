@@ -187,4 +187,10 @@ CPU 采样显示公共深层复制和冻结是可削减的分配来源之一。`
 
 本次单人采样负载均值从 8.97/15.63/31.15 变为 8.57/15.44/31.00。此前出生配置阶段采样曾从 18.09/32.26/32.90 升至 77.59/44.46/37.22，记录了单人 +3.41%/+32.61%、普通 tick +35.08%/+25.62%、支援压力 -11.59%/-13.30%；没有挑选较好轮次，也不能将差异全归因于环境。**性能仍未通过建议线，功能通过不代表性能等价。**
 
-最终原始样本在 `bench/architecture-acceptance/solo-session-performance.json` 和 `performance.json`，前两次分别保留为 `*-before-birth-config.json` 与 `*-before-claw-owner.json`；更早样本继续保留。日志在 `node_modules/.cache/solo-phase-metrics.log`、`birth-config-performance.log`、`character-config-claw-performance.log`。相对性能仍需继续定位，不重刷行为基线或调整阈值。
+最终原始样本在 `bench/architecture-acceptance/solo-session-performance.json` 和 `performance.json`，前两次分别保留为 `*-before-birth-config.json` 与 `*-before-claw-owner.json`；更早样本继续保留。日志在 `node_modules/.cache/solo-phase-metrics.log`、`birth-config-performance.log`、`character-config-claw-performance.log`。这些是当时的相对性能记录，不重刷行为基线或调整原始阈值。
+
+### 后续取舍：优先模块与内部边界
+
+用户明确接受少量性能开销，要求优先改善模块、状态所有权和内部设计。因此前述 5% 建议线保留为回归观察指标，不再单独作为架构工作未完成的判据；历史超线结果不改写为通过，也不宣称性能等价。真实设备流畅度仍需实际验收。
+
+共享 getter 的后续隔离副本实验仍未显示稳定整体收益，未纳入生产实现。继续工作的依据是具体的边界问题：兔女郎持续结算游标从对局公共字段移到角色运行时，舞台样本从可写舰队字段改为该运行时发布的不可变视图。对局仅负责初始化和阶段编排，保持双方先采样及每时间区间只结算一次；不引入额外帧延迟或统一事件总线。
