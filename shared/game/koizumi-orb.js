@@ -1,3 +1,5 @@
+const states = new WeakMap();
+
 import {
   clamp,
   linePointDistance,
@@ -63,7 +65,7 @@ function boundarySteeringVector(ship, headingX, headingY) {
 }
 
 function transitionToReturn(ship) {
-  const state = ship.koizumiOrb;
+  const state = states.get(ship);
   if (!state || state.phase === "returning") {
     return false;
   }
@@ -80,21 +82,28 @@ function finishReturn(ship) {
   ship.displaceTo(center, center);
   ship.navigateTo({ x: center, y: center });
   ship.setFlightSpeed(Math.min(ship.speed, ship.effectiveSpeed() * 0.9));
-  ship.koizumiOrb = null;
+  states.set(ship, null);
   match.spawnBurst(center, center, "#ff526f", 16);
   match.spawnFloatingTextKey(center + 12, center - 16, "归航", {}, "#ff9bad");
 }
 
 export function initializeKoizumiOrb(ship) {
-  ship.koizumiOrb = null;
+  if (states.has(ship)) return;
+  states.set(ship, null);
+  Object.defineProperty(ship, "koizumiOrb", { enumerable: true, get: () => {
+    const state = states.get(ship);
+    if (!state) return null;
+    const { hitAt, ...view } = state;
+    return Object.freeze(view);
+  } });
 }
 
 export function isKoizumiOrbActive(ship) {
-  return Boolean(ship?.alive && ship.koizumiOrb);
+  return Boolean(ship?.alive && states.get(ship));
 }
 
 export function isKoizumiOrbReturning(ship) {
-  return Boolean(isKoizumiOrbActive(ship) && ship.koizumiOrb.phase === "returning");
+  return Boolean(isKoizumiOrbActive(ship) && states.get(ship).phase === "returning");
 }
 
 export function beginKoizumiOrbReturn(ship) {
@@ -102,20 +111,20 @@ export function beginKoizumiOrbReturn(ship) {
 }
 
 export function dispelKoizumiOrb(ship) {
-  if (!ship?.koizumiOrb) return false;
+  if (!states.get(ship)) return false;
   // 净化直接解除形态，不触发归航或瞬移；当前位置与已有航向继续交给普通推进。
-  ship.koizumiOrb = null;
+  states.set(ship, null);
   ship.setFlightSpeed(Math.min(ship.speed, ship.effectiveSpeed()));
   return true;
 }
 
 export function activateKoizumiOrb(ship, duration = 8) {
-  if (!ship?.alive || ship.characterId !== "koizumi" || ship.koizumiOrb) {
+  if (!ship?.alive || ship.characterId !== "koizumi" || states.get(ship)) {
     return false;
   }
   const now = ship.team.match.elapsed;
   const cruiseSpeed = Math.max(ORB_BASE_CRUISE_SPEED, ship.baseSpeed() * ORB_SPEED_MULTIPLIER);
-  ship.koizumiOrb = {
+  states.set(ship, {
     phase: "active",
     startedAt: now,
     activeUntil: now + Math.max(0.1, Number(duration) || 8),
@@ -125,7 +134,7 @@ export function activateKoizumiOrb(ship, duration = 8) {
     angularVelocity: 0,
     cruiseSpeed,
     hitAt: new Map(),
-  };
+  });
   // 从既有航速连续加速，既不会瞬移，也能在半秒内形成明确的高速感。
   ship.setFlightSpeed(Math.max(ship.speed, cruiseSpeed * 0.46));
   ship.clearControlEffects();
@@ -135,7 +144,7 @@ export function activateKoizumiOrb(ship, duration = 8) {
 }
 
 export function updateKoizumiOrb(ship, dt) {
-  const state = ship?.koizumiOrb;
+  const state = states.get(ship);
   if (!state || !ship.alive) {
     return false;
   }
@@ -145,8 +154,7 @@ export function updateKoizumiOrb(ship, dt) {
     transitionToReturn(ship);
   }
 
-  state.previousX = ship.x;
-  state.previousY = ship.y;
+  sampleKoizumiOrbMotion(ship);
   const returning = state.phase === "returning";
   const center = match.worldSize * 0.5;
   const target = returning
@@ -298,7 +306,7 @@ export function resolveKoizumiOrbContacts(match) {
   const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
   for (const [team, enemyTeam] of pairs) {
     for (const source of team.getAllShips()) {
-      const state = source.koizumiOrb;
+      const state = states.get(source);
       if (!source.alive || !state || source.isControlLocked()) continue;
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive) continue;
@@ -358,7 +366,7 @@ export function serializeKoizumiImpactWaves(team) {
 }
 
 export function serializeKoizumiOrb(ship) {
-  const state = ship?.koizumiOrb;
+  const state = states.get(ship);
   if (!state) return null;
   return {
     active: true,
@@ -367,4 +375,12 @@ export function serializeKoizumiOrb(ship) {
     angularVelocity: state.angularVelocity,
     cruiseSpeed: state.cruiseSpeed,
   };
+}
+
+// 碰撞消费的是本次推进前采样的位姿，不能通过公共投影改写接触历史。
+export function sampleKoizumiOrbMotion(ship) {
+  const state = states.get(ship);
+  if (!state) return;
+  state.previousX = ship.x;
+  state.previousY = ship.y;
 }

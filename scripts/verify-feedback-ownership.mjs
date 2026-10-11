@@ -1,3 +1,4 @@
+import { initializeShamisenHunt, selectShamisenHuntTarget } from "../shared/game/shamisen-hunt.js";
 import assert from "node:assert/strict";
 import { createMatchFeedback } from "../shared/game/rules/match-feedback.js";
 import { resolveShipDestruction } from "../shared/game/rules/ship-destruction.js";
@@ -23,7 +24,9 @@ assert.equal(historical[0].life, 0.62);
 now = 10;
 assert.equal(feedback.barrierImpact({ teamSeat: "A" }), true);
 
-const hunter = { seat: "A", shamisenHunt: { targetId: 7, sequence: 1 }, mainCharacterId: () => "shamisen" };
+const hunter = { seat: "A", mainCharacterId: () => "shamisen" };
+initializeShamisenHunt(hunter);
+selectShamisenHuntTarget(hunter, { getVictoryShips: () => [{ id: 7, alive: true }] }, () => 0);
 const survivor = { id: 8, alive: true };
 const hunted = { seat: "B", getVictoryShips: () => [survivor] };
 const destroyed = { id: 7, alive: false, x: 50, y: 60, radius: 12 };

@@ -1,3 +1,4 @@
+import { selectShamisenHuntTarget } from "../shared/game/shamisen-hunt.js";
 import { unlockSupport } from "../shared/game/haruhi-support.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
@@ -38,7 +39,7 @@ main.collisionSlowUntil = 14;
 main.forcedKnockback = { startedAt: 11, endsAt: 11.58 };
 for (let hit = 0; hit < 2; hit += 1) main.registerClawHit({ triggerHits: 4, markDuration: 8 }, simulation);
 applyHaruhiHeroPowerShock(main, 11);
-simulation.teamB.shamisenHunt.targetId = main.id;
+selectShamisenHuntTarget(simulation.teamB, team, () => 0);
 const beforeSerialize = JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]);
 collect(main);
 assert.equal(JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]), beforeSerialize, "状态序列化不能推进模拟或清理权威状态");

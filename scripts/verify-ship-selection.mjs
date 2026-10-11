@@ -1,3 +1,4 @@
+import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
@@ -43,7 +44,7 @@ const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logL
   name: "ship-selection-fixture",
   transform(code, id) {
     if (id.endsWith("/src/solo/session.js")) return code.replace("simulation = createSimulation(options);", "simulation = createSimulation(options); globalThis.testSoloSimulation = simulation; globalThis.invalidateSoloSnapshot = () => { dirty = true; };");
-    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, refresh() { globalThis.invalidateSoloSnapshot(); app.state = globalThis.testSoloSimulation.serializeState(); app.renderState = app.state; updateUi(); } };`;
+    if (id.endsWith("/src/solo.js")) return `import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "/shared/game/haruhi-hero-power.js";\n${code}\nglobalThis.selectionFixture = { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock, get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, refresh() { globalThis.invalidateSoloSnapshot(); app.state = globalThis.testSoloSimulation.serializeState(); app.renderState = app.state; updateUi(); } };`;
     if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
@@ -90,7 +91,8 @@ try {
           const ship = f.simulation.teamA.ships[key];
           ship.clearTimedEffect("stunnedUntil", false);
           if (status === "stun") ship.stunUntil(f.simulation.elapsed + 30);
-          ship.heroPowerShock = { hitAt: f.simulation.elapsed, lockUntil: status === "shock" ? f.simulation.elapsed + 30 : 0, recoveryUntil: status === "shock" ? f.simulation.elapsed + 35 : 0 };
+          f.resetHaruhiHeroPowerShock(ship);
+          if (status === "shock") f.applyHaruhiHeroPowerShock(ship, f.simulation.elapsed, { lockDuration: 30, recoveryDuration: 5 });
           ship.alive = status !== "dead";
           f.refresh();
         }, { key, status });
@@ -98,7 +100,8 @@ try {
         const ship = onlineSimulation.teamA.ships[key];
         ship.clearTimedEffect("stunnedUntil", false);
         if (status === "stun") ship.stunUntil(30);
-        ship.heroPowerShock = { hitAt: 0, lockUntil: status === "shock" ? 30 : 0, recoveryUntil: status === "shock" ? 35 : 0 };
+        resetHaruhiHeroPowerShock(ship);
+        if (status === "shock") applyHaruhiHeroPowerShock(ship, 0, { lockDuration: 30, recoveryDuration: 5 });
         ship.alive = status !== "dead";
         snapshotSeq++;
         socket.send(JSON.stringify({ type: "snapshot", roomId: "selection-room", snapshotSeq, tick: snapshotSeq, state: onlineSimulation.serializeState() }));

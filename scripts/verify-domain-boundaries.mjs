@@ -225,3 +225,5 @@ await import("./verify-skill-cycle.mjs");
 await import("./verify-ship-status.mjs");
 
 await import("./verify-aircraft-ownership.mjs");
+
+await import("./verify-role-state-ownership.mjs");

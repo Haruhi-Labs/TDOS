@@ -1,3 +1,5 @@
+const shocks = new WeakMap();
+
 import { clamp, distance } from "./math.js";
 
 export const HARUHI_HERO_POWER_CHARGE_SECONDS = 0.8;
@@ -16,7 +18,10 @@ export function createHaruhiHeroPowerShockState() {
 }
 
 export function resetHaruhiHeroPowerShock(ship) {
-  ship.heroPowerShock = createHaruhiHeroPowerShockState();
+  if (!shocks.has(ship)) Object.defineProperty(ship, "heroPowerShock", {
+    enumerable: true, get: () => shocks.get(ship),
+  });
+  shocks.set(ship, Object.freeze(createHaruhiHeroPowerShockState()));
 }
 
 export function isHaruhiHeroPowerControlLocked(ship, now = ship?.team?.match?.elapsed || 0) {
@@ -52,11 +57,11 @@ export function applyHaruhiHeroPowerShock(ship, now, options = {}) {
   }
   const lockDuration = Math.max(0, Number(options.lockDuration) || HARUHI_HERO_POWER_LOCK_SECONDS);
   const recoveryDuration = Math.max(0, Number(options.recoveryDuration) || HARUHI_HERO_POWER_RECOVERY_SECONDS);
-  ship.heroPowerShock = {
+  shocks.set(ship, Object.freeze({
     hitAt: now,
     lockUntil: now + lockDuration,
     recoveryUntil: now + lockDuration + recoveryDuration,
-  };
+  }));
   ship.applyControlSpeedLimit();
   return true;
 }

@@ -22,11 +22,11 @@ import {
   HARUHI_SUPPORTS,
   haruhiOtherworlderReady,
 } from "../../shared/game/haruhi-flagship.js";
-import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
-import { beginKoizumiOrbReturn, updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
+import { disruptKoizumiBarrier, KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
+import { sampleKoizumiOrbMotion, beginKoizumiOrbReturn, updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
 import { serializeShipStatusEffects } from "../../shared/game/status-effects.js";
 import { DAMAGE_KIND } from "../../shared/game/damage.js";
-import { applyHaruhiHeroPowerShock } from "../../shared/game/haruhi-hero-power.js";
+import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../../shared/game/haruhi-hero-power.js";
 import { applyMatchAction } from "../../shared/game/action-dispatcher.js";
 import { matchActions } from "../../shared/protocol/match-actions.js";
 import { assert, runSteps } from "./helpers.mjs";
@@ -1034,8 +1034,7 @@ function koizumiBarrierChargesCheck() {
   assert(barrier().active && barrier().remainingHits === 15, "连续5秒无敌弹穿越后未恢复完整15次");
 
   const crossing = createScenario();
-  crossing.sim.teamA.koizumiBarrier.remainingHits = 0;
-  crossing.sim.teamA.koizumiBarrier.disabledUntil = 5;
+  disruptKoizumiBarrier(crossing.sim.teamA, { x: crossing.main.x, y: crossing.main.y, normalX: 1, normalY: 0 });
   crossing.sim.elapsed = 4.99;
   crossing.shot(crossing.main.effectiveVision() + 30, -crossing.main.effectiveVision() - 30);
   crossing.sim.updateProjectiles(1);
@@ -1107,8 +1106,7 @@ function koizumiImpactWaveCheck() {
     far.x = 1200;
     orb.x = 410;
     orb.y = 720;
-    orb.koizumiOrb.previousX = 350;
-    orb.koizumiOrb.previousY = 720;
+    sampleOrbSweep(orb, 350, 720);
     const hpBefore = enemy.getAllShips().map((ship) => ship.hp);
     sim.resolveKoizumiOrbContacts();
     assert(team.koizumiImpactWaves.length === 1, "一次光球撞击未生成一圈能量波");
@@ -1232,15 +1230,14 @@ function koizumiOrbRamCheck() {
   runSteps(sim, 1.2);
   assert(Math.abs(sub1.koizumiOrb.angularVelocity) > 0.75, "古泉光球转向机动性没有提高50%");
   sub1.route = null;
-  sub1.koizumiOrb.hitAt.clear();
+  sim.elapsed += 1; // 等待命中保护自然结束，再验证下一次扫掠。
   enemyMain.x = 790;
   enemyMain.y = 720;
   enemyMain.forcedKnockback = null;
   sub1.angle = 0;
 
   const hpBeforeRam = enemyMain.hp;
-  sub1.koizumiOrb.previousX = 720;
-  sub1.koizumiOrb.previousY = 720;
+  sampleOrbSweep(sub1, 720, 720);
   sub1.x = 810;
   sub1.y = 720;
   sim.resolveKoizumiOrbContacts();
@@ -1259,8 +1256,7 @@ function koizumiOrbRamCheck() {
 
   const firstSilenceUntil = enemyMain.effects.silencedUntil;
   sim.elapsed += 1;
-  sub1.koizumiOrb.previousX = enemyMain.x - 50;
-  sub1.koizumiOrb.previousY = enemyMain.y;
+  sampleOrbSweep(sub1, enemyMain.x - 50, enemyMain.y);
   sub1.x = enemyMain.x + 50;
   sub1.y = enemyMain.y;
   sim.resolveKoizumiOrbContacts();
@@ -1271,8 +1267,7 @@ function koizumiOrbRamCheck() {
   enemyMain.x = 790;
   enemyMain.y = 738;
   enemyMain.forcedKnockback = null;
-  sub1.koizumiOrb.previousX = 720;
-  sub1.koizumiOrb.previousY = 720;
+  sampleOrbSweep(sub1, 720, 720);
   sub1.x = 810;
   sub1.y = 720;
   sim.resolveKoizumiOrbContacts();
@@ -1336,8 +1331,7 @@ function koizumiControlImmunityCheck() {
     assert(ship.heroPowerShock.recoveryUntil === 0 && !ship.forcedKnockback && ship.collisionSlowUntil === 0, "进入光球没有清除已有控制");
     assert(ship.clawMarks.stacks === 1, "光球免控错误清除了非控制标记");
     Object.assign(ship, { x: 420, y: 500, angle: 0, command: { x: 1200, y: 500 }, route: null });
-    ship.koizumiOrb.previousX = ship.x;
-    ship.koizumiOrb.previousY = ship.y;
+    sampleOrbSweep(ship, ship.x, ship.y);
     if (phase === "returning") beginKoizumiOrbReturn(ship);
     return { sim, team, enemy, ship };
   };
@@ -1351,8 +1345,7 @@ function koizumiControlImmunityCheck() {
     const enemyOrb = enemy.ships.sub1;
     assert(enemy.castSubSkill("sub1"), "光球免控测试未能施放敌方光球");
     Object.assign(enemyOrb, { x: ship.x + 10, y: ship.y });
-    enemyOrb.koizumiOrb.previousX = ship.x - 60;
-    enemyOrb.koizumiOrb.previousY = ship.y;
+    sampleOrbSweep(enemyOrb, ship.x - 60, ship.y);
     sim.resolveKoizumiOrbContacts();
     assert(!ship.forcedKnockback && !ship.isSilenced() && ship.effects.silencedUntil === 0, "光球仍受到敌方光球击退或沉默");
     updateKoizumiImpactWaves(sim);
@@ -2121,7 +2114,7 @@ function asakuraAllyCleanseCheck() {
     distant.x = 1300;
     for (const ship of [source, ally, distant]) {
       ship.silenceUntil(10);
-      ship.heroPowerShock = { hitAt: 0, lockUntil: 2, recoveryUntil: 5 };
+      applyHaruhiHeroPowerShock(ship, 0);
       ship.collisionSlowUntil = 5;
       for (let hit = 0; hit < 3; hit += 1) {
         ship.registerClawHit({ sourceSeat: seat === "A" ? "B" : "A", triggerHits: 4, markDuration: 8 }, sim);
@@ -2130,7 +2123,7 @@ function asakuraAllyCleanseCheck() {
     }
     // 沉默期间不能主动施法，此处只激活波纹以验证已经发出的波的驱散行为。
     source.clearTimedEffect("silencedUntil", false);
-    source.heroPowerShock = { hitAt: 0, lockUntil: 0, recoveryUntil: 0 };
+    resetHaruhiHeroPowerShock(source);
     assert(team.castFlagshipSkill(), "朝仓友军驱散测试未能发射视野波");
     sim.elapsed = 0.5;
     sim.resolveVisionWavePurges();
@@ -2378,8 +2371,7 @@ function asakuraBladeQueenFlightCheck() {
   assert(contact.sim.teamB.castSubSkill("sub1"), "刀锋受击测试未开启古泉光球");
   orb.x = contact.ship.x + 10;
   orb.y = contact.ship.y;
-  orb.koizumiOrb.previousX = contact.ship.x - 60;
-  orb.koizumiOrb.previousY = contact.ship.y;
+  sampleOrbSweep(orb, contact.ship.x - 60, contact.ship.y);
   contact.sim.resolveKoizumiOrbContacts();
   assert(contact.ship.isSilenced(), "刀锋错误免除了光球沉默");
   assert(!contact.ship.forcedKnockback && contact.ship.speed >= contact.minimum, "光球撞击打断刀锋飞行");
@@ -2638,4 +2630,14 @@ export function runRulesSuite() {
   asakuraBladeQueenFlightCheck();
   shamisenFlagshipHuntCheck();
   shamisenCatPawCheck();
+}
+
+// 场景先采样运动起点，再放到碰撞终点；不直接伪造组件的历史字段。
+function sampleOrbSweep(ship, x, y) {
+  const end = { x: ship.x, y: ship.y };
+  ship.x = x;
+  ship.y = y;
+  sampleKoizumiOrbMotion(ship);
+  ship.x = end.x;
+  ship.y = end.y;
 }

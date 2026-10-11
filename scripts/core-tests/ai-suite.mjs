@@ -1,3 +1,5 @@
+import { disruptKoizumiBarrier } from "../../shared/game/koizumi-barrier.js";
+import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
 import { aiFixture } from "./ai-fixture.mjs";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import {
@@ -1215,9 +1217,7 @@ function aiKoizumiBarrierDefenseCheck() {
     );
   }
 
-  team.koizumiBarrier.disabledAt = sim.elapsed;
-  team.koizumiBarrier.remainingHits = 0;
-  team.koizumiBarrier.disabledUntil = sim.elapsed + 5;
+  disruptKoizumiBarrier(team, { x: main.x, y: main.y, normalX: 1, normalY: 0 });
   bot.modeTimer = 0;
   context = bot.buildTacticalContext(main, bot.selectEnemyFocus(main));
   const beforeDistance = Math.hypot(main.x - enemyMain.x, main.y - enemyMain.y);
@@ -1499,9 +1499,7 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
   assert(bot.shouldCastSubSkill(future1096, context.focus, context), "1096 AI进入盾内后仍错误保留光线");
 
   // 关闭护盾后验证蓄力射线会对移动目标做前置量，而非瞄准旧位置。
-  sim.teamA.koizumiBarrier.disabledAt = sim.elapsed;
-  sim.teamA.koizumiBarrier.remainingHits = 0;
-  sim.teamA.koizumiBarrier.disabledUntil = sim.elapsed + 5;
+  disruptKoizumiBarrier(sim.teamA, { x: defendingMain.x, y: defendingMain.y, normalX: 1, normalY: 0 });
   defendingMain.angle = Math.PI * 0.5;
   defendingMain.speed = 40;
   bot.rememberContact(defendingMain, "visible");
@@ -1751,7 +1749,7 @@ function aiShamisenHuntAttackFormationCheck() {
   const team = sim.teamA;
   const target = sim.teamB.ships.sub2;
   const blocker = sim.teamB.ships.sub1;
-  team.shamisenHunt.targetId = target.id;
+  selectShamisenHuntTarget(team, sim.teamB, () => 0.99);
   team.split(1);
   team.split(2);
 
@@ -1818,7 +1816,7 @@ function aiShamisenHuntDefenseFormationCheck() {
   const team = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
   const hunted = team.ships.sub2;
-  sim.teamA.shamisenHunt.targetId = hunted.id;
+  selectShamisenHuntTarget(sim.teamA, team, () => 0.99);
   sim.elapsed = 8.2;
   team.match.elapsed = sim.elapsed;
 

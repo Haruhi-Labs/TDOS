@@ -83,7 +83,6 @@ function entityCheck() {
   assert.equal(view.bunnyCompanion.followOffset, undefined);
   for (const ship of team.getPlayerShips()) ship.alive = false;
   assert.equal(team.hasLivingShips(), false, "仅阿虚存活不阻止胜负结算");
-  sim.teamB.shamisenHunt.targetId = null;
   assert.equal(selectShamisenHuntTarget(sim.teamB, team), null);
   prepareBunnyCompanions(sim);
   assert.equal(companion.alive, false);

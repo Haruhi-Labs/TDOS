@@ -22,9 +22,9 @@ import { cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSki
 import { isFocusWorthy } from "../targeting-system.js";
 import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
 import { serializeKoizumiImpactWaves } from "../koizumi-orb.js";
-import { createKoizumiBarrierState, serializeKoizumiBarrier } from "../koizumi-barrier.js";
+import { initializeKoizumiBarrier, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
-import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
+import { initializeShamisenHunt, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
 import { convertBunnyCompanion } from "../bunny-companion-runtime.js";
 import { spawnBunnyCompanion, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
@@ -93,8 +93,8 @@ export class Team {
     Object.defineProperty(this, "haruhiFlagship", {
       enumerable: true, value: ownSupportState(createHaruhiFlagshipState(facing)),
     });
-    this.koizumiBarrier = createKoizumiBarrierState();
-    this.shamisenHunt = createShamisenHuntState();
+    initializeKoizumiBarrier(this);
+    initializeShamisenHunt(this);
 
     const sub1FormationOffset = { x: -36, y: 22 };
     const sub2FormationOffset = { x: -36, y: -22 };

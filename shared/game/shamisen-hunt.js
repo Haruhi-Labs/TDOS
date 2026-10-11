@@ -1,3 +1,5 @@
+const states = new WeakMap();
+
 import { isAttackDamageKind } from "./damage.js";
 
 export const SHAMISEN_HUNT_DAMAGE_MULTIPLIER = 1.5;
@@ -19,27 +21,27 @@ function livingHuntTargets(enemyTeam) {
 }
 
 export function selectShamisenHuntTarget(team, enemyTeam, random = Math.random) {
-  if (!team?.shamisenHunt || !hasShamisenFlagship(team)) {
+  if (!states.get(team) || !hasShamisenFlagship(team)) {
     return null;
   }
   const candidates = livingHuntTargets(enemyTeam);
   if (!candidates.length) {
-    team.shamisenHunt.targetId = null;
+    states.get(team).targetId = null;
     return null;
   }
   const roll = Math.max(0, Math.min(0.999999, Number(random()) || 0));
   const target = candidates[Math.floor(roll * candidates.length)];
-  team.shamisenHunt.targetId = target.id;
-  team.shamisenHunt.sequence += 1;
+  states.get(team).targetId = target.id;
+  states.get(team).sequence += 1;
   return target;
 }
 
 export function ensureShamisenHuntTarget(team, enemyTeam, random = Math.random) {
   if (!hasShamisenFlagship(team)) {
-    if (team?.shamisenHunt) team.shamisenHunt.targetId = null;
+    if (states.get(team)) states.get(team).targetId = null;
     return null;
   }
-  const currentId = team.shamisenHunt?.targetId;
+  const currentId = states.get(team)?.targetId;
   const current = livingHuntTargets(enemyTeam).find((ship) => ship.id === currentId);
   return current || selectShamisenHuntTarget(team, enemyTeam, random);
 }
@@ -48,7 +50,7 @@ export function isShamisenHuntTarget(team, target) {
   return Boolean(
     hasShamisenFlagship(team)
       && target?.alive
-      && team.shamisenHunt?.targetId === target.id,
+      && states.get(team)?.targetId === target.id,
   );
 }
 
@@ -62,19 +64,27 @@ export function shamisenHuntDamageMultiplier(source, target, damageKind = null) 
 }
 
 export function resolveShamisenHuntKill(team, enemyTeam, destroyedShip, random = Math.random) {
-  if (!team?.shamisenHunt || team.shamisenHunt.targetId !== destroyedShip?.id) {
+  if (!states.get(team) || states.get(team).targetId !== destroyedShip?.id) {
     return null;
   }
-  team.shamisenHunt.targetId = null;
+  states.get(team).targetId = null;
   return selectShamisenHuntTarget(team, enemyTeam, random);
 }
 
 export function serializeShamisenHunt(team) {
   return {
-    targetId: Number.isFinite(team?.shamisenHunt?.targetId)
-      ? team.shamisenHunt.targetId
+    targetId: Number.isFinite(states.get(team)?.targetId)
+      ? states.get(team).targetId
       : null,
-    sequence: Math.max(0, Number(team?.shamisenHunt?.sequence) || 0),
+    sequence: Math.max(0, Number(states.get(team)?.sequence) || 0),
     damageMultiplier: SHAMISEN_HUNT_DAMAGE_MULTIPLIER,
   };
+}
+
+export function initializeShamisenHunt(team) {
+  if (states.has(team)) return;
+  states.set(team, createShamisenHuntState());
+  Object.defineProperty(team, "shamisenHunt", { enumerable: true,
+    get: () => Object.freeze({ ...states.get(team) }),
+  });
 }

@@ -1,3 +1,5 @@
+const states = new WeakMap();
+
 import { clamp } from "./math.js";
 export const KOIZUMI_BARRIER_DISABLE_SECONDS = 5;
 export const KOIZUMI_BARRIER_MAX_HITS = 15;
@@ -27,10 +29,10 @@ export function koizumiBarrierGeometry(team) {
   }
   const main = team.ships.main;
   const now = team.match.elapsed;
-  const remainingHits = team.koizumiBarrier.remainingHits;
+  const remainingHits = states.get(team).remainingHits;
   const active = remainingHits > 0;
-  const disabledRemaining = active ? 0 : Math.max(0, team.koizumiBarrier.disabledUntil - now);
-  const repairedAt = team.koizumiBarrier.repairedAt;
+  const disabledRemaining = active ? 0 : Math.max(0, states.get(team).disabledUntil - now);
+  const repairedAt = states.get(team).repairedAt;
   const recoveryAge = !active || !Number.isFinite(repairedAt)
     ? 0
     // 重组动画结束后固定为上限，避免这个仅供显示的值永久逐帧变化，
@@ -61,10 +63,10 @@ export function isKoizumiBarrierActive(team) {
 
 // 只在权威逻辑推进中修复；查询几何或序列化快照不得改变剩余次数。
 export function updateKoizumiBarrierRecovery(team) {
-  if (!hasKoizumiBarrier(team) || team.koizumiBarrier.remainingHits > 0) return;
-  if (team.match.elapsed + 1e-9 < team.koizumiBarrier.disabledUntil) return;
-  team.koizumiBarrier.remainingHits = KOIZUMI_BARRIER_MAX_HITS;
-  team.koizumiBarrier.repairedAt = team.match.elapsed;
+  if (!hasKoizumiBarrier(team) || states.get(team).remainingHits > 0) return;
+  if (team.match.elapsed + 1e-9 < states.get(team).disabledUntil) return;
+  states.get(team).remainingHits = KOIZUMI_BARRIER_MAX_HITS;
+  states.get(team).repairedAt = team.match.elapsed;
 }
 
 function projectileStepEnd(projectile, dt) {
@@ -80,7 +82,7 @@ function projectileStepEnd(projectile, dt) {
 }
 
 export function trackKoizumiBarrierProjectileCrossing(projectile, dt, team, geometry) {
-  if (!projectile?.alive || projectile.team === team || !geometry || team.koizumiBarrier.remainingHits > 0) return;
+  if (!projectile?.alive || projectile.team === team || !geometry || states.get(team).remainingHits > 0) return;
   const end = projectileStepEnd(projectile, dt);
   const main = team.ships.main;
   const startX = projectile.x - (Number.isFinite(main.previousX) ? main.previousX : main.x);
@@ -91,7 +93,7 @@ export function trackKoizumiBarrierProjectileCrossing(projectile, dt, team, geom
   // 破盾后原边界仍参与检测；敌弹从内向外、外向内或一帧贯穿整个圆都重新计时。
   // 相对坐标同时覆盖旗舰移动导致的边界穿越，圈内飞行本身不重置计时。
   if (segmentCircleCrossing(startX, startY, endX, endY, radius)) {
-    team.koizumiBarrier.disabledUntil = team.match.elapsed + KOIZUMI_BARRIER_DISABLE_SECONDS;
+    states.get(team).disabledUntil = team.match.elapsed + KOIZUMI_BARRIER_DISABLE_SECONDS;
   }
 }
 
@@ -258,7 +260,7 @@ export function koizumiBarrierProjectileImpact(
     !projectile?.alive
     || !geometry
     || !hasKoizumiBarrier(defendingTeam)
-    || defendingTeam.koizumiBarrier.remainingHits <= 0
+    || states.get(defendingTeam).remainingHits <= 0
     || projectile.team === defendingTeam
   ) {
     return null;
@@ -290,9 +292,9 @@ export function koizumiBarrierBeamImpact(beam, defendingTeam) {
 
 function breakKoizumiBarrier(team, impact, { sourceSeat = null, ramKind = null, kind = "break" } = {}) {
   const now = team.match.elapsed;
-  team.koizumiBarrier.remainingHits = 0;
-  team.koizumiBarrier.disabledAt = now;
-  team.koizumiBarrier.disabledUntil = now + KOIZUMI_BARRIER_DISABLE_SECONDS;
+  states.get(team).remainingHits = 0;
+  states.get(team).disabledAt = now;
+  states.get(team).disabledUntil = now + KOIZUMI_BARRIER_DISABLE_SECONDS;
   team.match.spawnKoizumiBarrierImpact({
     ...impact,
     teamSeat: team.seat,
@@ -311,9 +313,9 @@ function breakKoizumiBarrier(team, impact, { sourceSeat = null, ramKind = null, 
 }
 
 export function consumeKoizumiBarrierHit(team, impact, sourceSeat) {
-  if (!hasKoizumiBarrier(team) || team.koizumiBarrier.remainingHits <= 0 || !impact) return false;
-  if (team.koizumiBarrier.remainingHits === 1) breakKoizumiBarrier(team, impact, { sourceSeat });
-  else team.koizumiBarrier.remainingHits -= 1;
+  if (!hasKoizumiBarrier(team) || states.get(team).remainingHits <= 0 || !impact) return false;
+  if (states.get(team).remainingHits === 1) breakKoizumiBarrier(team, impact, { sourceSeat });
+  else states.get(team).remainingHits -= 1;
   return true;
 }
 
@@ -353,4 +355,12 @@ export function resolveKoizumiBarrierRamContacts(match) {
 export function serializeKoizumiBarrier(team) {
   const geometry = koizumiBarrierGeometry(team);
   return geometry ? { ...geometry } : null;
+}
+
+export function initializeKoizumiBarrier(team) {
+  if (states.has(team)) return;
+  states.set(team, createKoizumiBarrierState());
+  Object.defineProperty(team, "koizumiBarrier", { enumerable: true,
+    get: () => Object.freeze({ ...states.get(team) }),
+  });
 }
