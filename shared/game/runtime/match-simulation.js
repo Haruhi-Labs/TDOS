@@ -118,8 +118,7 @@ export class MatchSimulation {
       // 难度让分属于规则层：数值缩放与集火残血直接写入 AI 所控舰队，不经过 AI 决策。
       const handicap = aiHandicapFor(aiDifficulty);
       const team = this.teamBySeat(seat);
-      team.aiFocusLowHp = handicap.focusLowHp;
-      team.applyAiStatMult(handicap.statMult);
+      team.configureAiHandicap(handicap);
       runner.port.invalidate();
     }
     this.botA = this.bots.A || null;
@@ -143,9 +142,7 @@ export class MatchSimulation {
   }
 
   configureTutorialBattle() {
-    this.teamA.damageFloorRatio = 0.25;
-    this.teamB.forceCharacterSkillsDisabled = true;
-    this.teamB.splitLevel = 2;
+    this.teamA.setTrainingDamageFloor(0.25);
     this.combatEnabled.A = false;
     this.combatEnabled.B = false;
     this.aiEnabled.B = false;
@@ -168,9 +165,7 @@ export class MatchSimulation {
       sub1: { x: this.worldSize * 0.69, y: this.worldSize * 0.3 },
       sub2: { x: this.worldSize * 0.69, y: this.worldSize * 0.26 },
     };
-    for (const ship of this.teamB.getAllShips()) {
-      ship.configureTraining(trainingStats, positions[ship.key] || positions.main);
-    }
+    this.teamB.configureTrainingFleet(trainingStats, positions);
   }
 
   setCombatEnabled(seat, enabled) {

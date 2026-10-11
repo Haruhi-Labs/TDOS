@@ -84,15 +84,14 @@ export class Team {
       sub1: new Ship(this, "sub1", spawnX + sub1SpawnOffset.x, spawnY + sub1SpawnOffset.y, facing, {
         slotKey: "sub1",
         characterId: this.loadout.sub1,
+        formationOffset: sub1FormationOffset,
       }),
       sub2: new Ship(this, "sub2", spawnX + sub2SpawnOffset.x, spawnY + sub2SpawnOffset.y, facing, {
         slotKey: "sub2",
         characterId: this.loadout.sub2,
+        formationOffset: sub2FormationOffset,
       }),
     };
-
-    this.ships.sub1.formationOffset = sub1FormationOffset;
-    this.ships.sub2.formationOffset = sub2FormationOffset;
 
     this.extraShips = [];
     this.radarPassive = {
@@ -172,8 +171,7 @@ export class Team {
     for (const ship of this.getPlayerShips()) {
       // 形态切换改变的是整套舰体性能，当前航速也按新旧上限同比换算。
       // 否则 A 形态虽然目标航速已提升 50%，实际航速仍要用原加速度缓慢追赶，体感近乎没有变化。
-      ship.speed = ship.alive ? Math.max(0, ship.speed * speedRatio) : 0;
-      ship.cooldown = Math.max(0, ship.cooldown * (previous.fireRate / next.fireRate));
+      ship.rescaleFormMotion(speedRatio, previous.fireRate / next.fireRate);
       if (ship.alive) {
         this.match.spawnFloatingTextKey(
           ship.x + 10,
@@ -234,6 +232,21 @@ export class Team {
 
   spawnBunnyCompanion(owner) {
     return spawnBunnyCompanion(owner, (...args) => new Ship(...args));
+  }
+
+  configureAiHandicap({ focusLowHp, statMult }) {
+    this.aiFocusLowHp = focusLowHp;
+    this.applyAiStatMult(statMult);
+  }
+
+  setTrainingDamageFloor(ratio) {
+    this.damageFloorRatio = ratio;
+  }
+
+  configureTrainingFleet(stats, positions) {
+    this.forceCharacterSkillsDisabled = true;
+    this.splitLevel = 2;
+    for (const ship of this.getAllShips()) ship.configureTraining(stats, positions[ship.key] || positions.main);
   }
 
   // 难度数值缩放:按 mult 缩放本队所有舰船的最大/当前血量(伤害缩放在 effectiveDamage 中按 statMult 动态生效)。

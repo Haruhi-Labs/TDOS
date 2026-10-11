@@ -56,7 +56,7 @@ export class Ship {
     this.heroPowerShock = createHaruhiHeroPowerShockState();
 
     this.cooldown = rngFor(this.team.match).range(0, 0.5);
-    this.formationOffset = { x: 0, y: 0 };
+    this.formationOffset = { ...(options.formationOffset || { x: 0, y: 0 }) };
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
 
@@ -237,6 +237,11 @@ export class Ship {
 
   spendEnergy(amount) {
     this.energy = Math.max(0, this.energy - amount);
+  }
+
+  rescaleFormMotion(speedRatio, cooldownRatio) {
+    this.speed = this.alive ? Math.max(0, this.speed * speedRatio) : 0;
+    this.cooldown = Math.max(0, this.cooldown * cooldownRatio);
   }
 
   scaleMotion(speedRatio, cooldownRatio) {
