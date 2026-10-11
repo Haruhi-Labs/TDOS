@@ -1,51 +1,17 @@
-import { distance } from "./math.js";
-
-export function fireCandidates(team, attacker, enemyTeam) {
-  const range = attacker.attackRange || attacker.effectiveRange();
-  const canArc = typeof attacker.broadsideMultiplier === "function";
-  const candidates = [];
-  for (const target of enemyTeam.getEntities()) {
-    if (!target.alive || !team.match.rules.canDamage(attacker, target)) continue;
-    if (typeof target.isTargetableByFire === "function" && !target.isTargetableByFire()) continue;
-    const targetDistance = distance(attacker.x, attacker.y, target.x, target.y);
-    if (targetDistance > range) continue;
-    const arc = canArc ? attacker.broadsideMultiplier(target) : 1;
-    // 猎杀标记不等于真实视野：迷雾中只能追踪和走位，必须由任意己方视野实际发现后
-    // 才能开火。所有舰炮都必须遵守真实视野，不再存在角色专属盲射旁路。
-    if (!team.visibleEnemyIds.has(target.id)) continue;
-    candidates.push({ target, dist: targetDistance, arc });
-  }
-  return candidates;
-}
-
-export function focusDamageBudget(attacker) {
-  const horizon = 1.2;
-  if (typeof attacker.effectiveDamage === "function" && typeof attacker.effectiveFireRate === "function") {
-    return Math.max(1, attacker.effectiveDamage() * attacker.effectiveFireRate() * horizon);
-  }
-  return Math.max(1, (attacker.damage || 10) * horizon);
-}
-
-export function isFocusWorthy(team, target) {
+// 纯选敌策略只消费候选读模型，不持有实体、队伍或对局，也不执行攻击。
+export function isFocusWorthy(focusHpFrac, target) {
   const maximumHp = target.maxHp || target.hp;
-  return maximumHp > 0 && target.hp <= maximumHp * team.focusHpFrac;
+  return maximumHp > 0 && target.hp <= maximumHp * focusHpFrac;
 }
 
-export function assignFocusTargets(team, enemyTeam) {
+export function assignFocusTargets(attackers, focusHpFrac) {
   const assignments = new Map();
   const remainingHp = new Map();
-  const rankedAttackers = [
-    ...team.getAllShips(),
-    ...team.wingmen,
-    ...team.scouts.filter((scout) => scout.combatCapable),
-  ]
-    .filter((attacker) => attacker.alive && attacker.cooldown <= 0)
-    .map((attacker) => ({ attacker, budget: focusDamageBudget(attacker) }))
-    .sort((left, right) => right.budget - left.budget);
+  const rankedAttackers = [...attackers].sort((left, right) => right.budget - left.budget);
 
-  for (const { attacker, budget } of rankedAttackers) {
-    const candidates = fireCandidates(team, attacker, enemyTeam)
-      .filter((candidate) => candidate.arc > 0 && isFocusWorthy(team, candidate.target));
+  for (const { id, budget, candidates: available } of rankedAttackers) {
+    const candidates = available
+      .filter((candidate) => candidate.arc > 0 && isFocusWorthy(focusHpFrac, candidate.target));
     if (!candidates.length) continue;
 
     let pick = null;
@@ -71,39 +37,36 @@ export function assignFocusTargets(team, enemyTeam) {
     }
     const chosen = pick || overflow;
     if (!chosen) continue;
-    assignments.set(attacker.id, chosen);
+    assignments.set(id, chosen.id);
     const remaining = remainingHp.has(chosen.id) ? remainingHp.get(chosen.id) : chosen.hp;
     remainingHp.set(chosen.id, remaining - budget);
   }
   return assignments;
 }
 
-export function pickTargetFor(team, attacker, enemyTeam) {
-  const candidates = fireCandidates(team, attacker, enemyTeam);
+export function pickTargetId(candidates, { huntTargetId = null, focusLowHp = false, assignedTargetId = null, focusHpFrac }) {
   if (!candidates.length) return null;
-  const huntTargetId = team.match.rules.preferredTargetId(team);
   if (huntTargetId !== null && huntTargetId !== undefined) {
     const hunted = candidates.find(
       (candidate) => candidate.target.id === huntTargetId && candidate.arc > 0,
     );
-    if (hunted) return hunted.target;
+    if (hunted) return hunted.target.id;
   }
-  if (team.aiFocusLowHp) {
-    const assigned = team._focusTargets && team._focusTargets.get(attacker.id);
-    if (assigned && assigned.alive && candidates.some((candidate) => candidate.target === assigned)) return assigned;
+  if (focusLowHp) {
+    if (candidates.some((candidate) => candidate.target.id === assignedTargetId)) return assignedTargetId;
 
     let weakest = null;
     let weakestHp = Infinity;
     let weakestDistance = Infinity;
     for (const candidate of candidates) {
-      if (candidate.arc <= 0 || !isFocusWorthy(team, candidate.target)) continue;
+      if (candidate.arc <= 0 || !isFocusWorthy(focusHpFrac, candidate.target)) continue;
       if (candidate.target.hp < weakestHp || (candidate.target.hp === weakestHp && candidate.dist < weakestDistance)) {
         weakest = candidate.target;
         weakestHp = candidate.target.hp;
         weakestDistance = candidate.dist;
       }
     }
-    if (weakest) return weakest;
+    if (weakest) return weakest.id;
   }
 
   let nearest = null;
@@ -114,12 +77,5 @@ export function pickTargetFor(team, attacker, enemyTeam) {
       nearest = candidate.target;
     }
   }
-  return nearest;
-}
-
-export function stepCombat(team, enemyTeam) {
-  if (team.aiFocusLowHp) team.assignFocusTargets(enemyTeam);
-  for (const ship of team.getAllShips()) ship.tryAttack(team.match, enemyTeam);
-  for (const wingman of team.wingmen) wingman.tryAttack(team.match, enemyTeam);
-  for (const scout of team.scouts) scout.tryAttack(team.match, enemyTeam);
+  return nearest?.id ?? null;
 }

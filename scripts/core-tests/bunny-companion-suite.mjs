@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
 import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
 import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
-import { fireCandidates } from "../../shared/game/targeting-system.js";
 import { resolveShipCollisions } from "../../shared/game/collision-system.js";
 import { resolveBunnyOtherworlderContacts } from "../../shared/game/character-contacts.js";
 import { createInputQueue } from "../../server/input-queue.js";
@@ -211,7 +210,7 @@ function conversionCheck() {
   assert.equal(sim.projectiles.some((p) => p.sourceId === owner.id), true);
   sim.projectiles.length = 0;
   team.visibleEnemyIds.add(id);
-  assert.equal(fireCandidates(team, owner, enemy).some((entry) => entry.target === companion), false);
+  assert.equal(team.fireCandidates(owner, enemy).some((entry) => entry.target === companion), false);
   const health = companion.hp;
   const telemetry = JSON.stringify(sim.telemetry);
   for (const kind of ["projectile", "attack_effect", "skill", "collision", "status_effect"]) {

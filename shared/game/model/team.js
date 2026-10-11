@@ -7,7 +7,8 @@ import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
 import { activateVisionWaveSkill as activateTeamVisionWaveSkill, cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSkillState, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
-import { assignFocusTargets as assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, isFocusWorthy as isTeamFocusWorthy, pickTargetFor as pickTeamTarget, stepCombat as stepTeamCombat } from "../targeting-system.js";
+import { isFocusWorthy } from "../targeting-system.js";
+import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
 import { activateKoizumiOrb, isKoizumiOrbActive, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { createKoizumiBarrierState, consumeKoizumiBarrierHit, koizumiBarrierBeamImpact, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
@@ -1155,7 +1156,7 @@ export class Team {
   }
 
   isFocusWorthy(target) {
-    return isTeamFocusWorthy(this, target);
+    return isFocusWorthy(this.focusHpFrac, target);
   }
 
   assignFocusTargets(enemyTeam) {
@@ -1163,11 +1164,15 @@ export class Team {
   }
 
   pickTargetFor(attacker, enemyTeam) {
-    return pickTeamTarget(this, attacker, enemyTeam);
+    return pickTeamTarget(this, attacker, enemyTeam, this._focusTargets?.get(attacker.id));
   }
 
   stepCombat(enemyTeam) {
-    stepTeamCombat(this, enemyTeam);
+    if (this.aiFocusLowHp) this.assignFocusTargets(enemyTeam);
+    // 攻击立即结算；后续攻击者必须看见前一发造成的死亡和状态变化。
+    for (const ship of this.getAllShips()) ship.tryAttack(this.match, enemyTeam);
+    for (const wingman of this.wingmen) wingman.tryAttack(this.match, enemyTeam);
+    for (const scout of this.scouts) scout.tryAttack(this.match, enemyTeam);
   }
 
   serialize() {
