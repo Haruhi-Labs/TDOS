@@ -1,6 +1,6 @@
 # 游戏模块架构图与状态所有权
 
-源码基线：`221c077`，F1～F6 重构后，2026-10-11。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
+源码基线：`b539263`，F1～F6 重构及角色调用链复查后，2026-10-11。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
 
 这是一张分成八个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。静态模块全量索引见 [模块索引](architecture-module-index.md)。
 
@@ -101,7 +101,7 @@ flowchart LR
     DEST["rules/ship-destruction.js<br/>伴随清理、猎杀后继效果"]
     ROLE["角色运行时<br/>光球、震慑、抓痕、形态、可靠效果"]
   end
-  PUB["F2 · Ship 私有基础状态<br/>资源、运动、归属、存活、偏移<br/>getter 发布，领域操作提交"]
+  PUB["F2 · Ship 私有基础状态<br/>资源、运动、归属、存活、偏移<br/>getter 发布，无原始导航 setter<br/>领域事务提交"]
   PROJ["rules/ship-projection.js<br/>status-effects.js<br/>独立协议数据"]
   TEAM["Team / MatchSimulation<br/>成员、世界、生成与退场"]
   S ==>|独占实例| N & W & ST
@@ -125,7 +125,7 @@ flowchart LR
   PROJ -.->|读数，不推进| ROLE
 ```
 
-导航、武器、效果分别持有自己的状态，Ship 持有基础机体与生命周期。生命、能量、坐标、存活和归属不能直接赋值；角色效果只能提交位移、资源计划、伤害等领域操作。Scout/Wingman 同样私有持有运动、任务、武器和寿命，任务输入隔离引用，成员发布和转移校验归属与唯一性。
+导航、武器、效果分别持有自己的状态，Ship 持有基础机体与生命周期。生命、能量、坐标、存活和归属不能直接赋值；航线、目标、击退和武器周期也不再有属性 setter，航线不能由外部构造进度和长度；角色效果只能提交位移、资源计划、伤害等领域操作。Scout/Wingman 同样私有持有运动、任务、武器和寿命，任务输入隔离引用，成员发布和转移校验归属与唯一性。
 
 ## 图三：Team 的组件与角色装配边界
 
@@ -173,6 +173,9 @@ flowchart LR
   T -->|装配与领域操作| ASSEMBLY
   ASSEMBLY ==>|角色组件| HF & SF & FF
   ASSEMBLY -->|初始化及固定推进| VW & KB & SH & BH
+  LAUNCH["rules/character-launch.js<br/>技能机群、随机支援与光线规则"]
+  ASSEMBLY & SP & BH --> LAUNCH
+  LAUNCH -->|统一接收成员及入队光线| T
   M -->|A 后 B 固定顺序| T
   T -->|逐实体推进、立即开火| S
   TP["rules/team-projection.js<br/>角色与通用状态的协议投影"]
@@ -254,7 +257,7 @@ flowchart LR
 flowchart LR
   MATCH["MatchSimulation"]
   RUN["bridge/runner.js<br/>每席随机流与驱动"]
-  BOT["bot-controller.js<br/>Proxy 外部数据参数校验"]
+  BOT["bot-controller.js<br/>Proxy 数据参数校验<br/>不发布端口或随机流，链式返回留在门面"]
   RP["policy/rule-policy.js<br/>RulePolicy：私有调度、模式与计划提交"]
   OBSBUILD["bridge/observation.js<br/>实体到有权知道的纯数据"]
   PORT["bridge/action-port.js<br/>观察缓存、提交动作、失效"]
@@ -267,7 +270,7 @@ flowchart LR
     SCOUT["policy/tactics/yuki-scout.js<br/>ScoutDoctrine：缓存、承诺、重编组"]
     SKILL["policy/skill-decision-cycle.js<br/>技能时钟、历史决策"]
   end
-  subgraph heuristics[无状态启发式：消费冻结的读取与操作上下文]
+  subgraph heuristics[受限能力启发式]
     READ["view.js / geometry.js<br/>evaluation.js / energy.js / context.js"]
     PLAN["split.js / mode.js / detached.js<br/>targets.js / movement.js"]
     ACT["commands.js / scout.js / skills.js<br/>debug-state.js"]
@@ -287,9 +290,11 @@ flowchart LR
   READ --> OBS & INDEX
   RP --> PARAM
   RP ==>|私有实例| INTEL & BELIEF & SCOUT & SKILL
-  PROGRAM["policy/policy-program.js<br/>枚举读取与操作能力，不持有策略实例<br/>只读诊断计数"]
+  PROGRAM["policy/policy-program.js<br/>查询上下文无动作或调度权限<br/>执行入口仅获声明的能力"]
   RP -->|执行计算| PROGRAM
   PROGRAM --> READ & PLAN & ACT
+  RP -->|走位准备后提交搜索| SEARCH
+  PROGRAM -.->|查询子调用不继承写权限| READ
   PLAN & ACT -->|候选结果| RP
   RP ==>|独占并消费候选| SEARCH
   INTEL -->|接触事实| SEARCH
@@ -303,7 +308,7 @@ flowchart LR
   DISPATCH --> MATCH
 ```
 
-AI 没有实体兼容通道。观测与索引只读；搜索候选查询不推进游标，实际命令显式消费候选。启发式不再安装到 RulePolicy 原型，执行上下文没有字段写权；模式、卡死采样、移动和分离结果返回协调器提交。诊断只读，不靠覆写策略方法采样。情报外推只在同一观测和参数下复用，动作后立即失效。
+AI 没有实体兼容通道，也不再通过 `port/rng` getter 或配置操作的链式返回泄露底层能力。观测与索引只读；搜索候选查询不推进游标，实际命令显式消费候选。启发式不再安装到 RulePolicy 原型，查询上下文没有动作提交、随机流或策略调度权限；需要随机数的候选生成和模式规划、动作执行分别声明能力。嵌套查询不继承执行方写权限。走位由协调器先读准备事实，再提交搜索与模式，最后执行路线，不从启发式绕回协调器选模式。卡死采样、移动和分离结果返回协调器提交。诊断只读，不靠覆写策略方法采样。情报外推只在同一观测和参数下复用，动作后立即失效。
 
 ## 图六：实际单帧顺序
 
@@ -411,3 +416,17 @@ flowchart LR
 - Team/Match 保留领域门面，已有调用者和测试可调用明确操作；角色状态、投影和阶段顺序已转交对应所有者，门面不再保存第二份状态。
 - 冻结 AI 观测、事实和历史会产生分配开销；只在有明确身份和失效规则的地方复用。没有通过改变规则、延迟到帧尾或重刷回放来换取性能。
 - 自动化覆盖固定种子、全部核心角色、浏览器和本地网络；不能推导出任意对局穷尽证明，也不替代真人多端体验。未推送、未部署。
+
+## 沿角色调用链的再次复查（2026-10-11）
+
+本轮不以依赖图无环代替判断；核对了装配、施放、属性读取、移动/击退、支援生成、弹体与承伤、伴随转队/死亡清理，以及 AI 观察→候选→提交→重新观察的实际链路。
+
+| 本轮残留 | 原来的实际问题 | 现在的所有权边界 |
+| --- | --- | --- |
+| 专属发射回绕 | 春日/长门运行时经 Team 进入通用航空组件，由后者持有技能参数与随机生成规则 | `character-launch` 决定专属规则，Team 接收成员/光线，航空组件只管理生产与生命周期 |
+| Ship 原始替换入口 | 私有组件仍接受航线、目标、击退和冷却 setter，航线长度/进度可以绕过几何约束 | 只读属性；航线通过导航约束生成，击退同步停船清航线，完成时失效读视图 |
+| AI 过宽能力及回绕 | 冻结启发式上下文仍能提交动作、推进搜索、回调策略选模式 | 查询与执行分开；每个执行入口列出能力，搜索/模式提交由 RulePolicy 顺序编排 |
+| AI 对外能力泄露 | 策略 getter 发布动作端口/随机流，链式配置返回原始策略，可绕过门面校验 | 底层能力留在桥接和策略内部，链式调用继续返回受校验门面 |
+| 支援旧快照消费 | 冷却消费相信调用方的旧资格样本，重复使用可能重入消费 | 私有所有者重新校验并提交，旧样本不能授权或阻止当前消费 |
+
+保留的关系均有明确用途：成员集合里的活实体用于同步领域命令；承伤仍即时分摊并完成死亡收尾；属性适配层组合可替换的规则能力；角色运行时持有来源身份以处理同帧死亡与转队。这些调用保留即时状态语义，不把内部可写容器交给消费者。

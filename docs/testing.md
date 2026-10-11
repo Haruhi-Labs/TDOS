@@ -178,3 +178,5 @@ AI 测试场景在测试侧投影实体；生产策略拒绝实体和能力回�
 以上使用内存对局，无外部读写；与原始逐帧基线、AI 长局及浏览器验收互补。
 
 兔女郎离线采样器可用 `--output-dir=<目录>` 将局部复测写入隔离目录，默认仍使用 `bench/bunny-haruhi-acceptance`；例如 `node scripts/measure-bunny-haruhi.mjs --balance --scenarios=hold-encore,conversion-ready --output-dir=node_modules/.cache/role-balance`。观察伴随舰使用成员发布入口，不覆盖角色生成事务。场景成功运行不等于其中每种事件都已发生，应核对伴随舰存活秒数、策反次数等实际指标。
+
+角色调用链复查追加：`verify-ai-program-capabilities` 随架构门禁验证嵌套查询与执行能力、观测不可回写和策略调度入口关闭；导航专项拒绝四个旧属性 setter，并验证击退结束后航线缓存失效；航空专项验证专属生成已经脱离通用组件，仍进入统一成员集合；支援专项覆盖保留旧资格快照后的重复消费拒绝。场景构造使用实际领域操作，不再直接替换 Ship 航线进度或击退字段。AI 投影专项另验证 `port/rng` 不可取/不可赋值、strict 模式切换正确失效缓存，以及链式配置后仍拒绝实体参数。
