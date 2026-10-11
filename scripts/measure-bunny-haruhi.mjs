@@ -34,10 +34,13 @@ async function measureWorker(moduleRoot, worst) {
     const roster = worst ? loadout("haruhi", C.characterId, "asakura") : loadout("haruhi", "koizumi", "asakura");
     const sim = new core.MatchSimulation({ mode: "pvp", aiSeats: ["A", "B"], teamLoadouts: { A: roster, B: roster } });
     if (worst) for (const team of [sim.teamA, sim.teamB]) {
-      team.configureFormation(2);
+      // 旧 Git 基线尚无组件命令；兼容仅限此离线对照夹具。
+      if (typeof team.configureFormation === "function") team.configureFormation(2);
+      else team.splitLevel = 2;
       // 压力夹具从双方已解锁全部支援与伴随舰开始，不改变实战的施放规则。
       for (let i = 0; i < 4; i++) {
-        team.startCooldown("sub1", 0);
+        if (typeof team.startCooldown === "function") team.startCooldown("sub1", 0);
+        else team.cooldowns.sub1 = 0;
         assert.equal(team.castSubSkill("sub1"), true);
       }
       // 用相同解锁操作构造已运行中的日程，保持原压力夹具首次发射在第 1 秒。

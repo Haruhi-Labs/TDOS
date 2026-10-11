@@ -1,3 +1,4 @@
+import { observeEnemyEntity } from "../../shared/game/ai/bridge/observation.js";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 // AI 重构期的黄金轨迹工具：在固定随机序列下逐帧记录对局摘要，用于证明重构前后行为一致。
 // 基线对任何规则改动都敏感，只作为本地门禁使用，不加入 test:all。
@@ -116,7 +117,7 @@ function buildBarrierBreach(breakerKind) {
   attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
   attackingTeam.ships.main.y = 720;
   bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;
 }
 
@@ -137,7 +138,7 @@ function buildBarrierInfiltration() {
   holdShip(defendingMain, 650, 720);
   holdShip(simulation.teamB.ships.main, 930, 720, Math.PI);
   bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;
 }
 

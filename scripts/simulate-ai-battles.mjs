@@ -1,3 +1,4 @@
+import { observeEnemyEntity } from "../shared/game/ai/bridge/observation.js";
 import { unlockSupport } from "../shared/game/haruhi-support.js";
 import {
   CHARACTER_ORDER,
@@ -180,7 +181,7 @@ function runBattle({ index, loadoutA, loadoutB }) {
       minEnergyRatio = Math.min(minEnergyRatio, ship.energy / Math.max(1, ship.maxEnergy));
     }
     minHullRatio = Math.min(minHullRatio, simulation.teamA.hullRatio(), simulation.teamB.hullRatio());
-    if (simulation.teamA.radarPassive.contacts.size > 0 || simulation.teamB.radarPassive.contacts.size > 0) {
+    if ((simulation.teamA.serializeRadarPassive()?.contacts.length || 0) > 0 || (simulation.teamB.serializeRadarPassive()?.contacts.length || 0) > 0) {
       radarContactTicks += 1;
     }
   }
@@ -249,7 +250,7 @@ function runBarrierBreachScenario(breakerKind, seed) {
   attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
   attackingTeam.ships.main.y = 720;
   bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
   const previousRandom = Math.random;
   Math.random = seededRandom(seed);
@@ -305,7 +306,7 @@ function runBarrierInfiltrationScenario(seed) {
   attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
   attackingMain.route = null;
   bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
   let maximumInsideCount = 0;
   let sawStage = false;
