@@ -18,7 +18,8 @@ import { aiHandicapFor } from "../ai/params/index.js";
 import { applyMatchAction } from "../action-dispatcher.js";
 import { resolveScoutClashes as resolveMatchScoutClashes, resolveShipCollisions as resolveMatchShipCollisions } from "../collision-system.js";
 import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, resolveBladeQueenContacts as resolveMatchBladeQueenContacts } from "../character-contacts.js";
-import { visionWavesCoverEntity as teamVisionWavesCoverEntity } from "../vision-wave.js";
+import { resolveVisionWavePurges as resolveWavePurges } from "../vision-wave-purge.js";
+import { createVisionWavePurgePort } from "../rules/vision-wave-port.js";
 import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
 import { resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
 import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
@@ -51,6 +52,7 @@ export class MatchSimulation {
     this.shipEffects = SHIP_EFFECTS;
     this.projectShip = projectShip;
     this.createProjectilePhase = createProjectilePhase;
+    this.visionWavePurgePort = createVisionWavePurgePort(this);
     this.mode = mode;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
@@ -393,38 +395,7 @@ export class MatchSimulation {
   }
 
   resolveVisionWavePurges() {
-    // 先同时采集双方命中，再执行净化，避免A席先结算并清掉B方视野波后，
-    // B方同一逻辑帧已经扫到的目标因座位顺序而失效。
-    const targetsFromA = this.teamB.getAllShips().filter(
-      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamA, ship),
-    );
-    const targetsFromB = this.teamA.getAllShips().filter(
-      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamB, ship),
-    );
-
-    const alliesFromA = this.teamA.getAllShips().filter(
-      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamA, ship),
-    );
-    const alliesFromB = this.teamB.getAllShips().filter(
-      (ship) => ship.alive && teamVisionWavesCoverEntity(this.teamB, ship),
-    );
-
-    for (const ship of [...alliesFromA, ...alliesFromB]) {
-      if (ship.clearNegativeEffects()) {
-        this.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, "#9eefff");
-      }
-    }
-
-    const applyPurges = (targetTeam, targets) => {
-      for (const ship of targets) {
-        if (!targetTeam.clearActiveSkillBuffsForShip(ship)) {
-          continue;
-        }
-        this.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, "#ff9db5");
-      }
-    };
-    applyPurges(this.teamB, targetsFromA);
-    applyPurges(this.teamA, targetsFromB);
+    resolveWavePurges(this.visionWavePurgePort);
   }
 
   update(dt = TICK_DT) {

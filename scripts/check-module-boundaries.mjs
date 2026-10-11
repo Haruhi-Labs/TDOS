@@ -172,7 +172,7 @@ for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projecti
 }
 
 // 通用算法只允许基础工具；角色能力由调用方注入。
-for (const fileName of ["shared/game/collision-system.js", "shared/game/targeting-system.js", ...walk("shared/game/systems").map(display)]) {
+for (const fileName of ["shared/game/collision-system.js", "shared/game/targeting-system.js", "shared/game/vision-wave-purge.js", ...walk("shared/game/systems").map(display)]) {
   const file = resolve(ROOT, fileName);
   for (const specifier of importSpecifiers(file)) {
     const target = display(resolveImport(file, specifier));
