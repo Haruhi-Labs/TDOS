@@ -42,9 +42,9 @@ function aiFogOfWarCheck() {
 
   setScenarioField(enemyMain, 'x', 180);
   setScenarioField(enemyMain, 'y', 240);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.issueMovement();
 
@@ -66,9 +66,9 @@ function aiReactionDelayCheck() {
   setScenarioField(enemyMain, 'x', aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65));
   setScenarioField(enemyMain, 'y', aiMain.y);
   setScenarioField(enemyMain, 'angle', Math.PI);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   sim.teamB.computeVisibility(sim.teamA);
   bot.refreshIntel();
@@ -94,16 +94,16 @@ function aiSearchSweepCheck() {
   aiTeam.split(1);
   aiTeam.split(2);
   for (const ship of [aiTeam.ships.sub1, aiTeam.ships.sub2]) {
-    ship.route = null;
-    ship.command = { ...ship.command, x: ship.x };
-    ship.command = { ...ship.command, y: ship.y };
+    ship.clearRoute();
+    ship.followTarget({ ...ship.command, x: ship.x });
+    ship.followTarget({ ...ship.command, y: ship.y });
   }
 
   setScenarioField(enemyMain, 'x', 180);
   setScenarioField(enemyMain, 'y', 240);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.issueMovement();
 
@@ -130,15 +130,15 @@ function aiRetreatJudgementCheck() {
   setScenarioField(aiMain, 'y', 720);
   setScenarioField(aiMain, 'hp', aiMain.maxHp * 0.22);
   setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.14);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(enemyMain, 'x', 860);
   setScenarioField(enemyMain, 'y', 720);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
@@ -212,16 +212,16 @@ function aiFireArcAwarenessCheck() {
   setScenarioField(aiMain, 'x', 1080);
   setScenarioField(aiMain, 'y', 720);
   setScenarioField(aiMain, 'angle', Math.PI);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(enemyMain, 'x', 760);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', Math.PI * 0.5);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const focus = bot.selectEnemyFocus(aiMain);
@@ -253,9 +253,9 @@ function aiProbePressureCheck() {
   setScenarioField(enemyMain, 'x', 640);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', Math.PI);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   runSteps(sim, 1.4);
@@ -293,9 +293,9 @@ function aiSplitInitiativeCheck() {
   setScenarioField(enemyMain, 'x', 760);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
@@ -330,22 +330,22 @@ function aiYukiVisionLeadCheck() {
 
   setScenarioField(aiMain, 'x', 1100);
   setScenarioField(aiMain, 'y', 760);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(yuki, 'x', 1030);
   setScenarioField(yuki, 'y', 700);
-  yuki.command = { ...yuki.command, x: yuki.x };
-  yuki.command = { ...yuki.command, y: yuki.y };
-  yuki.route = null;
+  yuki.followTarget({ ...yuki.command, x: yuki.x });
+  yuki.followTarget({ ...yuki.command, y: yuki.y });
+  yuki.clearRoute();
 
   setScenarioField(enemyMain, 'x', 790);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
@@ -387,8 +387,8 @@ function aiYukiRadarIntelCheck() {
 
   setScenarioField(enemyMain, 'x', 150);
   setScenarioField(enemyMain, 'y', 160);
-  enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ x: enemyMain.x, y: enemyMain.y });
+  enemyMain.clearRoute();
   sim.elapsed = 1;
   const observe = bot.port.observe;
   bot.port.observe = () => {
@@ -476,8 +476,8 @@ function aiYukiScoutDoctrineCheck() {
   setScenarioField(enemyMain, 'y', 240);
   setScenarioField(enemyMain, 'angle', 0);
   setScenarioField(enemyMain, 'speed', 31);
-  enemyMain.command = { x: 1200, y: 240 };
-  enemyMain.route = null;
+  enemyMain.followTarget({ x: 1200, y: 240 });
+  enemyMain.clearRoute();
   bot.rememberContact(enemyMain, "visible");
   const visibleFocus = bot.primaryEnemyEstimate();
   const battleContext = bot.buildTacticalContext(team.ships.main, visibleFocus);
@@ -572,13 +572,13 @@ function aiAsakuraVisionWaveDecisionCheck() {
 
   setScenarioField(aiMain, 'x', 900);
   setScenarioField(aiMain, 'y', 720);
-  aiMain.command = { x: aiMain.x, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ x: aiMain.x, y: aiMain.y });
+  aiMain.clearRoute();
   for (const ship of enemyTeam.getAllShips()) {
     setScenarioField(ship, 'x', 760);
     setScenarioField(ship, 'y', 720);
-    ship.command = { x: ship.x, y: ship.y };
-    ship.route = null;
+    ship.followTarget({ x: ship.x, y: ship.y });
+    ship.clearRoute();
   }
   aiTeam.computeVisibility(enemyTeam);
   bot.rememberContact(enemyMain, "visible");
@@ -617,16 +617,16 @@ function aiVisionWaveBuffCounterplayCheck() {
     sim.teamB.split(1);
     setScenarioField(enemyMain, 'x', 760);
     setScenarioField(enemyMain, 'y', 720);
-    enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
-    enemyMain.route = null;
+    enemyMain.followTarget({ x: enemyMain.x, y: enemyMain.y });
+    enemyMain.clearRoute();
     setScenarioField(aiMain, 'x', 900);
     setScenarioField(aiMain, 'y', 720);
-    aiMain.command = { x: aiMain.x, y: aiMain.y };
-    aiMain.route = null;
+    aiMain.followTarget({ x: aiMain.x, y: aiMain.y });
+    aiMain.clearRoute();
     setScenarioField(kyon, 'x', 920);
     setScenarioField(kyon, 'y', 748);
-    kyon.command = { x: kyon.x, y: kyon.y };
-    kyon.route = null;
+    kyon.followTarget({ x: kyon.x, y: kyon.y });
+    kyon.clearRoute();
     setScenarioField(kyon, 'hp', kyon.maxHp * 0.6);
     sim.teamB.computeVisibility(sim.teamA);
     bot.rememberContact(enemyMain, "visible");
@@ -689,30 +689,30 @@ function aiWoundedDetachedRetreatCheck() {
 
   setScenarioField(aiMain, 'x', 1080);
   setScenarioField(aiMain, 'y', 720);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(sub1, 'x', 1020);
   setScenarioField(sub1, 'y', 780);
-  sub1.command = { ...sub1.command, x: sub1.x };
-  sub1.command = { ...sub1.command, y: sub1.y };
-  sub1.route = null;
+  sub1.followTarget({ ...sub1.command, x: sub1.x });
+  sub1.followTarget({ ...sub1.command, y: sub1.y });
+  sub1.clearRoute();
   setScenarioField(sub1, 'hp', sub1.maxHp * 0.22);
   setScenarioField(sub1, 'energy', sub1.maxEnergy * 0.14);
 
   setScenarioField(sub2, 'x', 1020);
   setScenarioField(sub2, 'y', 660);
-  sub2.command = { ...sub2.command, x: sub2.x };
-  sub2.command = { ...sub2.command, y: sub2.y };
-  sub2.route = null;
+  sub2.followTarget({ ...sub2.command, x: sub2.x });
+  sub2.followTarget({ ...sub2.command, y: sub2.y });
+  sub2.clearRoute();
 
   setScenarioField(enemyMain, 'x', 790);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
@@ -743,9 +743,9 @@ function aiSectorEncirclementCheck() {
   setScenarioField(enemyMain, 'x', 760);
   setScenarioField(enemyMain, 'y', 520);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   // 时间推进自然老化情报，不能直接篡改已确认记录。
@@ -753,9 +753,9 @@ function aiSectorEncirclementCheck() {
 
   setScenarioField(enemyMain, 'x', 180);
   setScenarioField(enemyMain, 'y', 200);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.issueMovement();
 
@@ -810,28 +810,28 @@ function aiBacklineFlankCheck() {
 
   setScenarioField(aiMain, 'x', 1080);
   setScenarioField(aiMain, 'y', 720);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(sub1, 'x', 1020);
   setScenarioField(sub1, 'y', 770);
-  sub1.command = { ...sub1.command, x: sub1.x };
-  sub1.command = { ...sub1.command, y: sub1.y };
-  sub1.route = null;
+  sub1.followTarget({ ...sub1.command, x: sub1.x });
+  sub1.followTarget({ ...sub1.command, y: sub1.y });
+  sub1.clearRoute();
 
   setScenarioField(sub2, 'x', 1020);
   setScenarioField(sub2, 'y', 670);
-  sub2.command = { ...sub2.command, x: sub2.x };
-  sub2.command = { ...sub2.command, y: sub2.y };
-  sub2.route = null;
+  sub2.followTarget({ ...sub2.command, x: sub2.x });
+  sub2.followTarget({ ...sub2.command, y: sub2.y });
+  sub2.clearRoute();
 
   setScenarioField(enemyMain, 'x', 780);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
@@ -862,37 +862,37 @@ function aiOverwhelmedEscapeCheck() {
 
   setScenarioField(aiMain, 'x', 1100);
   setScenarioField(aiMain, 'y', 720);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(sub1, 'x', 890);
   setScenarioField(sub1, 'y', 740);
-  sub1.command = { ...sub1.command, x: sub1.x };
-  sub1.command = { ...sub1.command, y: sub1.y };
-  sub1.route = null;
+  sub1.followTarget({ ...sub1.command, x: sub1.x });
+  sub1.followTarget({ ...sub1.command, y: sub1.y });
+  sub1.clearRoute();
   setScenarioField(sub1, 'hp', sub1.maxHp * 0.42);
   setScenarioField(sub1, 'energy', sub1.maxEnergy * 0.24);
 
   setScenarioField(sub2, 'x', 1060);
   setScenarioField(sub2, 'y', 650);
-  sub2.command = { ...sub2.command, x: sub2.x };
-  sub2.command = { ...sub2.command, y: sub2.y };
-  sub2.route = null;
+  sub2.followTarget({ ...sub2.command, x: sub2.x });
+  sub2.followTarget({ ...sub2.command, y: sub2.y });
+  sub2.clearRoute();
 
   setScenarioField(enemyMain, 'x', 760);
   setScenarioField(enemyMain, 'y', 700);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   setScenarioField(enemySub1, 'x', 790);
   setScenarioField(enemySub1, 'y', 785);
   setScenarioField(enemySub1, 'angle', 0);
-  enemySub1.command = { ...enemySub1.command, x: enemySub1.x };
-  enemySub1.command = { ...enemySub1.command, y: enemySub1.y };
-  enemySub1.route = null;
+  enemySub1.followTarget({ ...enemySub1.command, x: enemySub1.x });
+  enemySub1.followTarget({ ...enemySub1.command, y: enemySub1.y });
+  enemySub1.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   bot.rememberContact(enemySub1, "visible");
@@ -932,9 +932,9 @@ function aiEnergyRecoveryModeCheck() {
   setScenarioField(enemyMain, 'x', 640);
   setScenarioField(enemyMain, 'y', 360);
   setScenarioField(enemyMain, 'angle', 0);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, {
@@ -1009,9 +1009,9 @@ function aiScoutEnergyReserveCheck() {
   const scoutSource = aiTeam.ships.sub1;
   setScenarioField(scoutSource, 'x', 620);
   setScenarioField(scoutSource, 'y', 720);
-  scoutSource.command = { ...scoutSource.command, x: scoutSource.x };
-  scoutSource.command = { ...scoutSource.command, y: scoutSource.y };
-  scoutSource.route = null;
+  scoutSource.followTarget({ ...scoutSource.command, x: scoutSource.x });
+  scoutSource.followTarget({ ...scoutSource.command, y: scoutSource.y });
+  scoutSource.clearRoute();
   setScenarioField(scoutSource, 'energy', SCOUT_LAUNCH_COST + scoutSource.maxEnergy * 0.08);
   bot.scheduleDecision("scout", 0);
   setScenarioField(enemyMain, 'x', scoutSource.x - 60);
@@ -1057,22 +1057,22 @@ function aiHighEnergySkillAggressionCheck() {
   aiTeam.split(1);
   setScenarioField(aiMain, 'x', 980);
   setScenarioField(aiMain, 'y', 720);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(aiTeam.ships.sub1, 'x', 948);
   setScenarioField(aiTeam.ships.sub1, 'y', 764);
-  aiTeam.ships.sub1.command = { ...aiTeam.ships.sub1.command, x: aiTeam.ships.sub1.x };
-  aiTeam.ships.sub1.command = { ...aiTeam.ships.sub1.command, y: aiTeam.ships.sub1.y };
-  aiTeam.ships.sub1.route = null;
+  aiTeam.ships.sub1.followTarget({ ...aiTeam.ships.sub1.command, x: aiTeam.ships.sub1.x });
+  aiTeam.ships.sub1.followTarget({ ...aiTeam.ships.sub1.command, y: aiTeam.ships.sub1.y });
+  aiTeam.ships.sub1.clearRoute();
 
   setScenarioField(enemyMain, 'x', 770);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', Math.PI);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.9);
   setScenarioField(aiTeam.ships.sub1, 'energy', aiTeam.ships.sub1.maxEnergy * 0.88);
@@ -1147,15 +1147,15 @@ function aiKoizumiOrbSteeringCheck() {
   setScenarioField(koizumi, 'x', 980);
   setScenarioField(koizumi, 'y', 720);
   setScenarioField(koizumi, 'angle', Math.PI);
-  koizumi.command = { x: koizumi.x, y: koizumi.y };
-  koizumi.route = null;
+  koizumi.followTarget({ x: koizumi.x, y: koizumi.y });
+  koizumi.clearRoute();
   setScenarioField(koizumi, 'energy', koizumi.maxEnergy);
   setScenarioField(target, 'x', 650);
   setScenarioField(target, 'y', 760);
   setScenarioField(target, 'angle', 0);
   setScenarioField(target, 'speed', 0);
-  target.command = { x: target.x, y: target.y };
-  target.route = null;
+  target.followTarget({ x: target.x, y: target.y });
+  target.clearRoute();
 
   bot.rememberContact(target, "visible");
   const context = bot.buildTacticalContext(team.ships.main, bot.selectEnemyFocus(team.ships.main));
@@ -1196,16 +1196,16 @@ function aiKoizumiBarrierDefenseCheck() {
   team.split(2);
   setScenarioField(main, 'x', 980);
   setScenarioField(main, 'y', 720);
-  main.command = { x: main.x, y: main.y };
-  main.route = null;
+  main.followTarget({ x: main.x, y: main.y });
+  main.clearRoute();
   setScenarioField(team.ships.sub1, 'x', 1010);
   setScenarioField(team.ships.sub1, 'y', 680);
   setScenarioField(team.ships.sub2, 'x', 1010);
   setScenarioField(team.ships.sub2, 'y', 760);
   setScenarioField(enemyMain, 'x', 650);
   setScenarioField(enemyMain, 'y', 720);
-  enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ x: enemyMain.x, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.rememberContact(enemyMain, "visible");
   let context = bot.buildTacticalContext(main, bot.selectEnemyFocus(main));
@@ -1293,14 +1293,14 @@ function aiKoizumiBarrierBreachCheck() {
   sim.teamB.split(1);
   setScenarioField(defendingMain, 'x', 650);
   setScenarioField(defendingMain, 'y', 720);
-  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
-  defendingMain.route = null;
+  defendingMain.followTarget({ x: defendingMain.x, y: defendingMain.y });
+  defendingMain.clearRoute();
   setScenarioField(asakura, 'x', 940);
   setScenarioField(asakura, 'y', 720);
   setScenarioField(asakura, 'angle', Math.PI);
   setScenarioField(asakura, 'energy', asakura.maxEnergy);
-  asakura.command = { x: asakura.x, y: asakura.y };
-  asakura.route = null;
+  asakura.followTarget({ x: asakura.x, y: asakura.y });
+  asakura.clearRoute();
 
   const hiddenContext = bot.buildTacticalContext(
     sim.teamB.ships.main,
@@ -1367,8 +1367,8 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration = 
       setScenarioField(ship, 'x', ship.x + (dx));
       setScenarioField(ship, 'y', ship.y + (dy));
       setScenarioField(ship, 'angle', angle);
-      ship.command = { x: ship.x, y: ship.y };
-      ship.route = null;
+      ship.followTarget({ x: ship.x, y: ship.y });
+      ship.clearRoute();
     }
   };
   placeFleet(sim.teamA, 650, 720, 0);
@@ -1621,16 +1621,16 @@ function aiEmergencyEnergyReserveCheck() {
 
   setScenarioField(aiMain, 'x', 960);
   setScenarioField(aiMain, 'y', 720);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(enemyMain, 'x', 790);
   setScenarioField(enemyMain, 'y', 720);
   setScenarioField(enemyMain, 'angle', Math.PI);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   setScenarioField(aiMain, 'energy', 30);
   setScenarioField(aiTeam.ships.sub1, 'energy', 20);
@@ -1771,8 +1771,8 @@ function aiShamisenHuntAttackFormationCheck() {
   setScenarioField(blocker, 'x', 690);
   setScenarioField(blocker, 'y', 720);
   for (const ship of team.getAllShips()) {
-    ship.route = null;
-    ship.command = { x: ship.x, y: ship.y };
+    ship.clearRoute();
+    ship.followTarget({ x: ship.x, y: ship.y });
   }
 
   sampleVisibility(team, [blocker.id]);
@@ -1795,8 +1795,8 @@ function aiShamisenHuntAttackFormationCheck() {
   setScenarioField(team.ships.sub1, 'x', 1010);
   setScenarioField(team.ships.sub1, 'y', 720);
   for (const ship of team.getAllShips()) {
-    ship.route = null;
-    ship.command = { x: ship.x, y: ship.y };
+    ship.clearRoute();
+    ship.followTarget({ x: ship.x, y: ship.y });
   }
   sampleVisibility(team, []);
   sim.elapsed += 19; // 离开视野后由情报组件自然淘汰陈旧记录。
@@ -1841,8 +1841,8 @@ function aiShamisenHuntDefenseFormationCheck() {
   bot.evaluateSplit(sim.elapsed, context);
   assert(team.splitLevel === 2, "敌方三味线出现后AI没有及时释放舰船组织防线");
   for (const ship of team.getAllShips()) {
-    ship.route = null;
-    ship.command = { x: ship.x, y: ship.y };
+    ship.clearRoute();
+    ship.followTarget({ x: ship.x, y: ship.y });
   }
   bot.issueMovement(context);
 
@@ -1867,15 +1867,15 @@ function aiEdgeRecoveryCheck() {
   setScenarioField(aiMain, 'x', 1410);
   setScenarioField(aiMain, 'y', 720);
   setScenarioField(aiMain, 'angle', Math.PI);
-  aiMain.command = { ...aiMain.command, x: aiMain.x };
-  aiMain.command = { ...aiMain.command, y: aiMain.y };
-  aiMain.route = null;
+  aiMain.followTarget({ ...aiMain.command, x: aiMain.x });
+  aiMain.followTarget({ ...aiMain.command, y: aiMain.y });
+  aiMain.clearRoute();
 
   setScenarioField(enemyMain, 'x', 760);
   setScenarioField(enemyMain, 'y', 720);
-  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
-  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
-  enemyMain.route = null;
+  enemyMain.followTarget({ ...enemyMain.command, x: enemyMain.x });
+  enemyMain.followTarget({ ...enemyMain.command, y: enemyMain.y });
+  enemyMain.clearRoute();
 
   bot.issueMovement();
 

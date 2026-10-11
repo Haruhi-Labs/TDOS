@@ -43,12 +43,12 @@ function tutorialBattleRulesCheck() {
 
   setScenarioField(playerMain, 'x', 720);
   setScenarioField(playerMain, 'y', 720);
-  playerMain.command = { x: 720, y: 720 };
-  playerMain.cooldown = 0;
+  playerMain.followTarget({ x: 720, y: 720 });
+  playerMain.resetAttackCycle(0);
   const enemyMain = sim.teamB.ships.main;
   setScenarioField(enemyMain, 'x', 840);
   setScenarioField(enemyMain, 'y', 720);
-  enemyMain.command = { x: 840, y: 720 };
+  enemyMain.followTarget({ x: 840, y: 720 });
   sim.teamA.computeVisibility(sim.teamB);
   sim.projectiles = [];
   runSteps(sim, 0.2);

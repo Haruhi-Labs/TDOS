@@ -27,7 +27,7 @@ function setup(mult = 1, dual = false) {
     side.getPlayerShips().forEach((ship, i) => {
       setScenarioField(ship, 'x', side.seat === "A" ? 300 : 1300);
       setScenarioField(ship, 'y', 250 + i * 250);
-      ship.command = { x: ship.x, y: ship.y };
+      ship.followTarget({ x: ship.x, y: ship.y });
       setScenarioField(ship, 'throttle', 0);
     });
   }
@@ -162,7 +162,7 @@ function reliableCheck() {
     other.sim.elapsed = 20;
     if (blocker === "seal") other.team.setRestrictions({ characters: true });
     if (blocker === "stun") other.companion.stunUntil(21);
-    if (blocker === "knockback") other.companion.forcedKnockback = { endsAt: 21 };
+    if (blocker === "knockback") other.companion.beginForcedKnockback({ endsAt: 21 });
     prepareBunnyCompanions(other.sim);
     assert.equal(other.owner.bunnyReliable, undefined, `${blocker}应阻止触发`);
     assert.equal(other.companion.bunnyCompanion.nextReliableAt, 40);
@@ -182,7 +182,7 @@ function conversionCheck() {
   assert.ok(owner.bunnyReliable);
   // 首次encore之后再进入bless，验证继承的倍率、速度和射击进度换算。
   setScenarioField(companion, 'speed', 10);
-  companion.cooldown = 2;
+  companion.resetAttackCycle(2);
   team.startCooldown("sub1", 0);
   assert.equal(team.castSubSkill("sub1"), true);
   near(companion.speed, 11.5);
@@ -231,7 +231,7 @@ function conversionCheck() {
   assert.equal(companion.forcedKnockback, null);
   // 由真实弹体验证母舰命中不产生伤害、命中统计或猫爪附效。
   setScenarioField(companion, 'angle', 0);
-  companion.cooldown = 0;
+  companion.resetAttackCycle(0);
   sampleVisibility(enemy, [...enemy.visibleEnemyIds, owner.id]);
   setScenarioField(owner, 'x', companion.x + 20);
   setScenarioField(owner, 'y', companion.y);
@@ -277,7 +277,7 @@ function conversionCheck() {
   sim.spawnProjectile({ team, source: companion });
   sim.elapsed = 25;
   const oldRate = companion.effectiveFireRate();
-  companion.cooldown = 1;
+  companion.resetAttackCycle(1);
   let updates = 0;
   const update = companion.update.bind(companion);
   companion.update = (dt) => { updates += 1; update(dt); };

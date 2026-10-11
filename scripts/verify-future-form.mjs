@@ -28,7 +28,7 @@ assert.equal(transitions.length, 2);
 const sim = new MatchSimulation({ seed: 211, teamLoadouts: { A: { main: "future1096", sub1: "asakura", sub2: "yuki" } } });
 assert.throws(() => { sim.teamA.future1096Form = "B"; }, TypeError);
 const ship = sim.teamA.ships.sub1;
-ship.setFlightSpeed(10); ship.cooldown = 8;
+ship.setFlightSpeed(10); ship.resetAttackCycle(8);
 sim.teamA.switchFuture1096Form();
 assert.equal(ship.speed, 15);
 assert.equal(ship.cooldown, 4);

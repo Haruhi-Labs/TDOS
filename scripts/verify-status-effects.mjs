@@ -37,7 +37,7 @@ main.stunUntil(12);
 main.silenceUntil(16);
 main.chargeNextShot(2);
 setScenarioField(main, 'collisionSlowUntil', 14);
-main.forcedKnockback = { startedAt: 11, endsAt: 11.58 };
+main.beginForcedKnockback({ startedAt: 11, endsAt: 11.58 });
 for (let hit = 0; hit < 2; hit += 1) main.registerClawHit({ triggerHits: 4, markDuration: 8 }, simulation);
 applyHaruhiHeroPowerShock(main, 11);
 selectShamisenHuntTarget(simulation.teamB, team, () => 0);

@@ -11,8 +11,8 @@ function createMatch(teamLoadouts, options = {}) {
 function hold(ship, x, y) {
   setScenarioField(ship, 'x', x);
   setScenarioField(ship, 'y', y);
-  ship.command = { x, y };
-  ship.route = null;
+  ship.followTarget({ x, y });
+  ship.clearRoute();
 }
 
 function pureDataCheck() {

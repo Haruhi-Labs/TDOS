@@ -12,6 +12,16 @@ export function setScenarioField(target, key, value) {
   }
   if (!(target instanceof Ship)) { target[key] = value; return value; }
   if (key === "x" || key === "y") target.displaceTo(key === "x" ? value : target.x, key === "y" ? value : target.y);
+  else if (key === "route") {
+    if (value !== null) throw new Error("场景航线必须通过 setBezierRoute 建立");
+    target.clearRoute();
+  }
+  else if (key === "command") target.followTarget(value);
+  else if (key === "cooldown") target.resetAttackCycle(value);
+  else if (key === "forcedKnockback") {
+    if (value) target.beginForcedKnockback(value);
+    else target.clearControlEffects();
+  }
   else if (key === "hp" || key === "energy") target.applyResourcePlan({ [key]: value });
   else if (key === "speed") target.setFlightSpeed(value);
   else if (key === "angle") target.setFlightHeading(value);

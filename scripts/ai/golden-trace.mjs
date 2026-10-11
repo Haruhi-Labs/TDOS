@@ -79,8 +79,8 @@ function holdShip(ship, x, y, angle = null) {
   setScenarioField(ship, 'x', x);
   setScenarioField(ship, 'y', y);
   if (angle !== null) setScenarioField(ship, 'angle', angle);
-  ship.command = { x, y };
-  ship.route = null;
+  ship.followTarget({ x, y });
+  ship.clearRoute();
 }
 
 // 与 simulate-ai-battles.mjs 的固定破盾布置保持一致。

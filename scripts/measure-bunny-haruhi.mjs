@@ -161,7 +161,7 @@ if (process.argv[2] === "--worker") {
               if (scenario.bribe) team.getAllShips().forEach((unit, index) => {
                 setScenarioField(unit, 'x', team === own ? 650 : 780);
                 setScenarioField(unit, 'y', 620 + index * 30);
-                unit.command = { x: unit.x, y: unit.y };
+                unit.followTarget({ x: unit.x, y: unit.y });
               });
             }
             opening = { preparationSeconds: sim.elapsed, hp: own.ships.sub1.hp, energy: own.ships.sub1.energy,

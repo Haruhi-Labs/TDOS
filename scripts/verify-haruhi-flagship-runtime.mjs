@@ -55,7 +55,7 @@ assert.equal(events.length, count);
 const sim = new MatchSimulation({ seed: 205, teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "yuki" } } });
 const team = sim.teamA;
 const ship = team.ships.sub1;
-ship.setFlightSpeed(10); ship.cooldown = 8;
+ship.setFlightSpeed(10); ship.resetAttackCycle(8);
 assert.equal(team.castFlagshipSkill(), true);
 assert.equal(ship.speed, 11.5);
 assert.equal(ship.cooldown, 8 / 1.15);

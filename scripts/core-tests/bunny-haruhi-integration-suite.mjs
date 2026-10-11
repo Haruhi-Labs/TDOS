@@ -25,7 +25,7 @@ function simulation(stage = false, enabled = true, opponentMain = "kyon") {
     team.getPlayerShips().forEach((ship, i) => {
       setScenarioField(ship, 'x', team.seat === "A" ? 200 : 1200);
       setScenarioField(ship, 'y', 300 + i * 300);
-      ship.command = { x: ship.x, y: ship.y };
+      ship.followTarget({ x: ship.x, y: ship.y });
       setScenarioField(ship, 'throttle', 0);
     });
   }
@@ -39,7 +39,7 @@ function exposureCheck() {
   const target = sim.teamB.ships.sub1;
   setScenarioField(target, 'x', source.x + 172);
   setScenarioField(target, 'y', source.y);
-  target.command = { x: target.x, y: target.y };
+  target.followTarget({ x: target.x, y: target.y });
   setScenarioField(target, 'hp', 300);
   setScenarioField(target, 'energy', 90);
   setScenarioField(target, 'throttle', 1);
@@ -105,7 +105,7 @@ function transformCheck() {
   assert.equal(JSON.stringify(sim.serializeState()), before, "失败无资源/奖励/快照副作用");
   setScenarioField(ship, 'hp', 880);
   setScenarioField(ship, 'speed', 10);
-  ship.cooldown = 2;
+  ship.resetAttackCycle(2);
   const oldRate = ship.effectiveFireRate();
   assert.equal(cast(sim), true, "零能量仍可施放无能耗变身");
   near(ship.hp, 748);
@@ -190,8 +190,8 @@ function encoreMovementCheck() {
     setScenarioField(target, 'y', 600);
     setScenarioField(target, 'angle', 0);
     setScenarioField(target, 'speed', 0);
-    target.route = null;
-    target.command = { x: 900, y: 600 };
+    target.clearRoute();
+    target.followTarget({ x: 900, y: 600 });
     setScenarioField(target, 'throttle', 1.4);
     setScenarioField(target, 'energy', energy);
     target.update(TICK_DT);
@@ -286,10 +286,10 @@ function tickOrderingCheck() {
   setScenarioField(target, 'x', source.x + 172.1);
   setScenarioField(target, 'y', source.y);
   setScenarioField(target, 'angle', Math.PI);
-  target.command = { x: source.x, y: source.y };
+  target.followTarget({ x: source.x, y: source.y });
   setScenarioField(target, 'throttle', 1);
   setScenarioField(target, 'speed', 33);
-  target.cooldown = 0;
+  target.resetAttackCycle(0);
   sim.combatEnabled.B = true;
   resolveBunnyStages(sim);
   assert.equal(target.bunnyStageExposure, undefined);
@@ -377,7 +377,7 @@ function authorityCheck() {
         const ship = sim.teamA.ships.sub1;
         setScenarioField(ship, 'x', sim.teamB.ships.main.x - 100);
         setScenarioField(ship, 'y', sim.teamB.ships.main.y);
-        ship.command = { x: ship.x, y: ship.y };
+        ship.followTarget({ x: ship.x, y: ship.y });
       }
       sim.update(TICK_DT);
       result.push(JSON.stringify(sim.serializeState()));

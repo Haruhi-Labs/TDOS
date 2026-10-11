@@ -58,14 +58,10 @@ export class Ship {
   get effects() { return this.#status.effects; }
   #weapon;
   get cooldown() { return this.#weapon.remaining; }
-  set cooldown(value) { this.#weapon.reset(value); }
   #navigation;
   get route() { return this.#navigation.route; }
-  set route(value) { this.#navigation.replaceRoute(value); }
   get command() { return this.#navigation.command; }
-  set command(value) { this.#navigation.target(value); }
   get forcedKnockback() { return this.#navigation.forcedKnockback; }
-  set forcedKnockback(value) { this.#navigation.knockback(value); }
 
   get base() { return this.#base; }
 
@@ -102,7 +98,7 @@ export class Ship {
     this.#speed = 0;
     this.#throttle = THROTTLE_GEAR_VALUES[DEFAULT_THROTTLE_GEAR];
     this.#navigation = new ShipNavigation(createShipNavigationPort(this), { x, y });
-    this.route = null;
+    this.#navigation.clearRoute();
 
     this.#maxHp = this.base.hp;
     this.#hp = this.#maxHp;
@@ -111,7 +107,7 @@ export class Ship {
     this.#radius = this.base.radius;
     this.#alive = true;
     this.#collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
-    this.forcedKnockback = null;
+    this.#navigation.knockback(null);
 
     this.#weapon = new WeaponCycle(rngFor(this.#team.match).range(0, 0.5));
     this.#formationOffset = Object.freeze({ ...(options.formationOffset || { x: 0, y: 0 }) });
@@ -171,9 +167,9 @@ export class Ship {
   }
 
   beginForcedKnockback(motion) {
-    this.forcedKnockback = { ...motion };
+    this.#navigation.knockback(motion);
     this.#speed = 0;
-    this.route = null;
+    this.#navigation.clearRoute();
   }
 
   applyResourcePlan({ hp = this.#hp, energy = this.#energy }) {
@@ -192,8 +188,8 @@ export class Ship {
     this.#maxEnergy = this.#energy = stats.energy;
     this.#x = position.x;
     this.#y = position.y;
-    this.command = { ...position };
-    this.route = null;
+    this.#navigation.target(position);
+    this.#navigation.clearRoute();
     this.#speed = 0;
   }
 
@@ -210,7 +206,7 @@ export class Ship {
 
   boostCombatTempo(multiplier) {
     this.#speed *= multiplier;
-    this.cooldown /= multiplier;
+    this.#weapon.reset(this.cooldown / multiplier);
   }
 
   advanceSpecialRoute(distance, minimumLength, captureRadius) { this.#navigation.advanceSpecialRoute(distance, minimumLength, captureRadius); }
@@ -222,11 +218,11 @@ export class Ship {
 
   rescaleCombatTiming(previousSpeed, previousRate) {
     if (previousSpeed > 0) this.#speed *= this.effectiveSpeed() / previousSpeed;
-    this.cooldown *= previousRate / this.effectiveFireRate();
+    this.#weapon.reset(this.cooldown * (previousRate / this.effectiveFireRate()));
   }
 
   followTarget(point, throttle = this.throttle) {
-    this.command = { ...point };
+    this.#navigation.target(point);
     this.#throttle = this.#throttleConstraint(throttle);
   }
 
@@ -243,7 +239,7 @@ export class Ship {
     this.#alive = false;
     this.#hp = 0;
     this.#speed = 0;
-    this.route = null;
+    this.#navigation.clearRoute();
   }
 
   restoreHull(amount) {
@@ -264,12 +260,12 @@ export class Ship {
 
   rescaleFormMotion(speedRatio, cooldownRatio) {
     this.#speed = this.#alive ? Math.max(0, this.#speed * speedRatio) : 0;
-    this.cooldown = Math.max(0, this.cooldown * cooldownRatio);
+    this.#weapon.reset(Math.max(0, this.cooldown * cooldownRatio));
   }
 
   scaleMotion(speedRatio, cooldownRatio) {
     this.#speed *= speedRatio;
-    this.cooldown *= cooldownRatio;
+    this.#weapon.reset(this.cooldown * cooldownRatio);
   }
 
   setFlightSpeed(speed) {
@@ -281,8 +277,8 @@ export class Ship {
   }
 
   navigateTo(point, throttle) {
-    this.route = null;
-    this.command = { ...point };
+    this.#navigation.clearRoute();
+    this.#navigation.target(point);
     if (throttle !== undefined) this.#throttle = this.#throttleConstraint(throttle);
   }
 
@@ -317,7 +313,7 @@ export class Ship {
   clearControlEffects() {
     this.#status.clearControl();
     this.#collisionSlowUntil = 0;
-    this.forcedKnockback = null;
+    this.#navigation.knockback(null);
     this.#team.match.shipEffects.clearControl(this);
   }
 
@@ -529,6 +525,8 @@ export class Ship {
     const relative = Math.abs(shortestAngleDelta(this.#angle, toTarget));
     return fireArcDensityMultiplier(relative, this.#team.match.rules.improvedFireArcs(this.#team));
   }
+
+  resetAttackCycle(duration) { this.#weapon.reset(duration); }
 
   tryAttack(match, enemyTeam) { return this.#weapon.fire(createWeaponPort(this, match, enemyTeam)); }
 

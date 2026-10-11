@@ -62,7 +62,7 @@ ship.applyControlSpeedLimit();
 assert.equal(ship.speed, 0);
 team.updateEnergy(2);
 assert.equal(ship.energy, 10);
-ship.cooldown = 0;
+ship.resetAttackCycle(0);
 setScenarioField(ship, 'angle', Math.PI / 2);
 setScenarioField(ship, 'x', 600); setScenarioField(ship, 'y', 600);
 const target = simulation.teamB.ships.main;

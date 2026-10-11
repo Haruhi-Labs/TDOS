@@ -229,14 +229,14 @@ function runBarrierBreachScenario(breakerKind, seed) {
 
   setScenarioField(defendingMain, 'x', 650);
   setScenarioField(defendingMain, 'y', 720);
-  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
-  defendingMain.route = null;
+  defendingMain.followTarget({ x: defendingMain.x, y: defendingMain.y });
+  defendingMain.clearRoute();
   setScenarioField(breaker, 'x', 940);
   setScenarioField(breaker, 'y', 720);
   setScenarioField(breaker, 'angle', Math.PI);
   setScenarioField(breaker, 'energy', breaker.maxEnergy);
-  breaker.command = { x: breaker.x, y: breaker.y };
-  breaker.route = null;
+  breaker.followTarget({ x: breaker.x, y: breaker.y });
+  breaker.clearRoute();
   setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
   setScenarioField(attackingTeam.ships.main, 'y', 720);
   bot.scheduleDecision("movement", 0);
@@ -288,13 +288,13 @@ function runBarrierInfiltrationScenario(seed) {
   const bot = simulation.botBySeat("B");
   setScenarioField(defendingMain, 'x', 650);
   setScenarioField(defendingMain, 'y', 720);
-  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
-  defendingMain.route = null;
+  defendingMain.followTarget({ x: defendingMain.x, y: defendingMain.y });
+  defendingMain.clearRoute();
   setScenarioField(attackingMain, 'x', 930);
   setScenarioField(attackingMain, 'y', 720);
   setScenarioField(attackingMain, 'angle', Math.PI);
-  attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
-  attackingMain.route = null;
+  attackingMain.followTarget({ x: attackingMain.x, y: attackingMain.y });
+  attackingMain.clearRoute();
   bot.scheduleDecision("movement", 0);
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 

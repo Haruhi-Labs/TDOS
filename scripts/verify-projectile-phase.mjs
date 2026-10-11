@@ -62,7 +62,7 @@ ship.broadsideMultiplier = () => 1;
 const requests = [];
 firing.spawnProjectile = (profile) => { requests.push(profile); };
 for (const actor of [ship, scout, wingman]) {
-  if (actor === ship) actor.cooldown = 0;
+  if (actor === ship) actor.resetAttackCycle(0);
   else actor.resetAttackCycle(0);
   actor.tryAttack(firing, enemy);
 }

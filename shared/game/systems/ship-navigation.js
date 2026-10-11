@@ -18,10 +18,6 @@ export class ShipNavigation {
     return this.#commandView;
   }
   get forcedKnockback() { return this.#forcedKnockback; }
-  replaceRoute(route) {
-    this.#routeView = undefined;
-    this.#route = copyPlainData(route);
-  }
   target(point) { this.#command = { x: point.x, y: point.y }; }
   knockback(motion) { this.#forcedKnockback = motion && Object.freeze({ ...motion }); }
   advanceSpecialRoute(traveledDistance, minimumLength, captureRadius) {
@@ -324,7 +320,7 @@ export class ShipNavigation {
       return true;
     }
     this.#forcedKnockback = null;
-    this.#route = null;
+    this.clearRoute();
     return false;
   }
 
