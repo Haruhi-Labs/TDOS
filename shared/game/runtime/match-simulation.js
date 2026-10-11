@@ -111,7 +111,6 @@ export class MatchSimulation {
       // aiParams 可按席位指定预设与参数覆盖：{ A: { preset, overrides } }。
       const seatParams = options.aiParams?.[seat] || {};
       const runner = createAiRunner(this, seat, {
-        actionMode: options.aiActionMode,
         params: {
           difficulty: aiDifficulty,
           preset: legacyAiSeats.includes(seat) ? "legacy" : seatParams.preset ?? null,

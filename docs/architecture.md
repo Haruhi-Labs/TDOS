@@ -129,13 +129,13 @@ AI 动作端口不暴露真实舰队，也没有接收实体后隐式补算战�
 - `shared/game/rng.js`：对局级随机源。`MatchSimulation` 传入整数 `seed` 时规则与各席 AI 使用互不干扰的种子随机流，实体 ID 也改为对局内计数，整局可复现；未传时每次取值读取调用时刻的 `Math.random`，取值顺序不变。对局内规则与 AI 不直接调用 `Math.random`；种子不进入快照。
 - `shared/game/ai/bridge/observation.js`：规则层到 AI 的唯一读取出口。`buildObservation(match, seat)` 把实时对局翻译成该席位有权知道的纯数据（己方完整状态、视野内敌方实体及其公开技能状态、长门雷达接触、猫爪标记、可感知弹体与公开波纹）；现状中未经迷雾过滤的四项读取集中在 `privileged`。时间字段保留绝对时间戳，观测可 JSON 往返。
 - `shared/game/ai/actions.js`：AI 的动作词表。标准动作复用 `shared/protocol/match-actions.js`；带寻的点的侦察机发射与侦察机重编组是 AI 扩展动作，不进入对局动作协议，网络输入校验会拒绝它们。
-- `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，也是 AI 侧唯一持有实时舰队的位置。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作默认经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；`direct` 模式保留改造前的直接调用路径，只用于行为对照。
+- `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，实时舰队只保留在桥接闭包内。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作始终经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；旧 `direct` 执行路径及模式切换已经删除。
 - `shared/game/ai/bridge/runner.js`：为每个 AI 席位创建端口与策略，并在每个逻辑帧驱动一次。
 - `shared/game/ai/params/`：AI 参数层。`default.js` 是默认参数（等于极限难度的行为），按决策阶段分节；`difficulty.js` 把单人难度拆成决策参数的覆盖层和规则层的让分表（数值缩放、集火残血），让分由 `MatchSimulation` 写入 AI 所控舰队；`presets.js` 提供 `legacy` 旧版对照预设；`index.js` 的 `resolveAiParams({ difficulty, preset, overrides })` 按「默认、难度、预设、覆盖」的顺序合并并深冻结，未知键或类型不符直接报错。`MatchSimulation` 的 `aiParams` 选项可按席位指定预设与覆盖。走位候选点几何与三个策略模块里的数值尚未外提，用 `node scripts/ai/list-literals.mjs` 查看剩余的内联数值。
 - `shared/game/ai/policy/`：AI 的决策代码，只消费观测、参数与随机流，经端口提交动作；`check:modules` 禁止它导入运行时规则模块、观测桥或战斗内核。`rule-policy.js` 负责状态初始化与每帧的阶段编排，各阶段的方法按职责分在同目录模块里并安装到 `RulePolicy` 原型上：`intel-tracker.js`（情报记忆与外推）、`belief.js`（占据图）、`evaluation.js`（战力估值与态势）、`context.js`（焦点与战术上下文）、`energy.js`、`split.js`、`mode.js`、`targets.js`（主舰目标点）、`detached.js`（分离舰角色与站位）、`movement.js`（改航编排）、`scout.js`、`skills.js`、`view.js`、`commands.js`、`geometry.js`、`debug-state.js`。
 - `shared/game/ai/policy/characters/`：每个角色一个 AI 档案，声明分离与前探偏置、默认分离角色、技能增益是否怕净化，以及技能的施放条件与瞄准。新增角色的 AI 在这里加档案并在 `index.js` 注册。
 - `shared/game/ai/policy/tactics/`：跨多个决策阶段的战术。`character-counterplay.js` 负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判，不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色；`shamisen-hunt.js` 负责“猫爪印记”的攻守编队，猎杀标记不会在此被提升为真实视野；`yuki-scout.js` 是纯计算的侦察条令；`bunny-stage.js` 负责兔女郎春日的变身时机与舞台走位。
-- `shared/game/bot-controller.js`：`RulePolicy` 的对外门面，供对局循环、调试页和测试使用：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
+- `shared/game/bot-controller.js`：`RulePolicy` 的对外门面，供对局循环、调试页和测试使用：外部方法入口拒绝实体、循环对象与能力回调，刷新观测后只消费数据。入口守卫缓存保留在闭包中，不公开可绕过校验的执行函数。
 - `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
 - `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。
 - `shared/game/koizumi-orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。

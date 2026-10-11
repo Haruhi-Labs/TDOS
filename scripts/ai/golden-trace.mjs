@@ -8,7 +8,6 @@ import { unlockSupport } from "../../shared/game/haruhi-support.js";
 //   node scripts/ai/golden-trace.mjs --dump=<名称>:<tick>   输出该场景运行到指定 tick 后的完整状态
 //   node scripts/ai/golden-trace.mjs --perf                记录 tick 耗时基线
 //   node scripts/ai/golden-trace.mjs --strict-observation  观测经 JSON 往返后再交给 AI，结果仍须与基线一致
-//   node scripts/ai/golden-trace.mjs --action-mode=direct|dispatch  指定 AI 动作执行路径，并在分歧时给出权限校验拒绝的归因
 //   --baseline=<路径>  指定基线文件；--out=<路径>  指定录制或耗时输出文件；--force  忽略环境不符
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
@@ -31,13 +30,12 @@ const WORLD_SIZE = 1440;
 const CHECKPOINT_TICKS = 30;
 
 function parseArgs(argv) {
-  const args = { record: false, perf: false, force: false, strictObservation: false, actionMode: null, scenario: null, dump: null, baseline: null, out: null };
+  const args = { record: false, perf: false, force: false, strictObservation: false, scenario: null, dump: null, baseline: null, out: null };
   for (const item of argv) {
     if (item === "--record") args.record = true;
     else if (item === "--perf") args.perf = true;
     else if (item === "--force") args.force = true;
     else if (item === "--strict-observation") args.strictObservation = true;
-    else if (item.startsWith("--action-mode=")) args.actionMode = item.slice("--action-mode=".length);
     else if (item.startsWith("--scenario=")) args.scenario = item.slice("--scenario=".length);
     else if (item.startsWith("--dump=")) args.dump = item.slice("--dump=".length);
     else if (item.startsWith("--baseline=")) args.baseline = item.slice("--baseline=".length);
@@ -314,16 +312,13 @@ function checkpoint(simulation, random) {
   };
 }
 
-function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false, actionMode = null } = {}) {
+function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false } = {}) {
   const originalRandom = Math.random;
   const random = seededRandom(scenario.seed);
   __resetEntityIds(1);
   Math.random = random;
   try {
     const simulation = scenario.build();
-    if (actionMode) {
-      for (const runner of Object.values(simulation.aiRunners)) runner.port.mode = actionMode;
-    }
     if (strictObservation) {
       for (const bot of Object.values(simulation.bots)) bot.strictObservation = true;
     }
@@ -468,7 +463,7 @@ if (args.dump) {
     checkpointTicks: CHECKPOINT_TICKS,
     environment: environment(),
     scenarios: scenarios.map((scenario) => {
-      const { permissionRejections, ...recorded } = runScenario(scenario, { actionMode: args.actionMode });
+      const { permissionRejections, ...recorded } = runScenario(scenario, {});
       return recorded;
     }),
   };
@@ -502,7 +497,7 @@ if (args.dump) {
       failures.push(`${scenario.name}：基线中没有该场景`);
       continue;
     }
-    const actual = runScenario(scenario, { strictObservation: args.strictObservation, actionMode: args.actionMode });
+    const actual = runScenario(scenario, { strictObservation: args.strictObservation });
     const difference = compareScenario(expected, actual);
     const rejected = Object.values(actual.permissionRejections).filter((item) => item.count > 0);
     const rejectionNote = rejected.length > 0
@@ -510,7 +505,7 @@ if (args.dump) {
         + `（其中禁控 ${rejected.reduce((sum, item) => sum + item.controlLocked, 0)} 次，首次在第 ${Math.min(...rejected.map((item) => item.firstTick))} tick）`
       : "";
     if (difference) failures.push(`${scenario.name}：${difference}${rejectionNote}`);
-    else if (rejectionNote && args.actionMode) console.log(`${scenario.name}：与基线一致${rejectionNote}`);
+    else if (rejectionNote) console.log(`${scenario.name}：与基线一致${rejectionNote}`);
   }
   const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   if (failures.length > 0) {

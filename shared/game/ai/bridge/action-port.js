@@ -1,18 +1,11 @@
 // AI 与对局之间的端口：读取只有观测，写入只有动作。
-// 端口是 AI 侧唯一持有实时 Team 的位置，决策代码通过它提交动作并得知是否被接受。
+// 实时 Team 仅保留在桥接闭包；决策代码无法取得实体或切换到绕过校验的执行路径。
 import { applyMatchAction } from "../../action-dispatcher.js";
 import { AI_ACTION_TYPES } from "../actions.js";
 import {
   buildObservation,
   observeEnemySpawn,
 } from "./observation.js";
-
-export const AI_ACTION_MODES = Object.freeze({
-  // 与标准动作相同的执行链和权限校验。
-  DISPATCH: "dispatch",
-  // 直接调用领域方法、不做操作权限校验的旧路径，仅用于与改造前行为对照。
-  DIRECT: "direct",
-});
 
 function pureData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -38,51 +31,23 @@ function applyScoutAction(team, action) {
   return null;
 }
 
-function applyDirect(team, action) {
-  const scoutResult = applyScoutAction(team, action);
-  if (scoutResult !== null) return scoutResult;
-  const ship = team.ships[action.shipKey];
-  switch (action.type) {
-    case AI_ACTION_TYPES.SPLIT:
-      return team.split(action.level);
-    case AI_ACTION_TYPES.SET_ROUTE:
-      ship.setBezierRoute(undefined, undefined, action.endX, action.endY, action.throttle, false);
-      return true;
-    case AI_ACTION_TYPES.ROUTE_END:
-      ship.setRouteEndpoint(action.endX, action.endY, false);
-      return true;
-    case AI_ACTION_TYPES.SET_THROTTLE:
-      ship.setThrottle(action.throttle);
-      return true;
-    case AI_ACTION_TYPES.CAST_FLAGSHIP_SKILL:
-      return team.castFlagshipSkill();
-    case AI_ACTION_TYPES.CAST_SUB_SKILL: {
-      const { type, shipKey, ...options } = action;
-      return Object.keys(options).length > 0 ? team.castSubSkill(shipKey, options) : team.castSubSkill(shipKey);
-    }
-    default:
-      return false;
-  }
-}
-
 function applyDispatch(team, action) {
   const scoutResult = applyScoutAction(team, action);
   return scoutResult !== null ? scoutResult : applyMatchAction(team, action);
 }
 
-// 这三类动作在旧路径下必定生效；经标准执行链被拒绝，说明权限校验改变了结果。
+// 保留拒绝原因计数供诊断；所有动作只有同一条执行链。
 const PERMISSION_CHECKED_TYPES = new Set([
   AI_ACTION_TYPES.SET_ROUTE,
   AI_ACTION_TYPES.ROUTE_END,
   AI_ACTION_TYPES.SET_THROTTLE,
 ]);
 
-export function createActionPort(match, seat, { mode = AI_ACTION_MODES.DISPATCH } = {}) {
+export function createActionPort(match, seat) {
   const team = match.teamBySeat(seat);
   let observation = null;
   const port = {
     seat,
-    mode,
     // 校验用：观测先经 JSON 往返再交给决策，证明决策没有依赖实时对象引用或非纯数据值。
     strict: false,
     // 标准执行链拒绝、而旧路径会生效的动作计数，用于归因两种模式的行为差异。
@@ -107,9 +72,8 @@ export function createActionPort(match, seat, { mode = AI_ACTION_MODES.DISPATCH 
 
     // 立即执行并返回是否被接受。被拒绝的动作也可能触发规则层的状态整理，因此一律让观测失效。
     submit(action) {
-      const dispatch = port.mode === AI_ACTION_MODES.DISPATCH;
-      const accepted = Boolean(dispatch ? applyDispatch(team, action) : applyDirect(team, action));
-      if (dispatch && !accepted && PERMISSION_CHECKED_TYPES.has(action.type)) {
+      const accepted = Boolean(applyDispatch(team, action));
+      if (!accepted && PERMISSION_CHECKED_TYPES.has(action.type)) {
         const ship = team.ships[action.shipKey];
         port.permissionRejections.count += 1;
         if (ship?.alive && !ship.canControl()) port.permissionRejections.controlLocked += 1;

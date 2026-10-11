@@ -5,36 +5,19 @@ import { RulePolicy } from "./ai/policy/rule-policy.js";
 export class BotController extends RulePolicy {
   constructor(port, options) {
     super(port, options);
-    this.entryDepth = 0;
-    this.entryGuards = new Map();
+    const entries = new Map();
     return new Proxy(this, {
       get(target, property) {
         const value = Reflect.get(target, property, target);
-        return typeof value === "function" && property !== "constructor" && !Object.hasOwn(target, property)
-          ? target.guardedEntry(property, value)
-          : value;
+        if (typeof value !== "function" || property === "constructor" || Object.hasOwn(target, property)) return value;
+        if (!entries.has(property)) entries.set(property, (...args) => {
+          for (const arg of args) assertDataArgument(arg);
+          target.port.invalidate();
+          return value.apply(target, args);
+        });
+        return entries.get(property);
       },
     });
-  }
-
-  // 内部互相调用直接走原型方法，不经过这里。
-  guardedEntry(name, method) {
-    let guard = this.entryGuards.get(name);
-    if (!guard) {
-      guard = (...args) => {
-        if (this.entryDepth > 0) return method.apply(this, args);
-        this.port.invalidate();
-        this.entryDepth = 1;
-        try {
-          for (const arg of args) assertDataArgument(arg);
-          return method.apply(this, args);
-        } finally {
-          this.entryDepth = 0;
-        }
-      };
-      this.entryGuards.set(name, guard);
-    }
-    return guard;
   }
 
   // 校验用：观测先经 JSON 往返再交给决策。
@@ -49,6 +32,7 @@ export class BotController extends RulePolicy {
 }
 
 function assertDataArgument(value, seen = new Set()) {
+  if (typeof value === "function") throw new TypeError("AI 决策入口不接受持有外部能力的回调");
   if (!value || typeof value !== "object") return;
   const prototype = Object.getPrototypeOf(value);
   const collection = value instanceof Set || value instanceof Map;
