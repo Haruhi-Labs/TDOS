@@ -9,7 +9,7 @@ import { isShipSelectable, resolveSelectedShipKey } from "../src/battle/ship-sel
 
 const loadout = { main: "haruhi", sub1: "future1096", sub2: "yuki" };
 const simulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: loadout } });
-simulation.teamA.splitLevel = 2;
+simulation.teamA.configureFormation(2);
 for (const key of ["main", "sub1"]) {
   const ship = simulation.teamA.ships[key];
   ship.effects.stunnedUntil = simulation.elapsed + 1;
@@ -71,7 +71,7 @@ try {
       await page.locator(mobile ? ".csm-cta" : ".cs-launch").click();
       await page.locator("#battleView").waitFor({ state: "visible" });
       await page.waitForFunction(() => Boolean(window.selectionFixture.simulation));
-      await page.evaluate(() => { const f = window.selectionFixture; f.app.paused = true; f.simulation.teamA.splitLevel = 2; f.refresh(); });
+      await page.evaluate(() => { const f = window.selectionFixture; f.app.paused = true; f.simulation.teamA.configureFormation(2); f.refresh(); });
     } else {
       // 联机只接收本脚本生成的权威快照，不连接现有 WebSocket 服务。
       const wsUrl = "ws://127.0.0.1:65530/selection-fixture";
@@ -81,7 +81,7 @@ try {
       socket.send(JSON.stringify({ type: "connected", playerId: "selection-test", rulesetVersion: RULESET_VERSION, tickRate: 30, snapshotRate: 15, protocolVersion: 2 }));
       socket.send(JSON.stringify({ type: "room_state", room: { roomId: "selection-room", status: "running", mode: "pvp", players: [{ seat: "A", name: "选舰验收", loadout }, { seat: "B", name: "对手", loadout }] }, self: { seat: "A", loadout } }));
       onlineSimulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: loadout } });
-      onlineSimulation.teamA.splitLevel = 2;
+      onlineSimulation.teamA.configureFormation(2);
     }
     async function publish(key, status) {
       if (mode === "solo") {

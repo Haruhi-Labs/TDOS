@@ -1,3 +1,5 @@
+import { FleetFormation } from "../systems/fleet-formation.js";
+import { createFormationPort } from "../rules/formation-port.js";
 import { createTeamHaruhiFlagship } from "../rules/haruhi-flagship-port.js";
 import { ownSupportState } from "../haruhi-support.js";
 import { createTeamSponsor } from "../rules/sponsor-port.js";
@@ -28,6 +30,8 @@ import { Wingman } from "../model/wingman.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  #formation;
+  get splitLevel() { return this.#formation.level; }
   #beamSystem;
   #futureForm;
   #sponsor;
@@ -43,7 +47,7 @@ export class Team {
       value: Object.freeze(normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT)),
     });
 
-    this.splitLevel = 0;
+    this.#formation = new FleetFormation(createFormationPort(this), FLAGSHIP_TURN_PENALTIES);
     // 单人难度对本队的影响(仅当本队由AI控制时,由 MatchSimulation 按难度让分表写入):
     //  statMult    敌方数值缩放(简单0.8/普通1.0/困难1.2/极限1.0),作用于本队舰船的血量与伤害;
     //  aiFocusLowHp 极限难度专属:开火时锁定射程内血量最低的敌人(其余难度仍与玩家同规则"取最近")。
@@ -236,7 +240,7 @@ export class Team {
 
   configureTrainingFleet(stats, positions) {
     this.forceCharacterSkillsDisabled = true;
-    this.splitLevel = 2;
+    this.configureFormation(2);
     for (const ship of this.getAllShips()) ship.configureTraining(stats, positions[ship.key] || positions.main);
   }
 
@@ -335,110 +339,16 @@ export class Team {
     return max <= 0 ? 0 : hp / max;
   }
 
-  fleetKeyForShip(shipOrKey) {
-    const key = typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key;
-    if (!this.match.rules.isFleetParticipant(typeof shipOrKey === "string" ? this.shipByKey(key) : shipOrKey)) return key;
-    if (key === "sub1" && this.splitLevel >= 1) {
-      return "sub1";
-    }
-    if (key === "sub2" && this.splitLevel >= 2) {
-      return "sub2";
-    }
-    return "main";
-  }
-
-  fleetMembersByKey(fleetKey) {
-    const members = [];
-    if (fleetKey === "main") {
-      if (this.ships.main.alive) {
-        members.push(this.ships.main);
-      }
-      if (this.splitLevel < 1 && this.ships.sub1.alive) {
-        members.push(this.ships.sub1);
-      }
-      if (this.splitLevel < 2 && this.ships.sub2.alive) {
-        members.push(this.ships.sub2);
-      }
-      for (const ship of this.extraShips) {
-        if (ship.alive && this.match.rules.isFleetParticipant(ship)) {
-          members.push(ship);
-        }
-      }
-      return members;
-    }
-    const ship = this.ships[fleetKey] || this.extraShips.find((candidate) => candidate.key === fleetKey && !this.match.rules.isFleetParticipant(candidate));
-    if (ship && ship.alive) {
-      members.push(ship);
-    }
-    return members;
-  }
-
-  fleetMembersForShip(shipOrKey) {
-    return this.fleetMembersByKey(this.fleetKeyForShip(shipOrKey));
-  }
-
-  fleetMemberCountForShip(shipOrKey) {
-    return this.fleetMembersForShip(shipOrKey).length;
-  }
-
-  turnModifierForShip(shipOrKey) {
-    const count = this.fleetMemberCountForShip(shipOrKey);
-    const penalty = FLAGSHIP_TURN_PENALTIES[count] || 0.62;
-    return count <= 1 ? 1.16 : penalty;
-  }
-
-  accelerationModifierForShip(shipOrKey) {
-    return this.match.rules.accelerationMultiplier(this);
-  }
-
-  fleetSpeedForShip(shipOrKey) {
-    const members = this.fleetMembersForShip(shipOrKey);
-    if (members.length === 0) {
-      return 0;
-    }
-    return members.reduce((min, ship) => Math.min(min, ship.baseSpeed()), Infinity);
-  }
-
-  fleetEnergyForShip(shipOrKey) {
-    const members = this.fleetMembersForShip(shipOrKey);
-    return {
-      current: members.reduce((sum, ship) => sum + Math.max(0, ship.energy), 0),
-      max: members.reduce((sum, ship) => sum + ship.maxEnergy, 0),
-    };
-  }
-
-  availableEnergyForShip(shipOrKey) {
-    return this.fleetEnergyForShip(shipOrKey).current;
-  }
-
-  spendEnergyForShip(shipOrKey, cost) {
-    const members = this.fleetMembersForShip(shipOrKey).filter((ship) => ship.alive && ship.energy > 0);
-    if (members.length === 0) {
-      return false;
-    }
-    const total = members.reduce((sum, ship) => sum + ship.energy, 0);
-    if (total < cost) {
-      return false;
-    }
-    let spent = 0;
-    for (let i = 0; i < members.length; i += 1) {
-      const ship = members[i];
-      const remaining = cost - spent;
-      if (remaining <= 0) {
-        break;
-      }
-      const slice = i === members.length - 1 ? remaining : Math.min(ship.energy, (cost * ship.energy) / total);
-      ship.spendEnergy(slice);
-      spent += slice;
-    }
-    if (spent < cost) {
-      const richest = [...members].sort((a, b) => b.energy - a.energy)[0];
-      if (richest) {
-        richest.spendEnergy(cost - spent);
-      }
-    }
-    return true;
-  }
+  fleetKeyForShip(shipOrKey) { return this.#formation.fleetKeyForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
+  fleetMembersByKey(key) { return this.#formation.fleetMembersByKey(key).map((unit) => this.shipByKey(unit.key)); }
+  fleetMembersForShip(shipOrKey) { return this.fleetMembersByKey(this.fleetKeyForShip(shipOrKey)); }
+  fleetMemberCountForShip(shipOrKey) { return this.fleetMembersForShip(shipOrKey).length; }
+  turnModifierForShip(shipOrKey) { return this.#formation.turnModifierForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
+  accelerationModifierForShip(shipOrKey) { return this.#formation.accelerationModifierForShip(); }
+  fleetSpeedForShip(shipOrKey) { return this.#formation.fleetSpeedForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
+  fleetEnergyForShip(shipOrKey) { return this.#formation.fleetEnergyForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
+  availableEnergyForShip(shipOrKey) { return this.fleetEnergyForShip(shipOrKey).current; }
+  spendEnergyForShip(shipOrKey, cost) { return this.#formation.spendEnergyForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key, cost); }
 
   listShipBuffs(ship) {
     return statusEffectNames(serializeShipStatusEffects(ship));
@@ -521,77 +431,9 @@ export class Team {
     this.#sponsor.regenerate(dt);
   }
 
-  normalizeSplitLevel() {
-    let level = this.splitLevel;
-    while (level < 1 && !this.ships.sub1.alive) {
-      level = 1;
-    }
-    while (level < 2 && level >= 1 && !this.ships.sub2.alive) {
-      level = 2;
-    }
-    this.splitLevel = level;
-  }
-
-  releaseShipAfterFlagshipLoss(ship, lateralSign = 1) {
-    if (!ship || !ship.alive) {
-      return;
-    }
-    const padding = Math.max(this.match.mapPadding, ship.radius + 6);
-    const forwardX = Math.cos(ship.angle || 0);
-    const forwardY = Math.sin(ship.angle || 0);
-    const sideX = -forwardY;
-    const sideY = forwardX;
-    ship.setBezierRoute(
-      undefined,
-      undefined,
-      this.match.clampX(ship.x + forwardX * 90 + sideX * 88 * lateralSign, padding),
-      this.match.clampY(ship.y + forwardY * 90 + sideY * 88 * lateralSign, padding),
-      1,
-      false,
-    );
-  }
-
-  resolvePostCasualtyState(match = null) {
-    this.normalizeSplitLevel();
-
-    if (!this.ships.main.alive) {
-      if (this.splitLevel < 1) {
-        this.splitLevel = 1;
-        this.releaseShipAfterFlagshipLoss(this.ships.sub1, 1);
-      }
-      this.normalizeSplitLevel();
-      if (this.splitLevel < 2) {
-        this.splitLevel = 2;
-        this.releaseShipAfterFlagshipLoss(this.ships.sub2, -1);
-      }
-    }
-
-    this.normalizeSplitLevel();
-  }
-
-  split(level) {
-    this.resolvePostCasualtyState();
-    const releasedShip = level === 1 ? this.ships.sub1 : level === 2 ? this.ships.sub2 : null;
-    if (
-      this.ships.main.isControlLocked()
-      || releasedShip?.isControlLocked()
-    ) {
-      return false;
-    }
-    if (level === 1 && this.splitLevel === 0 && this.ships.sub1.alive) {
-      this.splitLevel = 1;
-      this.ships.sub1.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y + 100, 1, false);
-      this.match.recordAction(this.seat, "split");
-      return true;
-    }
-    if (level === 2 && this.splitLevel === 1 && this.ships.sub2.alive) {
-      this.splitLevel = 2;
-      this.ships.sub2.setBezierRoute(undefined, undefined, this.ships.main.x - 90, this.ships.main.y - 100, 1, false);
-      this.match.recordAction(this.seat, "split");
-      return true;
-    }
-    return false;
-  }
+  configureFormation(level) { this.#formation.configure(level); }
+  resolvePostCasualtyState() { this.#formation.resolvePostCasualtyState(); }
+  split(level) { return this.#formation.split(level); }
 
   updateEnergy(dt) {
     for (const ship of this.getAllShips()) {

@@ -175,7 +175,7 @@ try {
   await bunnyStore.ready();
   for (const id of ["bunny_haruhi", "haruhi"]) {
     const sim = new MatchSimulation({ mode: "pvp", aiSeats: [], teamLoadouts: { A: { main: "kyon", sub1: id, sub2: "yuki" } } });
-    sim.teamA.splitLevel = 2;
+    sim.teamA.configureFormation(2);
     if (id === "bunny_haruhi") for (let i = 0; i < 4; i++) {
       sim.teamA.cooldowns.sub1 = 0;
       assert.equal(sim.teamA.castSubSkill("sub1"), true);

@@ -48,7 +48,7 @@ assert.equal(value("asakura", "sub", "接触伤害"), "目标最大舰体的15%"
 assert.equal(value("asakura", "sub", "结算间隔"), "1秒");
 for (const id of ["kyon", "asakura"]) {
   const team = new MatchSimulation({ teamLoadouts: { A: { main: "yuki", sub1: id, sub2: "haruhi" } } }).teamA;
-  team.splitLevel = 2;
+  team.configureFormation(2);
   assert.equal(team.castSubSkill("sub1"), true);
   const ship = team.ships.sub1;
   for (const [label, stat] of [["转向倍率", "turnRate"], ["加速倍率", "accel"], ["航速倍率", "speed"], ...(id === "kyon" ? [["伤害倍率", "damage"]] : [])]) {
@@ -57,7 +57,7 @@ for (const id of ["kyon", "asakura"]) {
   }
 }
 const scoutTeam = new MatchSimulation({ teamLoadouts: { A: { main: "koizumi", sub1: "yuki", sub2: "haruhi" } } }).teamA;
-scoutTeam.splitLevel = 2;
+scoutTeam.configureFormation(2);
 assert.equal(scoutTeam.castSubSkill("sub1"), true);
 assert.equal(value("yuki", "sub", "侦察机总数"), `${scoutTeam.scouts.length}架`);
 assert.equal(value("yuki", "sub", "侦察机航速"), String(scoutTeam.scouts[0].speed));

@@ -18,7 +18,7 @@ function setup(mult = 1, dual = false) {
   });
   const team = sim.teamA;
   for (const side of [team, sim.teamB]) {
-    side.splitLevel = 2;
+    side.configureFormation(2);
     sim.combatEnabled[side.seat] = false;
     side.getPlayerShips().forEach((ship, i) => {
       ship.x = side.seat === "A" ? 300 : 1300;
@@ -49,7 +49,7 @@ function entityCheck() {
   near(companion.effectiveFireRate(), 0.282, "独立舰不能获得单飞射速");
   near(companion.maxEnergy, 65);
   assert.deepEqual(team.fleetMembersForShip(companion), [companion]);
-  team.splitLevel = 0;
+  team.configureFormation(0);
   assert.equal(team.fleetMembersByKey("main").length, 3);
   companion.x = owner.x + 1;
   companion.y = owner.y;
@@ -70,7 +70,7 @@ function entityCheck() {
   for (const type of ["set_throttle", "set_route", "cast_sub_skill", "launch_scout"]) {
     assert.equal(sim.applyActionForSeat("A", { type, shipKey: companion.key, throttle: 1, endX: 500, endY: 500 }), false);
   }
-  team.splitLevel = 2;
+  team.configureFormation(2);
   owner.x = 800;
   prepareBunnyCompanions(sim);
   const x = companion.x;

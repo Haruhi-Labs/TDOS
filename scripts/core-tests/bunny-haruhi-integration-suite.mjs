@@ -19,7 +19,7 @@ function simulation(stage = false, enabled = true, opponentMain = "kyon") {
     },
   });
   for (const team of [sim.teamA, sim.teamB]) {
-    team.splitLevel = 2;
+    team.configureFormation(2);
     sim.combatEnabled[team.seat] = false;
     team.getPlayerShips().forEach((ship, i) => {
       ship.x = team.seat === "A" ? 200 : 1200;
@@ -53,11 +53,11 @@ function exposureCheck() {
   target.throttle = 0;
   sim.teamB.updateEnergy(0.1);
   near(target.energy, 90 - target.base.moveDrain * 0.1);
-  sim.teamB.splitLevel = 0;
+  sim.teamB.configureFormation(0);
   const position = { x: target.x, y: target.y };
   target.update(TICK_DT);
   assert.deepEqual({ x: target.x, y: target.y }, position, "编队跟随不能越过舞台锁");
-  sim.teamB.splitLevel = 2;
+  sim.teamB.configureFormation(2);
   assert.equal(target.clearNegativeEffects(), true);
   assert.equal(target.isControlLocked(), false);
   assert.equal(target.isSilenced(), true, "驱散控制不删除被动光环");
@@ -132,11 +132,11 @@ function transformCheck() {
   const protectedHp = ship.hp;
   const partner = sim.teamA.ships.main;
   const partnerHp = partner.hp;
-  sim.teamA.splitLevel = 0;
+  sim.teamA.configureFormation(0);
   ship.takeDamage(100, sim.teamB.ships.main, sim);
   near(ship.hp, protectedHp);
   near(partner.hp, partnerHp, "免伤在分摊之前判断");
-  sim.teamA.splitLevel = 2;
+  sim.teamA.configureFormation(2);
   sim.elapsed = 16;
   sim.tick = 480;
   advanceBunnyRules(sim);

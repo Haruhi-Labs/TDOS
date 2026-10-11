@@ -9,7 +9,7 @@ export function createBunnyViewFixture(collect = () => {}) {
     teamLoadouts: { A: { main: "haruhi", sub1: "bunny_haruhi", sub2: "yuki" },
       B: { main: "bunny_haruhi", sub1: "tsuruya", sub2: "kyon" } } });
   for (const team of [sim.teamA, sim.teamB]) {
-    team.splitLevel = 2;
+    team.configureFormation(2);
     sim.combatEnabled[team.seat] = false;
     team.getPlayerShips().forEach((ship, index) => {
       ship.x = team.seat === "A" ? 350 : 950;
@@ -21,9 +21,9 @@ export function createBunnyViewFixture(collect = () => {}) {
   const owner = sim.teamA.ships.sub1;
   owner.energy = 0;
   const states = { neutral: sim.serializeState() };
-  sim.teamA.splitLevel = 0;
+  sim.teamA.configureFormation(0);
   states.attached = sim.serializeState();
-  sim.teamA.splitLevel = 2;
+  sim.teamA.configureFormation(2);
   for (let i = 0; i < 4; i += 1) {
     sim.teamA.cooldowns.sub1 = 0;
     assert.equal(sim.teamA.castSubSkill("sub1"), true);

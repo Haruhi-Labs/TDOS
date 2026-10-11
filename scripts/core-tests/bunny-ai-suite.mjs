@@ -31,7 +31,7 @@ export function runBunnyAiSuite() {
     const ship = sim.teamA.ships.sub1;
     const estimate = { x: ship.x + 100, y: ship.y, source: "visible", visible: true, age: 0 };
     assert.equal(shouldTransformBunny(ship, estimate), false, "附着时不能变身");
-    sim.teamA.splitLevel = 2;
+    sim.teamA.configureFormation(2);
     assert.equal(shouldTransformBunny(ship, { ...estimate, source: "spawn" }), false);
     assert.equal(shouldTransformBunny(ship, { ...estimate, visible: false, age: 4 }), false);
     ship.hp = ship.maxHp * 0.35;

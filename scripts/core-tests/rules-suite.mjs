@@ -181,7 +181,7 @@ function boundaryRouteThrottleCheck() {
   });
   sim.setCombatEnabled("A", false);
   sim.setCombatEnabled("B", false);
-  sim.teamA.splitLevel = 1;
+  sim.teamA.configureFormation(1);
 
   const ship = sim.teamA.ships.sub1;
   ship.x = 386.8224975466728;
@@ -1325,7 +1325,7 @@ function koizumiControlImmunityCheck() {
     const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: loadouts });
     const team = sim.teamBySeat(seat);
     const enemy = sim.enemyTeamBySeat(seat);
-    team.splitLevel = enemy.splitLevel = 2;
+    team.configureFormation(2); enemy.configureFormation(2);
     const ship = team.ships.sub1;
     applyHaruhiHeroPowerShock(ship, 0);
     sim.elapsed = 2.1;
@@ -1478,12 +1478,12 @@ function beamHitCountDamageCheck() {
     source.angle = 0;
 
     if (merged) {
-      targetTeam.splitLevel = 0;
+      targetTeam.configureFormation(0);
       Object.assign(targetTeam.ships.main, { x: 800, y: 700 });
       Object.assign(targetTeam.ships.sub1, { x: 818, y: 689 });
       Object.assign(targetTeam.ships.sub2, { x: 818, y: 711 });
     } else {
-      targetTeam.splitLevel = 2;
+      targetTeam.configureFormation(2);
       const positions = [
         { x: 800, y: 700 },
         { x: 950, y: hitCount >= 2 ? 700 : 1040 },
@@ -1663,8 +1663,8 @@ function haruhiHeroPowerCheck() {
   const enemyOutside = teamB.ships.sub2;
   sim.setCombatEnabled("A", false);
   sim.setCombatEnabled("B", false);
-  teamA.splitLevel = 2;
-  teamB.splitLevel = 2;
+  teamA.configureFormation(2);
+  teamB.configureFormation(2);
 
   const park = (ship, x, y) => {
     ship.x = x;
@@ -1809,8 +1809,8 @@ function haruhiFlagshipReworkCheck() {
   sim.setCombatEnabled("B", false);
   const teamA = sim.teamA;
   const teamB = sim.teamB;
-  teamA.splitLevel = 2;
-  teamB.splitLevel = 2;
+  teamA.configureFormation(2);
+  teamB.configureFormation(2);
   const haruhi = teamA.ships.main;
   const target = teamB.ships.main;
   for (const ship of [...teamA.getAllShips(), ...teamB.getAllShips()]) {
@@ -2310,7 +2310,7 @@ function asakuraBladeQueenFlightCheck() {
       A: { main: "future1096", sub1: "asakura", sub2: "yuki" },
       B: { main: "haruhi", sub1: "koizumi", sub2: "kyon" },
     } });
-    sim.teamA.splitLevel = 2;
+    sim.teamA.configureFormation(2);
     const ship = sim.teamA.ships.sub1;
     Object.assign(ship, { x: 720, y: 720, angle: 0, speed: 0, throttle: 0, route: null, command: { x: 720, y: 720 } });
     assert(sim.teamA.castSubSkill("sub1"), "刀锋飞行测试施放失败");
@@ -2373,7 +2373,7 @@ function asakuraBladeQueenFlightCheck() {
   assert(ship.speed > minimum, "刀锋航速下限错误变成上限，阻止四档飞行");
 
   const contact = setup();
-  contact.sim.teamB.splitLevel = 2;
+  contact.sim.teamB.configureFormation(2);
   const orb = contact.sim.teamB.ships.sub1;
   assert(contact.sim.teamB.castSubSkill("sub1"), "刀锋受击测试未开启古泉光球");
   orb.x = contact.ship.x + 10;
@@ -2390,7 +2390,7 @@ function asakuraBladeQueenFlightCheck() {
   assert(contact.ship.x - contactX >= contact.minimum * TICK_DT - 1e-9, "刀锋在真实撞击波眩晕下停止前飞");
 
   const ram = setup();
-  ram.sim.teamB.splitLevel = 2;
+  ram.sim.teamB.configureFormation(2);
   const haruhi = ram.sim.teamB.ships.main;
   Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
   unlockSupport(ram.sim.teamB.haruhiFlagship, ["otherworlder"], 0, () => 0);

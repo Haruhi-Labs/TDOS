@@ -34,7 +34,7 @@ async function measureWorker(moduleRoot, worst) {
     const roster = worst ? loadout("haruhi", C.characterId, "asakura") : loadout("haruhi", "koizumi", "asakura");
     const sim = new core.MatchSimulation({ mode: "pvp", aiSeats: ["A", "B"], teamLoadouts: { A: roster, B: roster } });
     if (worst) for (const team of [sim.teamA, sim.teamB]) {
-      team.splitLevel = 2;
+      team.configureFormation(2);
       // 压力夹具从双方已解锁全部支援与伴随舰开始，不改变实战的施放规则。
       for (let i = 0; i < 4; i++) {
         team.cooldowns.sub1 = 0;
@@ -135,7 +135,7 @@ if (process.argv[2] === "--worker") {
             for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, false);
             for (const team of [sim.teamA, sim.teamB]) {
               sim.combatEnabled[team.seat] = false;
-              team.splitLevel = 2;
+              team.configureFormation(2);
               for (const unit of team.getAllShips()) {
                 originals.push([unit, unit.takeDamage]);
                 unit.takeDamage = () => {};

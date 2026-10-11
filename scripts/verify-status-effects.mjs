@@ -18,7 +18,7 @@ const examples = new Map();
 const collect = (ship) => { const effects = serializeShipStatusEffects(ship); for (const effect of effects) examples.set(effect.id, effect); return effects; };
 const simulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "asakura" }, B: { main: "shamisen", sub1: "koizumi", sub2: "yuki" } } });
 const team = simulation.teamA;
-team.splitLevel = 2;
+team.configureFormation(2);
 simulation.elapsed = 10;
 assert.equal(team.castFlagshipSkill(), true);
 assert.equal(team.castSubSkill("sub1"), true);
@@ -42,7 +42,7 @@ simulation.teamB.shamisenHunt.targetId = main.id;
 const beforeSerialize = JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]);
 collect(main);
 assert.equal(JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]), beforeSerialize, "状态序列化不能推进模拟或清理权威状态");
-simulation.teamB.splitLevel = 2;
+simulation.teamB.configureFormation(2);
 activateKoizumiOrb(simulation.teamB.ships.sub1);
 const state = simulation.serializeState();
 assert.ok(!collect(team.ships.sub1).some(({ id }) => id.startsWith("support_")), "旗舰武器支援不可错误显示在副舰上");
@@ -59,7 +59,7 @@ assert.deepEqual(collect(main), [], "击沉后必须清空状态卡");
 for (const characterId of ["tsuruya", "asakura", "future1096", "koizumi", "kyon"]) {
   const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: { main: characterId, sub1: "shamisen", sub2: "koizumi" } } });
   const own = sim.teamA;
-  own.splitLevel = 2;
+  own.configureFormation(2);
   if (["tsuruya", "asakura", "future1096"].includes(characterId)) assert.equal(own.castFlagshipSkill(), true);
   collect(own.ships.main);
   if (characterId === "future1096") { own.cooldowns.flagship = 0; own.castFlagshipSkill(); collect(own.ships.main); }
