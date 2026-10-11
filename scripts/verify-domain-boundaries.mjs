@@ -174,3 +174,5 @@ const originalTeam = left.team;
 left.team = match.teamB;
 assert.equal(hullPort.seat, "B", "转队后复用句柄仍应读取当前阵营");
 left.team = originalTeam;
+
+await import("./verify-character-boundaries.mjs");

@@ -1,17 +1,75 @@
 // 角色能力适配层：集中解释角色状态，只返回规则结果，不写入实体。
 // 对局将此契约注入通用系统，让通用系统无需导入具体角色模块。
 import { CHARACTER_DEFS } from "../characters.js";
-import { throttleForGear } from "../throttle.js";
-import { isKoizumiOrbActive } from "../koizumi-orb.js";
+import { energyRateForThrottle, throttleForGear } from "../throttle.js";
+import { isKoizumiOrbActive, isKoizumiOrbReturning } from "../koizumi-orb.js";
 import { haruhiBoostActive, haruhiStatMultiplier, haruhiDamageTakenMultiplier } from "../haruhi-flagship.js";
 import { haruhiHeroPowerSpeedFactor, haruhiHeroPowerDamageTakenMultiplier, isHaruhiHeroPowerControlLocked } from "../haruhi-hero-power.js";
-import { bunnyStatMultiplier, bunnyDamageTakenMultiplier, isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor } from "../bunny-haruhi.js";
+import { bunnyStatMultiplier, bunnyDamageTakenMultiplier, isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor, bunnyEnergyRate, isBunnyEncoreLocked } from "../bunny-haruhi.js";
 import { bunnyStageEnabled, bunnyBroadcastsShip } from "../bunny-haruhi-runtime.js";
 import { bunnyCompanionForm, bunnyReliableState } from "../bunny-companion-runtime.js";
-import { bunnyOwnerDamageBlocked, isBunnyCompanion } from "../bunny-haruhi-companion.js";
+import { bunnyOwnerDamageBlocked, isBunnyCompanion, countsForVictory } from "../bunny-haruhi-companion.js";
 import { shamisenHuntDamageMultiplier } from "../shamisen-hunt.js";
 
+import { SOLO_FIRE_RATE_BONUS } from "../model/model-support.js";
+
 export const CHARACTER_RULES = Object.freeze({
+  navigationAvailable(ship) {
+    return !isKoizumiOrbReturning(ship);
+  },
+  weaponAvailable(ship) {
+    return !isKoizumiOrbActive(ship);
+  },
+  orbActive: isKoizumiOrbActive,
+  countsForVictory,
+  controlStopsFlight(ship) {
+    return Boolean(ship.bunnyStageExposure && isBunnyControlLocked(ship.bunnyStageExposure, ship.team.match.elapsed, bunnyStageEnabled(ship)) && !ship.isControlImmune());
+  },
+  depletedEnergySpeedFactor(ship) {
+    return ship.team.availableEnergyForShip(ship) <= 0
+      && !isBunnyEncoreLocked(ship.bunnyHaruhi, ship.team.match.elapsed, !ship.team.areSkillsDisabled()) ? 0.15 : 1;
+  },
+  energyRate(ship, throttle) {
+    return ship.bunnyStageExposure
+      ? bunnyEnergyRate(ship.bunnyStageExposure, ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle, bunnyStageEnabled(ship))
+      : energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
+  },
+  turnRateMultiplier(team, formation = false) {
+    return team.hasKyonFlagship() ? (formation ? 1.2 : 1.28) : 1;
+  },
+  accelerationMultiplier(team) {
+    return team.hasKyonFlagship() ? 1.16 : 1;
+  },
+  routeTurnRadiusMultiplier(team) {
+    return team.hasKyonFlagship() ? 0.62 : 1;
+  },
+  routeDeviationMultiplier(team) {
+    return team.hasKyonFlagship() ? 1.4 : 1;
+  },
+  improvedFireArcs(team) {
+    return team.hasKyonFlagship();
+  },
+  effectiveVision(ship) {
+    let value = ship.statWithBuffs("vision", ship.base.vision);
+    if (ship.characterId === "yuki" && !ship.isAttached()) value += 24;
+    return value;
+  },
+  effectiveFireRate(ship) {
+    let value = ship.statWithBuffs("fireRate", ship.base.fireRate);
+    if (ship.characterId === "shamisen" && ship.hasEffect("catPawUntil")) {
+      value *= Math.max(0.01, Number(ship.character.subSkill.fireRateMultiplier) || 1);
+    }
+    if (!isBunnyCompanion(ship) && ship.team.fleetMemberCountForShip(ship) <= 1) value *= SOLO_FIRE_RATE_BONUS;
+    return value;
+  },
+  projectileProfile(ship) {
+    const meta = ship.characterId === "shamisen" && ship.hasEffect("catPawUntil") ? ship.character.subSkill : null;
+    return {
+      color: meta ? (ship.team.seat === "A" ? "#8fe8ff" : "#ff9eb8") : ship.team.projectileColor,
+      visualKind: meta ? "cat_paw" : "shell",
+      claw: meta ? { triggerHits: meta.triggerHits || 4, burstDamage: meta.burstDamage || 0, markDuration: meta.markDuration || 8 } : null,
+    };
+  },
   controlLocked(ship) {
     return !ship.isControlImmune() && (ship.hasEffect("stunnedUntil") || isHaruhiHeroPowerControlLocked(ship)
       || Boolean(ship.bunnyStageExposure && isBunnyControlLocked(ship.bunnyStageExposure, ship.team.match.elapsed, bunnyStageEnabled(ship))));

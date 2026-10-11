@@ -1,6 +1,5 @@
 import { executeFlagshipEffect, executeSubEffect } from "../rules/active-skills.js";
 // 舰队状态所有者与领域操作。
-import { energyRateForThrottle } from "../throttle.js";
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../characters.js";
 import { clamp, linePointDistance, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
@@ -17,8 +16,8 @@ import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship,
 import { DAMAGE_KIND } from "../damage.js";
 import { isBunnyCompanion, countsForVictory, isFleetParticipant, bunnyOwnerDamageBlocked } from "../bunny-haruhi-companion.js";
 import { spawnBunnyCompanion, convertBunnyCompanion } from "../bunny-companion-runtime.js";
-import { canBunnyLaunchScout, bunnyEnergyRate } from "../bunny-haruhi.js";
-import { bunnyStageEnabled, commitBunnyTransform, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { canBunnyLaunchScout } from "../bunny-haruhi.js";
+import { commitBunnyTransform, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";
@@ -393,11 +392,7 @@ export class Team {
   }
 
   accelerationModifierForShip(shipOrKey) {
-    let value = 1;
-    if (this.hasKyonFlagship()) {
-      value *= 1.16;
-    }
-    return value;
+    return this.match.rules.accelerationMultiplier(this);
   }
 
   fleetSpeedForShip(shipOrKey) {
@@ -630,9 +625,7 @@ export class Team {
         continue;
       }
       const throttle = ship.isAttached() ? this.ships.main.throttle : ship.throttle;
-      const energyRate = ship.bunnyStageExposure
-        ? bunnyEnergyRate(ship.bunnyStageExposure, ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle, bunnyStageEnabled(ship))
-        : energyRateForThrottle(ship.baseEnergyRegen(), ship.moveEnergyDrain(), throttle);
+      const energyRate = this.match.rules.energyRate(ship, throttle);
       ship.restoreEnergy(energyRate * dt);
     }
   }

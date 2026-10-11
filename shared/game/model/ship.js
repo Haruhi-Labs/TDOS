@@ -6,16 +6,16 @@ import { clamp, distance, dot, lerp, quadraticLengthApprox, quadraticPoint, quad
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
-import { dispelKoizumiOrb, isKoizumiOrbActive, isKoizumiOrbReturning, serializeKoizumiOrb, updateKoizumiOrb } from "../koizumi-orb.js";
+import { dispelKoizumiOrb, serializeKoizumiOrb, updateKoizumiOrb } from "../koizumi-orb.js";
 import { haruhiOtherworlderReady } from "../haruhi-flagship.js";
 import { createHaruhiHeroPowerShockState, serializeHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
 import { DAMAGE_KIND, normalizeDamageContext } from "../damage.js";
-import { isBunnyCompanion, countsForVictory, purgeBunnyReliable } from "../bunny-haruhi-companion.js";
+import { purgeBunnyReliable } from "../bunny-haruhi-companion.js";
 import { serializeBunnyCompanion } from "../bunny-companion-runtime.js";
-import { createBunnyHaruhiState, isBunnyControlLocked, cleanseBunnyStageControl, purgeBunnyForm, resolveBunnyThrottle, isBunnyEncoreLocked } from "../bunny-haruhi.js";
-import { BUNNY_HARUHI_CHARACTER, bunnyStageEnabled, serializeBunnyShip } from "../bunny-haruhi-runtime.js";
+import { createBunnyHaruhiState, cleanseBunnyStageControl, purgeBunnyForm, resolveBunnyThrottle } from "../bunny-haruhi.js";
+import { BUNNY_HARUHI_CHARACTER, serializeBunnyShip } from "../bunny-haruhi-runtime.js";
 import { Projectile } from "../model/projectile.js";
-import { FORMATION_DAMAGE_SHARE, SOLO_FIRE_RATE_BONUS, nextEntityId } from "../model/model-support.js";
+import { FORMATION_DAMAGE_SHARE, nextEntityId } from "../model/model-support.js";
 
 export class Ship {
   constructor(team, key, x, y, facing, options = {}) {
@@ -113,7 +113,7 @@ export class Ship {
     if (this.isControlLocked()) {
       return false;
     }
-    if (isKoizumiOrbReturning(this)) {
+    if (!this.team.match.rules.navigationAvailable(this)) {
       return false;
     }
     if (this.key === "main") {
@@ -297,7 +297,7 @@ export class Ship {
   }
 
   isKoizumiOrbActive() {
-    return isKoizumiOrbActive(this);
+    return this.team.match.rules.orbActive(this);
   }
 
   isTargetableByFire() {
@@ -341,7 +341,7 @@ export class Ship {
   }
 
   applyControlSpeedLimit() {
-    if (this.bunnyStageExposure && isBunnyControlLocked(this.bunnyStageExposure, this.team.match.elapsed, bunnyStageEnabled(this)) && !this.isControlImmune()) {
+    if (this.team.match.rules.controlStopsFlight(this)) {
       this.speed = 0;
       return;
     }
@@ -367,26 +367,18 @@ export class Ship {
 
   effectiveTurnRate() {
     let value = this.baseTurnRate() * this.team.turnModifierForShip(this);
-    if (this.team.hasKyonFlagship()) {
-      value *= 1.28;
-    }
+    value *= this.team.match.rules.turnRateMultiplier(this.team);
     return value;
   }
 
   effectiveFormationTurnRate() {
     let value = this.baseTurnRate();
-    if (this.team.hasKyonFlagship()) {
-      value *= 1.2;
-    }
+    value *= this.team.match.rules.turnRateMultiplier(this.team, true);
     return value * (this.team.fleetMemberCountForShip(this) >= 3 ? 1.55 : 1.28);
   }
 
   effectiveVision() {
-    let value = this.statWithBuffs("vision", this.base.vision);
-    if (this.characterId === "yuki" && !this.isAttached()) {
-      value += 24;
-    }
-    return value;
+    return this.team.match.rules.effectiveVision(this);
   }
 
   effectiveRange() {
@@ -399,15 +391,7 @@ export class Ship {
   }
 
   effectiveFireRate() {
-    let value = this.statWithBuffs("fireRate", this.base.fireRate);
-    if (this.characterId === "shamisen" && this.hasEffect("catPawUntil")) {
-      value *= Math.max(0.01, Number(this.character.subSkill.fireRateMultiplier) || 1);
-    }
-    // 分离/单飞(本船所在编队仅 1 艘):开火频率加成
-    if (!isBunnyCompanion(this) && this.team.fleetMemberCountForShip(this) <= 1) {
-      value *= SOLO_FIRE_RATE_BONUS;
-    }
-    return value;
+    return this.team.match.rules.effectiveFireRate(this);
   }
 
   damageTakenMultiplier() {
@@ -501,10 +485,8 @@ export class Ship {
     // 代价:不再能拖出大幅S形/强凹凸弯(单条二次贝塞尔无法既起点对齐朝向又侧弯)。
     // 反向掉头另由下方 dynamicDeviation 放宽(掉头必须侧弓一点,否则二次曲线会退化成尖点)。
     let maxStartDeviation = (Math.PI / 180) * clamp(14 - speedRef * 0.03, 8, 12);
-    if (this.team.hasKyonFlagship()) {
-      minTurnRadius *= 0.62;
-      maxStartDeviation *= 1.4;
-    }
+    minTurnRadius *= this.team.match.rules.routeTurnRadiusMultiplier(this.team);
+    maxStartDeviation *= this.team.match.rules.routeDeviationMultiplier(this.team);
     const minForward = clamp(minTurnRadius * 0.34, 16, 200);
     const heading = anchor.angle;
     const forward = { x: Math.cos(heading), y: Math.sin(heading) };
@@ -808,8 +790,7 @@ export class Ship {
     const turnRate = this.effectiveTurnRate() * (0.22 + this.throttle * 0.4) * turnBoost;
     this.angle += clamp(delta, -turnRate * dt, turnRate * dt);
 
-    const throttlePenalty = this.team.availableEnergyForShip(this) <= 0
-      && !isBunnyEncoreLocked(this.bunnyHaruhi, match.elapsed, !this.team.areSkillsDisabled()) ? 0.15 : 1;
+    const throttlePenalty = this.team.match.rules.depletedEnergySpeedFactor(this);
     const steerBrake = this.route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
     const minimumSpeed = this.minimumFlightSpeed();
     const targetSpeed = Math.max(minimumSpeed, dist < 8 ? 0 : this.effectiveSpeed() * this.throttle * throttlePenalty * steerBrake * this.collisionSpeedFactor());
@@ -905,14 +886,14 @@ export class Ship {
   broadsideMultiplier(target) {
     const toTarget = Math.atan2(target.y - this.y, target.x - this.x);
     const relative = Math.abs(shortestAngleDelta(this.angle, toTarget));
-    return fireArcDensityMultiplier(relative, this.team.hasKyonFlagship());
+    return fireArcDensityMultiplier(relative, this.team.match.rules.improvedFireArcs(this.team));
   }
 
   tryAttack(match, enemyTeam) {
     if (
       !this.alive
       || this.cooldown > 0
-      || this.isKoizumiOrbActive()
+      || !this.team.match.rules.weaponAvailable(this)
       || this.isControlLocked()
     ) {
       return;
@@ -940,9 +921,7 @@ export class Ship {
       delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
     }
 
-    const catPawMeta = this.characterId === "shamisen" && this.hasEffect("catPawUntil")
-      ? this.character.subSkill
-      : null;
+    const projectileProfile = this.team.match.rules.projectileProfile(this);
     match.projectiles.push(
       new Projectile({
         team: this.team,
@@ -954,15 +933,7 @@ export class Ship {
         damage,
         speed: 240,
         hitRadius: 8,
-        color: catPawMeta ? (this.team.seat === "A" ? "#8fe8ff" : "#ff9eb8") : this.team.projectileColor,
-        visualKind: catPawMeta ? "cat_paw" : "shell",
-        claw: catPawMeta
-          ? {
-              triggerHits: catPawMeta.triggerHits || 4,
-              burstDamage: catPawMeta.burstDamage || 0,
-              markDuration: catPawMeta.markDuration || 8,
-            }
-          : null,
+        ...projectileProfile,
       }),
     );
     match.recordAttack(this.team.seat, "projectile");
@@ -1011,7 +982,7 @@ export class Ship {
     this.route = null;
     this.team.resolvePostCasualtyState(match);
     if (match) {
-      if (countsForVictory(this)) match.recordShipLoss(this.team.seat);
+      if (this.team.match.rules.countsForVictory(this)) match.recordShipLoss(this.team.seat);
       match.spawnBurst(this.x, this.y, "#ff9d7d", 10);
       match.onShipDestroyed(this, _source);
     }
