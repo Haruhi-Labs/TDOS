@@ -1,3 +1,4 @@
+import { installBalanceScenario, observeHullTransactions } from "./core-tests/balance-scenario-driver.mjs";
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 // 离线验收：只在内存模拟和 bench 输出，不连接游戏、身份或统计服务。
 import assert from "node:assert/strict";
@@ -132,7 +133,6 @@ if (process.argv[2] === "--worker") {
           const opponent = scenario.opponent || loadout("kyon", "tsuruya", "asakura");
           const sim = new core.MatchSimulation({ mode: "pvp", aiSeats: ["A", "B"], aiDifficulty: "master", teamLoadouts: { [seat]: roster, [enemySeat]: opponent } });
           const own = seat === "A" ? sim.teamA : sim.teamB;
-          const bot = sim.bots[seat];
           let opening = null;
           if (scenario.prepared) {
             const originals = [];
@@ -167,53 +167,23 @@ if (process.argv[2] === "--worker") {
             opening = { preparationSeconds: sim.elapsed, hp: own.ships.sub1.hp, energy: own.ships.sub1.energy,
               form: own.ships.sub1.bunnyHaruhi?.form || null, note: "准备期双方停战且不承受外部伤害；资源支付与CD不跳过。正式统计从这里开始；策反场景双方位于中央战区。" };
           }
-          const originalCast = bot.shouldCastSubSkill.bind(bot);
-          let policyDecisions = 0;
-          if (scenario.policy && variant === "new") bot.shouldCastSubSkill = (ship, estimate, context) => {
-            // AI 传入的是观测数据；场景策略需要的成功施放次数只在权威状态里，按舰位取回实时舰船。
-            const state = own.ships[ship.key]?.bunnyHaruhi;
-            if (!state) return originalCast(ship, estimate, context);
-            policyDecisions++;
-            if (scenario.policy === "bless") return state.successfulCasts === 0;
-            if (scenario.policy === "encore") return state.successfulCasts < 4;
-            if (scenario.policy === "defense") return state.form === "bless" ? ship.hp / ship.maxHp < 0.48 : originalCast(ship, estimate, context);
-            return true;
-          };
-          if (scenario.route) {
-            const enemyBot = sim.bots[enemySeat];
-            const issue = enemyBot.issueShipRoute.bind(enemyBot);
-            enemyBot.issueShipRoute = (ship, x, y, throttle, padding) => {
-              const contact = enemyBot.currentContext?.focus;
-              if (contact && contact.source !== "spawn" && (contact.visible || contact.age <= 3)) {
-                const angle = Math.atan2(ship.y - contact.y, ship.x - contact.x) + (scenario.route === "kite" ? 0.4 : 0);
-                const radius = scenario.route === "kite" ? C.baseStats.vision + 80 : C.baseStats.vision + (Math.floor(sim.elapsed / 4) % 2 ? 60 : -50);
-                x = contact.x + Math.cos(angle) * radius;
-                y = contact.y + Math.sin(angle) * radius;
-              }
-              return issue(ship, x, y, throttle, padding);
-            };
-          }
+          const scenarioDriver = installBalanceScenario(sim, seat, scenario, variant);
           const metrics = { formSeconds: { neutral: 0, bless: 0, knows: 0, encore: 0 }, casts: 0, companionSeconds: 0, conversions: 0, entrances: 0,
             firstStageHeal: 0, stageHeal: 0, companionHeal: 0, encoreHeal: 0, otherHeal: 0, transformCost: 0, selfDrain: 0,
             supportBeamDamage: 0, supportImpactDamage: 0, companionDamage: { A: 0, B: 0 }, beamLaunches: 0, flagshipCasts: { A: 0, B: 0 } };
-          // 仅离线收集器拦截实际HP写入，计实际到账量（含满血截断），不改规则/公开快照。
+          // 仅离线收集器观察领域操作前后HP，计实际到账量（含满血截断），不改规则/公开快照。
           const observed = new Set();
           const observe = (unit) => {
             if (observed.has(unit.id)) return;
             observed.add(unit.id);
-            let hp = unit.hp;
-            Object.defineProperty(unit, "hp", { enumerable: true, configurable: true, get: () => hp, set(value) {
-              const delta = value - hp;
-              hp = value;
-              if (!delta) return;
-              const stack = new Error().stack;
+            observeHullTransactions(unit, (delta, stack) => {
               if (delta > 0) {
                 const key = stack.includes("resolveBunnyStages") ? "firstStageHeal" : stack.includes("advanceBunnyRules") ? "stageHeal"
                   : stack.includes("prepareBunnyCompanions") ? "companionHeal" : stack.includes("commitBunnyTransform") ? "encoreHeal" : "otherHeal";
                 metrics[key] += delta;
               } else if (stack.includes("commitBunnyTransform")) metrics.transformCost -= delta;
               else if (stack.includes("advanceBunnyRules")) metrics.selfDrain -= delta;
-            } });
+            });
           };
           for (const team of [sim.teamA, sim.teamB]) {
             const publish = team.addAuxiliaryShip.bind(team);
@@ -264,7 +234,7 @@ if (process.argv[2] === "--worker") {
             }
           }
           if (scenario.policy && variant === "new") {
-            assert.ok(policyDecisions > 0, `${scenario.id} 的场景策略从未被 AI 调用`);
+            assert.ok(scenarioDriver.decisions > 0, `${scenario.id} 的独立场景策略从未执行`);
             if (scenario.policy === "bless") assert.ok(metrics.casts <= 1 && metrics.formSeconds.knows === 0, "停留bless的场景不得继续变身");
             if (scenario.policy === "encore") assert.ok(metrics.casts <= 4, "冲encore后停留的场景不得超过四次施放");
           }
@@ -279,8 +249,8 @@ if (process.argv[2] === "--worker") {
       return [variant, { n: rows.length, wins: rows.filter((r) => r.won).length, timeouts: rows.filter((r) => r.timedOut).length,
         winRate: fixed(rows.filter((r) => r.won).length / rows.length), meanDuration: fixed(rows.reduce((n, r) => n + r.duration, 0) / rows.length) }];
     })) }));
-    writeFileSync(join(output, only ? `balance-${only.join("_")}.json` : "balance.json"), JSON.stringify({ seeds: [410, 7919, 20261], limitSeconds: 180, summary, results,
-      note: "每场景3种子×双方换边×新旧阵容；两个prepared条件开局与自然开局分开报告，不合并胜率。超时单列，不用剩余血量伪造胜负。形态秒数仅存活时累计；治疗/自损记录实际HP写入，支援伤害含双方春日来源，伴随舰伤害按当前阵营。无吸弹伤害折算。未出现的事件不能算覆盖。小样本不证明平衡。" }, null, 2));
+    writeFileSync(join(output, only ? `balance-${only.join("_")}.json` : "balance.json"), JSON.stringify({ scenarioDriverVersion: 2, seeds: [410, 7919, 20261], limitSeconds: 180, summary, results,
+      note: "条件策略独立调度并在正式策略之后提交，路线在数据端口改写；与旧版方法覆写采样不可直接对比。每场景3种子×双方换边×新旧阵容；两个prepared条件开局与自然开局分开报告，不合并胜率。超时单列，不用剩余血量伪造胜负。形态秒数仅存活时累计；治疗/自损记录领域事务实际到账差额，支援伤害含双方春日来源，伴随舰伤害按当前阵营。无吸弹伤害折算。未出现的事件不能算覆盖。小样本不证明平衡。" }, null, 2));
     console.log(JSON.stringify(summary));
   }
 }

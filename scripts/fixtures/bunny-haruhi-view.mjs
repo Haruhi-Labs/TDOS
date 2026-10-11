@@ -13,14 +13,12 @@ export function createBunnyViewFixture(collect = () => {}) {
     team.configureFormation(2);
     sim.combatEnabled[team.seat] = false;
     team.getPlayerShips().forEach((ship, index) => {
-      ship.x = team.seat === "A" ? 350 : 950;
-      ship.y = 400 + index * 140;
-      ship.command = { x: ship.x, y: ship.y };
-      ship.throttle = 0;
+      ship.displaceTo(team.seat === "A" ? 350 : 950, 400 + index * 140);
+      ship.followTarget({ x: ship.x, y: ship.y }, 0);
     });
   }
   const owner = sim.teamA.ships.sub1;
-  owner.energy = 0;
+  owner.applyResourcePlan({ energy: 0 });
   const states = { neutral: sim.serializeState() };
   sim.teamA.configureFormation(0);
   states.attached = sim.serializeState();
@@ -45,8 +43,7 @@ export function createBunnyViewFixture(collect = () => {}) {
   collect(owner);
   collect(companion);
   const target = sim.teamA.ships.sub2;
-  target.x = sim.teamB.ships.main.x - 80;
-  target.y = sim.teamB.ships.main.y;
+  target.displaceTo(sim.teamB.ships.main.x - 80, sim.teamB.ships.main.y);
   resolveBunnyStages(sim);
   collect(target);
   states.lock = sim.serializeState();
