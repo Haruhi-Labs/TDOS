@@ -178,7 +178,7 @@ export class ShipNavigation {
   setBezierRoute(controlX, controlY, endX, endY, throttle, anchorToMain = true) {
     this.#routeView = undefined;
     const match = this.#port.world;
-    this.#port.throttle = normalizeThrottleToGear(throttle, this.#port.throttle);
+    this.#port.setThrottle(normalizeThrottleToGear(throttle, this.#port.throttle));
     this.#route = {
       anchorToMain,
       p0: { x: this.#port.x, y: this.#port.y },
@@ -278,7 +278,7 @@ export class ShipNavigation {
     const reverseAssist = this.#route && deltaAbs > 2.35 ? 0.85 : 0;
     const turnBoost = this.#route ? 1 + turnUrgency * 2.8 + reverseAssist : 1;
     const turnRate = this.#port.effectiveTurnRate() * (0.22 + this.#port.throttle * 0.4) * turnBoost;
-    this.#port.angle += clamp(delta, -turnRate * dt, turnRate * dt);
+    const angle = this.#port.angle + clamp(delta, -turnRate * dt, turnRate * dt);
 
     const throttlePenalty = this.#port.energySpeedFactor();
     const steerBrake = this.#route ? clamp(1 - turnUrgency * 0.78, 0.22, 1) : 1;
@@ -286,9 +286,8 @@ export class ShipNavigation {
     const targetSpeed = Math.max(minimumSpeed, dist < 8 ? 0 : this.#port.effectiveSpeed() * this.#port.throttle * throttlePenalty * steerBrake * this.#port.collisionSpeedFactor());
 
     const accelResponse = clamp(this.#port.baseAcceleration() * this.#port.accelerationMultiplier(), 0.65, 9.6);
-    this.#port.speed = Math.max(minimumSpeed, lerp(this.#port.speed, targetSpeed, clamp(dt * accelResponse, 0, 1)));
-
-    this.#port.advanceFlight(dt);
+    const speed = Math.max(minimumSpeed, lerp(this.#port.speed, targetSpeed, clamp(dt * accelResponse, 0, 1)));
+    this.#port.advanceSteeredFlight(angle, speed, dt);
 
     if (this.#route) {
       const minAdvance = 5;
@@ -318,21 +317,19 @@ export class ShipNavigation {
     const duration = Math.max(0.001, forced.endsAt - forced.startedAt);
     const progress = clamp((now - forced.startedAt) / duration, 0, 1);
     const eased = 1 - (1 - progress) * (1 - progress);
-    this.#port.x = lerp(forced.fromX, forced.toX, eased);
-    this.#port.y = lerp(forced.fromY, forced.toY, eased);
-    this.#port.speed = 0;
+    this.#port.applyKnockbackSample(
+      lerp(forced.fromX, forced.toX, eased), lerp(forced.fromY, forced.toY, eased), progress >= 1,
+    );
     if (progress < 1) {
       return true;
     }
     this.#forcedKnockback = null;
     this.#route = null;
-    this.#port.clearCollisionSlow();
     return false;
   }
 
   followLeader(dt) {
     this.#routeView = undefined;
-    const match = this.#port.world;
     const leader = this.#port.leader();
     const compactMode = this.#port.formationSize() > 1;
     const offsetScale = compactMode ? 0.5 : 1;
@@ -356,22 +353,14 @@ export class ShipNavigation {
     const desired = desiredSpeed > 0.05 ? Math.atan2(desiredVy, desiredVx) : leader.angle;
     const delta = shortestAngleDelta(this.#port.angle, desired);
     const turnRate = this.#port.effectiveFormationTurnRate();
-    this.#port.angle += clamp(delta, -turnRate * dt, turnRate * dt);
+    const angle = this.#port.angle + clamp(delta, -turnRate * dt, turnRate * dt);
 
     const fleetSpeed = this.#port.effectiveSpeed();
     const targetSpeed = Math.min(desiredSpeed, fleetSpeed * (compactMode ? 1.4 : 1.18));
     const accelResponse = clamp(this.#port.baseAcceleration() * this.#port.accelerationMultiplier() * (compactMode ? 1.8 : 1.3), 0.8, 3.2);
-    this.#port.speed = lerp(this.#port.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
-
-    this.#port.x += Math.cos(this.#port.angle) * this.#port.speed * dt;
-    this.#port.y += Math.sin(this.#port.angle) * this.#port.speed * dt;
-    this.#port.x = match.clampX(this.#port.x, 8);
-    this.#port.y = match.clampY(this.#port.y, 8);
-
-    if (compactMode && dist < 11) {
-      this.#port.x = lerp(this.#port.x, tx, clamp(dt * 6, 0, 1));
-      this.#port.y = lerp(this.#port.y, ty, clamp(dt * 6, 0, 1));
-    }
+    const speed = lerp(this.#port.speed, targetSpeed, clamp(dt * accelResponse, 0, 1));
+    const settle = compactMode && dist < 11 ? { x: tx, y: ty, factor: clamp(dt * 6, 0, 1) } : null;
+    this.#port.advanceFormationFlight(angle, speed, dt, settle);
   }
 
 }

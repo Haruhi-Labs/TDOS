@@ -7,6 +7,9 @@ const match = new MatchSimulation({ seed: 61 });
 const ship = match.teamA.ships.main;
 const port = createShipNavigationPort(ship);
 for (const key of ["ship", "team", "match", "hp", "effects"]) assert.equal(key in port, false);
+for (const field of ["x", "y", "angle", "speed", "throttle"]) {
+  assert.throws(() => { port[field] = -999; }, TypeError, `导航端口不能直接改写 ${field}`);
+}
 const destination = { x: 600, y: 700 };
 ship.command = destination;
 destination.x = -1;
@@ -30,6 +33,7 @@ assert.throws(() => { ship.forcedKnockback.endsAt = 99; }, TypeError);
 const pose = { x: 100, y: 100, angle: 0, speed: 0, throttle: 1 };
 const navigation = new ShipNavigation({
   ...pose,
+  setThrottle: (value) => { pose.throttle = value; },
   world: { mapPadding: 10, clampX: (x) => Math.max(10, Math.min(990, x)), clampY: (y) => Math.max(10, Math.min(990, y)) },
   anchor: () => ({ ...pose, turnRate: 1, flightSpeed: 40 }),
   leader: () => null,

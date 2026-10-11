@@ -8,7 +8,7 @@ import { createShipNavigationPort } from "../rules/navigation-port.js";
 import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES, normalizeThrottleToGear } from "../throttle.js";
 import { fireArcDensityMultiplier } from "../combat-rules.js";
 import { characterDefinition as getCharacterDef, slotLabel } from "../characters.js";
-import { clamp, shortestAngleDelta } from "../math.js";
+import { clamp, lerp, shortestAngleDelta } from "../math.js";
 import { rngFor } from "../rng.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
 import { nextEntityId } from "../model/model-support.js";
@@ -336,6 +336,29 @@ export class Ship {
 
   advanceFlight(dt, padding = 8) {
     this.displaceTo(this.x + Math.cos(this.angle) * this.speed * dt, this.y + Math.sin(this.angle) * this.speed * dt, padding);
+  }
+
+  // 导航提交航向/速度意图，舰船统一积分坐标；端口不具备逐字段写权限。
+  advanceSteeredFlight(angle, speed, dt) {
+    this.angle = angle;
+    this.speed = speed;
+    this.advanceFlight(dt);
+  }
+
+  advanceFormationFlight(angle, speed, dt, settle) {
+    this.advanceSteeredFlight(angle, speed, dt);
+    // 保留原顺序：先按边界约束飞行，再进行编队靠拢修正。
+    if (settle) {
+      this.x = lerp(this.x, settle.x, settle.factor);
+      this.y = lerp(this.y, settle.y, settle.factor);
+    }
+  }
+
+  applyKnockbackSample(x, y, completed) {
+    this.x = x;
+    this.y = y;
+    this.speed = 0;
+    if (completed) this.collisionSlowUntil = 0;
   }
 
   // 撞击粘滞:返回当前速度上限相对正常的比例。刚撞上为 COLLISION_SLOW_FLOOR,
