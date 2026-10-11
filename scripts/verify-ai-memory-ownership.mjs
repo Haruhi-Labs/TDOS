@@ -74,3 +74,23 @@ assert.equal(doctrineSnapshot.deployments, 1);
 select(1.2);
 assert.equal(plansBuilt, 2, "重编组到期必须重算计划");
 console.log("侦察条令所有权校验通过：计划缓存、重编组窗口、部署消费和只读历史互相隔离。");
+
+// 纯外推缓存仅在观测、参数与不可变接触都未改变时复用。
+const contact = bot.rememberedMain;
+const projection = bot.projectContact(contact, 1.8);
+// 外部门面会先刷新观测；直接组件测试固定其采样身份。
+let observation = Object.freeze({ time: 1, world: { size: 1440, zones }, self: { ships: { main: { x: 700, y: 700 } } } });
+let configured = params;
+const memo = new IntelTracker({ observe: () => observation,
+  parameters: () => ({ params: configured, profile: configured.profile, reactionMult: 1 }), contactZone() {},
+}, spawn);
+const projected = memo.projectContact(memo.main, 1.8);
+assert.equal(memo.projectContact(memo.main, 1.8), projected);
+assert.throws(() => { projected.x = -1; }, TypeError);
+observation = { ...observation, time: 5 };
+assert.notEqual(memo.projectContact(memo.main, 1.8), projected);
+const later = memo.projectContact(memo.main, 1.8);
+configured = resolveAiParams({ difficulty: "easy" });
+assert.notEqual(memo.projectContact(memo.main, 1.8), later);
+assert.equal(projected.age, 0);
+assert.ok(projection);

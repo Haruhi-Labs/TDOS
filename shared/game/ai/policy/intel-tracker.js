@@ -10,6 +10,9 @@ export class IntelTracker {
   #entities = new Map();
   #main;
   #pending = new Map();
+  #projectionObservation;
+  #projectionParams;
+  #projections = new WeakMap();
   constructor(port, enemyMain) {
     this.#port = port;
     this.#main = Object.freeze({
@@ -247,6 +250,22 @@ export class IntelTracker {
   }
 
   projectContact(contact, maxLead = 2.4) {
+    if (!contact || !Object.isFrozen(contact)) return this.#projectContact(contact, maxLead);
+    const observation = this.obs;
+    const parameters = this.params;
+    // 只复用同一不可变观测、参数与接触下的纯计算；动作失效会立即更换观测。
+    if (observation !== this.#projectionObservation || parameters !== this.#projectionParams) {
+      this.#projectionObservation = observation;
+      this.#projectionParams = parameters;
+      this.#projections = new WeakMap();
+    }
+    let leads = this.#projections.get(contact);
+    if (!leads) { leads = new Map(); this.#projections.set(contact, leads); }
+    if (!leads.has(maxLead)) leads.set(maxLead, freezePlainData(this.#projectContact(contact, maxLead)));
+    return leads.get(maxLead);
+  }
+
+  #projectContact(contact, maxLead) {
     const I = this.params.intel.projection;
     if (!contact) {
       return null;

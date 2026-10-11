@@ -27,3 +27,32 @@ export function sampleAttributeFacts(ship) {
     orbActive: isKoizumiOrbActive(ship),
   });
 }
+
+// 控制、免伤、承伤和运动只采样各自依赖，不为一次资格查询建立完整属性上下文。
+export function sampleControlFacts(ship) {
+  return Object.freeze({
+    now: ship.team.match.elapsed, effects: ship.effects, shock: ship.heroPowerShock,
+    stage: ship.bunnyStageExposure || null,
+    stageEnabled: ship.bunnyStageExposure ? bunnyStageEnabled(ship) : false,
+    orbActive: isKoizumiOrbActive(ship),
+  });
+}
+
+export function sampleImmunityFacts(ship) {
+  return Object.freeze({
+    now: ship.team.match.elapsed, enabled: !ship.team.areSkillsDisabled(),
+    form: formFacts(ship.bunnyHaruhi),
+    companionForm: ship.bunnyCompanion ? formFacts(bunnyCompanionForm(ship)) : null,
+    orbActive: isKoizumiOrbActive(ship),
+  });
+}
+
+export function sampleDamageFacts(ship) {
+  const team = ship.team;
+  return Object.freeze({
+    now: team.match.elapsed, effects: ship.effects, shock: ship.heroPowerShock,
+    futureEnabled: team.mainCharacterId() === "future1096", futureForm: team.future1096FormDefinition(),
+    haruhiBoost: haruhiBoostActive(team), form: formFacts(ship.bunnyHaruhi),
+    companionForm: ship.bunnyCompanion ? formFacts(bunnyCompanionForm(ship)) : null,
+  });
+}

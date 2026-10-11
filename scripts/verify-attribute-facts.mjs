@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
-import { sampleAttributeFacts } from "../shared/game/rules/attribute-facts.js";
+import { sampleAttributeFacts, sampleControlFacts, sampleImmunityFacts, sampleDamageFacts } from "../shared/game/rules/attribute-facts.js";
 import { evaluateAttribute, evaluateControl, evaluateDamageTaken } from "../shared/game/rules/attribute-evaluation.js";
 
 const match = new MatchSimulation({ seed: 944, teamLoadouts: { A: { main: "future1096", sub1: "bunny_haruhi", sub2: "asakura" } } });
@@ -30,3 +30,10 @@ assert.equal(evaluateControl(sampleAttributeFacts(ship)).locked, false, "同帧�
 assert.equal(evaluateControl(controlled).locked, true);
 assert.equal(evaluateDamageTaken(after), 2);
 console.log("属性事实校验通过：无实体和回调、深只读、历史稳定、同帧变身与净化即时可见。");
+
+for (const sample of [sampleControlFacts, sampleImmunityFacts, sampleDamageFacts]) assertFacts(sample(ship));
+assert.equal(sampleControlFacts(ship).futureForm, undefined, "控制判断不需要队级形态上下文");
+assert.equal(sampleImmunityFacts(ship).effects, undefined, "免伤不读取不相关定时效果");
+assert.equal(sampleDamageFacts(ship).reliable, undefined, "承伤不采样进攻属性加成");
+assert.equal(evaluateControl(sampleControlFacts(ship)).locked, false);
+assert.equal(evaluateDamageTaken(sampleDamageFacts(ship)), evaluateDamageTaken(sampleAttributeFacts(ship)));

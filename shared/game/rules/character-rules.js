@@ -1,4 +1,4 @@
-import { sampleAttributeFacts } from "./attribute-facts.js";
+import { sampleAttributeFacts, sampleControlFacts, sampleImmunityFacts, sampleDamageFacts } from "./attribute-facts.js";
 import { evaluateAttribute, evaluateControl, evaluateDamageImmunity, evaluateDamageTaken, evaluateFlightSpeed, evaluateMinimumSpeed } from "./attribute-evaluation.js";
 // 角色能力适配层：集中解释角色状态，只返回规则结果，不写入实体。
 // 对局将此契约注入通用系统，让通用系统无需导入具体角色模块。
@@ -60,7 +60,7 @@ export const CHARACTER_RULES = Object.freeze({
   countsForVictory,
   isFleetParticipant,
   controlStopsFlight(ship) {
-    return evaluateControl(sampleAttributeFacts(ship), ship.isControlImmune()).stopsFlight;
+    return evaluateControl(sampleControlFacts(ship), ship.isControlImmune()).stopsFlight;
   },
   depletedEnergySpeedFactor(ship) {
     return ship.team.availableEnergyForShip(ship) <= 0
@@ -108,16 +108,16 @@ export const CHARACTER_RULES = Object.freeze({
     };
   },
   controlLocked(ship) {
-    return evaluateControl(sampleAttributeFacts(ship), ship.isControlImmune()).locked;
+    return evaluateControl(sampleControlFacts(ship), ship.isControlImmune()).locked;
   },
   silenced(ship) {
-    return evaluateControl(sampleAttributeFacts(ship), ship.isControlImmune()).silenced;
+    return evaluateControl(sampleControlFacts(ship), ship.isControlImmune()).silenced;
   },
   controlImmune(ship) {
     return ship.isKoizumiOrbActive();
   },
   damageImmune(ship) {
-    return evaluateDamageImmunity(sampleAttributeFacts(ship), ship.isKoizumiOrbActive());
+    return evaluateDamageImmunity(sampleImmunityFacts(ship), ship.isKoizumiOrbActive());
   },
   statWithBuffs(ship, statKey, baseValue) {
     return evaluateAttribute(sampleAttributeFacts(ship), statKey, baseValue);
@@ -125,13 +125,13 @@ export const CHARACTER_RULES = Object.freeze({
   effectiveSpeed(ship) {
     const speeds = ship.team.fleetMembersForShip(ship).map((member) =>
       evaluateAttribute(sampleAttributeFacts(member), "speed", member.base.speed));
-    return evaluateFlightSpeed(sampleAttributeFacts(ship), speeds, ship.isControlImmune());
+    return evaluateFlightSpeed(sampleControlFacts(ship), speeds, ship.isControlImmune());
   },
   minimumFlightSpeed(ship) {
     return evaluateMinimumSpeed(sampleAttributeFacts(ship));
   },
   damageTakenMultiplier(ship) {
-    return evaluateDamageTaken(sampleAttributeFacts(ship));
+    return evaluateDamageTaken(sampleDamageFacts(ship));
   },
   participatesInHullCollision(ship) {
     return !ship.forcedKnockback && !isKoizumiOrbActive(ship) && !ship.hasEffect("bladeQueenUntil");
