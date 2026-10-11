@@ -7,6 +7,16 @@ export class BotController extends RulePolicy {
     super(port, options);
     const entries = new Map();
     return new Proxy(this, {
+      set(target, property, value) {
+        // 仅允许声明过的配置入口；代理不能成为状态字段或新属性的写入后门。
+        let owner = target;
+        while (owner && !Object.hasOwn(owner, property)) owner = Object.getPrototypeOf(owner);
+        const descriptor = owner && Object.getOwnPropertyDescriptor(owner, property);
+        if (!descriptor?.set) return false;
+        assertDataArgument(value);
+        descriptor.set.call(target, value);
+        return true;
+      },
       get(target, property) {
         const value = Reflect.get(target, property, target);
         if (typeof value !== "function" || property === "constructor" || Object.hasOwn(target, property)) return value;
