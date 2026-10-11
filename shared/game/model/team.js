@@ -1,3 +1,4 @@
+import { createTeamSponsor } from "../rules/sponsor-port.js";
 import { createTeamFutureForm } from "../rules/future-form-port.js";
 import { futureFormDefinition } from "../future-flagship-form.js";
 import { BeamSystem } from "../systems/beam-system.js";
@@ -28,6 +29,7 @@ import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_
 export class Team {
   #beamSystem;
   #futureForm;
+  #sponsor;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.match = match;
     this.seat = seat;
@@ -64,10 +66,13 @@ export class Team {
       zoneId: 5,
     };
 
+    this.#sponsor = createTeamSponsor(this);
     this.effects = {
-      sponsorUntil: 0,
       haruhiBoostUntil: 0,
     };
+    Object.defineProperty(this.effects, "sponsorUntil", {
+      enumerable: true, get: () => this.#sponsor.expiresAt,
+    });
     this.#futureForm = createTeamFutureForm(this);
     this.haruhiFlagship = createHaruhiFlagshipState(facing);
     this.koizumiBarrier = createKoizumiBarrierState();
@@ -165,7 +170,7 @@ export class Team {
   }
 
   hasActiveSponsor() {
-    return this.effects.sponsorUntil > this.match.elapsed;
+    return this.#sponsor.active();
   }
 
   hasActiveVisionWaveSkill() {
@@ -437,7 +442,7 @@ export class Team {
   }
 
   cooldownStep(dt) {
-    return dt * (this.hasActiveSponsor() ? 2 : 1);
+    return this.#sponsor.cooldownStep(dt);
   }
 
   setShipEffect(ship, key, duration) {
@@ -449,7 +454,7 @@ export class Team {
   }
 
   clearActiveTeamSkillBuffs({ preserveCurrentTick = true } = {}) {
-    let cleared = false;
+    let cleared = this.#sponsor.clear({ preserveCurrentTick });
     const clearTeamEffect = (effectKey) => {
       if (preserveCurrentTick && this.activeSkillEffectStartedTicks[effectKey] === this.match.tick) {
         return;
@@ -460,7 +465,6 @@ export class Team {
       this.effects[effectKey] = 0;
       delete this.activeSkillEffectStartedTicks[effectKey];
     };
-    clearTeamEffect("sponsorUntil");
     clearTeamEffect("haruhiBoostUntil");
     if (cancelTeamVisionWaveSkill(this, { preserveCurrentTick })) {
       cleared = true;
@@ -516,15 +520,7 @@ export class Team {
   }
 
   sponsorRegeneration(dt) {
-    if (!this.hasActiveSponsor()) {
-      return;
-    }
-    for (const ship of this.getAllShips()) {
-      if (!ship.alive) {
-        continue;
-      }
-      ship.restoreHull(ship.maxHp * 0.01 * dt);
-    }
+    this.#sponsor.regenerate(dt);
   }
 
   normalizeSplitLevel() {
@@ -786,12 +782,7 @@ export class Team {
           this.match.spawnAnnouncementKey(main.x, main.y + main.radius + 42, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS[supporter], {}, "#fff3c5");
         }
       },
-      activateSponsor: (duration) => {
-        this.activateTimedEffect("sponsorUntil", duration);
-        for (const ship of this.getAllShips()) {
-          if (ship.alive) this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "赞助", {}, "#ffd27e");
-        }
-      },
+      activateSponsor: (duration) => this.#sponsor.activate(duration),
       activateVisionWave: (options) => activateTeamVisionWaveSkill(this, options),
     };
   }

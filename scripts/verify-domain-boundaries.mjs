@@ -180,3 +180,5 @@ await import("./verify-character-boundaries.mjs");
 await import("./verify-beam-lifecycle.mjs");
 
 await import("./verify-future-form.mjs");
+
+await import("./verify-sponsor-effect.mjs");
