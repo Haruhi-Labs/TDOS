@@ -12,6 +12,7 @@ export function createRoomRegistry({
   players = new Map(),
   rooms = new Map(),
   resetSnapshotStream = () => {},
+  resetPlayerInputs = () => {},
 } = {}) {
   function getPlayerById(playerId) {
     if (!playerId) {
@@ -211,9 +212,7 @@ export function createRoomRegistry({
     player.roomId = null;
     player.seat = null;
     player.spectating = false;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
+    resetPlayerInputs(player);
     resetSnapshotStream(player);
   }
 
@@ -221,9 +220,7 @@ export function createRoomRegistry({
     player.roomId = room.id;
     player.seat = seat;
     player.spectating = false;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
+    resetPlayerInputs(player);
     player.selectedShipKey = "main";
     resetSnapshotStream(player);
     room.seats[seat] = player.id;
@@ -234,9 +231,7 @@ export function createRoomRegistry({
     player.roomId = room.id;
     player.seat = null;
     player.spectating = true;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
+    resetPlayerInputs(player);
     player.selectedShipKey = "main";
     resetSnapshotStream(player);
     if (!room.spectators) {

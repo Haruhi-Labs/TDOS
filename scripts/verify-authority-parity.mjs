@@ -99,8 +99,8 @@ function replayThroughServerQueue(tickCount) {
   const simulation = createSimulation();
   const inputQueue = createInputQueue({ networkStats: { coalescedInputs: 0 } });
   const players = new Map([
-    ["player-a", { id: "player-a", inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 }],
-    ["player-b", { id: "player-b", inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 }],
+    ["player-a", { id: "player-a" }],
+    ["player-b", { id: "player-b" }],
   ]);
   const sequences = { A: 0, B: 0 };
   const room = {

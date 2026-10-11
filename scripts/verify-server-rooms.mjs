@@ -13,9 +13,6 @@ function createPlayer(id, name = id) {
     roomId: null,
     seat: null,
     spectating: false,
-    inputQueue: [],
-    lastProcessedSeq: 0,
-    lastQueuedSeq: 0,
     selectedShipKey: "main",
   };
 }

@@ -75,13 +75,17 @@ const networkStats = {
 };
 const {
   resetSnapshotStream,
+  requestKeyframe,
+  upgradeProtocol,
+  acknowledge: acknowledgeSnapshot,
+  rateTierFor,
   send,
   sendSnapshotToPlayer,
   sendToPlayer,
 } = createSnapshotStream({ networkStats });
 
-const roomRegistry = createRoomRegistry({ players, rooms, resetSnapshotStream });
 const inputQueue = createInputQueue({ networkStats });
+const roomRegistry = createRoomRegistry({ players, rooms, resetSnapshotStream, resetPlayerInputs: inputQueue.reset });
 const {
   activeRoomCount,
   buildLobbyPayload,
@@ -212,9 +216,7 @@ function startMatch(room) {
     if (!p) {
       continue;
     }
-    p.inputQueue = [];
-    p.lastProcessedSeq = 0;
-    p.lastQueuedSeq = 0;
+    inputQueue.reset(p);
   }
 
   sendRoomStateToMembers(room);
@@ -269,7 +271,6 @@ function buildSnapshotFrame(room, advanceSeq = true) {
       A: quantizeNetworkState(room.match.serializeRadarForSeat("A")),
       B: quantizeNetworkState(room.match.serializeRadarForSeat("B")),
     },
-    patchCache: new Map(),
   };
 }
 
@@ -284,13 +285,13 @@ function sendSnapshot(room) {
 
   if (pA) {
     sendSnapshotToPlayer(pA, frame, {
-      ackSeq: pA.lastProcessedSeq,
+      ackSeq: inputQueue.acknowledgedSequence(pA),
       radar: frame.radarBySeat.A,
     });
   }
   if (room.mode === "pvp" && pB) {
     sendSnapshotToPlayer(pB, frame, {
-      ackSeq: pB.lastProcessedSeq,
+      ackSeq: inputQueue.acknowledgedSequence(pB),
       radar: frame.radarBySeat.B,
     });
   }
@@ -357,11 +358,7 @@ wss.on("connection", (ws) => {
     roomId: null,
     seat: null,
     spectating: false,
-    inputQueue: [],
-    lastProcessedSeq: 0,
-    lastQueuedSeq: 0,
     selectedShipKey: "main",
-    snapshotStream: null,
     rateLimits: new Map(),
     networkProtocolVersion: 1,
     rulesetVersion: "",
@@ -586,13 +583,7 @@ wss.on("connection", (ws) => {
       const protocolVersion = Number(data.protocolVersion);
       if (Number.isInteger(protocolVersion) && protocolVersion >= 2 && player.networkProtocolVersion < 2) {
         player.networkProtocolVersion = Math.min(protocolVersion, NETWORK_PROTOCOL_VERSION);
-        if (player.snapshotStream) {
-          player.snapshotStream.forceKeyframe = true;
-          player.snapshotStream.lastState = null;
-          // 握手前的兼容全量帧不要求客户端补交到达确认。
-          player.snapshotStream.lastDeliveryAckSeq = player.snapshotStream.sequence;
-          player.snapshotStream.lastDeliveryAckAt = Date.now();
-        }
+        upgradeProtocol(player);
       }
       player.rulesetVersion = String(data.rulesetVersion || "").trim();
       const rulesetCompatibility = evaluateRulesetCompatibility(player.rulesetVersion);
@@ -606,25 +597,13 @@ wss.on("connection", (ws) => {
     }
 
     if (type === "snapshot_resync") {
-      if (player.networkProtocolVersion >= 2 && player.snapshotStream) {
-        player.snapshotStream.forceKeyframe = true;
-      }
+      if (player.networkProtocolVersion >= 2) requestKeyframe(player);
       networkStats.resyncRequests += 1;
       return;
     }
 
     if (type === "snapshot_ack") {
-      const snapshotSeq = Number(data.snapshotSeq);
-      const stream = player.snapshotStream;
-      if (
-        stream &&
-        Number.isInteger(snapshotSeq) &&
-        snapshotSeq > stream.lastDeliveryAckSeq &&
-        snapshotSeq <= stream.sequence
-      ) {
-        stream.lastDeliveryAckSeq = snapshotSeq;
-        stream.lastDeliveryAckAt = Date.now();
-      }
+      acknowledgeSnapshot(player, Number(data.snapshotSeq));
       return;
     }
 
@@ -689,7 +668,7 @@ function flushNetworkMetrics() {
     const buffered = Number(player.ws?.bufferedAmount) || 0;
     bufferedBytes += buffered;
     maxBufferedBytes = Math.max(maxBufferedBytes, buffered);
-    const tier = Math.max(0, Math.min(2, Number(player.snapshotStream?.rateTier) || 0));
+    const tier = Math.max(0, Math.min(2, rateTierFor(player)));
     tiers[tier] += 1;
     if (player.spectating) {
       spectators += 1;

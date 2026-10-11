@@ -366,7 +366,7 @@ function replayAndDisplayCheck() {
     __resetEntityIds();
     const { sim, owner, companion } = setup();
     const queue = createInputQueue();
-    const player = { inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 };
+    const player = {};
     const states = [];
     let previous = quantizeNetworkState(sim.serializeState());
     for (let i = 0; i < 900; i += 1) {

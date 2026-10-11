@@ -360,7 +360,7 @@ function authorityCheck() {
     __resetEntityIds();
     const sim = simulation(false, true, "bunny_haruhi");
     const queue = createInputQueue();
-    const player = { id: "a", inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 };
+    const player = { id: "a" };
     const room = { seats: { A: "a", B: "b" }, match: sim };
     const result = [];
     let previous = quantizeNetworkState(sim.serializeState());

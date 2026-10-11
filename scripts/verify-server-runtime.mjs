@@ -5,12 +5,7 @@ import { FINISHED_ROOM_CLOSE_DELAY_MS } from "../server/config.js";
 import { createMatchRuntime } from "../server/match-runtime.js";
 
 function createPlayer(id) {
-  return {
-    id,
-    inputQueue: [],
-    lastProcessedSeq: 0,
-    lastQueuedSeq: 0,
-  };
+  return { id };
 }
 
 function roomStateOwnershipCheck() {
@@ -55,15 +50,15 @@ function inputQueueCheck() {
     seq: 2,
     action: { type: "set_throttle", shipKey: "main", throttle: 0.8 },
   });
-  assert.equal(player.inputQueue.length, 1, "同舰连续推进输入应合并为最新值");
-  assert.equal(player.inputQueue[0].seq, 2, "合并后应保留最新输入序号");
+  assert.equal(queue.inspect(player).pendingSequences.length, 1, "同舰连续推进输入应合并为最新值");
+  assert.equal(queue.inspect(player).pendingSequences[0], 2, "合并后应保留最新输入序号");
   assert.equal(networkStats.coalescedInputs, 1, "输入合并应计入网络指标");
 
   queue.queueInput(player, {
     seq: 3,
     action: { type: "set_throttle", shipKey: "sub1", throttle: 1 },
   });
-  assert.equal(player.inputQueue.length, 2, "不同舰船的推进输入不得相互覆盖");
+  assert.equal(queue.inspect(player).pendingSequences.length, 2, "不同舰船的推进输入不得相互覆盖");
   assert.equal(queue.queueInput(player, {
     seq: 2,
     action: { type: "split", level: 1 },
@@ -72,12 +67,12 @@ function inputQueueCheck() {
   for (let seq = 4; seq <= 103; seq += 1) {
     queue.queueInput(player, { seq, action: { type: "fire", direction: "front" } });
   }
-  assert.equal(player.inputQueue.length, 90, "积压输入应保持现有 90 条上限");
+  assert.equal(queue.inspect(player).pendingSequences.length, 90, "积压输入应保持现有 90 条上限");
 
   const applied = [];
   const applyPlayer = createPlayer("apply");
   for (let seq = 1; seq <= 35; seq += 1) {
-    applyPlayer.inputQueue.push({ seq, action: { type: "test", seq } });
+    queue.queueInput(applyPlayer, { seq, action: { type: "test", seq } });
   }
   const room = {
     seats: { A: applyPlayer.id, B: null },
@@ -89,8 +84,18 @@ function inputQueueCheck() {
   };
   queue.applyQueuedInputs(room, (id) => id === applyPlayer.id ? applyPlayer : null);
   assert.equal(applied.length, 30, "每个逻辑帧每位玩家最多处理 30 条输入");
-  assert.equal(applyPlayer.lastProcessedSeq, 30, "确认序号应跟随最后处理的输入");
-  assert.equal(applyPlayer.inputQueue.length, 5, "未处理输入应留到后续逻辑帧");
+  assert.equal(queue.inspect(applyPlayer).lastProcessedSeq, 30, "确认序号应跟随最后处理的输入");
+  assert.equal(queue.inspect(applyPlayer).pendingSequences.length, 5, "未处理输入应留到后续逻辑帧");
+  assert.equal(applyPlayer.inputQueue, undefined, "连接记录不得持有可写输入队列");
+  assert.throws(() => queue.inspect(applyPlayer).pendingSequences.pop(), TypeError);
+  queue.reset(applyPlayer);
+  assert.deepEqual(queue.inspect(applyPlayer).pendingSequences, []);
+  assert.equal(queue.inspect(applyPlayer).lastProcessedSeq, 0);
+  const action = { type: "test", seq: 1, nested: { value: 1 } };
+  queue.queueInput(applyPlayer, { seq: 1, action });
+  action.nested.value = 9;
+  queue.applyQueuedInputs(room, (id) => id === applyPlayer.id ? applyPlayer : null);
+  assert.equal(applied.at(-1).action.nested.value, 1, "提交后修改原动作不得影响待执行队列");
 }
 
 function matchLifecycleCheck() {

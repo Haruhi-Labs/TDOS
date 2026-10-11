@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import { createSnapshotStream } from "../server/snapshot-stream.js";
+import { applyStatePatch } from "../shared/network-patch.js";
+let time = 1000;
+const networkStats = { snapshotMessages: 0, snapshotRawBytes: 0, keyframes: 0, deltas: 0, skippedSnapshots: 0, streamTierChanges: 0 };
+const messages = [];
+const player = { networkProtocolVersion: 2, ws: { readyState: 1, bufferedAmount: 0, send: (text) => messages.push(JSON.parse(text)) } };
+const stream = createSnapshotStream({ networkStats, now: () => time });
+function frame(sequence) {
+  const state = { tick: sequence, text: "稳定数据".repeat(400) };
+  return { roomId: "room", roomSnapshotSeq: sequence, tick: sequence, simTime: sequence / 30, serverTime: time, state, stateBytes: Buffer.byteLength(JSON.stringify(state)) };
+}
+stream.resetSnapshotStream(player);
+assert.equal(player.snapshotStream, undefined, "连接记录不得暴露差量基线与可写发送状态");
+const firstFrame = frame(1);
+assert.equal(stream.sendSnapshotToPlayer(player, firstFrame), true);
+assert.throws(() => { firstFrame.state.tick = 999; }, TypeError, "已投递快照不得被外部写回差量基线");
+assert.equal(messages.at(-1).type, "snapshot");
+assert.equal(stream.acknowledge(player, 2), false, "未来确认不得被接受");
+assert.equal(stream.acknowledge(player, 1), true);
+assert.equal(stream.acknowledge(player, 1), false, "重复确认不得推进时钟");
+stream.sendSnapshotToPlayer(player, frame(2));
+assert.equal(messages.at(-1).type, "snapshot_delta");
+assert.deepEqual(applyStatePatch(messages[0].state, messages[1].patch), frame(2).state);
+stream.requestKeyframe(player);
+stream.sendSnapshotToPlayer(player, frame(3));
+assert.equal(messages.at(-1).type, "snapshot");
+stream.upgradeProtocol(player);
+stream.sendSnapshotToPlayer(player, frame(4));
+assert.equal(messages.at(-1).type, "snapshot");
+time += 10000;
+stream.sendSnapshotToPlayer(player, frame(5));
+assert.ok(stream.rateTierFor(player) > 0, "未确认的积压仍必须触发降频");
+stream.resetSnapshotStream(player);
+assert.equal(stream.rateTierFor(player), 0);
+stream.sendSnapshotToPlayer(player, frame(6));
+assert.equal(messages.at(-1).snapshotSeq, 1, "新对局使用新的发送序列");
+console.log("快照流所有权校验通过：内部基线不可访问，确认、重同步、升级、降频与重置保持契约。");
