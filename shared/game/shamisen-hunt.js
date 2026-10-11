@@ -1,5 +1,4 @@
 import { isAttackDamageKind } from "./damage.js";
-import { countsForVictory } from "./bunny-haruhi-companion.js";
 
 export const SHAMISEN_HUNT_DAMAGE_MULTIPLIER = 1.5;
 export const SHAMISEN_HUNT_KILL_EFFECT_SECONDS = 1.65;
@@ -16,7 +15,7 @@ export function hasShamisenFlagship(team) {
 }
 
 function livingHuntTargets(enemyTeam) {
-  return (enemyTeam?.getAllShips?.() || []).filter((ship) => ship?.alive && countsForVictory(ship));
+  return (enemyTeam?.getVictoryShips?.() || []).filter((ship) => ship?.alive);
 }
 
 export function selectShamisenHuntTarget(team, enemyTeam, random = Math.random) {

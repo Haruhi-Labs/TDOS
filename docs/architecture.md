@@ -44,6 +44,8 @@
 
 `rules/character-rules.js` 解释角色状态并提供碰撞资格、承伤、控制、属性、目标偏好和广播能力；通用算法通过注入的契约读取能力，不枚举角色字段。`contact-geometry.js` 只提供共享几何，表现层不导入接触结算实现。
 
+胜负、战局生命比例、舰损与猎杀候选统一消费 `countsForVictory`；额外舰船的编队归属消费独立的 `isFleetParticipant`。舰队和猎杀模块不直接识别伴随角色。当前规则仍只排除专属伴随舰，旧额外舰船资格不变；参与编队与参与胜负不是同一个概念。
+
 查询与序列化不负责推进：例如抓痕过期在实体更新或下一次命中时提交，界面重复查询只得到已过期的读数。`serializeState()`、AI 观察、房间与结果输出不携带权威状态的可写引用；`shared/data/plain-data.js` 只复制/冻结纯数据，不能用于实体、Map 或循环对象图。
 
 `targeting-system.js` 仅消费候选 DTO 并返回目标 ID；`rules/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `rules/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；接触历史归对局所有。`rules/active-skills.js` 声明角色效果的操作顺序，舰队负责公共权限、资源池、冷却和统计，角色声明不持有舰队或对局对象。

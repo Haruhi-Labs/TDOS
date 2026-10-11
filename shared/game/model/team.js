@@ -20,7 +20,6 @@ import { activateKoizumiOrb, serializeKoizumiImpactWaves } from "../koizumi-orb.
 import { createKoizumiBarrierState, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
-import { isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
 import { convertBunnyCompanion } from "../bunny-companion-runtime.js";
 import { spawnBunnyCompanion, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
@@ -321,12 +320,16 @@ export class Team {
     return sources;
   }
 
+  getVictoryShips() {
+    return this.getAllShips().filter((ship) => this.match.rules.countsForVictory(ship));
+  }
+
   hasLivingShips() {
-    return this.getAllShips().some((ship) => ship.alive && countsForVictory(ship));
+    return this.getVictoryShips().some((ship) => ship.alive);
   }
 
   hullRatio() {
-    const ships = this.getAllShips().filter(countsForVictory);
+    const ships = this.getVictoryShips();
     const hp = ships.reduce((sum, ship) => sum + Math.max(0, ship.hp), 0);
     const max = ships.reduce((sum, ship) => sum + ship.maxHp, 0);
     return max <= 0 ? 0 : hp / max;
@@ -334,7 +337,7 @@ export class Team {
 
   fleetKeyForShip(shipOrKey) {
     const key = typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key;
-    if (isBunnyCompanion(typeof shipOrKey === "string" ? this.shipByKey(key) : shipOrKey)) return key;
+    if (!this.match.rules.isFleetParticipant(typeof shipOrKey === "string" ? this.shipByKey(key) : shipOrKey)) return key;
     if (key === "sub1" && this.splitLevel >= 1) {
       return "sub1";
     }
@@ -357,13 +360,13 @@ export class Team {
         members.push(this.ships.sub2);
       }
       for (const ship of this.extraShips) {
-        if (ship.alive && isFleetParticipant(ship)) {
+        if (ship.alive && this.match.rules.isFleetParticipant(ship)) {
           members.push(ship);
         }
       }
       return members;
     }
-    const ship = this.ships[fleetKey] || this.extraShips.find((candidate) => candidate.key === fleetKey && isBunnyCompanion(candidate));
+    const ship = this.ships[fleetKey] || this.extraShips.find((candidate) => candidate.key === fleetKey && !this.match.rules.isFleetParticipant(candidate));
     if (ship && ship.alive) {
       members.push(ship);
     }

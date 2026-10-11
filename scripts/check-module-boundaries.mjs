@@ -172,6 +172,14 @@ for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projecti
   }
 }
 
+// 编队和胜负资格由能力层解释，舰队与猎杀不能自行绑定某个伴随角色。
+for (const fileName of ["shared/game/model/team.js", "shared/game/shamisen-hunt.js"]) {
+  const file = resolve(ROOT, fileName);
+  if (importSpecifiers(file).some((specifier) => display(resolveImport(file, specifier)) === "shared/game/bunny-haruhi-companion.js")) {
+    failures.push(`${fileName} 应通过能力契约读取参与资格，不得直接导入伴随角色规则`);
+  }
+}
+
 // 通用算法只允许基础工具；角色能力由调用方注入。
 for (const fileName of ["shared/game/collision-system.js", "shared/game/targeting-system.js", "shared/game/vision-wave-purge.js", ...walk("shared/game/systems").map(display)]) {
   const file = resolve(ROOT, fileName);

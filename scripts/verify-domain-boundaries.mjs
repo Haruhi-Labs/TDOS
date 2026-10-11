@@ -211,3 +211,5 @@ await import("./verify-character-configuration.mjs");
 await import("./verify-character-localization.mjs");
 
 await import("./verify-claw-ownership.mjs");
+
+await import("./verify-fleet-participation.mjs");

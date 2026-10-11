@@ -126,6 +126,8 @@ env -u NETWORK_WS_URL npm run test:network:load
 
 `verify-bunny-ownership` 还验证舞台样本不可外部覆写、历史投影隔离、来源死亡清理、持续结算游标不公开、重复初始化与采样不重复治疗，以及不同对局的时钟隔离。
 
+`verify-fleet-participation` 随 `test:architecture` 验证编队与胜负资格分别可替换，生命比例和猎杀候选消费相同胜负资格，无猎杀候选时不消耗随机数；原核心伴随舰测试继续覆盖旧额外舰船、伤害分摊及舰损的兼容语义。
+
 `verify-plain-data` 随 `test:architecture` 校验深层复制、嵌套冻结、历史节点复用及 `__proto__` 普通数据键。修改公共数据遍历时同步检查单人会话、房间输入、快照流和差量消费者，并保留性能优化前的样本，不以取消只读边界降低开销。
 
 `verify-projectile-phase` 随架构检查验证弹体创建载荷隔离、拦截先于移动、活集合迭代与清除死亡弹体后再收尾。古泉护盾与春日支援的实际优先级、命中及恢复继续由核心测试和原基线回放覆盖。

@@ -8,7 +8,7 @@ import { haruhiHeroPowerSpeedFactor, haruhiHeroPowerDamageTakenMultiplier, isHar
 import { bunnyStatMultiplier, bunnyDamageTakenMultiplier, isBunnyDamageImmune, isBunnyControlLocked, bunnyStageSpeedFactor, bunnyEnergyRate, isBunnyEncoreLocked, canBunnyLaunchScout } from "../bunny-haruhi.js";
 import { bunnyStageEnabled, bunnyBroadcastsShip } from "../bunny-haruhi-runtime.js";
 import { bunnyCompanionForm, bunnyReliableState } from "../bunny-companion-runtime.js";
-import { bunnyOwnerDamageBlocked, isBunnyCompanion, countsForVictory } from "../bunny-haruhi-companion.js";
+import { bunnyOwnerDamageBlocked, isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
 import { shamisenHuntDamageMultiplier } from "../shamisen-hunt.js";
 
 import { SOLO_FIRE_RATE_BONUS, YUKI_COMBAT_SCOUT_STATS, YUKI_COMBAT_SCOUT_LAUNCH_COUNT } from "../model/model-support.js";
@@ -59,6 +59,7 @@ export const CHARACTER_RULES = Object.freeze({
   },
   orbActive: isKoizumiOrbActive,
   countsForVictory,
+  isFleetParticipant,
   controlStopsFlight(ship) {
     return Boolean(ship.bunnyStageExposure && isBunnyControlLocked(ship.bunnyStageExposure, ship.team.match.elapsed, bunnyStageEnabled(ship)) && !ship.isControlImmune());
   },

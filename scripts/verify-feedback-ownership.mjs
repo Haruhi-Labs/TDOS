@@ -25,7 +25,7 @@ assert.equal(feedback.barrierImpact({ teamSeat: "A" }), true);
 
 const hunter = { seat: "A", shamisenHunt: { targetId: 7, sequence: 1 }, mainCharacterId: () => "shamisen" };
 const survivor = { id: 8, alive: true };
-const hunted = { seat: "B", getAllShips: () => [survivor] };
+const hunted = { seat: "B", getVictoryShips: () => [survivor] };
 const destroyed = { id: 7, alive: false, x: 50, y: 60, radius: 12 };
 let rolls = 0;
 resolveShipDestruction({ teamA: hunter, teamB: hunted, rng: { next: () => {
