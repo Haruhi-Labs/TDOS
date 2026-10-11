@@ -71,3 +71,24 @@ for (const key of ['match', 'seat', 'name', 'color', 'projectileColor']) {
   assert.throws(() => { team[key] = null; }, TypeError);
 }
 console.log('飞行器内部状态校验通过：私有运动、武器、寿命和任务状态，输入隔离，转队与成员发布一致。');
+
+const { createAircraftPort } = await import('../shared/game/rules/aircraft-port.js');
+const { launchBurstScouts, launchHaruhiAlienWingmen, launchHaruhiRandomBeam } = await import('../shared/game/rules/character-launch.js');
+for (const operation of ['launchBurstScouts', 'launchHaruhiAlienWingmen', 'launchHaruhiRandomBeam']) {
+  assert.equal(operation in team, false, '角色发射不能绕回舰队门面');
+  assert.equal(operation in aircraft, false, '通用航空组件不能决定角色发射规则');
+}
+const aircraftPort = createAircraftPort(team);
+assert.equal('randomRange' in aircraftPort, false);
+assert.equal('spawnBurst' in aircraftPort.world, false);
+const oldMembers = team.scouts;
+launchBurstScouts(team, team.ships.sub1);
+assert.equal(team.scouts.length, oldMembers.length + 16);
+assert.equal(oldMembers.length, 0, '角色发射不能改写已发布成员集合');
+assert.ok(team.scouts.every((unit) => unit.team === team && unit.pattern === 'burst'));
+launchHaruhiAlienWingmen(team, team.ships.main);
+assert.equal(team.scouts.length, 17);
+assert.equal(team.scouts.at(-1).combatCapable, true);
+assert.equal(launchHaruhiRandomBeam(team, team.ships.main), true);
+assert.equal(team.beams.length, 1);
+console.log('角色发射边界通过：技能机群及支援规则独立于通用航空组件，生成仍进入统一成员集合。');

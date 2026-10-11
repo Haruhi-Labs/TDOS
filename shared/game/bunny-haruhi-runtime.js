@@ -1,3 +1,4 @@
+import { launchHaruhiRandomBeam } from "./rules/character-launch.js";
 import { readonlyIdSet } from "../data/readonly-id-set.js";
 import { CHARACTER_DEFS } from "./characters.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
@@ -202,7 +203,7 @@ export function updateBunnyTeamSupports(team, dt) {
   for (const ship of [team.ships.sub1, team.ships.sub2]) {
     if (!ship.bunnyHaruhi) continue;
     updateBunnyHaruhiSupport(bunnyHaruhiSupportSource(ship, !team.areSkillsDisabled()), team.match.elapsed, dt, {
-      launchRandomBeam: (source) => team.launchHaruhiRandomBeam(source),
+      launchRandomBeam: (source) => launchHaruhiRandomBeam(team, source),
     });
   }
 }

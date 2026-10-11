@@ -1,3 +1,4 @@
+import { launchBurstScouts } from "./character-launch.js";
 import { convertZoneSupport } from "./support-conversion.js";
 import { skillMetaForCharacter } from "../characters.js";
 import { activateKoizumiOrb } from "../koizumi-orb.js";
@@ -13,7 +14,7 @@ export function createTeamSkillPort(team, flagship) {
         if (ok) ship.markActiveSkillEffectStarted("koizumiOrb");
         return ok;
       },
-      launchBurstScouts: () => team.launchBurstScouts(ship),
+      launchBurstScouts: () => launchBurstScouts(team, ship),
       castBeam: () => team.castBeamFromShip(ship.key, options.targetX, options.targetY),
       refundEnergy: (amount) => ship.restoreEnergy(amount),
       activateEffect: (key, duration) => ship.activateTimedEffect(key, duration),

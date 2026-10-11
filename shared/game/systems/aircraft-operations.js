@@ -1,5 +1,4 @@
 import { clamp } from "../math.js";
-const TAU = Math.PI * 2;
 
 export class AircraftOperations {
   #scoutView;
@@ -135,43 +134,6 @@ export class AircraftOperations {
     }
     this.addWingman(this.#port.createWingman(main.x, main.y, zone));
     return true;
-  }
-
-  launchBurstScouts(ship) {
-    this.#scoutView = undefined;
-    const directions = 8;
-    for (let i = 0; i < directions; i += 1) {
-      const angle = (TAU / directions) * i;
-      for (const offset of [-0.07, 0.07]) {
-        const targetAngle = angle + offset;
-        const anchor = {
-          x: this.#port.world.clampX(ship.x + Math.cos(targetAngle) * 230, 22),
-          y: this.#port.world.clampY(ship.y + Math.sin(targetAngle) * 230, 22),
-        };
-        this.addScout(
-          this.#port.createScout(ship.x, ship.y, {
-            pattern: "burst",
-            anchor,
-            anchorRadius: 18,
-            speed: 118,
-            vision: 82,
-            life: 10.5,
-            radius: 3,
-          }),
-        );
-      }
-    }
-  }
-
-  launchHaruhiAlienWingmen(ship) {
-    this.#scoutView = undefined;
-    const zone = this.#port.zoneForPoint(ship.x, ship.y);
-    const releaseAngle = this.#port.randomRange(0, TAU);
-    const spawnRadius = ship.radius + 12;
-    const x = this.#port.world.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
-    const y = this.#port.world.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
-    this.addScout(this.#port.createScout(x, y, { zone, combatCapable: true }));
-    this.#port.world.spawnBurst(x, y, "#8fe8ff", 5);
   }
 
 }

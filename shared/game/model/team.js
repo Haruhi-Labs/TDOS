@@ -12,14 +12,13 @@ import { BeamSystem } from "../systems/beam-system.js";
 import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
 // 舰队状态所有者与领域操作。
 import { DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../characters.js";
-import { rotateOffset, zoneContains } from "../math.js";
-import { rngFor } from "../rng.js";
+import { rotateOffset } from "../math.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { visibilityInputs, serializeRadarPassive as serializeTeamRadarPassive } from "../visibility-radar.js";
 import { FleetFireControl } from "../targeting-system.js";
 import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../rules/fire-control.js";
 import { Ship } from "../model/ship.js";
-import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
+import { BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
   #statMult;
@@ -403,15 +402,6 @@ export class Team {
   assignScoutMission(scout, options = {}) { return this.#aircraft.assignScoutMission(scout, options); }
   launchScout(zoneId, options = {}) { return this.#aircraft.launchScout(zoneId, options); }
   launchWingman(zoneId) { return this.#aircraft.launchWingman(zoneId); }
-  launchBurstScouts(ship) { return this.#aircraft.launchBurstScouts({ x: ship.x, y: ship.y }); }
-  launchHaruhiAlienWingmen(ship) { return this.#aircraft.launchHaruhiAlienWingmen({ x: ship.x, y: ship.y, radius: ship.radius }); }
-  zoneForPoint(x, y) { return this.match.zones.find((zone) => zoneContains(zone, x, y)) || this.match.zones[4]; }
-
-  launchHaruhiRandomBeam(ship) {
-    const angle = rngFor(this.match).range(0, TAU);
-    return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
-  }
-
   castFlagshipSkill() { return this.#skills.castFlagship(); }
   castSubSkill(key, options = {}) { return this.#skills.castSub(key, options); }
 

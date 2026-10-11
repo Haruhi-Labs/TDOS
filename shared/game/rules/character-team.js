@@ -1,3 +1,4 @@
+import { launchHaruhiAlienWingmen, launchHaruhiRandomBeam } from "./character-launch.js";
 import { createTeamHaruhiFlagship } from "./haruhi-flagship-port.js";
 import { createTeamSponsor } from "./sponsor-port.js";
 import { createTeamFutureForm } from "./future-form-port.js";
@@ -53,8 +54,8 @@ export function createTeamCharacters(team, facing) {
     },
     afterMovement(dt) {
       updateHaruhiFlagship(team, {
-        dt, launchAlienWingmen: (ship) => team.launchHaruhiAlienWingmen(ship),
-        launchRandomBeam: (ship) => team.launchHaruhiRandomBeam(ship),
+        dt, launchAlienWingmen: (ship) => launchHaruhiAlienWingmen(team, ship),
+        launchRandomBeam: (ship) => launchHaruhiRandomBeam(team, ship),
       });
       if (team.match.bunnyHaruhiActive) updateBunnyTeamSupports(team, dt);
       updateVisionWaveSkill(team);

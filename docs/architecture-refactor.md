@@ -413,3 +413,9 @@ AI 批量对战脚本不再覆写策略方法统计视野波暂缓和侦察重�
 原始样本在本地忽略目录 `bench/architecture-acceptance/performance.json`、`f1-f6/performance.json`；并行浏览器期间的诊断采样另存 `performance-during-browser.json`，不作为最终独立对照。早期未优化结果仍在 `.cache/final-performance.log` 与 `.cache/optimized-performance.log`，没有用它们替换行为基线。本次测量只覆盖模拟 tick，不包含每帧投影、网络解码、GPU 或真实移动设备。
 
 本轮每项独立本地提交，未推送、未部署。任务开始时的两份版本草稿保留，不纳入提交。真人操作手感、真实远程网络与物理设备仍需另行验收。
+
+## 角色实际调用链复查：专属发射归属
+
+移除 `character-team → Team.launchHaruhi* → AircraftOperations` 回绕。长门技能机群、春日随机航空支援和随机光线的参数、几何及随机数消费归 `rules/character-launch.js`；Team 不再暴露三个专属发射门面，通用航空组件不再持有技能参数，航空端口移除随机数与表现能力。生成的飞行器继续经过同一成员校验并在原阶段推进/回收。
+
+`verify-aircraft-ownership` 补充实际生成和旧集合隔离断言；核心规则与原始固定种子回放验证技能数量、行为及随机数次序。

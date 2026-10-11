@@ -1,6 +1,5 @@
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";
-import { rngFor } from "../rng.js";
 
 export function createAircraftPort(team) {
   const source = (ship) => ship && Object.freeze({
@@ -20,13 +19,10 @@ export function createAircraftPort(team) {
     createScout: (x, y, options) => new Scout(team, x, y, options),
     createWingman: (x, y, zone) => new Wingman(team, x, y, zone),
     record: (action) => team.match.recordAction(team.seat, action),
-    randomRange: (min, max) => rngFor(team.match).range(min, max),
-    zoneForPoint: (x, y) => team.zoneForPoint(x, y),
     world: Object.freeze({
       zoneById: (id) => team.match.zoneById(id),
       clampX: (x, padding) => team.match.clampX(x, padding),
       clampY: (y, padding) => team.match.clampY(y, padding),
-      spawnBurst: (...args) => team.match.spawnBurst(...args),
     }),
   });
 }
