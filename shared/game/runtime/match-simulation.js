@@ -1,3 +1,6 @@
+import { createProjectilePhase } from "../rules/projectile-phase.js";
+import { advanceProjectiles } from "../systems/projectile-system.js";
+import { Projectile } from "../model/projectile.js";
 import { createHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
 import { createHullCollisionPort } from "../rules/collision-port.js";
 import { SHIP_EFFECTS } from "../rules/ship-effects.js";
@@ -6,7 +9,7 @@ import { CHARACTER_RULES } from "../rules/character-rules.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../constants.js";
 import { DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../characters.js";
-import { buildZones, clamp, distance } from "../math.js";
+import { buildZones, clamp } from "../math.js";
 import { createAmbientRng, createSeededRng } from "../rng.js";
 import { createAiRunner } from "../ai/bridge/runner.js";
 import { aiHandicapFor } from "../ai/params/index.js";
@@ -15,13 +18,10 @@ import { resolveScoutClashes as resolveMatchScoutClashes, resolveShipCollisions 
 import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, resolveBladeQueenContacts as resolveMatchBladeQueenContacts } from "../character-contacts.js";
 import { visionWavesCoverEntity as teamVisionWavesCoverEntity } from "../vision-wave.js";
 import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
-import { consumeKoizumiBarrierHit, koizumiBarrierGeometry, koizumiBarrierProjectileImpact, resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts, trackKoizumiBarrierProjectileCrossing, updateKoizumiBarrierRecovery } from "../koizumi-barrier.js";
-import { haruhiEsperOrb, projectileAbsorptionPoint } from "../haruhi-flagship.js";
+import { resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
 import { serializeHaruhiHeroPowerEvent, updateHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
 import { SHAMISEN_HUNT_KILL_EFFECT_SECONDS, ensureShamisenHuntTarget, resolveShamisenHuntKill } from "../shamisen-hunt.js";
-import { bunnyTeamSupportSources } from "../bunny-haruhi-support.js";
 import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
-import { supportOrbGeometry } from "../haruhi-support.js";
 import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { createMatchTelemetry, recordTelemetryAction, recordTelemetryAttack, recordTelemetryDamage, recordTelemetryShipLoss, serializeMatchTelemetry } from "../match-telemetry.js";
 import { FloatingText } from "../model/floating-text.js";
@@ -48,6 +48,7 @@ export class MatchSimulation {
     this.rules = CHARACTER_RULES;
     this.shipEffects = SHIP_EFFECTS;
     this.projectShip = projectShip;
+    this.createProjectilePhase = createProjectilePhase;
     this.mode = mode;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;
@@ -401,56 +402,16 @@ export class MatchSimulation {
     return true;
   }
 
+  spawnProjectile(profile) {
+    const projectile = new Projectile(profile);
+    this.projectiles.push(projectile);
+    return projectile;
+  }
+
   updateProjectiles(dt) {
-    // 两队每逻辑帧各准备一次几何，避免每颗炮弹都重复读取旗舰视野和护盾状态。
-    const barrierGeometryBySeat = {
-      A: koizumiBarrierGeometry(this.teamA),
-      B: koizumiBarrierGeometry(this.teamB),
-    };
-    for (const projectile of this.projectiles) {
-      const defendingTeam = this.enemyTeamBySeat(projectile.team.seat);
-      trackKoizumiBarrierProjectileCrossing(projectile, dt, defendingTeam, barrierGeometryBySeat[defendingTeam.seat]);
-      const barrierImpact = koizumiBarrierProjectileImpact(
-        projectile,
-        dt,
-        defendingTeam,
-        barrierGeometryBySeat[defendingTeam.seat],
-      );
-      if (barrierImpact) {
-        consumeKoizumiBarrierHit(defendingTeam, barrierImpact, projectile.team.seat);
-        projectile.discard();
-        this.spawnKoizumiBarrierImpact({
-          ...barrierImpact,
-          teamSeat: defendingTeam.seat,
-          sourceSeat: projectile.team.seat,
-          kind: "projectile",
-        });
-        continue;
-      }
-      const orb = haruhiEsperOrb(defendingTeam);
-      const absorbedAt = projectileAbsorptionPoint(projectile, dt, orb);
-      if (absorbedAt) {
-        projectile.discard();
-        this.spawnBurst(absorbedAt.x, absorbedAt.y, "#ff526f", 6);
-        continue;
-      }
-      if (this.bunnyHaruhiActive) {
-        const hit = bunnyTeamSupportSources(defendingTeam)
-          .map((source) => projectileAbsorptionPoint(projectile, dt, supportOrbGeometry(source)))
-          .filter(Boolean)
-          .sort((a, b) => distance(projectile.x, projectile.y, a.x, a.y) - distance(projectile.x, projectile.y, b.x, b.y))[0];
-        if (hit) {
-          projectile.discard();
-          this.spawnBurst(hit.x, hit.y, "#ff526f", 6);
-          continue;
-        }
-      }
-      projectile.update(dt, this);
-    }
-    this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
-    // 本帧所有穿越先重置静默计时，再判定修复，避免边界帧提前恢复。
-    updateKoizumiBarrierRecovery(this.teamA);
-    updateKoizumiBarrierRecovery(this.teamB);
+    const phase = this.createProjectilePhase(this);
+    this.projectiles = advanceProjectiles(this.projectiles, dt, phase);
+    phase.finish();
   }
 
   updateVisualEffects(dt) {

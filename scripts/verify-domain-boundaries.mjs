@@ -188,3 +188,5 @@ await import("./verify-bunny-ownership.mjs");
 await import("./verify-support-ownership.mjs");
 
 await import("./verify-plain-data.mjs");
+
+await import("./verify-projectile-phase.mjs");

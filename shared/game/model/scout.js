@@ -1,7 +1,6 @@
 // 战斗实体的状态与生命周期。
 import { clamp, distance, normalizeAngle } from "../math.js";
 import { rngFor } from "../rng.js";
-import { Projectile } from "../model/projectile.js";
 import { TAU, nextEntityId } from "../model/model-support.js";
 
 export class Scout {
@@ -203,20 +202,18 @@ export class Scout {
     const predictedX = target.x + (target.speed || 0) * Math.cos(target.angle || 0) * (targetDistance / 300);
     const predictedY = target.y + (target.speed || 0) * Math.sin(target.angle || 0) * (targetDistance / 300);
     const spread = clamp(targetDistance / 18, 4, 26);
-    match.projectiles.push(
-      new Projectile({
-        team: this.team,
-        source: this,
-        x: this.x,
-        y: this.y,
-        targetX: match.clampX(predictedX + rngFor(this.team.match).range(-spread, spread), 0),
-        targetY: match.clampY(predictedY + rngFor(this.team.match).range(-spread, spread), 0),
-        damage: this.effectiveDamage(),
-        speed: 240,
-        hitRadius: 8,
-        color: this.team.projectileColor,
-      }),
-    );
+    match.spawnProjectile({
+      team: this.team,
+      source: this,
+      x: this.x,
+      y: this.y,
+      targetX: match.clampX(predictedX + rngFor(this.team.match).range(-spread, spread), 0),
+      targetY: match.clampY(predictedY + rngFor(this.team.match).range(-spread, spread), 0),
+      damage: this.effectiveDamage(),
+      speed: 240,
+      hitRadius: 8,
+      color: this.team.projectileColor,
+    });
     match.recordAttack(this.team.seat, "projectile");
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate());
   }

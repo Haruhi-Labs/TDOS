@@ -1,6 +1,5 @@
 // 战斗实体的状态与生命周期。
 import { rngFor } from "../rng.js";
-import { Projectile } from "../model/projectile.js";
 import { nextEntityId } from "../model/model-support.js";
 
 export class Wingman {
@@ -92,20 +91,18 @@ export class Wingman {
     const targetX = target.x + Math.cos(angle + Math.PI * 0.5) * spread;
     const targetY = target.y + Math.sin(angle + Math.PI * 0.5) * spread;
 
-    match.projectiles.push(
-      new Projectile({
-        team: this.team,
-        source: this,
-        x: this.x,
-        y: this.y,
-        targetX: match.clampX(targetX, 0),
-        targetY: match.clampY(targetY, 0),
-        damage: this.damage,
-        speed: 260,
-        hitRadius: 7,
-        color: this.team.projectileColor,
-      }),
-    );
+    match.spawnProjectile({
+      team: this.team,
+      source: this,
+      x: this.x,
+      y: this.y,
+      targetX: match.clampX(targetX, 0),
+      targetY: match.clampY(targetY, 0),
+      damage: this.damage,
+      speed: 260,
+      hitRadius: 7,
+      color: this.team.projectileColor,
+    });
     match.recordAttack(this.team.seat, "projectile");
     this.cooldown = 1.4;
   }

@@ -6,7 +6,6 @@ import { clamp, distance, dot, lerp, quadraticLengthApprox, quadraticPoint, quad
 import { rngFor } from "../rng.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
 import { normalizeDamageContext } from "../damage.js";
-import { Projectile } from "../model/projectile.js";
 import { FORMATION_DAMAGE_SHARE, nextEntityId } from "../model/model-support.js";
 
 export class Ship {
@@ -819,20 +818,18 @@ export class Ship {
     const damage = this.team.match.shipEffects.prepareShotDamage(this, this.effectiveDamage(), match);
 
     const projectileProfile = this.team.match.rules.projectileProfile(this);
-    match.projectiles.push(
-      new Projectile({
-        team: this.team,
-        source: this,
-        x: this.x,
-        y: this.y,
-        targetX: match.clampX(aimX, 0),
-        targetY: match.clampY(aimY, 0),
-        damage,
-        speed: 240,
-        hitRadius: 8,
-        ...projectileProfile,
-      }),
-    );
+    match.spawnProjectile({
+      team: this.team,
+      source: this,
+      x: this.x,
+      y: this.y,
+      targetX: match.clampX(aimX, 0),
+      targetY: match.clampY(aimY, 0),
+      damage,
+      speed: 240,
+      hitRadius: 8,
+      ...projectileProfile,
+    });
     match.recordAttack(this.team.seat, "projectile");
     this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
   }
