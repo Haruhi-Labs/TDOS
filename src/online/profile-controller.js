@@ -1,4 +1,5 @@
-import { CHARACTER_DEFS, CHARACTER_ORDER, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters.js";
+import { characterPresentation } from "../character-presentation.js";
+import { CHARACTER_ORDER, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters.js";
 import {
   getLoadout,
   getNickname as getProfileNickname,
@@ -46,7 +47,7 @@ export function storeLoadout(loadout) {
 
 export function createOnlineProfileController({ ui, getPlayerLoadout }) {
   function roleSummaryLine(slotKey, characterId) {
-    const def = CHARACTER_DEFS[characterId];
+    const def = characterPresentation(characterId);
     const stat = def.stats;
     return `${localizedSlotLabel(slotKey)} ${def.shortName} | ${t("舰体")}${stat.hp} | ${t("能量")}${stat.energy} | ${t("航速")}${stat.speed} | ${t("机动")}${stat.turnRate.toFixed(2)}`;
   }
@@ -63,9 +64,9 @@ export function createOnlineProfileController({ ui, getPlayerLoadout }) {
 
   function updateShipSwitchLabels(loadout) {
     const labelMap = {
-      main: `${localizedSlotLabel("main", "short")} ${CHARACTER_DEFS[loadout.main].shortName}`,
-      sub1: `${localizedSlotLabel("sub1", "short")} ${CHARACTER_DEFS[loadout.sub1].shortName}`,
-      sub2: `${localizedSlotLabel("sub2", "short")} ${CHARACTER_DEFS[loadout.sub2].shortName}`,
+      main: `${localizedSlotLabel("main", "short")} ${characterPresentation(loadout.main).shortName}`,
+      sub1: `${localizedSlotLabel("sub1", "short")} ${characterPresentation(loadout.sub1).shortName}`,
+      sub2: `${localizedSlotLabel("sub2", "short")} ${characterPresentation(loadout.sub2).shortName}`,
     };
     for (const button of ui.shipSwitchButtons) {
       button.textContent = labelMap[button.dataset.ship] || button.textContent;
@@ -85,7 +86,7 @@ export function createOnlineProfileController({ ui, getPlayerLoadout }) {
       if (!select) continue;
       select.innerHTML = "";
       for (const characterId of CHARACTER_ORDER) {
-        const def = CHARACTER_DEFS[characterId];
+        const def = characterPresentation(characterId);
         const option = document.createElement("option");
         option.value = characterId;
         option.textContent = `${def.shortName} · ${def.title}`;

@@ -1,4 +1,4 @@
-import { skillMetaForCharacter } from "../../shared/game/characters.js";
+import { skillPresentation as skillMetaForCharacter } from "../character-presentation.js";
 import { BUNNY_HARUHI_CONFIG as C } from "../../shared/game/bunny-haruhi-config.js";
 import { BUNNY_VIEW_PARAMS } from "../../shared/game/bunny-haruhi-view-params.js";
 import { STATUS_EFFECT_DEFS } from "../../shared/game/status-effect-definitions.js";

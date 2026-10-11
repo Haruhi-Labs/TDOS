@@ -1,3 +1,4 @@
+import { characterPresentation } from "./character-presentation.js";
 import { createSkillDetails, skillPreviewHTML } from "./character-select/skill-details.js";
 import { CHARACTER_ORDER, CHARACTER_DEFS, cloneLoadout, DEFAULT_TEAM_LOADOUT } from "../shared/game/characters.js";
 import { isMobile } from "./mobile.js";
@@ -45,7 +46,7 @@ const HAS_PORTRAIT = new Set([
 
 // 把单页内容渲染为 HTML 字符串（base 与 flipper 共享同一份模板）
 function renderLeftPageHTML(charId, loadout) {
-  const def = CHARACTER_DEFS[charId];
+  const def = characterPresentation(charId);
   const idx = CHARACTER_ORDER.indexOf(charId);
 
   return `
@@ -81,7 +82,7 @@ function renderSealHTML(charId, loadout) {
 }
 
 function renderRightPageHTML(charId, loadout) {
-  const def = CHARACTER_DEFS[charId];
+  const def = characterPresentation(charId);
   const idx = CHARACTER_ORDER.indexOf(charId);
   const stats = def.stats;
 
@@ -271,7 +272,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
 
   const tabBtns = {};
   CHARACTER_ORDER.forEach((charId, idx) => {
-    const def = CHARACTER_DEFS[charId];
+    const def = characterPresentation(charId);
     const tab = document.createElement("button");
     tab.type = "button";
     tab.className = "cs-tab";
@@ -649,7 +650,7 @@ function createDesktopCharacterSelect(onLaunch, opts = {}) {
     const charId = state.loadout[slotKey];
     const els = fleetSlots[slotKey];
     if (charId) {
-      const def = CHARACTER_DEFS[charId];
+      const def = characterPresentation(charId);
       els.el.classList.add("filled");
       els.name.textContent = def.shortName;
       els.icon.style.backgroundSize = "cover";
@@ -1015,7 +1016,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   // 轨道顺序 = [末位克隆, 0, 1, …, N-1, 首位克隆]，真实第 idx 张在 DOM 第 idx+1 位。
   const N = CHARACTER_ORDER.length;
   function makeSlide(charId, labelIdx) {
-    const def = CHARACTER_DEFS[charId];
+    const def = characterPresentation(charId);
     const slide = document.createElement("div");
     slide.className = "csm-slide";
     slide.innerHTML = `
@@ -1048,7 +1049,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
     d.type = "button";
     d.className = "csm-dot";
     d.dataset.idx = String(i);
-    d.setAttribute("aria-label", CHARACTER_DEFS[id].shortName);
+    d.setAttribute("aria-label", characterPresentation(id).shortName);
     d.addEventListener("click", () => go(i));
     els.dots.appendChild(d);
   });
@@ -1243,7 +1244,7 @@ function createMobileCharacterSelect(onLaunch, opts = {}) {
   }
 
   function renderInfo() {
-    const def = CHARACTER_DEFS[curId()];
+    const def = characterPresentation(curId());
     if (els.flavor) els.flavor.textContent = def.flavor;
     els.stats.innerHTML = MOBILE_STATS.map(([label, key]) => {
       let v = def.stats[key];

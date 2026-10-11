@@ -1,5 +1,5 @@
 import { copyPlainData, freezePlainData } from "../shared/data/plain-data.js";
-import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../shared/game/characters.js";
+import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../shared/game/characters.js";
 import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
 import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
 import { clamp, distance } from "../shared/game/math.js";

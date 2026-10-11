@@ -1,8 +1,9 @@
 import { BUNNY_HARUHI_CONFIG as BUNNY } from "./bunny-haruhi-config.js";
+import { freezePlainData } from "../data/plain-data.js";
 
 const SHIP_HULL_SIZE_SCALE = 1.28;
 
-export const CHARACTER_ORDER = [
+export const CHARACTER_ORDER = Object.freeze([
   "haruhi",
   "koizumi",
   "yuki",
@@ -12,9 +13,9 @@ export const CHARACTER_ORDER = [
   "asakura",
   "shamisen",
   "bunny_haruhi",
-];
+]);
 
-export const CHARACTER_DEFS = {
+export const CHARACTER_DEFS = freezePlainData({
   bunny_haruhi: {
     id: BUNNY.characterId, name: "兔女郎春日", shortName: "兔女郎春日",
     title: "舞台与变身支援舰", flavor: "让整个战场听见这首歌", stats: BUNNY.baseStats,
@@ -205,7 +206,7 @@ export const CHARACTER_DEFS = {
       description: "12秒内射速提升，自身子弹变为猫爪，命中同一敌舰4次时引爆抓痕，造成额外80点伤害。",
     },
   },
-};
+});
 
 export const DEFAULT_TEAM_LOADOUT = Object.freeze({
   main: "haruhi",

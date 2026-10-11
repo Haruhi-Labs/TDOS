@@ -204,3 +204,7 @@ await import("./verify-ai-debug-projection.mjs");
 await import("./verify-haruhi-flagship-runtime.mjs");
 
 await import("./verify-vision-wave-phase.mjs");
+
+await import("./verify-character-configuration.mjs");
+
+await import("./verify-character-localization.mjs");

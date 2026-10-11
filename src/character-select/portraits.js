@@ -1,4 +1,4 @@
-import { CHARACTER_DEFS } from "../../shared/game/characters.js";
+import { characterPresentation } from "../character-presentation.js";
 import { t } from "../i18n.js";
 
 export const CHARACTER_THEMES = {
@@ -172,7 +172,7 @@ function generatePortrait(charId, width, height, color = "blue") {
   c.height = height;
   const ctx = c.getContext("2d");
   const theme = CHARACTER_THEMES[charId];
-  const def = CHARACTER_DEFS[charId];
+  const def = characterPresentation(charId);
 
   // 复古星空底色（统一海军蓝调）
   const bgGrad = ctx.createRadialGradient(

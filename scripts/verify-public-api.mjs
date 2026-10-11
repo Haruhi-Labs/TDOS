@@ -23,11 +23,12 @@ const contracts = new Map([
     "randomAiLoadout", "skillMetaForCharacter", "slotLabel", "throttleForGear", "throttleGearForValue",
   ]],
   ["../src/i18n.js", [
-    "SUPPORTED_LOCALES", "applyCoreLocale", "bindLanguageSelector", "characterName", "characterShortName",
+    "SUPPORTED_LOCALES", "bindLanguageSelector", "characterName", "characterShortName",
     "characterText", "fleetSideLabel", "formatClockTime", "formatSeconds", "getLocale", "getLocaleInfo",
     "initI18n", "languageSelectorHTML", "localizeFloatingText", "seatLabel", "setLocale",
     "shipCharacterName", "shipDisplayName", "skillText", "slotLabel", "splitLabel", "t", "translateServerText",
   ]],
+  ["../src/character-presentation.js", ["characterPresentation", "skillPresentation"]],
   ["../src/character-select.js", [
     "CHARACTER_THEMES", "TEAM_COLORS", "createCharacterSelect", "drawInGamePortrait",
     "getLoadedPortraitImage", "getPortrait", "invalidatePortrait", "loadPortraitImage",

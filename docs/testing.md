@@ -137,5 +137,9 @@ env -u NETWORK_WS_URL npm run test:network:load
 
 `verify-ai-debug-projection` 随架构专项验证策略计划、动态决策与侦察方案的嵌套引用隔离，覆盖消费方修改和策略后续修改两个方向。优化序列化复制范围时仍需原始回放与单人完整帧性能对照。
 
+`verify-character-configuration` 随架构专项验证九角色的共享定义、阵容及出生身份不可改写；自定义机体、训练配置与对外投影没有反向写入引用。教程训练仍经舰体操作替换配置，普通战斗和教程行为由核心与原始回放继续验证。
+
 
 `verify-haruhi-flagship-runtime` 覆盖强化寿命私有化、同帧保护、解锁先于运动换算、续期不重乘及净化保留常驻支援。`verify-vision-wave-phase` 覆盖四组双边目标先采样、独立只读句柄、伪造句柄与错误所有者拒绝、净化顺序、有效反馈和可替换端口；同时用真实朝仓镜像对局防止先结算一席吞掉另一席命中。两项随 `test:architecture` 执行。
+
+`verify-character-localization` 覆盖三语言、九角色的只读展示投影与战场技能名称，确认切换语言不会改写共享定义、已有对局或新建对局的权威快照；技能浏览器专项另外核对桌面和移动端的角色名称及定位文案。

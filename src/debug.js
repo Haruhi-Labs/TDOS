@@ -1,3 +1,4 @@
+import { characterPresentation } from "./character-presentation.js";
 import { gameStorageKey } from "./deployment.js";
 import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
 import { FIRE_ARC_BANDS } from "../shared/game/combat-rules.js";
@@ -278,7 +279,7 @@ function botContactLabel(contact) {
 }
 
 function roleSummaryLine(slotKey, characterId) {
-  const def = CHARACTER_DEFS[characterId];
+  const def = characterPresentation(characterId);
   const stat = def.stats;
   return `${slotLabel(slotKey)} ${characterShortName(characterId, def.shortName)} | ${t("舰体")}${stat.hp} | ${t("能量")}${stat.energy} | ${t("航速")}${stat.speed} | ${t("机动")}${stat.turnRate.toFixed(2)}`;
 }
@@ -296,7 +297,7 @@ function renderLoadoutPreview(loadout, target) {
 }
 
 function createRoleOption(characterId) {
-  const def = CHARACTER_DEFS[characterId];
+  const def = characterPresentation(characterId);
   const option = document.createElement("option");
   option.value = characterId;
   option.textContent = `${characterShortName(characterId, def.shortName)} · ${def.title}`;

@@ -39,7 +39,10 @@ export class Team {
     this.name = name;
     this.color = TEAM_COLORS[seat];
     this.projectileColor = TEAM_PROJECTILE_COLORS[seat];
-    this.loadout = normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
+    Object.defineProperty(this, "loadout", {
+      enumerable: true,
+      value: Object.freeze(normalizeLoadout(options.loadout || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT)),
+    });
 
     this.splitLevel = 0;
     // 单人难度对本队的影响(仅当本队由AI控制时,由 MatchSimulation 按难度让分表写入):

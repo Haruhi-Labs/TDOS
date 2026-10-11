@@ -7,18 +7,27 @@ import { rngFor } from "../rng.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
 import { normalizeDamageContext } from "../damage.js";
 import { FORMATION_DAMAGE_SHARE, nextEntityId } from "../model/model-support.js";
+import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 
 export class Ship {
+  #base;
+
+  get base() { return this.#base; }
+
   constructor(team, key, x, y, facing, options = {}) {
     this.id = nextEntityId(team.match);
     this.kind = "ship";
     this.team = team;
     this.key = key;
     this.slotKey = options.slotKey || key;
-    this.characterId = options.characterId;
-    this.character = getCharacterDef(this.characterId);
-    this.base = options.baseStats || this.character.stats;
-    if (options.entityRole) this.entityRole = options.entityRole;
+    // 角色身份在创建时固定；换队、编队和形态属于独立的运行状态。
+    Object.defineProperties(this, {
+      characterId: { enumerable: true, value: options.characterId },
+      character: { enumerable: true, value: getCharacterDef(options.characterId) },
+      entityRole: { enumerable: Boolean(options.entityRole), value: options.entityRole || undefined },
+    });
+    this.#base = options.baseStats
+      ? freezePlainData(copyPlainData(options.baseStats)) : this.character.stats;
     this.isAuxiliary = Boolean(options.isAuxiliary);
     this.attachToMain = options.attachToMain !== false;
     this.roleLabel = options.roleLabel || slotLabel(this.slotKey);
@@ -129,7 +138,7 @@ export class Ship {
   }
 
   configureTraining(stats, position) {
-    this.base = { ...this.base, ...stats };
+    this.#base = freezePlainData({ ...this.#base, ...copyPlainData(stats) });
     this.maxHp = this.hp = stats.hp;
     this.maxEnergy = this.energy = stats.energy;
     this.x = position.x;

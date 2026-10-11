@@ -190,6 +190,12 @@ try {
     const { context, page } = await enter(viewport, mobile, locale);
     await page.locator(mobile ? ".csm-dot" : ".cs-tab").nth(onlyCharacter ? CHARACTER_ORDER.indexOf(onlyCharacter) : index).click();
     if (!mobile) await page.locator(".cs-page-flipper").waitFor({ state: "detached" });
+    const characterIndex = onlyCharacter ? CHARACTER_ORDER.indexOf(onlyCharacter) : index;
+    const text = CHARACTER_TEXT[locale.slice(0, 2)][CHARACTER_ORDER[characterIndex]];
+    const name = mobile ? page.locator(".csm-slide .csm-name").nth(characterIndex + 1) : page.locator(".cs-book > .cs-page-left .cs-page-fullname");
+    const title = mobile ? page.locator(".csm-slide .csm-title").nth(characterIndex + 1) : page.locator(".cs-book > .cs-page-left .cs-page-roman");
+    assert.equal(await name.textContent(), text.name, "角色名必须消费当前语言投影");
+    assert.equal(await title.textContent(), text.title, "角色定位文案必须消费当前语言投影");
     await page.locator(mobile ? ".csm .cs-skill-trigger" : ".cs-book > .cs-page-right .cs-skill-trigger").nth(onlyCharacter && viewport.height === 540 ? 1 : 0).click();
     await page.locator(".cs-skill-popover[data-open=true]").waitFor();
     const geometry = await verifyGeometry(page, viewport);

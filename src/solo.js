@@ -1,8 +1,9 @@
+import { characterPresentation } from "./character-presentation.js";
 import { BUNNY_HARUHI_CONFIG } from "../shared/game/bunny-haruhi-config.js";
 import { getPortraitAssetUrl } from "./character-select/portraits.js";
 import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
 import { createSoloSession } from "./solo/session.js";
-import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, randomAiLoadout, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../shared/game/characters.js";
+import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, randomAiLoadout, cloneLoadout, normalizeLoadout } from "../shared/game/characters.js";
 import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
 import { clamp, distance } from "../shared/game/math.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
@@ -305,7 +306,7 @@ function bindPressButton(button, handler) {
 }
 
 function createRoleOption(characterId) {
-  const def = CHARACTER_DEFS[characterId];
+  const def = characterPresentation(characterId);
   const option = document.createElement("option");
   option.value = characterId;
   option.textContent = `${def.shortName} · ${def.title}`;
@@ -681,7 +682,7 @@ function resultSideHTML(loadout, faction, sideLabel, sideClass) {
       const id = loadout[slot];
       const src = getPortraitAssetUrl(id, faction);
       const role = localizedSlotLabel(slot, "short");
-      const name = characterShortName(id, CHARACTER_DEFS[id] ? CHARACTER_DEFS[id].shortName : id);
+      const name = characterShortName(id, CHARACTER_DEFS[id] ? characterPresentation(id).shortName : id);
       return (
         `<div class="rl-card${slot === "main" ? " rl-main" : ""}" style="--i:${i}">` +
         `<span class="rl-portrait"><img src="${src}" alt="" loading="lazy" draggable="false"></span>` +
