@@ -5,7 +5,8 @@ import { serializeKoizumiBarrier } from "./koizumi-barrier.js";
 import { STATUS_EFFECT_DEFS } from "./status-effect-definitions.js";
 import { BUNNY_VIEW_PARAMS } from "./bunny-haruhi-view-params.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
-import { bunnyStageEnabled, bunnyBroadcastsShip } from "./bunny-haruhi-runtime.js";
+import { bunnyBroadcastsShip } from "./bunny-haruhi-runtime.js";
+import { bunnyStageEnabled } from "./rules/bunny-stage-port.js";
 import { bunnyCompanionForm, bunnyReliableState } from "./bunny-companion-runtime.js";
 
 // 只发送该图标需要的文案参数，避免覆盖 duration 等状态寿命字段。

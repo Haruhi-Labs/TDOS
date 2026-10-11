@@ -6,7 +6,8 @@ import { resolveHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, re
 import { resolveKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
 import { resolveKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
 import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
-import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../rules/bunny-stage-port.js";
 import { resolveVisionWavePurges } from "../vision-wave-purge.js";
 
 // 阶段名与顺序是规则契约。角色只能接入已声明阶段，不能任意广播事件改变消费顺序。

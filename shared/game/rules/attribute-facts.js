@@ -1,6 +1,6 @@
 import { haruhiBoostActive } from "../haruhi-flagship.js";
 import { bunnyCompanionForm, bunnyReliableState } from "../bunny-companion-runtime.js";
-import { bunnyStageEnabled } from "../bunny-haruhi-runtime.js";
+import { bunnyStageEnabled } from "../rules/bunny-stage-port.js";
 import { isKoizumiOrbActive } from "../koizumi-orb.js";
 
 const formFacts = (form) => form ? Object.freeze({ form: form.form, positiveSuppressed: form.positiveSuppressed, immunityUntil: form.immunityUntil }) : null;

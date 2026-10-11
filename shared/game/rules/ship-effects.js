@@ -1,6 +1,7 @@
 import { initializeKoizumiOrb, dispelKoizumiOrb, updateKoizumiOrb } from "../koizumi-orb.js";
 import { resetHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
-import { initializeBunnyShip, cleanseBunnyShipControl, purgeBunnyShipForm, commitBunnyTransform } from "../bunny-haruhi-runtime.js";
+import { initializeBunnyShip, purgeBunnyShipForm, commitBunnyTransform } from "../bunny-haruhi-runtime.js";
+import { cleanseBunnyShipControl, initializeBunnyStageReceiver } from "../rules/bunny-stage-port.js";
 import { purgeBunnyReliableEffect, initializeBunnyReliableReceiver } from "../bunny-companion-runtime.js";
 import { initializeClawMarks, clearClawMarks, activeClawMarks, expireClawMarks, registerClawHit } from "../shamisen-claw.js";
 
@@ -26,6 +27,7 @@ export const SHIP_EFFECTS = Object.freeze({
     resetHaruhiHeroPowerShock(ship);
     initializeClawMarks(ship);
     initializeBunnyReliableReceiver(ship);
+    initializeBunnyStageReceiver(ship);
     initializeBunnyShip(ship, capabilities?.createShip);
   },
   clearControl(ship) {

@@ -6,7 +6,8 @@ import { energyRateForThrottle } from "../throttle.js";
 import { isKoizumiOrbActive, isKoizumiOrbReturning } from "../koizumi-orb.js";
 import { haruhiOtherworlderReady, haruhiBoostActive } from "../haruhi-flagship.js";
 import { bunnyEnergyRate, isBunnyEncoreLocked, canBunnyLaunchScout } from "../bunny-haruhi.js";
-import { bunnyStageEnabled, bunnyBroadcastsShip } from "../bunny-haruhi-runtime.js";
+import { bunnyBroadcastsShip } from "../bunny-haruhi-runtime.js";
+import { bunnyStageEnabled } from "../rules/bunny-stage-port.js";
 import { bunnyOwnerDamageBlocked, isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
 import { shamisenHuntDamageMultiplier } from "../shamisen-hunt.js";
 

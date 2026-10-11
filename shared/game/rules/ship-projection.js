@@ -4,7 +4,7 @@ import { serializeKoizumiOrb } from "../koizumi-orb.js";
 import { haruhiOtherworlderReady } from "../haruhi-flagship.js";
 import { serializeHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
 import { serializeBunnyCompanion } from "../bunny-companion-runtime.js";
-import { serializeBunnyShip } from "../bunny-haruhi-runtime.js";
+import { serializeBunnyShip } from "../rules/bunny-projection.js";
 
 export function projectShip(ship) {
   const fleetEnergy = ship.team.fleetEnergyForShip(ship);

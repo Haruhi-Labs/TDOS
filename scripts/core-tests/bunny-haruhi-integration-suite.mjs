@@ -6,9 +6,8 @@ import { normalizeLoadout } from "../../shared/game/characters.js";
 import { validateMatchAction } from "../../shared/protocol/match-actions.js";
 import { createInputQueue } from "../../server/input-queue.js";
 import { applyStatePatch, createStatePatch, quantizeNetworkState } from "../../shared/network-patch.js";
-import {
-  resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility,
-} from "../../shared/game/bunny-haruhi-runtime.js";
+import { refreshBunnyVisibility } from "../../shared/game/bunny-haruhi-runtime.js";
+import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../../shared/game/rules/bunny-stage-port.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} 应接近 ${b}`);
 function simulation(stage = false, enabled = true, opponentMain = "kyon") {
