@@ -1,0 +1,24 @@
+import assert from "node:assert/strict";
+import { ShipStatus } from "../shared/game/systems/ship-status.js";
+import { MatchSimulation } from "../shared/game-core.js";
+
+const status = new ShipStatus();
+status.activate("reliableUntil", 15, 3);
+const before = status.effects;
+assert.throws(() => { before.reliableUntil = 0; }, TypeError);
+assert.equal(status.clear("reliableUntil", true, 3, 10), false);
+assert.equal(status.clear("reliableUntil", true, 4, 10), true);
+assert.equal(before.reliableUntil, 15);
+assert.equal(status.effects.reliableUntil, 0);
+status.charge(2, 4);
+assert.equal(status.consumeCharge(), 2);
+assert.equal(status.consumeCharge(), 1);
+const ship = new MatchSimulation({ seed: 51 }).teamA.ships.main;
+assert.throws(() => { ship.effects = {}; }, TypeError);
+assert.equal(ship.activeSkillEffectStartedTicks, undefined);
+ship.silenceUntil(10);
+ship.silenceUntil(5);
+assert.equal(ship.effects.silencedUntil, 10);
+ship.clearControlEffects();
+assert.equal(ship.effects.silencedUntil, 0);
+console.log("舰船效果校验通过：效果与生效帧共同持有、同帧净化保护、充能单次消费及历史读数隔离。");

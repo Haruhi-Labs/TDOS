@@ -12,7 +12,7 @@ const simulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: loadout
 simulation.teamA.configureFormation(2);
 for (const key of ["main", "sub1"]) {
   const ship = simulation.teamA.ships[key];
-  ship.effects.stunnedUntil = simulation.elapsed + 1;
+  ship.stunUntil(simulation.elapsed + 1);
   const team = simulation.serializeState().teams.A;
   assert.equal(isShipSelectable(team.ships[key]), true, "眩晕只禁止操作，不能使当前舰不可选择");
   assert.equal(resolveSelectedShipKey(team, key), key, "眩晕时必须保留选舰");
@@ -25,7 +25,7 @@ for (const key of ["main", "sub1"]) {
     key === "main" ? matchActions.castFlagshipSkill() : matchActions.castSubSkill({ shipKey: key, targetX: 600, targetY: 700 }),
   ]) assert.equal(simulation.applyActionForSeat("A", action), false, "眩晕时战斗操作必须无效");
   assert.equal(JSON.stringify(ship.serialize()), before, "被拒绝的动作不能改变舰船状态");
-  ship.effects.stunnedUntil = 0;
+  ship.clearTimedEffect("stunnedUntil", false);
   assert.equal(simulation.applyActionForSeat("A", matchActions.setThrottle({ shipKey: key, throttle: 1.4 })), true, "眩晕解除后应可继续操作同一舰");
 }
 const team = simulation.serializeState().teams.A;
@@ -88,14 +88,16 @@ try {
         await page.evaluate(({ key, status }) => {
           const f = window.selectionFixture;
           const ship = f.simulation.teamA.ships[key];
-          ship.effects.stunnedUntil = status === "stun" ? f.simulation.elapsed + 30 : 0;
+          ship.clearTimedEffect("stunnedUntil", false);
+          if (status === "stun") ship.stunUntil(f.simulation.elapsed + 30);
           ship.heroPowerShock = { hitAt: f.simulation.elapsed, lockUntil: status === "shock" ? f.simulation.elapsed + 30 : 0, recoveryUntil: status === "shock" ? f.simulation.elapsed + 35 : 0 };
           ship.alive = status !== "dead";
           f.refresh();
         }, { key, status });
       } else {
         const ship = onlineSimulation.teamA.ships[key];
-        ship.effects.stunnedUntil = status === "stun" ? 30 : 0;
+        ship.clearTimedEffect("stunnedUntil", false);
+        if (status === "stun") ship.stunUntil(30);
         ship.heroPowerShock = { hitAt: 0, lockUntil: status === "shock" ? 30 : 0, recoveryUntil: status === "shock" ? 35 : 0 };
         ship.alive = status !== "dead";
         snapshotSeq++;

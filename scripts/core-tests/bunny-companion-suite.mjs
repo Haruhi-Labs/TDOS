@@ -142,7 +142,7 @@ function reliableCheck() {
   prepareBunnyCompanions(sim);
   assert.equal(owner.bunnyReliable, undefined);
   assert.equal(companion.bunnyReliable, undefined);
-  companion.effects.silencedUntil = 41;
+  companion.silenceUntil(41);
   sim.elapsed = 40;
   prepareBunnyCompanions(sim);
   assert.equal(companion.bunnyCompanion.nextReliableAt, 60);
@@ -158,7 +158,7 @@ function reliableCheck() {
     const other = setup();
     other.sim.elapsed = 20;
     if (blocker === "seal") other.team.forceCharacterSkillsDisabled = true;
-    if (blocker === "stun") other.companion.effects.stunnedUntil = 21;
+    if (blocker === "stun") other.companion.stunUntil(21);
     if (blocker === "knockback") other.companion.forcedKnockback = { endsAt: 21 };
     prepareBunnyCompanions(other.sim);
     assert.equal(other.owner.bunnyReliable, undefined, `${blocker}应阻止触发`);

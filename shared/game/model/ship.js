@@ -1,3 +1,4 @@
+import { ShipStatus } from "../systems/ship-status.js";
 import { WeaponCycle } from "../systems/weapon-cycle.js";
 import { resolveHullDamage } from "../systems/hull-damage.js";
 import { createWeaponPort, createDamagePort } from "../rules/ship-combat-port.js";
@@ -15,6 +16,8 @@ import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 
 export class Ship {
   #base;
+  #status = new ShipStatus();
+  get effects() { return this.#status.effects; }
   #weapon;
   get cooldown() { return this.#weapon.remaining; }
   set cooldown(value) { this.#weapon.reset(value); }
@@ -72,17 +75,6 @@ export class Ship {
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
 
-    this.effects = {
-      reliableUntil: 0,
-      bladeQueenUntil: 0,
-      catPawUntil: 0,
-      silencedUntil: 0,
-      stunnedUntil: 0,
-      nextShotDamageMultiplier: 1,
-    };
-    // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
-    // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
-    this.activeSkillEffectStartedTicks = Object.create(null);
     this.team.match.shipEffects.initialize(this);
   }
 
@@ -163,18 +155,15 @@ export class Ship {
   }
 
   activateTimedEffect(key, duration) {
-    this.effects[key] = this.team.match.elapsed + duration;
-    this.markActiveSkillEffectStarted(key);
+    this.#status.activate(key, this.team.match.elapsed + duration, this.team.match.tick);
   }
 
-  silenceUntil(until) {
-    this.effects.silencedUntil = Math.max(Number(this.effects.silencedUntil) || 0, until);
-  }
-
+  silenceUntil(until) { this.#status.extend("silencedUntil", until); }
   stunUntil(until) {
-    this.effects.stunnedUntil = Math.max(this.effects.stunnedUntil || 0, until);
+    this.#status.extend("stunnedUntil", until);
     this.applyControlSpeedLimit();
   }
+  chargeNextShot(multiplier) { this.#status.charge(multiplier, this.team.match.tick); }
 
   boostCombatTempo(multiplier) {
     this.speed *= multiplier;
@@ -286,8 +275,7 @@ export class Ship {
   }
 
   clearControlEffects() {
-    this.effects.silencedUntil = 0;
-    this.effects.stunnedUntil = 0;
+    this.#status.clearControl();
     this.collisionSlowUntil = 0;
     this.forcedKnockback = null;
     this.team.match.shipEffects.clearControl(this);
@@ -395,32 +383,15 @@ export class Ship {
     return this.team.match.rules.damageTakenMultiplier(this);
   }
 
-  markActiveSkillEffectStarted(effectKey) {
-    this.activeSkillEffectStartedTicks[effectKey] = this.team.match.tick;
-  }
-
+  markActiveSkillEffectStarted(key) { this.#status.mark(key, this.team.match.tick); }
   canClearActiveSkillEffect(key, preserveCurrentTick) {
-    return !preserveCurrentTick || this.activeSkillEffectStartedTicks[key] !== this.team.match.tick;
+    return this.#status.canClear(key, preserveCurrentTick, this.team.match.tick);
   }
-
   clearTimedEffect(key, preserveCurrentTick) {
-    if (!this.canClearActiveSkillEffect(key, preserveCurrentTick)) return false;
-    const cleared = this.hasEffect(key);
-    this.effects[key] = 0;
-    delete this.activeSkillEffectStartedTicks[key];
-    return cleared;
+    return this.#status.clear(key, preserveCurrentTick, this.team.match.tick, this.team.match.elapsed);
   }
-
-  forgetActiveSkillEffect(key) {
-    delete this.activeSkillEffectStartedTicks[key];
-  }
-
-  consumeNextShotMultiplier() {
-    const multiplier = this.effects.nextShotDamageMultiplier;
-    this.effects.nextShotDamageMultiplier = 1;
-    this.forgetActiveSkillEffect("nextShotDamageMultiplier");
-    return multiplier;
-  }
+  forgetActiveSkillEffect(key) { this.#status.forget(key); }
+  consumeNextShotMultiplier() { return this.#status.consumeCharge(); }
 
   clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
     return this.team.match.shipEffects.clearPositive(this, preserveCurrentTick);

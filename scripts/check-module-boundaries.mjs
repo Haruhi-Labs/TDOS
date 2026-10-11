@@ -166,7 +166,7 @@ for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projecti
     "shared/game/model/model-support.js",
     "shared/data/plain-data.js",
     "shared/game/systems/ship-navigation.js", "shared/game/rules/navigation-port.js",
-    "shared/game/systems/weapon-cycle.js", "shared/game/systems/hull-damage.js", "shared/game/rules/ship-combat-port.js",
+    "shared/game/systems/ship-status.js", "shared/game/systems/weapon-cycle.js", "shared/game/systems/hull-damage.js", "shared/game/rules/ship-combat-port.js",
   ]);
   for (const specifier of importSpecifiers(resolve(ROOT, fileName))) {
     const target = display(resolveImport(resolve(ROOT, fileName), specifier));

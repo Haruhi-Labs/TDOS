@@ -211,9 +211,9 @@ function encoreMovementCheck() {
   const companion = sim.teamA.extraShips[0];
   const companionSpeed = sampleSpeed(companion, 100);
   near(sampleSpeed(companion, 0), companionSpeed * 0.15);
-  ship.effects.stunnedUntil = 91;
+  ship.stunUntil(91);
   assert.equal(sampleSpeed(ship, 0), 0, "激奏不免疫控制");
-  ship.effects.stunnedUntil = 0;
+  ship.clearTimedEffect("stunnedUntil", false);
   sim.teamA.forceCharacterSkillsDisabled = true;
   near(sampleSpeed(ship, 0), fullSpeed * 0.15);
   sim.teamA.forceCharacterSkillsDisabled = false;

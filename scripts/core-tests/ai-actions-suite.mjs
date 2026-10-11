@@ -88,7 +88,7 @@ function permissionCheck() {
     const ship = sim.teamB.ships.main;
     const port = createActionPort(sim, "B", { mode });
     ship.throttle = throttleForGear(4);
-    ship.effects.stunnedUntil = sim.elapsed + 5;
+    ship.stunUntil(sim.elapsed + 5);
     assert.equal(ship.canControl(), false);
     const accepted = port.submit(aiActions.setThrottle({ shipKey: "main", throttle: throttleForGear(1) }));
     if (mode === AI_ACTION_MODES.DISPATCH) {

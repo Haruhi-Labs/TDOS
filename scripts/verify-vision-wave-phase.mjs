@@ -38,7 +38,7 @@ for (const team of [sim.teamA, sim.teamB]) {
   team.ships.main.displaceTo(720, 720);
   assert.equal(team.castFlagshipSkill(), true);
   // 非本帧效果才能被净化，保持原有保护约定。
-  team.ships.main.effects.silencedUntil = 10;
+  team.ships.main.silenceUntil(10);
 }
 const sampled = sim.visionWavePurgePort.targets("A", "A");
 assert.equal(sampled[0].id, sim.teamA.ships.main.id);

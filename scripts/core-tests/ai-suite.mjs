@@ -570,13 +570,13 @@ function aiAsakuraVisionWaveDecisionCheck() {
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
 
-  enemyMain.effects.reliableUntil = sim.elapsed + 0.1;
+  enemyMain.activateTimedEffect("reliableUntil", (sim.elapsed + 0.1) - enemyMain.team.match.elapsed);
   assert(
     !bot.shouldCastFlagshipSkill(context.focus, context),
     "朝仓 AI 仍会为来不及净化的即将到期增益浪费技能",
   );
 
-  enemyMain.effects.reliableUntil = sim.elapsed + 5;
+  enemyMain.activateTimedEffect("reliableUntil", (sim.elapsed + 5) - enemyMain.team.match.elapsed);
   bot.flagshipTimer = 0;
   bot.tryFlagshipSkill(context);
   assert(aiTeam.hasActiveVisionWaveSkill(), "朝仓 AI 未对可及时净化的可见增益释放视野波");

@@ -31,9 +31,9 @@ for (const support of ["alien", "time_traveler", "otherworlder", "esper"]) {
   unlockSupport(team.haruhiFlagship, [support], simulation.elapsed, () => 0);
 }
 const main = team.ships.main;
-main.effects.stunnedUntil = 12;
-main.effects.silencedUntil = 16;
-main.effects.nextShotDamageMultiplier = 2;
+main.stunUntil(12);
+main.silenceUntil(16);
+main.chargeNextShot(2);
 main.collisionSlowUntil = 14;
 main.forcedKnockback = { startedAt: 11, endsAt: 11.58 };
 for (let hit = 0; hit < 2; hit += 1) main.registerClawHit({ triggerHits: 4, markDuration: 8 }, simulation);

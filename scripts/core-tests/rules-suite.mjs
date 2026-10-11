@@ -2120,16 +2120,16 @@ function asakuraAllyCleanseCheck() {
     ally.x = 700;
     distant.x = 1300;
     for (const ship of [source, ally, distant]) {
-      ship.effects.silencedUntil = 10;
+      ship.silenceUntil(10);
       ship.heroPowerShock = { hitAt: 0, lockUntil: 2, recoveryUntil: 5 };
       ship.collisionSlowUntil = 5;
       for (let hit = 0; hit < 3; hit += 1) {
         ship.registerClawHit({ sourceSeat: seat === "A" ? "B" : "A", triggerHits: 4, markDuration: 8 }, sim);
       }
-      ship.effects.reliableUntil = 10;
+      ship.activateTimedEffect("reliableUntil", (10) - ship.team.match.elapsed);
     }
     // 沉默期间不能主动施法，此处只激活波纹以验证已经发出的波的驱散行为。
-    source.effects.silencedUntil = 0;
+    source.clearTimedEffect("silencedUntil", false);
     source.heroPowerShock = { hitAt: 0, lockUntil: 0, recoveryUntil: 0 };
     assert(team.castFlagshipSkill(), "朝仓友军驱散测试未能发射视野波");
     sim.elapsed = 0.5;
@@ -2323,7 +2323,7 @@ function asakuraBladeQueenFlightCheck() {
     if (scenario === "一档") ship.throttle = throttleForGear(1);
     if (scenario === "能量耗尽") ship.energy = 0;
     if (scenario === "撞击减速") ship.collisionSlowUntil = 3;
-    if (scenario === "眩晕") ship.effects.stunnedUntil = 2;
+    if (scenario === "眩晕") ship.stunUntil(2);
     if (scenario.startsWith("震慑")) {
       applyHaruhiHeroPowerShock(ship, 0);
       assert(ship.speed >= minimum, "震慑施加瞬间把刀锋航速归零");
@@ -2358,7 +2358,7 @@ function asakuraBladeQueenFlightCheck() {
   }
   for (const end of ["到期", "涤除"]) {
     const { sim, ship } = setup();
-    ship.effects.stunnedUntil = 20;
+    ship.stunUntil(20);
     if (end === "到期") sim.elapsed = 10;
     else ship.clearActiveSkillBuffs({ preserveCurrentTick: false });
     const previousX = ship.x;
