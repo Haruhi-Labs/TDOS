@@ -187,6 +187,9 @@ async function verifyPointerFeedback({ name, viewport, isMobile = false, hasTouc
     const characterTab = page.locator(".cs-tab:not(.current)").first();
     const characterTabSurface = characterTab.locator(".cs-tab-surface");
     await characterTab.waitFor({ state: "visible" });
+    // 书签字号会触发此前页面未使用的字体切片；先等字体和初始布局，再比较悬停命中盒。
+    await characterTab.evaluate(() => document.fonts.ready);
+    await waitForMenuVisualSettle(characterTab);
     const hitBoxBefore = await characterTab.boundingBox();
     const surfaceBoxBefore = await characterTabSurface.boundingBox();
     assert.ok(hitBoxBefore && surfaceBoxBefore, `${name}角色书签应当可见`);
