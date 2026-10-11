@@ -1,7 +1,7 @@
 import { createProjectilePhase } from "../rules/projectile-phase.js";
 import { advanceProjectiles } from "../systems/projectile-system.js";
 import { Projectile } from "../model/projectile.js";
-import { createHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
+import { createHeroPowerRuntime } from "../rules/hero-power-runtime.js";
 import { createHullCollisionPort } from "../rules/collision-port.js";
 import { SHIP_EFFECTS } from "../rules/ship-effects.js";
 import { projectShip } from "../rules/ship-projection.js";
@@ -19,7 +19,6 @@ import { resolveHaruhiOtherworlderContacts as resolveMatchHaruhiOtherworlderCont
 import { visionWavesCoverEntity as teamVisionWavesCoverEntity } from "../vision-wave.js";
 import { resolveKoizumiOrbContacts as resolveMatchKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
 import { resolveKoizumiBarrierRamContacts as resolveMatchKoizumiBarrierRamContacts } from "../koizumi-barrier.js";
-import { serializeHaruhiHeroPowerEvent, updateHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
 import { SHAMISEN_HUNT_KILL_EFFECT_SECONDS, ensureShamisenHuntTarget, resolveShamisenHuntKill } from "../shamisen-hunt.js";
 import { prepareBunnyCompanions, cleanupBunnyCompanions } from "../bunny-companion-runtime.js";
 import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
@@ -30,6 +29,7 @@ import { Team } from "../model/team.js";
 import { KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL, normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 
 export class MatchSimulation {
+  #heroPowers;
   constructor(options = {}) {
     const mode = options.mode || "pvp";
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
@@ -87,7 +87,7 @@ export class MatchSimulation {
 
     this.projectiles = [];
     this.bursts = [];
-    this.haruhiHeroPowerEffects = [];
+    this.#heroPowers = createHeroPowerRuntime(this);
     this.shamisenHuntKillEffects = [];
     this.koizumiBarrierImpacts = [];
     this.koizumiBarrierProjectileImpactNextAt = { A: 0, B: 0 };
@@ -134,9 +134,11 @@ export class MatchSimulation {
   }
 
   queueHeroPower(ship, meta) {
-    this.haruhiHeroPowerEffects.push(createHaruhiHeroPowerEvent({
-      id: nextEntityId(this), ship, now: this.elapsed, worldSize: this.worldSize, meta,
-    }));
+    this.#heroPowers.enqueue(ship, meta);
+  }
+
+  get haruhiHeroPowerEffects() {
+    return this.#heroPowers.inspect();
   }
 
   discardProjectilesFrom(sourceId) {
@@ -437,10 +439,7 @@ export class MatchSimulation {
   }
 
   updateHaruhiHeroPowers() {
-    for (const effect of this.haruhiHeroPowerEffects) {
-      effect.alive = updateHaruhiHeroPowerEvent(this, effect);
-    }
-    this.haruhiHeroPowerEffects = this.haruhiHeroPowerEffects.filter((effect) => effect.alive);
+    this.#heroPowers.advance();
   }
 
   resolveVisionWavePurges() {
@@ -549,7 +548,7 @@ export class MatchSimulation {
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),
-      haruhiHeroPowerEffects: this.haruhiHeroPowerEffects.map(serializeHaruhiHeroPowerEvent),
+      haruhiHeroPowerEffects: this.#heroPowers.serialize(),
       shamisenHuntKillEffects: this.shamisenHuntKillEffects.map((effect) => ({ ...effect })),
       koizumiBarrierImpacts: this.koizumiBarrierImpacts.map((impact) => ({ ...impact })),
       floatingTexts: this.floatingTexts.map((label) => label.serialize()),
