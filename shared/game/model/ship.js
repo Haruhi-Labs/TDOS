@@ -244,6 +244,16 @@ export class Ship {
     this.throttle = normalizeThrottleToGear(value, this.throttle);
   }
 
+  configureThrottleConstraint(resolve) {
+    // 舰船持有档位存储；专属效果只提供实时约束，不替换基础属性。
+    let throttle = this.throttle;
+    Object.defineProperty(this, "throttle", {
+      enumerable: true, configurable: true,
+      get: () => resolve(throttle),
+      set: (value) => { throttle = resolve(value); },
+    });
+  }
+
   hasEffect(effectKey) {
     return Number(this.effects[effectKey] || 0) > this.team.match.elapsed;
   }

@@ -196,3 +196,5 @@ await import("./verify-hero-power-ownership.mjs");
 await import("./verify-feedback-ownership.mjs");
 
 await import("./verify-expanding-wave.mjs");
+
+await import("./verify-throttle-constraint.mjs");

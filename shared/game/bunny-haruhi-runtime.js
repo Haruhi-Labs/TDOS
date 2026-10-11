@@ -44,12 +44,9 @@ export function initializeBunnyShip(ship) {
   Object.defineProperty(ship, "bunnyHaruhi", { enumerable: true, get: () => forms.get(ship) });
   commitForm(ship, createBunnyHaruhiState());
   // 保留锁档的实时读取与最终落值语义，覆盖已有动作、航线和兼容调用。
-  let throttle = ship.throttle;
-  Object.defineProperty(ship, "throttle", {
-    enumerable: true, configurable: true,
-    get: () => resolveBunnyThrottle(ship.bunnyHaruhi, throttle, !ship.team.areSkillsDisabled(), ship.team.match.elapsed),
-    set: (value) => { throttle = resolveBunnyThrottle(ship.bunnyHaruhi, value, !ship.team.areSkillsDisabled(), ship.team.match.elapsed); },
-  });
+  ship.configureThrottleConstraint((value) => resolveBunnyThrottle(
+    ship.bunnyHaruhi, value, !ship.team.areSkillsDisabled(), ship.team.match.elapsed,
+  ));
 }
 
 export function cleanseBunnyShipControl(ship) {
