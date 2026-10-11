@@ -174,11 +174,16 @@ function facadeCheck() {
   const bot = sim.botBySeat("B");
   assert.equal(Object.hasOwn(bot, "enemy"), false, "AI 不得持有敌方舰队引用");
   const aiMain = sim.teamB.ships.main;
-  // 测试直接改实时状态后调用内部方法，门面必须先刷新观测并把实时舰船换成观测数据。
+  // 决策只读取新观测，不再接收真实实体，也不暴露舰队兼容字段。
+  assert.equal(bot.team, undefined);
+  assert.equal(bot.port.team, undefined);
+  assert.equal(bot.port.observeLive, undefined);
+  assert.equal(bot.port.observeTactics, undefined);
+  assert.throws(() => bot.energyProfile(aiMain), /只接受观测数据/);
   aiMain.energy = aiMain.maxEnergy * 0.5;
-  const before = bot.energyProfile(aiMain).current;
+  const before = bot.energyProfile("main").current;
   aiMain.energy = 0;
-  assert.ok(bot.energyProfile(aiMain).current < before, "外部调用没有刷新观测");
+  assert.ok(bot.energyProfile("main").current < before, "外部调用没有刷新观测");
   assert.equal(bot.energyProfile("main").current, sim.teamB.fleetEnergyForShip("main").current);
 }
 

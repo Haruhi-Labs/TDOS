@@ -1,3 +1,4 @@
+import { aiFixture } from "./ai-fixture.mjs";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import {
   CHARACTER_DEFS,
@@ -28,7 +29,7 @@ function aiEngageCheck() {
 
 function aiFogOfWarCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
   const knownSpawn = { x: enemyMain.x, y: enemyMain.y };
@@ -50,7 +51,7 @@ function aiFogOfWarCheck() {
 
 function aiReactionDelayCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
   const spawnIntel = { x: bot.enemyIntel.main.x, y: bot.enemyIntel.main.y };
@@ -80,7 +81,7 @@ function aiReactionDelayCheck() {
 
 function aiSearchSweepCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
 
@@ -115,7 +116,7 @@ function aiScoutAggressionCheck() {
 
 function aiRetreatJudgementCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
@@ -145,7 +146,7 @@ function aiRetreatJudgementCheck() {
 
 function aiFocusSelectionCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
   const enemySub1 = sim.teamA.ships.sub1;
@@ -168,7 +169,7 @@ function aiFocusSelectionCheck() {
 
 function aiSplitDisciplineCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
 
   sim.elapsed = 26;
@@ -198,7 +199,7 @@ function aiFireArcAwarenessCheck() {
       },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
@@ -239,7 +240,7 @@ function aiFireArcAwarenessCheck() {
 
 function aiProbePressureCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
@@ -279,7 +280,7 @@ function aiSplitInitiativeCheck() {
       },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 
@@ -313,7 +314,7 @@ function aiYukiVisionLeadCheck() {
       },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const yuki = aiTeam.ships.sub1;
@@ -373,7 +374,7 @@ function aiYukiRadarIntelCheck() {
       B: { main: "yuki", sub1: "kyon", sub2: "future1096" },
     },
   });
-  const bot = sim.botBySeat("B");
+  const bot = aiFixture(sim, "B");
   const aiTeam = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
   const radarPoint = { x: 260, y: 250 };
@@ -426,7 +427,7 @@ function aiYukiScoutDoctrineCheck() {
       B: { main: "yuki", sub1: "kyon", sub2: "future1096" },
     },
   });
-  const bot = sim.botBySeat("B");
+  const bot = aiFixture(sim, "B");
   const team = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
   const spawnFocus = bot.primaryEnemyEstimate();
@@ -521,7 +522,7 @@ function aiCombatScoutThreatCheck() {
       B: { main: "yuki", sub1: "tsuruya", sub2: "future1096" },
     },
   });
-  const bot = sim.botBySeat("A");
+  const bot = aiFixture(sim, "A");
   const aiMain = sim.teamA.ships.main;
   assert(sim.teamB.launchScout(5), "AI威胁测试未能生成长门战斗僚机");
   const combatScout = sim.teamB.scouts[0];
@@ -549,7 +550,7 @@ function aiAsakuraVisionWaveDecisionCheck() {
       B: { main: "asakura", sub1: "kyon", sub2: "future1096" },
     },
   });
-  const bot = sim.botBySeat("B");
+  const bot = aiFixture(sim, "B");
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const enemyTeam = sim.teamA;
@@ -595,7 +596,7 @@ function aiVisionWaveBuffCounterplayCheck() {
         B: { main: "tsuruya", sub1: "kyon", sub2: "future1096" },
       },
     });
-    const bot = sim.botBySeat("B");
+    const bot = aiFixture(sim, "B");
     const enemyMain = sim.teamA.ships.main;
     const aiMain = sim.teamB.ships.main;
     const kyon = sim.teamB.ships.sub1;
@@ -634,7 +635,7 @@ function aiVisionWaveBuffCounterplayCheck() {
     bot.subTimers.sub1 = 0;
     bot.tryFlagshipSkill(context);
     bot.trySubSkill("sub1", context);
-    assert(aiMain.team.effects.sponsorUntil <= bot.team.match.elapsed, `${difficulty} AI 未实际暂缓旗舰增益`);
+    assert(aiMain.team.effects.sponsorUntil <= bot.obs.time, `${difficulty} AI 未实际暂缓旗舰增益`);
     assert(!kyon.hasEffect("reliableUntil"), `${difficulty} AI 未实际暂缓分舰增益`);
   }
 
@@ -664,7 +665,7 @@ function aiVisionWaveBuffCounterplayCheck() {
 
 function aiWoundedDetachedRetreatCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const sub1 = aiTeam.ships.sub1;
@@ -720,7 +721,7 @@ function aiWoundedDetachedRetreatCheck() {
 
 function aiSectorEncirclementCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
 
@@ -788,7 +789,7 @@ function aiBacklineFlankCheck() {
       },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const sub1 = aiTeam.ships.sub1;
@@ -839,7 +840,7 @@ function aiBacklineFlankCheck() {
 
 function aiOverwhelmedEscapeCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const sub1 = aiTeam.ships.sub1;
@@ -910,7 +911,7 @@ function aiOverwhelmedEscapeCheck() {
 
 function aiEnergyRecoveryModeCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const enemyMain = sim.teamA.ships.main;
@@ -954,7 +955,7 @@ function aiEnergyRecoveryModeCheck() {
 
 function aiEnergyThrottleHysteresisCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const setFleetEnergyRatio = (ratio) => {
@@ -991,7 +992,7 @@ function aiEnergyThrottleHysteresisCheck() {
 
 function aiScoutEnergyReserveCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
 
@@ -1039,7 +1040,7 @@ function aiHighEnergySkillAggressionCheck() {
       },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const enemyMain = sim.teamA.ships.main;
@@ -1088,7 +1089,7 @@ function aiHaruhiFlagshipAggressionCheck() {
       B: { main: "haruhi", sub1: "yuki", sub2: "future1096" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const team = sim.teamB;
 
   assert(bot.flagshipTimer === 0, "春日AI开局仍在等待通用旗舰技能观察窗");
@@ -1129,7 +1130,7 @@ function aiKoizumiOrbSteeringCheck() {
       B: { main: "kyon", sub1: "koizumi", sub2: "future1096" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const team = sim.teamB;
   const koizumi = team.ships.sub1;
   const target = sim.teamA.ships.main;
@@ -1178,7 +1179,7 @@ function aiKoizumiBarrierDefenseCheck() {
       B: { main: "koizumi", sub1: "yuki", sub2: "shamisen" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const team = sim.teamB;
   const main = team.ships.main;
   const enemyMain = sim.teamA.ships.main;
@@ -1238,7 +1239,7 @@ function aiKoizumiBarrierThreatEvasionCheck() {
       B: { main: "koizumi", sub1: "future1096", sub2: "shamisen" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const ownMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
   const asakura = sim.teamA.ships.sub1;
@@ -1279,7 +1280,7 @@ function aiKoizumiBarrierBreachCheck() {
   });
   sim.setCombatEnabled("A", false);
   sim.setCombatEnabled("B", false);
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const defendingMain = sim.teamA.ships.main;
   const asakura = sim.teamB.ships.sub1;
   sim.teamB.split(1);
@@ -1347,7 +1348,7 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration = 
   // 次数盾可能在集结完成前被正常火力耗尽。单独保留护盾验证同步突入，
   // 另一个实战场景保持正常射击，验证耗尽护盾与有效伤害。
   if (holdFireForInfiltration) sim.setCombatEnabled("B", false);
-  const bot = sim.botBySeat("B");
+  const bot = aiFixture(sim, "B");
   const defendingMain = sim.teamA.ships.main;
   const attackingTeam = sim.teamB;
   const attackingMain = attackingTeam.ships.main;
@@ -1438,7 +1439,7 @@ function aiKoizumiBarrierNoBreakerInfiltrationCheck({ holdFireForInfiltration = 
       B: { main: "kyon", sub1: "yuki", sub2: "shamisen" },
     },
   });
-  const normalBot = normalSim.botBySeat("B");
+  const normalBot = aiFixture(normalSim, "B");
   const normalDefender = normalSim.teamA.ships.main;
   const normalAttacker = normalSim.teamB.ships.main;
   normalDefender.x = 650;
@@ -1472,7 +1473,7 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
       B: { main: "kyon", sub1: "yuki", sub2: "future1096" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const defendingMain = sim.teamA.ships.main;
   const future1096 = sim.teamB.ships.sub2;
   sim.teamB.split(1);
@@ -1533,7 +1534,7 @@ function aiHaruhiOtherworlderBarrierBreachCheck() {
       B: { main: "haruhi", sub1: "yuki", sub2: "future1096" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const haruhi = sim.teamB.ships.main;
   const defendingMain = sim.teamA.ships.main;
   unlockSupport(sim.teamB.haruhiFlagship, ["otherworlder"], sim.elapsed, () => 0);
@@ -1562,7 +1563,7 @@ function aiFuture1096FormDecisionCheck() {
       B: { main: "future1096", sub1: "koizumi", sub2: "asakura" },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
   bot.rememberContact(enemyMain, "visible");
@@ -1608,7 +1609,7 @@ function aiEmergencyEnergyReserveCheck() {
       },
     },
   });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const aiMain = aiTeam.ships.main;
   const enemyMain = sim.teamA.ships.main;
@@ -1719,7 +1720,7 @@ function aiShamisenHuntIntelCheck() {
         B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
       },
     });
-    const bot = sim.botBySeat("A");
+    const bot = aiFixture(sim, "A");
     const targetId = sim.teamA.shamisenHunt.targetId;
     sim.teamA.visibleEnemyIds = new Set();
     bot.refreshIntel();
@@ -1746,7 +1747,7 @@ function aiShamisenHuntAttackFormationCheck() {
       B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
     },
   });
-  const bot = sim.botBySeat("A");
+  const bot = aiFixture(sim, "A");
   const team = sim.teamA;
   const target = sim.teamB.ships.sub2;
   const blocker = sim.teamB.ships.sub1;
@@ -1813,7 +1814,7 @@ function aiShamisenHuntDefenseFormationCheck() {
       B: { main: "haruhi", sub1: "kyon", sub2: "tsuruya" },
     },
   });
-  const bot = sim.botBySeat("B");
+  const bot = aiFixture(sim, "B");
   const team = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
   const hunted = team.ships.sub2;
@@ -1854,7 +1855,7 @@ function aiShamisenHuntDefenseFormationCheck() {
 
 function aiEdgeRecoveryCheck() {
   const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
-  const bot = sim.bot;
+  const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
 

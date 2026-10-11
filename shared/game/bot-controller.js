@@ -1,5 +1,5 @@
 // AI 控制器的对外门面。决策逻辑在 ai/policy/ 下；这里只为对局循环、调试页和测试提供兼容入口：
-// 外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
+// 外部调用只接受数据；刷新观测不再为真实实体提供隐式转换通道。
 import { RulePolicy } from "./ai/policy/rule-policy.js";
 
 export class BotController extends RulePolicy {
@@ -26,7 +26,8 @@ export class BotController extends RulePolicy {
         this.port.invalidate();
         this.entryDepth = 1;
         try {
-          return method.apply(this, args.map((arg) => this.observeArgument(arg)));
+          for (const arg of args) assertDataArgument(arg);
+          return method.apply(this, args);
         } finally {
           this.entryDepth = 0;
         }
@@ -34,15 +35,6 @@ export class BotController extends RulePolicy {
       this.entryGuards.set(name, guard);
     }
     return guard;
-  }
-
-  observeArgument(arg) {
-    return this.port.observeLive(arg, (id) => this.ownShipById(id));
-  }
-
-  // 兼容外部读取己方舰队；决策代码不得使用。
-  get team() {
-    return this.port.team;
   }
 
   // 校验用：观测先经 JSON 往返再交给决策。
@@ -54,4 +46,16 @@ export class BotController extends RulePolicy {
     this.port.strict = Boolean(value);
     this.port.invalidate();
   }
+}
+
+function assertDataArgument(value, seen = new Set()) {
+  if (!value || typeof value !== "object") return;
+  const prototype = Object.getPrototypeOf(value);
+  const collection = value instanceof Set || value instanceof Map;
+  if ((!Array.isArray(value) && !collection && prototype !== Object.prototype && prototype !== null) || seen.has(value)) {
+    throw new TypeError("AI 决策入口只接受观测数据，不接受实体或循环引用");
+  }
+  seen.add(value);
+  for (const child of collection ? value instanceof Map ? [...value].flat() : value : Object.values(value)) assertDataArgument(child, seen);
+  seen.delete(value);
 }

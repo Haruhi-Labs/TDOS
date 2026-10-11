@@ -4,9 +4,7 @@ import { applyMatchAction } from "../../action-dispatcher.js";
 import { AI_ACTION_TYPES } from "../actions.js";
 import {
   buildObservation,
-  observeEnemyEntity,
   observeEnemySpawn,
-  snapshotVisibleCharacterTactics,
 } from "./observation.js";
 
 export const AI_ACTION_MODES = Object.freeze({
@@ -87,8 +85,6 @@ export function createActionPort(match, seat, { mode = AI_ACTION_MODES.DISPATCH 
     mode,
     // 校验用：观测先经 JSON 往返再交给决策，证明决策没有依赖实时对象引用或非纯数据值。
     strict: false,
-    // 兼容外部读取与难度让分写入；决策代码不得使用。
-    team,
     // 标准执行链拒绝、而旧路径会生效的动作计数，用于归因两种模式的行为差异。
     permissionRejections: { count: 0, controlLocked: 0, firstTick: null },
 
@@ -103,20 +99,6 @@ export function createActionPort(match, seat, { mode = AI_ACTION_MODES.DISPATCH 
         observation = port.strict ? pureData(built) : built;
       }
       return observation;
-    },
-
-    // 把属于本对局的实时实体换成观测数据；其余值原样返回。
-    observeLive(value, lookupOwnShip) {
-      const liveTeam = value && typeof value === "object" ? value.team : null;
-      if (!liveTeam || liveTeam.match !== match) return value;
-      if (liveTeam.seat === seat) return lookupOwnShip(value.id) || value;
-      const entity = observeEnemyEntity(value, match.elapsed);
-      return port.strict ? pureData(entity) : entity;
-    },
-
-    // 调用方直接给出的实体描述没有公开战术字段时，按同一口径补算。
-    observeTactics(entity) {
-      return snapshotVisibleCharacterTactics(entity, match.elapsed);
     },
 
     enemySpawn() {

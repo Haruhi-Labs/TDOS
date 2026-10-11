@@ -74,7 +74,12 @@ export const intelTrackerMethods = {
       seenAt: this.obs.time,
       zoneId: zone.id,
       source,
-      ...(entity.tactics || this.port.observeTactics(entity)),
+      ...(entity.tactics || {
+        bladeQueenRemaining: 0, catPawRemaining: 0, koizumiOrbRemaining: 0,
+        haruhiImpactReady: false, haruhiSupportCount: 0, haruhiBoostActive: false,
+        future1096Form: null, koizumiBarrierActive: false, koizumiBarrierRadius: 0,
+        koizumiBarrierDisabledRemaining: 0,
+      }),
     };
   },
 

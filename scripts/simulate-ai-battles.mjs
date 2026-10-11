@@ -110,7 +110,7 @@ function runBattle({ index, loadoutA, loadoutB }) {
     bot.retaskYukiCombatScouts = (...args) => {
       const retasked = retaskYukiCombatScouts(...args);
       if (retasked > 0) {
-        const characterId = bot.team.mainCharacterId();
+        const characterId = bot.obs.self.loadout.main;
         counters.scoutRetasks[characterId] = (counters.scoutRetasks[characterId] || 0) + retasked;
       }
       return retasked;
