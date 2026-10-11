@@ -5,7 +5,7 @@ import {
   quadraticPoint,
   shortestAngleDelta,
 } from "./math.js";
-import { createExpandingWave, expandingWaveCoversEntity } from "./vision-wave.js";
+import { createExpandingWave, expandingWaveCoversEntity } from "./systems/expanding-wave.js";
 
 const ORB_BASE_CRUISE_SPEED = 164;
 const ORB_SPEED_MULTIPLIER = 4.45;
@@ -318,7 +318,10 @@ export function resolveKoizumiOrbContacts(match) {
         if (lastHitAt !== undefined && match.elapsed - lastHitAt < ORB_HIT_REARM_SECONDS) continue;
         state.hitAt.set(target.id, match.elapsed);
         const direction = sweptCollisionDirection(source, target, startX, startY, probe, collisionRadius);
-        const wave = createExpandingWave(team, { id: source.id, x: target.x, y: target.y }, ++team.koizumiImpactWaveSequence);
+        const wave = createExpandingWave({
+          worldSize: match.worldSize, now: match.elapsed,
+          source: { id: source.id, x: target.x, y: target.y }, id: ++team.koizumiImpactWaveSequence,
+        });
         wave.hitShipIds = new Set();
         team.koizumiImpactWaves.push(wave);
         applyCollisionKnockback(match, source, target, direction);
