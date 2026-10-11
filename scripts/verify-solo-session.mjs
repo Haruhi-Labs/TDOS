@@ -19,6 +19,7 @@ const between = session.advance(1005);
 assert.equal(ticks(between.state), 0);
 assert.equal(between.state.teams.A.ships.main.throttle, 1.4, "不足一个固定步也应刷新离散输入");
 assert.throws(() => { session.shipControl("main").canControl = false; }, TypeError);
+assert.equal(session.advance(1006).state, between.state, "权威未变化时复用不可变快照，不按显示帧率重复投影");
 const stepped = session.advance(1040);
 assert.equal(ticks(stepped.state), 1);
 const hp = stepped.state.teams.A.ships.main.hp;

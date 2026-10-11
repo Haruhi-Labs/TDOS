@@ -11,13 +11,21 @@ export function createSoloSession({ createSimulation = (options) => new MatchSim
   let state = null;
   let previous = null;
   let current = null;
+  let snapshot = null;
+  let dirty = true;
 
   function readState() {
-    return simulation ? freezePlainData(simulation.serializeState()) : null;
+    if (!simulation) return null;
+    if (dirty) {
+      snapshot = freezePlainData(simulation.serializeState());
+      dirty = false;
+    }
+    return snapshot;
   }
 
   function reset(options, timestamp) {
     simulation = createSimulation(options);
+    dirty = true;
     state = previous = current = readState();
     clock.reset(timestamp);
     return state;
@@ -27,6 +35,7 @@ export function createSoloSession({ createSimulation = (options) => new MatchSim
     const active = Boolean(!paused && simulation && (!state || state.phase !== "finished"));
     const steps = clock.advance(timestamp, (dt) => {
       previous = current || state || readState();
+      dirty = true;
       simulation.update(dt);
       current = readState();
     }, { active });
@@ -53,6 +62,7 @@ export function createSoloSession({ createSimulation = (options) => new MatchSim
 
   function setTutorialStage(stage) {
     if (!simulation?.tutorialMode) return;
+    dirty = true;
     if (stage === "attack") simulation.setCombatEnabled("A", true);
     if (stage === "free") {
       simulation.setCombatEnabled("A", true);
@@ -67,7 +77,11 @@ export function createSoloSession({ createSimulation = (options) => new MatchSim
     shipControl,
     setTutorialStage,
     resetClock: (timestamp) => clock.reset(timestamp),
-    applyAction: (seat, action) => simulation?.applyActionForSeat(seat, action) ?? false,
+    applyAction: (seat, action) => {
+      // 被拒绝的施放也可能经历扣费和退款；不能只按 accepted 标记缓存失效。
+      dirty = true;
+      return simulation?.applyActionForSeat(seat, action) ?? false;
+    },
     statisticsSummary: () => simulation?.statisticsSummary() ?? null,
     radarForSeat: (seat) => simulation?.serializeRadarForSeat(seat) ?? null,
   });
