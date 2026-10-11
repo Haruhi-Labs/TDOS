@@ -122,9 +122,8 @@ export function commitBunnyTransform(ship) {
     old.ship.rescaleCombatTiming(old.speed, old.rate);
   }
   if (result.spawnCompanion) team.spawnBunnyCompanion(ship);
-  team.completeSubSkillCast(ship, result.cooldownSeconds);
-  refreshBunnyVisibility(match);
-  return true;
+  // 角色只提交效果，成功冷却、统计、显形及随后视野刷新交还施放事务。
+  return { cooldown: result.cooldownSeconds, refreshVisibility: true };
 }
 
 export function refreshBunnyVisibility(match) {

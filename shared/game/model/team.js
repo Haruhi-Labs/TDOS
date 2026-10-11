@@ -471,7 +471,6 @@ export class Team {
 
   castFlagshipSkill() { return this.#skills.castFlagship(); }
   castSubSkill(key, options = {}) { return this.#skills.castSub(key, options); }
-  completeSubSkillCast(ship, cooldown) { this.#skills.completeSub(ship.key, cooldown); }
 
   castBeamFromShip(shipKey, directionX, directionY) {
     const ship = this.ships[shipKey];

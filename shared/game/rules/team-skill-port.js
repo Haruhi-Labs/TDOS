@@ -43,7 +43,10 @@ export function createTeamSkillPort(team, flagship) {
       ...flagship,
     }, meta),
     executeSub: (key, options, meta) => executeSubEffect(team.ships[key].characterId, subEffects(team.ships[key], options), meta),
-    completeSub: (key, cooldown) => team.completeSubSkillCast(team.ships[key], cooldown),
+    refreshVisibility: () => {
+      team.match.teamA.computeVisibility(team.match.teamB);
+      team.match.teamB.computeVisibility(team.match.teamA);
+    },
     record: (action) => team.match.recordAction(team.seat, action),
     reveal: (key) => {
       const ship = team.ships[key];

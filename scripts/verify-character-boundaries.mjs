@@ -124,23 +124,26 @@ aircraft.rules = { ...aircraft.rules, scoutProfile: () => { throw new Error("转
 scout.transferToTeam(aircraft.teamB, aircraft.zoneById(5));
 assert.deepEqual([scout.combatCapable, scout.vision, scout.attackRange, scout.damage, scout.fireRate], capabilities);
 
-// 专属变身与公共技能均提交到同一个舰队完成入口，拒绝时不应重复扣费或记录。
+// 专属变身与公共技能均由施放组件提交；只观察真实统计，不替换事务入口。
 const transformation = new MatchSimulation({ seed: 121, teamLoadouts: { A: { main: "yuki", sub1: "bunny_haruhi", sub2: "kyon" } } });
 const casters = transformation.teamA;
 casters.split(1); casters.split(2);
 const completions = [];
-const complete = casters.completeSubSkillCast.bind(casters);
-casters.completeSubSkillCast = (caster, cooldown) => {
-  completions.push([caster.key, cooldown]);
-  complete(caster, cooldown);
+const record = transformation.recordAction.bind(transformation);
+transformation.recordAction = (seat, action) => {
+  if (action === "sub_skill") completions.push({ ...casters.cooldowns });
+  record(seat, action);
 };
 assert.equal(casters.castSubSkill("sub1"), true);
 assert.equal(casters.castSubSkill("sub1"), false);
 assert.equal(casters.castSubSkill("sub2", { zoneId: 5 }), true);
-assert.deepEqual(completions.map(([key]) => key), ["sub1", "sub2"]);
-assert.equal(casters.cooldowns.sub1, completions[0][1]);
-assert.equal(casters.cooldowns.sub2, completions[1][1]);
-console.log("角色创建与施放边界校验通过：机体能力在出生采样，技能成功统一由舰队提交且拒绝不重复消费。");
+assert.equal(completions.length, 2, "拒绝的施放不得重复提交");
+assert.ok(completions[0].sub1 > 0);
+assert.equal(completions[0].sub2, 0);
+assert.equal(casters.cooldowns.sub1, completions[0].sub1);
+assert.equal(casters.cooldowns.sub2, completions[1].sub2);
+assert.ok(casters.cooldowns.sub2 > 0);
+console.log("角色创建与施放边界校验通过：出生采样能力，施放组件独占成功提交且拒绝不重复消费。");
 
 // 屏障只处理碰撞和自身状态；新的冲撞能力不要求在屏障模块加入角色分支。
 const { koizumiBarrierGeometry } = await import("../shared/game/koizumi-barrier.js");

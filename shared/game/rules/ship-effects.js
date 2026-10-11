@@ -17,7 +17,7 @@ export const SHIP_EFFECTS = Object.freeze({
       ? triggerSupportOtherworlder(bunnyHaruhiSupportSource(source, !attackerTeam.areSkillsDisabled()), attackerTeam.match.elapsed)
       : triggerHaruhiOtherworlder(attackerTeam);
   },
-  // null 表示使用公共能量施放路径；false 表示专属路径已处理但拒绝。
+  // null 走公共能量路径；false 为拒绝；成功返回待施放组件消费的完成结果。
   castExclusiveSubSkill(ship) {
     return ship?.bunnyHaruhi ? commitBunnyTransform(ship) : null;
   },

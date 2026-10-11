@@ -29,7 +29,12 @@ export class SkillCycle {
   }
   castSub(key, options) {
     const exclusive = this.#port.exclusive(key);
-    if (exclusive !== null) return exclusive;
+    if (exclusive !== null) {
+      if (!exclusive) return false;
+      this.#completeSub(key, exclusive.cooldown);
+      if (exclusive.refreshVisibility) this.#port.refreshVisibility();
+      return true;
+    }
     const caster = this.#port.caster(key);
     if (!caster || !caster.alive || caster.isAttached() || !caster.canControl()
       || caster.isSilenced() || caster.exclusiveMovement() || this.#port.disabled()) return false;
@@ -38,10 +43,10 @@ export class SkillCycle {
     if (!this.#port.spendEnergy(key, meta.cost || 0)) return false;
     // 失败退款属于具体效果；公共事务不能再次退款或提前提交成功。
     if (!this.#port.executeSub(key, options, meta)) return false;
-    this.#port.completeSub(key, meta.cooldown || 0);
+    this.#completeSub(key, meta.cooldown || 0);
     return true;
   }
-  completeSub(key, cooldown) {
+  #completeSub(key, cooldown) {
     this.startCooldown(key, cooldown);
     this.#port.record("sub_skill");
     this.#port.reveal(key);
