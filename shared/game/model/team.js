@@ -1,3 +1,6 @@
+import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
+import { AircraftOperations } from "../systems/aircraft-operations.js";
+import { createAircraftPort } from "../rules/aircraft-port.js";
 import { SkillCycle } from "../systems/skill-cycle.js";
 import { createTeamSkillPort } from "../rules/team-skill-port.js";
 import { FleetFormation } from "../systems/fleet-formation.js";
@@ -10,7 +13,6 @@ import { futureFormDefinition } from "../future-flagship-form.js";
 import { BeamSystem } from "../systems/beam-system.js";
 import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
 // 舰队状态所有者与领域操作。
-import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../characters.js";
 import { clamp, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
@@ -26,11 +28,13 @@ import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship,
 import { convertBunnyCompanion } from "../bunny-companion-runtime.js";
 import { spawnBunnyCompanion, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
-import { Scout } from "../model/scout.js";
-import { Wingman } from "../model/wingman.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  #aircraft;
+  get scouts() { return this.#aircraft.scouts; }
+  get wingmen() { return this.#aircraft.wingmen; }
+  get autoScout() { return this.#aircraft.autoScout; }
   #skills;
   get cooldowns() { return this.#skills.cooldowns; }
   startCooldown(key, duration) { this.#skills.startCooldown(key, duration); }
@@ -72,10 +76,9 @@ export class Team {
       activateSupport: (duration) => this.#haruhi.cast(duration),
       activateSponsor: (duration) => this.#sponsor.activate(duration),
     }));
-    this.autoScout = {
-      enabled: false,
-      zoneId: 5,
-    };
+    this.#aircraft = new AircraftOperations(createAircraftPort(this), {
+      autoCooldownMultiplier: AUTO_SCOUT_COOLDOWN_MULTIPLIER, scoutCooldown: MANUAL_SCOUT_COOLDOWN, scoutCost: SCOUT_LAUNCH_COST,
+    });
 
     this.#sponsor = createTeamSponsor(this);
     this.#haruhi = createTeamHaruhiFlagship(this);
@@ -126,8 +129,6 @@ export class Team {
     this.koizumiImpactWaves = [];
     this.koizumiImpactWaveSequence = 0;
 
-    this.scouts = [];
-    this.wingmen = [];
     this.#beamSystem = new BeamSystem(createTeamBeamPort(this), {
       range: BEAM_BASE_RANGE, chargeDuration: BEAM_CHARGE_DURATION,
       visualDuration: BEAM_VISUAL_DURATION, hitRadius: BEAM_HIT_RADIUS,
@@ -195,21 +196,10 @@ export class Team {
     return [this.ships.main, this.ships.sub1, this.ships.sub2];
   }
 
-  addScout(scout) {
-    this.scouts.push(scout);
-  }
-
-  removeScout(scout) {
-    this.scouts = this.scouts.filter((candidate) => candidate !== scout);
-  }
-
-  addWingman(wingman) {
-    this.wingmen.push(wingman);
-  }
-
-  removeWingman(wingman) {
-    this.wingmen = this.wingmen.filter((candidate) => candidate !== wingman);
-  }
+  addScout(scout) { this.#aircraft.addScout(scout); }
+  removeScout(scout) { this.#aircraft.removeScout(scout); }
+  addWingman(wingman) { this.#aircraft.addWingman(wingman); }
+  removeWingman(wingman) { this.#aircraft.removeWingman(wingman); }
 
   activateHaruhiSupport(duration, random) {
     return this.#haruhi.activate(duration, random);
@@ -398,13 +388,7 @@ export class Team {
     return teamCleared || shipCleared;
   }
 
-  configureAutoScout(enabled, zoneId = 5) {
-    this.autoScout.enabled = Boolean(enabled);
-    if (Number.isFinite(Number(zoneId))) {
-      this.autoScout.zoneId = clamp(Number(zoneId), 1, 9);
-    }
-    return true;
-  }
+  configureAutoScout(enabled, zoneId = 5) { return this.#aircraft.configureAutoScout(enabled, zoneId); }
 
   blinkShip(ship, targetX, targetY, maxRange = 240) {
     if (!ship || !ship.alive) {
@@ -465,137 +449,18 @@ export class Team {
     });
     if (this.match.bunnyHaruhiActive) updateBunnyTeamSupports(this, dt);
     updateTeamVisionWaveSkill(this);
-    this.maybeAutoLaunchScout();
-    for (const scout of this.scouts) {
-      scout.update(dt);
-    }
-    for (const wingman of this.wingmen) {
-      wingman.update(dt);
-    }
+    this.#aircraft.advance(dt);
     this.advanceBeams(dt);
-
-    this.scouts = this.scouts.filter((scout) => scout.alive);
-    this.wingmen = this.wingmen.filter((wingman) => wingman.alive);
+    this.#aircraft.collectRetired();
   }
 
-  maybeAutoLaunchScout() {
-    if (!this.autoScout.enabled) {
-      return false;
-    }
-    return this.launchScout(this.autoScout.zoneId, {
-      cooldownMultiplier: AUTO_SCOUT_COOLDOWN_MULTIPLIER,
-    });
-  }
-
-  assignScoutMission(scout, options = {}) {
-    if (!scout?.alive || scout.team !== this) {
-      return false;
-    }
-    const zone = this.match.zoneById(options.zoneId || scout.zone?.id || 5);
-    scout.assignMission(zone, options);
-    return true;
-  }
-
-  launchScout(zoneId, options = {}) {
-    if (!this.match.rules.scoutOrderAvailable(this.shipByKey(options.fromShipKey))) return false;
-    const cost = SCOUT_LAUNCH_COST;
-    const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
-    if (this.areScoutsDisabled()) {
-      return false;
-    }
-    if (this.cooldowns.scout > 0) {
-      return false;
-    }
-    // 侦察机从「指定舰船」处发出(默认主舰)——前出的分离舰可更快把侦察部署到位。
-    // 能量从该舰所属能量池扣除(分离后副舰用自己的池)。
-    const requested = options.fromShipKey ? this.ships[options.fromShipKey] : null;
-    if (requested && requested.isControlLocked()) {
-      return false;
-    }
-    const source = (requested && requested.alive ? requested : null)
-      || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
-    if (!source || source.isControlLocked() || !this.match.rules.scoutLaunchAvailable(source)) {
-      return false;
-    }
-    if (!this.spendEnergyForShip(source.key || "main", cost)) {
-      return false;
-    }
-    const zone = this.match.zoneById(zoneId);
-    const launchCount = this.match.rules.scoutLaunchCount(this);
-    const lateralAngle = source.angle + Math.PI * 0.5;
-    const lateralDistance = source.radius + 6;
-    for (let index = 0; index < launchCount; index += 1) {
-      const side = launchCount === 1 ? 0 : index * 2 - 1;
-      const x = this.match.clampX(source.x + Math.cos(lateralAngle) * lateralDistance * side, 8);
-      const y = this.match.clampY(source.y + Math.sin(lateralAngle) * lateralDistance * side, 8);
-      this.scouts.push(new Scout(this, x, y, {
-        zone,
-        seekPoint: options.seekPoint,
-        mission: options.mission,
-        patrolCenter: options.patrolCenter,
-        patrolRadius: options.patrolRadius,
-      }));
-    }
-    this.startCooldown("scout", MANUAL_SCOUT_COOLDOWN * cooldownMultiplier);
-    this.match.recordAction(this.seat, options.cooldownMultiplier ? "auto_scout" : "launch_scout");
-    return true;
-  }
-
-  launchWingman(zoneId) {
-    const cost = 55;
-    if (this.cooldowns.flagship > 0) {
-      return false;
-    }
-    if (!this.spendEnergyForShip("main", cost)) {
-      return false;
-    }
-    const zone = this.match.zoneById(zoneId);
-    const main = this.ships.main;
-    if (!main.alive) {
-      return false;
-    }
-    this.wingmen.push(new Wingman(this, main.x, main.y, zone));
-    return true;
-  }
-
-  launchBurstScouts(ship) {
-    const directions = 8;
-    for (let i = 0; i < directions; i += 1) {
-      const angle = (TAU / directions) * i;
-      for (const offset of [-0.07, 0.07]) {
-        const targetAngle = angle + offset;
-        const anchor = {
-          x: this.match.clampX(ship.x + Math.cos(targetAngle) * 230, 22),
-          y: this.match.clampY(ship.y + Math.sin(targetAngle) * 230, 22),
-        };
-        this.scouts.push(
-          new Scout(this, ship.x, ship.y, {
-            pattern: "burst",
-            anchor,
-            anchorRadius: 18,
-            speed: 118,
-            vision: 82,
-            life: 10.5,
-            radius: 3,
-          }),
-        );
-      }
-    }
-  }
-
-  zoneForPoint(x, y) {
-    return this.match.zones.find((zone) => zoneContains(zone, x, y)) || this.match.zones[4];
-  }
-
-  launchHaruhiAlienWingmen(ship) {
-    const zone = this.zoneForPoint(ship.x, ship.y);
-    const releaseAngle = rngFor(this.match).range(0, TAU);
-    const spawnRadius = ship.radius + 12;
-    const x = this.match.clampX(ship.x + Math.cos(releaseAngle) * spawnRadius, 8);
-    const y = this.match.clampY(ship.y + Math.sin(releaseAngle) * spawnRadius, 8);
-    this.scouts.push(new Scout(this, x, y, { zone, combatCapable: true }));
-    this.match.spawnBurst(x, y, "#8fe8ff", 5);
-  }
+  maybeAutoLaunchScout() { return this.#aircraft.maybeAutoLaunchScout(); }
+  assignScoutMission(scout, options = {}) { return this.#aircraft.assignScoutMission(scout, options); }
+  launchScout(zoneId, options = {}) { return this.#aircraft.launchScout(zoneId, options); }
+  launchWingman(zoneId) { return this.#aircraft.launchWingman(zoneId); }
+  launchBurstScouts(ship) { return this.#aircraft.launchBurstScouts({ x: ship.x, y: ship.y }); }
+  launchHaruhiAlienWingmen(ship) { return this.#aircraft.launchHaruhiAlienWingmen({ x: ship.x, y: ship.y, radius: ship.radius }); }
+  zoneForPoint(x, y) { return this.match.zones.find((zone) => zoneContains(zone, x, y)) || this.match.zones[4]; }
 
   launchHaruhiRandomBeam(ship) {
     const angle = rngFor(this.match).range(0, TAU);

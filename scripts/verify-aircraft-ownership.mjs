@@ -1,0 +1,27 @@
+import assert from "node:assert/strict";
+import { MatchSimulation } from "../shared/game-core.js";
+import { AircraftOperations } from "../shared/game/systems/aircraft-operations.js";
+
+const match = new MatchSimulation({ seed: 721 });
+const team = match.teamA;
+assert.throws(() => { team.scouts = []; }, TypeError);
+assert.throws(() => team.scouts.push({}), TypeError);
+assert.throws(() => { team.autoScout.enabled = true; }, TypeError);
+const history = team.autoScout;
+team.configureAutoScout(true, 2);
+assert.equal(history.enabled, false);
+const sequence = [];
+const aircraft = new AircraftOperations({});
+const scout = { alive: true, update: () => sequence.push("侦察机") };
+const wingman = { alive: true, update: () => sequence.push("僚机") };
+aircraft.addScout(scout);
+aircraft.addWingman(wingman);
+const roster = aircraft.scouts;
+aircraft.advance(1);
+assert.deepEqual(sequence, ["侦察机", "僚机"]);
+scout.alive = false;
+assert.equal(aircraft.scouts.length, 1, "退场集合须保留到原清理阶段");
+aircraft.collectRetired();
+assert.equal(aircraft.scouts.length, 0);
+assert.equal(roster.length, 1, "旧集合视图不得被清理操作修改");
+console.log("航空编组校验通过：集合及自动任务只读、生产与生命周期独立、原更新和清理顺序不变。");

@@ -450,7 +450,7 @@ function aiYukiScoutDoctrineCheck() {
   assert([2, 5, 8].includes(secondScreenPlan.zoneId), "长门AI第二个警戒点离开了前沿战区");
   assert(secondScreenPlan.zoneId !== firstScreenPlan.zoneId, "长门AI没有优先补齐尚未覆盖的前沿战区");
 
-  team.scouts = [];
+  for (const scout of team.scouts) team.removeScout(scout);
   for (const zoneId of [2, 5, 8]) {
     for (const ship of team.fleetMembersForShip("main")) ship.energy = ship.maxEnergy;
     team.startCooldown("scout", 0);
