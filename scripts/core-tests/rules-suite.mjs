@@ -1,3 +1,4 @@
+import { sampleVisibility } from "./visibility-fixture.mjs";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
@@ -338,7 +339,7 @@ function yukiFlagshipCombatScoutCheck() {
   enemyMain.x = 800;
   enemyMain.y = 720;
   for (const ship of yukiTeam.getAllShips()) ship.cooldown = 999;
-  yukiTeam.visibleEnemyIds.add(enemyMain.id);
+  sampleVisibility(yukiTeam, [...yukiTeam.visibleEnemyIds, enemyMain.id]);
   yukiSim.projectiles = [];
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(yukiSim.projectiles.length === 1, "长门战斗僚机未通过权威战斗循环开火");
@@ -379,7 +380,7 @@ function yukiFlagshipCombatScoutCheck() {
   normalEnemy.x = 800;
   normalEnemy.y = 720;
   for (const ship of normalTeam.getAllShips()) ship.cooldown = 999;
-  normalTeam.visibleEnemyIds.add(normalEnemy.id);
+  sampleVisibility(normalTeam, [...normalTeam.visibleEnemyIds, normalEnemy.id]);
   normalSim.projectiles = [];
   normalTeam.stepCombat(normalSim.teamB);
   assert(normalSim.projectiles.length === 0, "非长门旗舰的普通侦察机错误开火");
@@ -772,7 +773,7 @@ function koizumiFlagshipBarrierCheck() {
   attacker.command = { x: attacker.x, y: attacker.y };
   attacker.route = null;
   attacker.cooldown = 0;
-  teamB.visibleEnemyIds = new Set([main.id]);
+  sampleVisibility(teamB, [main.id]);
   const hullBeforeShell = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
   attacker.tryAttack(sim, teamA);
   assert(sim.projectiles.length === 1, "古泉能量圈测试未生成圈外炮弹");
@@ -974,7 +975,7 @@ function koizumiBarrierChargesCheck() {
     attacker.x = main.x + main.effectiveVision() + 90;
     attacker.y = main.y;
     attacker.angle = Math.PI / 2;
-    sim.teamB.visibleEnemyIds = new Set([main.id]);
+    sampleVisibility(sim.teamB, [main.id]);
     const shot = (start = main.effectiveVision() + 40, end = 0, team = sim.teamB, y = 0) => {
       attacker.cooldown = 0;
       const previousCount = sim.projectiles.length;
@@ -1134,7 +1135,7 @@ function koizumiImpactWaveCheck() {
     const position = { x: near.x, y: near.y };
     near.update(TICK_DT);
     assert(near.speed === 0 && near.x === position.x && near.y === position.y, "眩晕期间敌舰仍可航行");
-    enemy.visibleEnemyIds.add(orb.id);
+    sampleVisibility(enemy, [...enemy.visibleEnemyIds, orb.id]);
     near.tryAttack(sim, team);
     assert(sim.projectiles.length === 0, "眩晕中的敌舰仍可开火");
     const snapshot = JSON.parse(JSON.stringify(sim.serializeState()));
@@ -1206,13 +1207,13 @@ function koizumiOrbRamCheck() {
   );
   sub1.route = null;
 
-  teamA.visibleEnemyIds.add(enemyMain.id);
+  sampleVisibility(teamA, [...teamA.visibleEnemyIds, enemyMain.id]);
   sub1.cooldown = 0;
   sim.projectiles = [];
   sub1.tryAttack(sim, sim.teamB);
   assert(sim.projectiles.length === 0, "古泉处于光球形态时仍能正常射击");
 
-  sim.teamB.visibleEnemyIds = new Set([sub1.id]);
+  sampleVisibility(sim.teamB, [sub1.id]);
   enemyMain.cooldown = 0;
   assert(sim.teamB.pickTargetFor(enemyMain, teamA) === sub1, "敌舰索敌没有选中古泉光球");
   enemyMain.tryAttack(sim, teamA);
@@ -1729,7 +1730,7 @@ function haruhiHeroPowerCheck() {
     "勇者之力硬控期间仍可接受玩家操舰输入",
   );
   enemyMain.cooldown = 0;
-  teamB.visibleEnemyIds.add(haruhi.id);
+  sampleVisibility(teamB, [...teamB.visibleEnemyIds, haruhi.id]);
   sim.projectiles = [];
   enemyMain.tryAttack(sim, teamA);
   assert(sim.projectiles.length === 0, "勇者之力硬控期间敌舰仍可射击");
@@ -1884,7 +1885,7 @@ function haruhiFlagshipReworkCheck() {
   target.y = orb.y + radialY * 90;
   target.angle = Math.atan2(haruhi.y - target.y, haruhi.x - target.x);
   target.cooldown = 0;
-  teamB.visibleEnemyIds = new Set([haruhi.id]);
+  sampleVisibility(teamB, [haruhi.id]);
   const haruhiHpBeforeOrb = haruhi.hp;
   sim.projectiles = [];
   target.tryAttack(sim, teamA);
@@ -2427,7 +2428,7 @@ function shamisenCatPawCheck() {
     ship.command = { x: ship.x, y: ship.y };
     ship.route = null;
   }
-  teamA.visibleEnemyIds = new Set([target.id]);
+  sampleVisibility(teamA, [target.id]);
 
   const baseFireRate = shamisen.effectiveFireRate();
   const cast = teamA.castSubSkill("sub1");
@@ -2521,16 +2522,16 @@ function shamisenFlagshipHuntCheck() {
     decoy.y = 720;
     decoy.route = null;
 
-    teamA.visibleEnemyIds = new Set();
+    sampleVisibility(teamA, []);
     assert(
       teamA.pickTargetFor(hunter, teamB) === null,
       "猎杀标记在没有真实视野时错误允许舰队射击",
     );
     assert(!teamA.visibleEnemyIds.has(target.id), "猎杀标记错误写入真实视野集合");
 
-    teamA.visibleEnemyIds.add(decoy.id);
+    sampleVisibility(teamA, [...teamA.visibleEnemyIds, decoy.id]);
     assert(teamA.pickTargetFor(hunter, teamB) === decoy, "不可见猎杀目标错误压过了可见敌舰");
-    teamA.visibleEnemyIds.add(target.id);
+    sampleVisibility(teamA, [...teamA.visibleEnemyIds, target.id]);
     assert(teamA.pickTargetFor(hunter, teamB) === target, "猎杀目标进入真实视野后没有获得最高锁定优先级");
 
     const targetHpBefore = target.hp;
@@ -2555,7 +2556,7 @@ function shamisenFlagshipHuntCheck() {
     decoy.takeDamage(25, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
     assert(Math.abs(decoy.hp - (decoyHpBefore - 25)) < 1e-9, "猫爪印记错误放大了非目标伤害");
 
-    teamA.visibleEnemyIds = new Set();
+    sampleVisibility(teamA, []);
     target.hp = 29;
     target.takeDamage(20, hunter, sim, { kind: DAMAGE_KIND.PROJECTILE });
     assert(!target.alive, "猎杀目标在致命1.5倍伤害后仍存活");

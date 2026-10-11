@@ -79,3 +79,14 @@ export function pickTargetId(candidates, { huntTargetId = null, focusLowHp = fal
   }
   return nearest?.id ?? null;
 }
+
+// 一轮火力分配及其失效处理归此组件所有；后续射击仍提交最新候选，不能命中过期目标。
+export class FleetFireControl {
+  #assignments = new Map();
+  prepare(attackers, focusHpFrac) {
+    this.#assignments = assignFocusTargets(attackers, focusHpFrac);
+  }
+  pick(attackerId, candidates, options) {
+    return pickTargetId(candidates, { ...options, assignedTargetId: this.#assignments.get(attackerId) });
+  }
+}

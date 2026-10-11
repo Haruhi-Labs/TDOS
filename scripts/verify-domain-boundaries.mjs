@@ -1,3 +1,4 @@
+import { sampleVisibility } from "./core-tests/visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 
@@ -8,7 +9,7 @@ const originalRules = match.rules;
 left.x = right.x = 700;
 left.y = 700;
 right.y = 701;
-match.teamA.visibleEnemyIds.add(right.id);
+sampleVisibility(match.teamA, [right.id]);
 
 // 未新增角色分支，仅替换能力契约即可改变通用碰撞、伤害资格与广播视野。
 match.rules = Object.freeze({
@@ -231,3 +232,5 @@ await import("./verify-role-state-ownership.mjs");
 await import("./verify-sensor-ownership.mjs");
 
 await import("./verify-ai-memory-ownership.mjs");
+
+await import("./verify-targeting-ownership.mjs");

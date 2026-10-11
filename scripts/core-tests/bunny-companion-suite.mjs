@@ -1,3 +1,4 @@
+import { sampleVisibility } from "./visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
 import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
@@ -206,7 +207,7 @@ function conversionCheck() {
   assert.equal(sim.projectiles.some((p) => p.sourceId === id), false);
   assert.equal(sim.projectiles.some((p) => p.sourceId === owner.id), true);
   sim.projectiles.length = 0;
-  team.visibleEnemyIds.add(id);
+  sampleVisibility(team, [...team.visibleEnemyIds, id]);
   assert.equal(team.fireCandidates(owner, enemy).some((entry) => entry.target === companion), false);
   const health = companion.hp;
   const telemetry = JSON.stringify(sim.telemetry);
@@ -228,7 +229,7 @@ function conversionCheck() {
   // 由真实弹体验证母舰命中不产生伤害、命中统计或猫爪附效。
   companion.angle = 0;
   companion.cooldown = 0;
-  enemy.visibleEnemyIds.add(owner.id);
+  sampleVisibility(enemy, [...enemy.visibleEnemyIds, owner.id]);
   owner.x = companion.x + 20;
   owner.y = companion.y;
   companion.tryAttack(sim, team);

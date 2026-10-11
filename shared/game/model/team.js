@@ -1,3 +1,4 @@
+import { FleetPerception } from "../systems/visibility.js";
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
 import { AircraftOperations } from "../systems/aircraft-operations.js";
 import { createAircraftPort } from "../rules/aircraft-port.js";
@@ -17,10 +18,10 @@ import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../charact
 import { rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
-import { initializeRadar, computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
+import { initializeRadar, visibilityInputs, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
 import { cancelVisionWaveSkill as cancelTeamVisionWaveSkill, initializeVisionWaves, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
-import { isFocusWorthy } from "../targeting-system.js";
-import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
+import { FleetFireControl } from "../targeting-system.js";
+import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../rules/fire-control.js";
 import { initializeKoizumiImpactWaves, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { initializeKoizumiBarrier, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
@@ -31,6 +32,10 @@ import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  #perception = new FleetPerception();
+  #fireControl = new FleetFireControl();
+  get visibleEnemyIds() { return this.#perception.visibleIds; }
+
   #effectView;
   get effects() {
     const haruhiBoostUntil = this.#haruhi.expiresAt;
@@ -83,7 +88,6 @@ export class Team {
     // 极限集火只对"残血"目标生效(血量 ≤ 该值×自身上限才值得转火去收人头);
     // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
     this.focusHpFrac = 0.5;
-    this.visibleEnemyIds = new Set();
     this.#skills = new SkillCycle(createTeamSkillPort(this, {
       activateSupport: (duration) => this.#haruhi.cast(duration),
       activateSponsor: (duration) => this.#sponsor.activate(duration),
@@ -556,7 +560,7 @@ export class Team {
   }
 
   computeVisibility(enemyTeam) {
-    this.visibleEnemyIds = computeTeamVisibility(this, enemyTeam);
+    this.#perception.sample(visibilityInputs(this, enemyTeam));
   }
 
   // 某攻击者当前可开火的候选目标:已过滤"真实可见 + 进射程",并带上距离与射界密度。
@@ -565,24 +569,12 @@ export class Team {
     return teamFireCandidates(this, attacker, enemyTeam);
   }
 
-  focusDamageBudget(attacker) {
-    return attackerFocusDamageBudget(attacker);
-  }
-
-  isFocusWorthy(target) {
-    return isFocusWorthy(this.focusHpFrac, target);
-  }
-
-  assignFocusTargets(enemyTeam) {
-    this._focusTargets = assignTeamFocusTargets(this, enemyTeam);
-  }
-
   pickTargetFor(attacker, enemyTeam) {
-    return pickTeamTarget(this, attacker, enemyTeam, this._focusTargets?.get(attacker.id));
+    return pickTeamTarget(this, attacker, enemyTeam, this.#fireControl);
   }
 
   stepCombat(enemyTeam) {
-    if (this.aiFocusLowHp) this.assignFocusTargets(enemyTeam);
+    if (this.aiFocusLowHp) this.#fireControl.prepare(projectVolleyAttackers(this, enemyTeam), this.focusHpFrac);
     // 攻击立即结算；后续攻击者必须看见前一发造成的死亡和状态变化。
     for (const ship of this.getAllShips()) ship.tryAttack(this.match, enemyTeam);
     for (const wingman of this.wingmen) wingman.tryAttack(this.match, enemyTeam);

@@ -1,3 +1,4 @@
+import { sampleVisibility } from "./visibility-fixture.mjs";
 import { SearchBelief } from "../../shared/game/ai/policy/belief.js";
 import { cancelVisionWaveSkill } from "../../shared/game/vision-wave.js";
 import { disruptKoizumiBarrier } from "../../shared/game/koizumi-barrier.js";
@@ -1725,7 +1726,7 @@ function aiShamisenHuntIntelCheck() {
     });
     const bot = aiFixture(sim, "A");
     const targetId = sim.teamA.shamisenHunt.targetId;
-    sim.teamA.visibleEnemyIds = new Set();
+    sampleVisibility(sim.teamA, []);
     bot.refreshIntel();
 
     const contact = bot.rememberedContacts.find((contact) => contact.id === targetId);
@@ -1773,7 +1774,7 @@ function aiShamisenHuntAttackFormationCheck() {
     ship.command = { x: ship.x, y: ship.y };
   }
 
-  team.visibleEnemyIds = new Set([blocker.id]);
+  sampleVisibility(team, [blocker.id]);
   bot.rememberContact(blocker, "visible");
   bot.refreshIntel();
   const focus = bot.selectEnemyFocus(team.ships.main);
@@ -1796,7 +1797,7 @@ function aiShamisenHuntAttackFormationCheck() {
     ship.route = null;
     ship.command = { x: ship.x, y: ship.y };
   }
-  team.visibleEnemyIds = new Set();
+  sampleVisibility(team, []);
   sim.elapsed += 19; // 离开视野后由情报组件自然淘汰陈旧记录。
   bot.refreshIntel();
   const stretchedFocus = bot.selectEnemyFocus(team.ships.main);

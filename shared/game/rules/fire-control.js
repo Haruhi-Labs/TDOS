@@ -1,4 +1,3 @@
-import { assignFocusTargets, pickTargetId } from "../targeting-system.js";
 import { distance } from "../math.js";
 
 export function fireCandidates(team, attacker, enemyTeam) {
@@ -32,24 +31,23 @@ function projectCandidate({ target, dist, arc }) {
   return { target: { id: target.id, hp: target.hp, maxHp: target.maxHp }, dist, arc };
 }
 
-export function assignTeamFocusTargets(team, enemyTeam) {
+export function projectVolleyAttackers(team, enemyTeam) {
   const attackers = [...team.getAllShips(), ...team.wingmen, ...team.scouts.filter((scout) => scout.combatCapable)]
     .filter((attacker) => attacker.alive && attacker.cooldown <= 0)
     .map((attacker) => ({ attacker, budget: focusDamageBudget(attacker) }))
     .sort((left, right) => right.budget - left.budget);
-  return assignFocusTargets(attackers.map(({ attacker, budget }) => ({
+  return attackers.map(({ attacker, budget }) => ({
     id: attacker.id,
     budget,
     candidates: fireCandidates(team, attacker, enemyTeam).map(projectCandidate),
-  })), team.focusHpFrac);
+  }));
 }
 
-export function pickTeamTarget(team, attacker, enemyTeam, assignedTargetId) {
+export function pickTeamTarget(team, attacker, enemyTeam, control) {
   const candidates = fireCandidates(team, attacker, enemyTeam);
-  const id = pickTargetId(candidates.map(projectCandidate), {
+  const id = control.pick(attacker.id, candidates.map(projectCandidate), {
     huntTargetId: team.match.rules.preferredTargetId(team),
     focusLowHp: team.aiFocusLowHp,
-    assignedTargetId,
     focusHpFrac: team.focusHpFrac,
   });
   return candidates.find((candidate) => candidate.target.id === id)?.target || null;

@@ -1,5 +1,4 @@
 const radars = new WeakMap();
-import { collectVisibleEntityIds } from "./systems/visibility.js";
 import { YUKI_RADAR_ROTATION_SECONDS } from "./combat-rules.js";
 import { clamp, counterClockwiseSweepDistance, distance, lerp, normalizeAngle, stableRadarNoise } from "./math.js";
 import { visionWavesCoverEntity } from "./vision-wave.js";
@@ -114,13 +113,13 @@ export function serializeRadarPassive(team) {
   };
 }
 
-export function computeVisibility(team, enemyTeam) {
-  return collectVisibleEntityIds({
+export function visibilityInputs(team, enemyTeam) {
+  return {
     sensors: team.getVisionSources(),
     entities: enemyTeam.getEntities(),
     coveredByWave: (entity) => visionWavesCoverEntity(team, entity),
     broadcast: team.match.rules.broadcastShips(enemyTeam),
-  });
+  };
 }
 
 export function initializeRadar(team, facing) {
