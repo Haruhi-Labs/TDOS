@@ -98,6 +98,8 @@ function clearCompanionProjectiles(ship) {
 }
 
 function transferCompanion(ship, destination, nextState) {
+  if (!ship.team.extraShips.includes(ship) || ship.team === destination
+    || ship.team.match !== destination.match || !destination.canAcceptAuxiliaryShip(ship)) return false;
   const oldSpeed = ship.effectiveSpeed();
   const oldRate = ship.effectiveFireRate();
   clearCompanionReliable(ship);
@@ -107,15 +109,17 @@ function transferCompanion(ship, destination, nextState) {
   // 位置与生命不因换阵营重算；伤害等查询读取当前阵营，禁止重复难度缩放。
   ship.clearRoute();
   ship.rescaleCombatTiming(oldSpeed, oldRate);
+  return true;
 }
 
 function returnCompanion(ship, now) {
   const owner = bunnyCompanionOwner(ship);
-  transferCompanion(ship, owner.team, {
+  if (!transferCompanion(ship, owner.team, {
     ...ship.bunnyCompanion, convertedUntil: 0, nextReliableAt: now + C.companion.intervalSeconds,
     reliableUntil: 0, reliableStartedTick: -1,
-  });
+  })) return false;
   ship.followTarget(followPoint(owner, ship.bunnyCompanion.followOffset), owner.throttle);
+  return true;
 }
 
 /** 战区资格由鹤屋入口校验；转移仅发生在队伍更新前的动作/生命周期阶段。 */
@@ -125,9 +129,9 @@ export function convertBunnyCompanion(ship, destination, zone) {
   const now = destination.match.elapsed;
   if (destination.seat === ship.bunnyCompanion.ownerSeat) {
     // 原阵营反策反视为提前归还，同样重排自动技能和清除旧弹体。
-    returnCompanion(ship, now);
+    return returnCompanion(ship, now);
   } else {
-    transferCompanion(ship, destination, planBunnyCompanionConversion(ship.bunnyCompanion, now).state);
+    if (!transferCompanion(ship, destination, planBunnyCompanionConversion(ship.bunnyCompanion, now).state)) return false;
     ship.followTarget({ x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 });
   }
   return true;
@@ -163,7 +167,9 @@ export function prepareBunnyCompanions(match) {
         && (!ship.forcedKnockback || ship.forcedKnockback.endsAt <= match.elapsed),
       enabled: !ship.team.areSkillsDisabled(),
     });
-    if (result.returnToOwner) returnCompanion(ship, match.elapsed);
+    if (result.returnToOwner) {
+      if (!returnCompanion(ship, match.elapsed)) continue;
+    }
     else commitCompanionState(ship, result.state);
     if (result.triggerReliable) {
       for (const receiver of [owner, ship]) {

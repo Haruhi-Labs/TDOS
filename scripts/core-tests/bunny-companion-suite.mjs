@@ -4,7 +4,7 @@ import { convertZoneSupport } from "../../shared/game/rules/support-conversion.j
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
-import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
+import { prepareBunnyCompanions, convertBunnyCompanion } from "../../shared/game/bunny-companion-runtime.js";
 import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
 import { resolveBunnyOtherworlderContacts } from "../../shared/game/character-contacts.js";
 import { createInputQueue } from "../../server/input-queue.js";
@@ -420,4 +420,22 @@ export function runBunnyCompanionSuite() {
   conversionCheck();
   multipleAndImmunityCheck();
   replayAndDisplayCheck();
+}
+
+// 转移预检必须先于可靠效果、弹体和角色状态的任何提交。
+{
+  const { sim, owner, companion } = setup();
+  sim.elapsed = 20;
+  prepareBunnyCompanions(sim);
+  const occupied = new companion.constructor(sim.teamB, companion.key, 700, 700, 0, { characterId: "kyon", isAuxiliary: true });
+  sim.teamB.addAuxiliaryShip(occupied);
+  const state = companion.bunnyCompanion;
+  const reliable = owner.bunnyReliable;
+  const snapshot = JSON.stringify(sim.serializeState());
+  assert.equal(convertBunnyCompanion(companion, sim.teamB, sim.zoneById(5)), false);
+  assert.equal(companion.bunnyCompanion, state);
+  assert.equal(owner.bunnyReliable, reliable);
+  assert.equal(JSON.stringify(sim.serializeState()), snapshot, "失败转移不能产生任何可见副作用");
+  sim.teamB.removeAuxiliaryShip(occupied);
+  assert.equal(convertBunnyCompanion(companion, sim.teamB, sim.zoneById(5)), true);
 }
