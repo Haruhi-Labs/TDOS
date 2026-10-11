@@ -158,6 +158,19 @@ for (const file of walk("shared/game/model")) {
   }
 }
 
+// 舰船推进只消费装配时注入的能力、效果与投影，不再导入具体角色实现。
+for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projectile.js"]) {
+  const allowed = new Set([
+    "shared/game/throttle.js", "shared/game/combat-rules.js", "shared/game/characters.js",
+    "shared/game/math.js", "shared/game/rng.js", "shared/game/damage.js", "shared/game/collision-system.js",
+    "shared/game/model/projectile.js", "shared/game/model/model-support.js",
+  ]);
+  for (const specifier of importSpecifiers(resolve(ROOT, fileName))) {
+    const target = display(resolveImport(resolve(ROOT, fileName), specifier));
+    if (!allowed.has(target)) failures.push(`${fileName} 不得直接解释角色组件或角色投影 ${target}`);
+  }
+}
+
 // 通用算法只允许基础工具；角色能力由调用方注入。
 for (const fileName of ["shared/game/collision-system.js", "shared/game/targeting-system.js", ...walk("shared/game/systems").map(display)]) {
   const file = resolve(ROOT, fileName);

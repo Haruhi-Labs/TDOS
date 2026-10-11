@@ -15,6 +15,10 @@ export function createHaruhiHeroPowerShockState() {
   };
 }
 
+export function resetHaruhiHeroPowerShock(ship) {
+  ship.heroPowerShock = createHaruhiHeroPowerShockState();
+}
+
 export function isHaruhiHeroPowerControlLocked(ship, now = ship?.team?.match?.elapsed || 0) {
   if (ship?.isControlImmune?.()) return false;
   return Boolean(ship?.heroPowerShock && Number(ship.heroPowerShock.lockUntil) > now);

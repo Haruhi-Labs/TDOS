@@ -4,16 +4,8 @@ import { fireArcDensityMultiplier } from "../combat-rules.js";
 import { characterDefinition as getCharacterDef, slotLabel } from "../characters.js";
 import { clamp, distance, dot, lerp, quadraticLengthApprox, quadraticPoint, quadraticStartCurvature, rotateOffset, shortestAngleDelta } from "../math.js";
 import { rngFor } from "../rng.js";
-import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
-import { dispelKoizumiOrb, serializeKoizumiOrb, updateKoizumiOrb } from "../koizumi-orb.js";
-import { haruhiOtherworlderReady } from "../haruhi-flagship.js";
-import { createHaruhiHeroPowerShockState, serializeHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
-import { DAMAGE_KIND, normalizeDamageContext } from "../damage.js";
-import { purgeBunnyReliable } from "../bunny-haruhi-companion.js";
-import { serializeBunnyCompanion } from "../bunny-companion-runtime.js";
-import { createBunnyHaruhiState, cleanseBunnyStageControl, purgeBunnyForm, resolveBunnyThrottle } from "../bunny-haruhi.js";
-import { BUNNY_HARUHI_CHARACTER, serializeBunnyShip } from "../bunny-haruhi-runtime.js";
+import { normalizeDamageContext } from "../damage.js";
 import { Projectile } from "../model/projectile.js";
 import { FORMATION_DAMAGE_SHARE, nextEntityId } from "../model/model-support.js";
 
@@ -52,8 +44,6 @@ export class Ship {
     this.alive = true;
     this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
     this.forcedKnockback = null;
-    this.koizumiOrb = null;
-    this.heroPowerShock = createHaruhiHeroPowerShockState();
 
     this.cooldown = rngFor(this.team.match).range(0, 0.5);
     this.formationOffset = { ...(options.formationOffset || { x: 0, y: 0 }) };
@@ -68,26 +58,10 @@ export class Ship {
       stunnedUntil: 0,
       nextShotDamageMultiplier: 1,
     };
-    this.clawMarks = {
-      sourceSeat: null,
-      stacks: 0,
-      required: 4,
-      expiresAt: 0,
-      color: "#ffc0bd",
-    };
     // 记录主动技能增益的权威生效 tick。多人同一 tick 的双方输入视为同时发生，
     // 后处理的净化不能因座位处理顺序清掉对方刚刚开启的技能。
     this.activeSkillEffectStartedTicks = Object.create(null);
-    if (this.character === BUNNY_HARUHI_CHARACTER) {
-      this.bunnyHaruhi = createBunnyHaruhiState();
-      // 仅新角色拦截最终落值，覆盖动作、航线和AI直接赋值，不改旧舰船属性形态。
-      let throttle = this.throttle;
-      Object.defineProperty(this, "throttle", {
-        enumerable: true, configurable: true,
-        get: () => resolveBunnyThrottle(this.bunnyHaruhi, throttle, !this.team.areSkillsDisabled(), this.team.match.elapsed),
-        set: (value) => { throttle = resolveBunnyThrottle(this.bunnyHaruhi, value, !this.team.areSkillsDisabled(), this.team.match.elapsed); },
-      });
-    }
+    this.team.match.shipEffects.initialize(this);
   }
 
   isAttached() {
@@ -290,10 +264,9 @@ export class Ship {
   clearControlEffects() {
     this.effects.silencedUntil = 0;
     this.effects.stunnedUntil = 0;
-    this.heroPowerShock = createHaruhiHeroPowerShockState();
     this.collisionSlowUntil = 0;
     this.forcedKnockback = null;
-    if (this.bunnyStageExposure) this.bunnyStageExposure = cleanseBunnyStageControl(this.bunnyStageExposure);
+    this.team.match.shipEffects.clearControl(this);
   }
 
   isKoizumiOrbActive() {
@@ -402,65 +375,41 @@ export class Ship {
     this.activeSkillEffectStartedTicks[effectKey] = this.team.match.tick;
   }
 
-  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
-    let cleared = false;
-    if (this.bunnyReliable) {
-      const next = purgeBunnyReliable(this.bunnyReliable, preserveCurrentTick ? this.team.match.tick : -1);
-      if (next.suppressed !== this.bunnyReliable.suppressed) cleared = true;
-      this.bunnyReliable = next;
-    }
-    if (this.bunnyHaruhi) {
-      const old = this.bunnyHaruhi;
-      const next = purgeBunnyForm(old, preserveCurrentTick ? this.team.match.tick : -1);
-      if (next.positiveSuppressed !== old.positiveSuppressed || next.immunityUntil !== old.immunityUntil) cleared = true;
-      this.bunnyHaruhi = next;
-    }
-    const canClear = (effectKey) => (
-      !preserveCurrentTick
-      || this.activeSkillEffectStartedTicks[effectKey] !== this.team.match.tick
-    );
-    const clearTimedEffect = (effectKey) => {
-      if (!canClear(effectKey)) {
-        return;
-      }
-      if (this.hasEffect(effectKey)) {
-        cleared = true;
-      }
-      this.effects[effectKey] = 0;
-      delete this.activeSkillEffectStartedTicks[effectKey];
-    };
+  canClearActiveSkillEffect(key, preserveCurrentTick) {
+    return !preserveCurrentTick || this.activeSkillEffectStartedTicks[key] !== this.team.match.tick;
+  }
 
-    clearTimedEffect("reliableUntil");
-    clearTimedEffect("bladeQueenUntil");
-    clearTimedEffect("catPawUntil");
-    if (this.koizumiOrb && canClear("koizumiOrb")) {
-      dispelKoizumiOrb(this);
-      cleared = true;
-      delete this.activeSkillEffectStartedTicks.koizumiOrb;
-    }
-    if (canClear("nextShotDamageMultiplier")) {
-      if (this.effects.nextShotDamageMultiplier > 1) {
-        cleared = true;
-      }
-      this.effects.nextShotDamageMultiplier = 1;
-      delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
-    }
+  clearTimedEffect(key, preserveCurrentTick) {
+    if (!this.canClearActiveSkillEffect(key, preserveCurrentTick)) return false;
+    const cleared = this.hasEffect(key);
+    this.effects[key] = 0;
+    delete this.activeSkillEffectStartedTicks[key];
     return cleared;
   }
 
+  forgetActiveSkillEffect(key) {
+    delete this.activeSkillEffectStartedTicks[key];
+  }
+
+  consumeNextShotMultiplier() {
+    const multiplier = this.effects.nextShotDamageMultiplier;
+    this.effects.nextShotDamageMultiplier = 1;
+    this.forgetActiveSkillEffect("nextShotDamageMultiplier");
+    return multiplier;
+  }
+
+  clearActiveSkillBuffs({ preserveCurrentTick = true } = {}) {
+    return this.team.match.shipEffects.clearPositive(this, preserveCurrentTick);
+  }
+
   clearNegativeEffects() {
-    const now = this.team.match.elapsed;
     const cleared = this.isSilenced()
       || this.hasEffect("stunnedUntil")
-      || this.heroPowerShock.recoveryUntil > now
-      || (this.bunnyStageExposure?.recoveryUntil || 0) > now
-      || this.collisionSlowUntil > now
-      || Boolean(this.forcedKnockback)
-      || this.activeClawMarks().stacks > 0;
+      || this.team.match.shipEffects.hasNegative(this)
+      || this.collisionSlowUntil > this.team.match.elapsed
+      || Boolean(this.forcedKnockback);
     this.clearControlEffects();
-    this.clawMarks.sourceSeat = null;
-    this.clawMarks.stacks = 0;
-    this.clawMarks.expiresAt = 0;
+    this.team.match.shipEffects.clearNegative(this);
     return cleared;
   }
 
@@ -664,61 +613,15 @@ export class Ship {
   }
 
   expireClawMarks() {
-    if (this.clawMarks.stacks > 0 && this.clawMarks.expiresAt <= this.team.match.elapsed) {
-      this.clawMarks.sourceSeat = null;
-      this.clawMarks.stacks = 0;
-      this.clawMarks.expiresAt = 0;
-    }
+    this.team.match.shipEffects.expireMarks(this);
   }
 
   activeClawMarks() {
-    if (this.clawMarks.stacks > 0 && this.clawMarks.expiresAt <= this.team.match.elapsed) {
-      return { ...this.clawMarks, sourceSeat: null, stacks: 0, expiresAt: 0 };
-    }
-    return { ...this.clawMarks };
+    return this.team.match.rules.activeClawMarks(this);
   }
 
   registerClawHit(claw, match, source = null) {
-    if (!this.alive || !claw || !this.team.match.rules.canDamage(source, this)) {
-      return false;
-    }
-    this.expireClawMarks();
-    const marks = this.clawMarks;
-    const sourceSeat = claw.sourceSeat || null;
-    if (marks.stacks > 0 && marks.sourceSeat !== sourceSeat) {
-      marks.stacks = 0;
-    }
-    marks.sourceSeat = sourceSeat;
-    marks.required = Math.max(1, Math.round(Number(claw.triggerHits) || 4));
-    marks.stacks += 1;
-    marks.expiresAt = this.team.match.elapsed + Math.max(0.5, Number(claw.markDuration) || 8);
-    marks.color = claw.color || marks.color;
-
-    if (marks.stacks < marks.required) {
-      return false;
-    }
-
-    marks.stacks = 0;
-    marks.expiresAt = 0;
-    const burstDamage = Math.max(0, Number(claw.burstDamage) || 0);
-    if (burstDamage > 0) {
-      const damageImmune = this.isDamageImmune();
-      const damageContext = { kind: DAMAGE_KIND.ATTACK_EFFECT };
-      const displayedDamage = burstDamage * this.team.match.rules.attackDamageMultiplier(
-        source,
-        this,
-        damageContext.kind,
-      );
-      this.takeDamage(burstDamage, source, match, damageContext);
-      match.spawnFloatingTextKey(this.x + 10, this.y - 20, "猫爪爆发", {}, "#ffd0e4");
-      if (damageImmune) {
-        match.spawnFloatingTextKey(this.x + 8, this.y - 8, "免疫", {}, "#ffc5cf");
-      } else {
-        match.spawnFloatingText(this.x + 8, this.y - 8, `-${Math.round(displayedDamage)}`, "#ff8fbd");
-      }
-      match.spawnBurst(this.x, this.y, "#ff8fbd", 12);
-    }
-    return true;
+    return this.team.match.shipEffects.registerClawHit(this, claw, match, source);
   }
 
   update(dt) {
@@ -744,7 +647,7 @@ export class Ship {
       return;
     }
 
-    if (updateKoizumiOrb(this, dt)) {
+    if (this.team.match.shipEffects.advanceMovement(this, dt)) {
       return;
     }
 
@@ -913,13 +816,7 @@ export class Ship {
     if (fireDensity <= 0) {
       return;
     }
-    let damage = this.effectiveDamage();
-    if (this.effects.nextShotDamageMultiplier > 1) {
-      damage *= this.effects.nextShotDamageMultiplier;
-      match.spawnFloatingTextKey(this.x + 12, this.y - 12, "超能力", {}, "#9be0ff");
-      this.effects.nextShotDamageMultiplier = 1;
-      delete this.activeSkillEffectStartedTicks.nextShotDamageMultiplier;
-    }
+    const damage = this.team.match.shipEffects.prepareShotDamage(this, this.effectiveDamage(), match);
 
     const projectileProfile = this.team.match.rules.projectileProfile(this);
     match.projectiles.push(
@@ -989,71 +886,6 @@ export class Ship {
   }
 
   serialize() {
-    const fleetEnergy = this.team.fleetEnergyForShip(this);
-    const statusEffects = serializeShipStatusEffects(this);
-    return {
-      id: this.id,
-      key: this.key,
-      slotKey: this.slotKey,
-      characterId: this.characterId,
-      characterName: this.character.name,
-      name: this.name,
-      x: this.x,
-      y: this.y,
-      angle: this.angle,
-      speed: this.speed,
-      cooldown: this.cooldown,
-      hp: this.hp,
-      maxHp: this.maxHp,
-      energy: this.energy,
-      maxEnergy: this.maxEnergy,
-      fleetEnergy: fleetEnergy.current,
-      fleetMaxEnergy: fleetEnergy.max,
-      alive: this.alive,
-      radius: this.radius,
-      throttle: this.throttle,
-      vision: this.effectiveVision(),
-      range: this.effectiveRange(),
-      attached: this.isAttached(),
-      canControl: this.canControl(),
-      bladeQueen: this.hasEffect("bladeQueenUntil"), // 刀锋女王激活中:两端渲染层据此画猩红刀锋光环
-      catPawVolley: this.hasEffect("catPawUntil"),
-      silenced: this.isSilenced(),
-      stunRemaining: Math.max(0, (this.effects.stunnedUntil || 0) - this.team.match.elapsed),
-      silenceRemaining: Math.max(0, (this.effects.silencedUntil || 0) - this.team.match.elapsed),
-      heroPowerShock: serializeHaruhiHeroPowerShock(this),
-      koizumiOrb: serializeKoizumiOrb(this),
-      knockedBack: Boolean(this.forcedKnockback),
-      haruhiImpactReady: this.key === "main" && haruhiOtherworlderReady(this.team),
-      clawMarks: (() => {
-        const marks = this.activeClawMarks();
-        return {
-          sourceSeat: marks.sourceSeat,
-          stacks: marks.stacks,
-          required: marks.required,
-          expiresIn: Math.max(0, marks.expiresAt - this.team.match.elapsed),
-          color: marks.color,
-        };
-      })(),
-      nameRevealed: this.nameRevealed, // 角色名是否已被敌方永久确认
-      buffs: statusEffectNames(statusEffects),
-      statusEffects,
-      ...(this.bunnyHaruhi || this.bunnyStageExposure ? serializeBunnyShip(this) : {}),
-      ...(this.bunnyCompanion ? serializeBunnyCompanion(this) : {}),
-      ...(this.bunnyReliable ? { bunnyReliable: {
-        sourceCompanionId: this.bunnyReliable.sourceCompanionId,
-        remaining: Math.max(0, this.bunnyReliable.until - this.team.match.elapsed),
-        suppressed: this.bunnyReliable.suppressed,
-      } } : {}),
-      route: this.route
-        ? {
-            anchorToMain: this.route.anchorToMain,
-            p0: { ...this.route.p0 },
-            p1: { ...this.route.p1 },
-            p2: { ...this.route.p2 },
-            t: this.route.t,
-          }
-        : null,
-    };
+    return this.team.match.projectShip(this);
   }
 }

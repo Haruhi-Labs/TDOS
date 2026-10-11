@@ -85,6 +85,10 @@ function finishReturn(ship) {
   match.spawnFloatingTextKey(center + 12, center - 16, "归航", {}, "#ff9bad");
 }
 
+export function initializeKoizumiOrb(ship) {
+  ship.koizumiOrb = null;
+}
+
 export function isKoizumiOrbActive(ship) {
   return Boolean(ship?.alive && ship.koizumiOrb);
 }

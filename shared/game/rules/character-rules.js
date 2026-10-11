@@ -13,7 +13,10 @@ import { shamisenHuntDamageMultiplier } from "../shamisen-hunt.js";
 
 import { SOLO_FIRE_RATE_BONUS } from "../model/model-support.js";
 
+import { activeClawMarks } from "../shamisen-claw.js";
+
 export const CHARACTER_RULES = Object.freeze({
+  activeClawMarks,
   navigationAvailable(ship) {
     return !isKoizumiOrbReturning(ship);
   },

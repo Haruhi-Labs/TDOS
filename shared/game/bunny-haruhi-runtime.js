@@ -2,6 +2,7 @@ import { CHARACTER_DEFS } from "./characters.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 import {
   createBunnyStageExposure, resolveBunnyStageExposure, leaveBunnyStage,
+  createBunnyHaruhiState, cleanseBunnyStageControl, purgeBunnyForm,
   bunnySelfDrainAmount, bunnyStageHealAmount, clearBunnyFormWindows,
   planBunnyTransform, nextBunnyForm, isBunnyBroadcasting, isBunnyControlLocked,
   resolveBunnyThrottle, isBunnyEncoreLocked,
@@ -12,6 +13,30 @@ import { bunnyCompanions, bunnyCompanionOwner } from "./bunny-companion-runtime.
 import { supportOrbGeometry, supportOtherworlderReady } from "./haruhi-support.js";
 
 export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
+
+export function initializeBunnyShip(ship) {
+  if (ship.character !== BUNNY_HARUHI_CHARACTER) return;
+  ship.bunnyHaruhi = createBunnyHaruhiState();
+  // 保留锁档的实时读取与最终落值语义，覆盖已有动作、航线和兼容调用。
+  let throttle = ship.throttle;
+  Object.defineProperty(ship, "throttle", {
+    enumerable: true, configurable: true,
+    get: () => resolveBunnyThrottle(ship.bunnyHaruhi, throttle, !ship.team.areSkillsDisabled(), ship.team.match.elapsed),
+    set: (value) => { throttle = resolveBunnyThrottle(ship.bunnyHaruhi, value, !ship.team.areSkillsDisabled(), ship.team.match.elapsed); },
+  });
+}
+
+export function cleanseBunnyShipControl(ship) {
+  if (ship.bunnyStageExposure) ship.bunnyStageExposure = cleanseBunnyStageControl(ship.bunnyStageExposure);
+}
+
+export function purgeBunnyShipForm(ship, preservedTick) {
+  if (!ship.bunnyHaruhi) return false;
+  const old = ship.bunnyHaruhi;
+  const next = purgeBunnyForm(old, preservedTick);
+  ship.bunnyHaruhi = next;
+  return next.positiveSuppressed !== old.positiveSuppressed || next.immunityUntil !== old.immunityUntil;
+}
 
 /** 光环取来源的开关；目标自己的技能封印不能关闭敌方光环。 */
 export function bunnyStageEnabled(ship) {

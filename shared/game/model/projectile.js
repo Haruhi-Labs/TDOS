@@ -119,13 +119,7 @@ export class Projectile {
     if (rear && !damageImmune) {
       match.spawnFloatingTextKey(hitTarget.x + 12, hitTarget.y - 22, "尾击", {}, "#ff9d5a");
     }
-    if (this.claw && hitTarget.kind === "ship" && hitTarget.alive) {
-      hitTarget.registerClawHit({
-        ...this.claw,
-        sourceSeat: this.team.seat,
-        color: this.color,
-      }, match, this.source);
-    }
+    match.shipEffects.onProjectileHit(this, hitTarget, match);
     match.spawnBurst(hitTarget.x, hitTarget.y, "#ffdb9b", 7);
   }
 

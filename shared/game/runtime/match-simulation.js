@@ -1,5 +1,7 @@
 import { createHaruhiHeroPowerEvent } from "../haruhi-hero-power.js";
 import { createHullCollisionPort } from "../rules/collision-port.js";
+import { SHIP_EFFECTS } from "../rules/ship-effects.js";
+import { projectShip } from "../rules/ship-projection.js";
 import { CHARACTER_RULES } from "../rules/character-rules.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../constants.js";
@@ -44,6 +46,8 @@ export class MatchSimulation {
     };
 
     this.rules = CHARACTER_RULES;
+    this.shipEffects = SHIP_EFFECTS;
+    this.projectShip = projectShip;
     this.mode = mode;
     this.worldSize = worldSize;
     this.mapPadding = mapPadding;

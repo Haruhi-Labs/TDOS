@@ -1,9 +1,17 @@
 import {
   isBunnyCompanion, deriveBunnyCompanionBase, createBunnyCompanionState,
   advanceBunnyCompanion, createBunnyReliableState, expireBunnyReliable, bunnyReliableRecovery,
-  planBunnyCompanionConversion,
+  planBunnyCompanionConversion, purgeBunnyReliable,
 } from "./bunny-haruhi-companion.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
+
+export function purgeBunnyReliableEffect(ship, preservedTick) {
+  if (!ship.bunnyReliable) return false;
+  const old = ship.bunnyReliable;
+  const next = purgeBunnyReliable(old, preservedTick);
+  ship.bunnyReliable = next;
+  return next.suppressed !== old.suppressed;
+}
 
 export function bunnyCompanionOwner(ship) {
   const state = ship?.bunnyCompanion;

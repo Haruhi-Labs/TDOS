@@ -73,3 +73,39 @@ assert.equal(simulation.projectiles[0].visualKind, "能力夹具");
 assert.equal(simulation.projectiles[0].color, "#123456");
 assert.equal(simulation.projectiles[0].claw, null, "实体不得把三味线内部状态重新拼入弹体");
 console.log("角色能力边界校验通过：九角色重复读取无副作用，基础移动、属性、回能和射击消费可替换契约。");
+
+// 角色命中扩展发生在基础承伤之后、通用火花之前。
+const { Projectile } = await import("../shared/game/model/projectile.js");
+const hits = new MatchSimulation({ seed: 120 });
+const attacker = hits.teamA.ships.main;
+const victim = hits.teamB.ships.main;
+hits.teamB.split(1); hits.teamB.split(2);
+const order = [];
+const oldDamage = victim.takeDamage.bind(victim);
+victim.takeDamage = (...args) => { order.push("基础伤害"); return oldDamage(...args); };
+hits.spawnBurst = () => order.push("火花");
+hits.shipEffects = { ...hits.shipEffects, onProjectileHit: (projectile, target) => {
+  assert.equal(target, victim);
+  assert.ok(target.hp < target.maxHp, "扩展效果应观察同帧基础承伤后的状态");
+  order.push("命中扩展");
+} };
+const shot = new Projectile({ team: hits.teamA, source: attacker, x: victim.x, y: victim.y, targetX: victim.x, targetY: victim.y, damage: 1 });
+shot.resolveImpact(hits);
+assert.deepEqual(order, ["基础伤害", "命中扩展", "火花"]);
+
+// 实体生命周期允许替换角色处理器；只读投影不得隐式推进任何处理阶段。
+const phases = [];
+hits.shipEffects = { ...hits.shipEffects,
+  expireMarks: () => phases.push("到期"),
+  advanceMovement: () => { phases.push("专属移动"); return true; },
+  clearControl: () => phases.push("控制清理"),
+  clearPositive: () => { phases.push("增益清理"); return true; },
+};
+victim.update(0);
+assert.deepEqual(phases, ["到期", "专属移动"]);
+victim.clearControlEffects();
+assert.equal(victim.clearActiveSkillBuffs(), true);
+assert.deepEqual(phases, ["到期", "专属移动", "控制清理", "增益清理"]);
+victim.serialize(); victim.serialize();
+assert.equal(phases.length, 4);
+console.log("角色生命周期边界校验通过：专属移动、清理与命中同步扩展，投影只读且不推进阶段。");
