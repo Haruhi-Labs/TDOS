@@ -42,7 +42,8 @@ assert.equal(resolveSelectedShipKey(team, "sub1"), "main", "光球自动归航�
 const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logLevel: "silent", server: { host: "127.0.0.1", port: 0 }, plugins: [{
   name: "ship-selection-fixture",
   transform(code, id) {
-    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, refresh() { app.state = app.sim.serializeState(); app.renderState = app.renderPreviousState = app.renderCurrentState = app.state; updateUi(); } };`;
+    if (id.endsWith("/src/solo/session.js")) return code.replace("simulation = createSimulation(options);", "simulation = createSimulation(options); globalThis.testSoloSimulation = simulation;");
+    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, refresh() { app.state = globalThis.testSoloSimulation.serializeState(); app.renderState = app.state; updateUi(); } };`;
     if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
@@ -69,8 +70,8 @@ try {
       }
       await page.locator(mobile ? ".csm-cta" : ".cs-launch").click();
       await page.locator("#battleView").waitFor({ state: "visible" });
-      await page.waitForFunction(() => Boolean(window.selectionFixture.app.sim));
-      await page.evaluate(() => { const f = window.selectionFixture; f.app.paused = true; f.app.sim.teamA.splitLevel = 2; f.refresh(); });
+      await page.waitForFunction(() => Boolean(window.selectionFixture.simulation));
+      await page.evaluate(() => { const f = window.selectionFixture; f.app.paused = true; f.simulation.teamA.splitLevel = 2; f.refresh(); });
     } else {
       // 联机只接收本脚本生成的权威快照，不连接现有 WebSocket 服务。
       const wsUrl = "ws://127.0.0.1:65530/selection-fixture";
@@ -86,9 +87,9 @@ try {
       if (mode === "solo") {
         await page.evaluate(({ key, status }) => {
           const f = window.selectionFixture;
-          const ship = f.app.sim.teamA.ships[key];
-          ship.effects.stunnedUntil = status === "stun" ? f.app.sim.elapsed + 30 : 0;
-          ship.heroPowerShock = { hitAt: f.app.sim.elapsed, lockUntil: status === "shock" ? f.app.sim.elapsed + 30 : 0, recoveryUntil: status === "shock" ? f.app.sim.elapsed + 35 : 0 };
+          const ship = f.simulation.teamA.ships[key];
+          ship.effects.stunnedUntil = status === "stun" ? f.simulation.elapsed + 30 : 0;
+          ship.heroPowerShock = { hitAt: f.simulation.elapsed, lockUntil: status === "shock" ? f.simulation.elapsed + 30 : 0, recoveryUntil: status === "shock" ? f.simulation.elapsed + 35 : 0 };
           ship.alive = status !== "dead";
           f.refresh();
         }, { key, status });
@@ -113,11 +114,11 @@ try {
       const select = page.locator(mobile ? `.mobile-ship-btn[data-ship="${key}"]` : `.fleet-row[data-ship="${key}"]`);
       await select.click();
       const beforeRemovedKey = mode === "solo"
-        ? await page.evaluate(() => JSON.stringify(window.selectionFixture.app.sim.serializeState()))
+        ? await page.evaluate(() => JSON.stringify(window.selectionFixture.simulation.serializeState()))
         : outgoing.filter((message) => message.type === "input").length;
       await page.keyboard.press("b");
       if (mode === "solo") {
-        assert.equal(await page.evaluate(() => JSON.stringify(window.selectionFixture.app.sim.serializeState())), beforeRemovedKey, "可控舰按 B 键不能扣能量、减速或写入急刹状态");
+        assert.equal(await page.evaluate(() => JSON.stringify(window.selectionFixture.simulation.serializeState())), beforeRemovedKey, "可控舰按 B 键不能扣能量、减速或写入急刹状态");
       } else {
         assert.equal(outgoing.filter((message) => message.type === "input").length, beforeRemovedKey, "可控舰按 B 键不能发送旧急刹动作");
       }

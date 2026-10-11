@@ -1,18 +1,17 @@
 import { isMatchAction } from "../../shared/protocol/match-actions.js";
 
 export function createLocalBattleActionTransport({
-  getSimulation,
+  submitAction,
   seat = "A",
   canSend = () => true,
   onAccepted = () => {},
 } = {}) {
   return {
     send(action) {
-      const simulation = getSimulation ? getSimulation() : null;
-      if (!simulation || !canSend(action) || !isMatchAction(action)) {
+      if (!submitAction || !canSend(action) || !isMatchAction(action)) {
         return false;
       }
-      const accepted = simulation.applyActionForSeat(seat, action);
+      const accepted = submitAction(seat, action);
       if (accepted) {
         onAccepted(action);
       }

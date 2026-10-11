@@ -61,7 +61,7 @@
     "check:modules": "node scripts/check-module-boundaries.mjs",
     "test:all": "npm run check:static && npm run test:logic && npm run test:ai:simulation && npm run test:browser && npm run test:integration",
     "check:static": "npm run check:modules && node scripts/check-battle-drift.mjs",
-    "test:logic": "npm run test:commits && npm run test:release && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:camera && npm run test:ui:koizumi && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:server:stream && npm run test:statistics && npm run test:identity && npm run test:architecture:replay && npm run test:architecture",
+    "test:logic": "npm run test:commits && npm run test:release && npm run test:changelog && npm run test:api && npm run test:actions && npm run test:solo:session && npm run test:ruleset && npm run test:authority && npm run test:core && npm run test:online:state && npm run test:online:components && npm run test:mobile:scout && npm run test:ui:cooldown && npm run test:camera && npm run test:ui:koizumi && npm run test:network && npm run test:server:rooms && npm run test:server:runtime && npm run test:server:stream && npm run test:statistics && npm run test:identity && npm run test:architecture:replay && npm run test:architecture",
     "test:browser": "npm run test:ui:changelog && npm run test:ui:statistics && npm run test:ui:identity && npm run test:ui:interaction && npm run test:ui:webgl && npm run test:ui:resolution && npm run test:ui:staging && npm run test:ui:spectator && npm run test:ui:command && npm run test:ui:status && npm run test:ui:bunny-haruhi && npm run test:ui:skills && npm run test:ui:tournament",
     "test:integration": "npm run test:network:guards",
     "test:release": "node scripts/verify-release.mjs",
@@ -71,7 +71,8 @@
     "test:commits": "node scripts/verify-commits.mjs",
     "test:ui:tournament": "node scripts/verify-tournament-ui.mjs",
     "test:architecture:replay": "node scripts/verify-architecture-replay.mjs",
-    "test:architecture": "node scripts/verify-domain-boundaries.mjs"
+    "test:architecture": "node scripts/verify-domain-boundaries.mjs",
+    "test:solo:session": "node scripts/verify-solo-session.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

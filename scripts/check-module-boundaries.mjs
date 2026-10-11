@@ -170,7 +170,7 @@ for (const fileName of ["shared/game/collision-system.js", "shared/game/targetin
 }
 
 // 页面装配可创建对局，表现与联机消费模块只使用静态定义、纯算法及读模型。
-const simulationEntrypoints = new Set(["src/solo.js", "src/debug.js", "src/battle/native-webgl-visual-fixture.js"]);
+const simulationEntrypoints = new Set(["src/solo/session.js", "src/debug.js", "src/battle/native-webgl-visual-fixture.js"]);
 for (const file of walk("src")) {
   for (const specifier of importSpecifiers(file)) {
     const target = display(resolveImport(file, specifier));
@@ -207,9 +207,9 @@ const requiredLinks = [
   ["src/solo.js", "../shared/protocol/match-actions.js"],
   ["src/solo.js", "./battle/action-transport.js"],
   ["src/solo.js", "./battle/scout-joystick.js"],
-  ["src/solo.js", "./battle/state-interpolation.js"],
+  ["src/solo/session.js", "../battle/state-interpolation.js"],
   ["src/solo.js", "./battle/native-webgl-renderer.js"],
-  ["src/solo.js", "../shared/game/fixed-step-clock.js"],
+  ["src/solo/session.js", "../../shared/game/fixed-step-clock.js"],
   ["src/online.js", "../shared/protocol/match-actions.js"],
   ["src/online.js", "./battle/action-transport.js"],
   ["src/online.js", "./battle/scout-joystick.js"],

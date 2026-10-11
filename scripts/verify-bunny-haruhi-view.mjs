@@ -56,7 +56,8 @@ for (const locale of ["en", "ja"]) for (const [id, def] of Object.entries(STATUS
 const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logLevel: "silent", server: { host: "127.0.0.1", port: 0 }, plugins: [{
   name: "bunny-view-fixture",
   transform(code, id) {
-    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, publish(state) { app.paused = true; app.state = state; app.renderState = app.renderPreviousState = app.renderCurrentState = state; app.playerLoadout = state.teams.A.loadout; updateShipSwitchLabels(app.playerLoadout); app.sim.serializeState = () => state; updateUi(); } };`;
+    if (id.endsWith("/src/solo/session.js")) return code.replace("simulation = createSimulation(options);", "simulation = createSimulation(options); globalThis.testSoloSimulation = simulation;");
+    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, publish(state) { app.paused = true; app.state = state; app.renderState = state; app.playerLoadout = state.teams.A.loadout; updateShipSwitchLabels(app.playerLoadout); globalThis.testSoloSimulation.serializeState = () => state; updateUi(); } };`;
     if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
@@ -92,7 +93,7 @@ try {
       }
       await page.locator(".cs-launch").click();
       await page.locator("#battleView").waitFor({ state: "visible" });
-      await page.waitForFunction(() => Boolean(window.bunnyFixture.app.sim));
+      await page.waitForFunction(() => Boolean(window.bunnyFixture.simulation));
     } else {
       const wsUrl = "ws://127.0.0.1:65530/bunny-view-fixture";
       await page.routeWebSocket(wsUrl, (ws) => { socket = ws; ws.onMessage((raw) => {

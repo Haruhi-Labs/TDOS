@@ -38,12 +38,10 @@ assert.equal(validateMatchAction({ type: "未来动作" }).ok, false, "未知动
 
 const localAccepted = [];
 const localTransport = createLocalBattleActionTransport({
-  getSimulation: () => ({
-    applyActionForSeat(seat, action) {
+  submitAction(seat, action) {
       localAccepted.push({ seat, action });
       return true;
-    },
-  }),
+  },
   seat: "A",
   onAccepted: (action) => localAccepted.push({ accepted: action.type }),
 });
@@ -77,7 +75,7 @@ assert.equal(remoteTransport.send({ type: "未知" }), null, "远程传输不得
 const soloSimulation = new MatchSimulation({ mode: "pvp", worldSize: 1440 });
 const staleRenderedShip = soloSimulation.serializeState().teams.A.ships.main;
 const soloTransport = createLocalBattleActionTransport({
-  getSimulation: () => soloSimulation,
+  submitAction: (seat, action) => soloSimulation.applyActionForSeat(seat, action),
   seat: "A",
 });
 assert.equal(

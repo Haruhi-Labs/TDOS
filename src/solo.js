@@ -1,11 +1,10 @@
 import { BUNNY_HARUHI_CONFIG } from "../shared/game/bunny-haruhi-config.js";
 import { getPortraitAssetUrl } from "./character-select/portraits.js";
-import { DEFAULT_WORLD_SIZE, TICK_DT } from "../shared/game/constants.js";
-import { MatchSimulation } from "../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
+import { createSoloSession } from "./solo/session.js";
 import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, randomAiLoadout, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../shared/game/characters.js";
 import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
 import { clamp, distance } from "../shared/game/math.js";
-import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 
 import {
@@ -67,7 +66,6 @@ import {
 import { battleViewTemplate } from "./battle/template.js";
 import { createLocalBattleActionTransport } from "./battle/action-transport.js";
 import { createMobileScoutJoystick } from "./battle/scout-joystick.js";
-import { interpolateBattleState } from "./battle/state-interpolation.js";
 import { createNativeBattleRenderer } from "./battle/native-webgl-renderer.js";
 import { createStatusEffectTooltip } from "./battle/status-effects.js";
 import {
@@ -163,12 +161,12 @@ const TAU = Math.PI * 2;
 // 从而在 Retina/大屏上像素级清晰、无放大模糊。
 const LOGICAL = DEFAULT_WORLD_SIZE; // 与在线/服务器共用同一权威尺寸,防止两种模式地图割裂
 
+let soloSession = null;
+
 function initApp() {
+  soloSession = createSoloSession();
   app = {
-  sim: null,
   state: null,
-  renderPreviousState: null,
-  renderCurrentState: null,
   renderState: null,
   campaign: "standard",
   playerLoadout: readStoredLoadout(),
@@ -182,7 +180,6 @@ function initApp() {
   suppressMapClick: false,
   pendingSubSkillAim: null,
   destructionEffects: createShipDestructionEffects(),
-  logicClock: createFixedStepClock({ initialTimeMs: performance.now() }),
   gameOverLogged: false,
   tickRunning: false,
   paused: false,
@@ -198,7 +195,7 @@ function initApp() {
   })),
   };
   actionTransport = createLocalBattleActionTransport({
-    getSimulation: () => app.sim,
+    submitAction: (seat, action) => soloSession.applyAction(seat, action),
     seat: "A",
     onAccepted: (action) => tutorial.onAction(action),
   });
@@ -221,10 +218,6 @@ function enemyTeamState() {
   return app.state ? app.state.teams.B : null;
 }
 
-function ownTeamSim() {
-  return app.sim ? app.sim.teamA : null;
-}
-
 function selectedShipState() {
   const own = ownTeamState();
   if (!own || !own.ships) {
@@ -233,9 +226,8 @@ function selectedShipState() {
   return own.ships[app.selectedShipKey] || null;
 }
 
-function selectedShipSim() {
-  const own = ownTeamSim();
-  return own ? own.ships[app.selectedShipKey] || null : null;
+function selectedShipControl() {
+  return soloSession.shipControl(app.selectedShipKey);
 }
 
 function syncResponsiveMode() {
@@ -385,8 +377,8 @@ function updateShipSwitchLabels(loadout) {
   }
 }
 
-function createSimulation() {
-  return new MatchSimulation({
+function simulationOptions() {
+  return {
     mode: "ai",
     worldSize: LOGICAL,
     teamNames: {
@@ -399,7 +391,7 @@ function createSimulation() {
     },
     aiDifficulty: getDifficulty(), // 单人难度:敌方数值(血量+伤害)缩放 + AI反应快慢,极限额外开启智能集火残血
     tutorialMode: app.campaign === "tutorial",
-  });
+  };
 }
 
 function resetMatch(logMessage = true) {
@@ -408,15 +400,12 @@ function resetMatch(logMessage = true) {
   } else {
     app.enemyLoadout = cloneLoadout(DEFAULT_AI_LOADOUT); // 教程敌舰技能由仿真层禁用，阵容只用于既有绘制结构
   }
-  app.sim = createSimulation();
+  app.state = soloSession.reset(simulationOptions(), performance.now());
   app.statisticsEventId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `solo-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
   app.statisticsStartedAt = Date.now();
   app.statisticsReported = false;
-  app.state = app.sim.serializeState();
-  app.renderPreviousState = app.state;
-  app.renderCurrentState = app.state;
   app.renderState = app.state;
   app.selectedShipKey = "main";
   app.selectedZoneId = 5;
@@ -426,8 +415,8 @@ function resetMatch(logMessage = true) {
   resetShipDestructionEffects(app.destructionEffects);
   app.gameOverLogged = false;
   app.paused = false;
-  app.logicClock.reset(performance.now());
-  const mainShip = app.sim.teamA.ships.main;
+  soloSession.resetClock(performance.now());
+  const mainShip = soloSession.shipControl("main");
   camera.reset({ x: mainShip.x, y: mainShip.y });
   updateShipSwitchLabels(app.playerLoadout);
   if (logMessage) {
@@ -453,9 +442,9 @@ function setSelectedShip(shipKey) {
   if (app.pendingSubSkillAim && app.pendingSubSkillAim.shipKey !== shipKey) {
     app.pendingSubSkillAim = null;
   }
-  const shipSim = selectedShipSim();
-  if ((app.mobileMode || camera.zoom > CAMERA_ZOOM_MIN + 1e-3) && shipSim) {
-    camera.centerCameraOn(shipSim.x, shipSim.y, false);
+  const shipControl = selectedShipControl();
+  if ((app.mobileMode || camera.zoom > CAMERA_ZOOM_MIN + 1e-3) && shipControl) {
+    camera.centerCameraOn(shipControl.x, shipControl.y, false);
   }
   syncPowerFromSelected();
   updateUi();
@@ -485,12 +474,12 @@ function syncPowerFromSelected() {
   if (!ship) {
     return;
   }
-  syncThrottleGearControls(ui, localThrottleForShip(selectedShipSim(), ship));
+  syncThrottleGearControls(ui, localThrottleForShip(selectedShipControl(), ship));
 }
 
 function setThrottleGear(gear) {
   if (tutorial.isActive() && !tutorial.allowsControl("throttle")) return false;
-  if (!selectedShipSim()?.canControl()) return false;
+  if (!selectedShipControl()?.canControl) return false;
   const lockedGear = ownTeamState()?.ships?.[app.selectedShipKey]?.bunnyHaruhi?.lockedGear;
   if (lockedGear != null && Number(gear) !== lockedGear) return false;
   const throttle = throttleValueForGear(gear);
@@ -566,7 +555,7 @@ function setRouteForSelectedShip(x, y, logRoute = false) {
   if (!ship || !ship.alive || !ship.canControl) {
     return false;
   }
-  const throttle = localThrottleForShip(selectedShipSim(), ship);
+  const throttle = localThrottleForShip(selectedShipControl(), ship);
   syncThrottleGearControls(ui, throttle);
   const ok = applyAction(matchActions.setRoute({
     shipKey: ship.key,
@@ -626,10 +615,10 @@ function updateUi() {
   ui.zoomInBtn.disabled = camera.zoom >= CAMERA_ZOOM_MAX - 1e-3;
 
   const selectedState = selectedShipState();
-  const selectedSim = selectedShipSim();
+  const selectedControl = selectedShipControl();
   ui.energyValue.textContent = `${energyPercentForShip(selectedState || own.ships.main)}%`;
-  if (selectedState && selectedSim) {
-    const minRadius = Math.round(selectedSim.routeConstraintProfile().minTurnRadius);
+  if (selectedState && selectedControl) {
+    const minRadius = Math.round(selectedControl.minTurnRadius);
     ui.selectedValue.textContent = `${shipCharacterName(selectedState)} | ${throttleLabelForValue(selectedState.throttle)} | ${t("能量")} ${Math.round(
       Number(selectedState.fleetEnergy) || 0,
     )}/${Math.round(Number(selectedState.fleetMaxEnergy) || 1)} | ${t("最小半径")}${minRadius}`;
@@ -756,7 +745,7 @@ function showResultScreen(winnerSeat) {
       eventId: app.statisticsEventId,
       startedAt: app.statisticsStartedAt,
       difficulty: getDifficulty(),
-      summary: app.sim.statisticsSummary(),
+      summary: soloSession.statisticsSummary(),
       renderer: battleRenderer?.mode || "unknown",
     }).catch(() => {
       // 统计完全旁路战斗和结算；网络不可用时不打扰玩家，也不做重试风暴。
@@ -875,7 +864,7 @@ function renderBattleState(state = app.state) {
     ownTeam: own,
     enemyTeam: enemy,
     spectating: false,
-    radar: app.sim ? app.sim.serializeRadarForSeat("A") : null,
+    radar: soloSession.radarForSeat("A"),
     visibleEnemyIds: new Set((own && own.visibleEnemyIds) || []),
     selectedKeyForTeam: (team) => (team === own ? app.selectedShipKey : null),
     mobileMode: app.mobileMode,
@@ -907,42 +896,9 @@ function renderBattleState(state = app.state) {
 
 function tick(timestamp) {
   if (!running) return;
-  const simulationActive = Boolean(
-    !app.paused &&
-    app.sim &&
-    (!app.state || app.state.phase !== "finished")
-  );
-  const stepCount = app.logicClock.advance(timestamp, (stepSeconds) => {
-    app.renderPreviousState = app.renderCurrentState || app.state || app.sim.serializeState();
-    app.sim.update(stepSeconds);
-    app.renderCurrentState = app.sim.serializeState();
-  }, {
-    active: simulationActive,
-  });
-  if (app.sim) {
-    app.state = stepCount > 0 ? app.renderCurrentState : app.sim.serializeState();
-    if (stepCount === 0) {
-      // 输入动作会在两个逻辑 tick 之间立即改变仿真；同步离散字段，位置仍由前一权威帧平滑过渡。
-      app.renderCurrentState = app.state;
-    }
-  } else {
-    app.state = null;
-  }
-
-  const shouldInterpolate = Boolean(
-    simulationActive &&
-    app.state?.phase !== "finished" &&
-    app.renderPreviousState &&
-    app.renderCurrentState
-  );
-  app.renderState = shouldInterpolate
-    ? interpolateBattleState(
-      app.renderPreviousState,
-      app.renderCurrentState,
-      app.logicClock.getAccumulatorSeconds() / TICK_DT,
-      { spanSeconds: TICK_DT },
-    )
-    : app.state;
+  const frame = soloSession.advance(timestamp, { paused: app.paused });
+  app.state = frame.state;
+  app.renderState = frame.renderState;
 
   tutorial.update(app.state);
   updateUi();
@@ -1168,8 +1124,8 @@ function bindUiEvents() {
       const pos = camera.pointerFromEvent(event);
       app.pointer = pos;
       setRouteForSelectedShip(pos.x, pos.y);
-      const shipSim = selectedShipSim();
-      const minRadius = shipSim ? Math.round(shipSim.routeConstraintProfile().minTurnRadius) : 0;
+      const shipControl = selectedShipControl();
+      const minRadius = shipControl ? Math.round(shipControl.minTurnRadius) : 0;
       log(t("{ship} 已设置航线(左键拖控制点调曲率/端点调路径,最小转弯半径约 {radius})", { ship: shipDisplayName(ship), radius: minRadius }));
     }
   });
@@ -1305,7 +1261,7 @@ function bindUiEvents() {
 
     const throttleGear = throttleGearFromShortcut(
       event,
-      localThrottleForShip(selectedShipSim(), selectedShipState()),
+      localThrottleForShip(selectedShipControl(), selectedShipState()),
     );
     if (throttleGear !== null) {
       event.preventDefault();
@@ -1451,7 +1407,7 @@ function beginSimulationLoop() {
   if (!running) {
     running = true;
     app.tickRunning = true;
-    app.logicClock.reset(performance.now());
+    soloSession.resetClock(performance.now());
     rafId = requestAnimationFrame(tick);
   }
 }
@@ -1495,13 +1451,7 @@ function launchTutorialCampaign() {
     isMobile: () => app.mobileMode,
     getSelectedShipKey: () => app.selectedShipKey,
     onStageChange: (id) => {
-      if (!app?.sim) return;
-      if (id === "attack") app.sim.setCombatEnabled("A", true);
-      if (id === "free") {
-        app.sim.setCombatEnabled("A", true);
-        app.sim.setCombatEnabled("B", true);
-        app.sim.setAiEnabled("B", true);
-      }
+      soloSession?.setTutorialStage(id);
       updateUi();
     },
   });
@@ -1613,6 +1563,7 @@ function unmount() {
   battleRenderer = null;
   charSelect = null;
   actionTransport = null;
+  soloSession = null;
   app = null;
 }
 
