@@ -97,7 +97,7 @@ function entityCheck() {
   assert.equal(second.sim.telemetry.teams.A.shipsLost, 1);
 
   const legacy = new companion.constructor(team, "legacy_extra", 700, 700, 0, { characterId: "kyon", isAuxiliary: true });
-  team.extraShips.push(legacy);
+  team.addAuxiliaryShip(legacy);
   assert.ok(team.fleetMembersByKey("main").includes(legacy), "旧额外舰船继续进入主编队");
   assert.equal(team.hasLivingShips(), true);
   assert.equal(selectShamisenHuntTarget(sim.teamB, team), legacy, "不扩大新阿虚的猎杀排除范围");

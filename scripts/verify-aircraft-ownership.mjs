@@ -5,6 +5,10 @@ import { AircraftOperations } from "../shared/game/systems/aircraft-operations.j
 const match = new MatchSimulation({ seed: 721 });
 const team = match.teamA;
 assert.throws(() => { team.scouts = []; }, TypeError);
+assert.throws(() => { team.ships.main = {}; }, TypeError);
+assert.throws(() => { team.ships = {}; }, TypeError);
+assert.throws(() => { team.extraShips = []; }, TypeError);
+assert.throws(() => team.extraShips.push({}), TypeError);
 assert.throws(() => team.scouts.push({}), TypeError);
 assert.throws(() => { team.autoScout.enabled = true; }, TypeError);
 const history = team.autoScout;

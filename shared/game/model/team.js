@@ -14,7 +14,7 @@ import { BeamSystem } from "../systems/beam-system.js";
 import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
 // 舰队状态所有者与领域操作。
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../characters.js";
-import { clamp, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
+import { rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { initializeRadar, computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
@@ -31,6 +31,10 @@ import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  #extraShips = [];
+  #ships;
+  get extraShips() { return Object.freeze([...this.#extraShips]); }
+  get ships() { return this.#ships; }
   #aircraft;
   get scouts() { return this.#aircraft.scouts; }
   get wingmen() { return this.#aircraft.wingmen; }
@@ -101,7 +105,7 @@ export class Team {
     const sub1SpawnOffset = rotateOffset(sub1FormationOffset.x * 0.5, sub1FormationOffset.y * 0.5, facing);
     const sub2SpawnOffset = rotateOffset(sub2FormationOffset.x * 0.5, sub2FormationOffset.y * 0.5, facing);
 
-    this.ships = {
+    this.#ships = Object.freeze({
       main: new Ship(this, "main", spawnX, spawnY, facing, {
         slotKey: "main",
         characterId: this.loadout.main,
@@ -116,9 +120,8 @@ export class Team {
         characterId: this.loadout.sub2,
         formationOffset: sub2FormationOffset,
       }),
-    };
+    });
 
-    this.extraShips = [];
     initializeRadar(this, facing);
     initializeVisionWaves(this);
     initializeKoizumiImpactWaves(this);
@@ -200,11 +203,11 @@ export class Team {
   }
 
   addAuxiliaryShip(ship) {
-    this.extraShips.push(ship);
+    this.#extraShips.push(ship);
   }
 
   removeAuxiliaryShip(ship) {
-    this.extraShips = this.extraShips.filter((candidate) => candidate !== ship);
+    this.#extraShips = this.#extraShips.filter((candidate) => candidate !== ship);
   }
 
   getAllShips() {

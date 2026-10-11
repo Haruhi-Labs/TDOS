@@ -301,7 +301,7 @@ function tickOrderingCheck() {
     id: 9999, key: "extra", slotKey: "extra", isAuxiliary: true, attachToMain: false,
   });
   delete extra.bunnyStageExposure;
-  sim.teamB.extraShips.push(extra);
+  sim.teamB.addAuxiliaryShip(extra);
   resolveBunnyStages(sim);
   assert.equal(extra.bunnyStageExposure, undefined, "舞台不处理召唤物");
   const both = simulation(true, true, "bunny_haruhi");
