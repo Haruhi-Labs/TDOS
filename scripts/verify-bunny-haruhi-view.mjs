@@ -101,6 +101,8 @@ try {
         if (message.type === "input") resolveInput?.(message);
       }); });
       await page.goto(`${vite.resolvedUrls.local[0]}online?ws=${encodeURIComponent(wsUrl)}`, { waitUntil: "networkidle" });
+      // 动态页面模块装配完夹具后再模拟握手，避免网络空闲早于模块初始化。
+      await page.waitForFunction(() => Boolean(window.bunnyFixture?.timeline));
       socket.send(JSON.stringify({ type: "connected", playerId: "view-test", rulesetVersion: RULESET_VERSION, tickRate: 30, snapshotRate: mode === "spectator" ? 7.5 : 15, protocolVersion: 2 }));
       socket.send(JSON.stringify({ type: "room_state", room: { roomId: "bunny-view", status: "running", mode: "pvp", players: ["A", "B"].map((seat) => ({ seat, name: seat, loadout: states.encore.teams[seat].loadout })) }, self: { seat: mode === "spectator" ? null : "A", spectating: mode === "spectator", loadout: states.encore.teams.A.loadout } }));
     }
@@ -110,7 +112,7 @@ try {
         for (let i = 0; i < 2; i += 1) {
           sequence++;
           socket.send(JSON.stringify({ type: "snapshot", roomId: "bunny-view", snapshotSeq: sequence, tick: sequence, state }));
-          await page.waitForFunction((seq) => window.bunnyFixture.timeline.latestSnapshot?.snapshotSeq === seq, sequence);
+          await page.waitForFunction((seq) => window.bunnyFixture?.timeline?.latestSnapshot?.snapshotSeq === seq, sequence);
           if (!i) await page.waitForTimeout(120);
         }
       }
