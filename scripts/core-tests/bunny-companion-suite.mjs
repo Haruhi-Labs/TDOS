@@ -1,4 +1,3 @@
-import { Projectile } from "../../shared/game/model/projectile.js";
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
 import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
@@ -191,7 +190,8 @@ function conversionCheck() {
   companion.x = owner.x + 40;
   companion.y = owner.y;
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
-  sim.projectiles.push(new Projectile({ team, source: companion }), new Projectile({ team, source: owner }));
+  sim.spawnProjectile({ team, source: companion });
+  sim.spawnProjectile({ team, source: owner });
   assert.equal(enemy.bribeZone(enemy.ships.sub1, zone.id), true);
   assert.equal(companion.team, enemy);
   assert.ok(!team.extraShips.includes(companion) && enemy.extraShips.includes(companion));
@@ -271,7 +271,7 @@ function conversionCheck() {
   sim.elapsed = 24.99;
   prepareBunnyCompanions(sim);
   assert.equal(companion.team, enemy);
-  sim.projectiles.push(new Projectile({ team, source: companion }));
+  sim.spawnProjectile({ team, source: companion });
   sim.elapsed = 25;
   const oldRate = companion.effectiveFireRate();
   companion.cooldown = 1;

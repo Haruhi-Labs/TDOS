@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { advanceProjectiles } from "../shared/game/systems/projectile-system.js";
+import { Scout } from "../shared/game/model/scout.js";
+import { Wingman } from "../shared/game/model/wingman.js";
 
 // 不使用任何角色、领域实体或模拟对象，仍可验证通用阶段的消费顺序。
 const first = { id: 1, alive: true };
@@ -48,4 +50,21 @@ match.createProjectilePhase = (owner) => {
 match.updateProjectiles(0.02);
 assert.equal(prepared, 1);
 assert.equal(finished, 1);
+const firing = new MatchSimulation({ seed: 598, aiSeats: [] });
+const team = firing.teamA;
+const enemy = firing.teamB;
+const target = enemy.ships.main;
+const ship = team.ships.main;
+const scout = new Scout(team, ship.x, ship.y, { combatCapable: true, zone: firing.zones[0] });
+const wingman = new Wingman(team, ship.x, ship.y, firing.zones[0]);
+team.pickTargetFor = () => target;
+ship.broadsideMultiplier = () => 1;
+const requests = [];
+firing.spawnProjectile = (profile) => { requests.push(profile); };
+for (const actor of [ship, scout, wingman]) {
+  actor.cooldown = 0;
+  actor.tryAttack(firing, enemy);
+}
+assert.deepEqual(requests.map((request) => request.source), [ship, scout, wingman]);
+assert.equal(firing.projectiles.length, 0, "替换创建能力后，攻击者不得绕过端口自行修改对局集合");
 console.log("弹体阶段校验通过：所有者创建、载荷隔离、即时拦截、活集合迭代及发布后收尾。");
