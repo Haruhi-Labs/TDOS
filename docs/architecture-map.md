@@ -1,8 +1,8 @@
 # 游戏模块架构图与状态所有权
 
-源码基线：`b539263`，F1～F6 重构及角色调用链复查后，2026-10-11。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
+源码基线：`9139545`，资源、运行时、角色契约与 AI 输入输出重构后，2026-10-11。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
 
-这是一张分成八个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。静态模块全量索引见 [模块索引](architecture-module-index.md)。
+这是一张分成九个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。静态模块全量索引见 [模块索引](architecture-module-index.md)。
 
 核心写权限已由对应所有者收回：实体和组件发布只读状态，AI 只消费冻结观测与候选，角色求值消费事实，角色装配与固定阶段归角色层，房间聚合独占成员和生命周期。图中仍保留必要的跨所有者命令与适配关系；它们必须通过领域操作同步完成，不能退回共享字段赋值。
 
@@ -101,7 +101,7 @@ flowchart LR
     DEST["rules/ship-destruction.js<br/>伴随清理、猎杀后继效果"]
     ROLE["角色运行时<br/>光球、震慑、抓痕、形态、可靠效果"]
   end
-  PUB["F2 · Ship 私有基础状态<br/>资源、运动、归属、存活、偏移<br/>getter 发布，无原始导航 setter<br/>领域事务提交"]
+  PUB["F2 · Ship 私有基础状态<br/>资源、运动、归属、存活、偏移<br/>getter 发布，无原始导航 setter<br/>资源比例意图校验后提交"]
   PROJ["rules/ship-projection.js<br/>status-effects.js<br/>独立协议数据"]
   TEAM["Team / MatchSimulation<br/>成员、世界、生成与退场"]
   S ==>|独占实例| N & W & ST
@@ -125,7 +125,7 @@ flowchart LR
   PROJ -.->|读数，不推进| ROLE
 ```
 
-导航、武器、效果分别持有自己的状态，Ship 持有基础机体与生命周期。生命、能量、坐标、存活和归属不能直接赋值；航线、目标、击退和武器周期也不再有属性 setter，航线不能由外部构造进度和长度；角色效果只能提交位移、资源计划、伤害等领域操作。Scout/Wingman 同样私有持有运动、任务、武器和寿命，任务输入隔离引用，成员发布和转移校验归属与唯一性。
+导航、武器、效果分别持有自己的状态，Ship 持有基础机体与生命周期。生命、能量、坐标、存活和归属不能直接赋值；航线、目标、击退和武器周期也不再有属性 setter，航线不能由外部构造进度和长度；角色效果只能提交位移、资源比例意图、伤害等领域操作。`grantResources` 使用当前容量与余额计算消耗、恢复及保底，拒绝未知字段、非法比例、致死消耗与死亡奖励；不再接收最终 hp/energy 覆盖值。Scout/Wingman 同样私有持有运动、任务、武器和寿命，任务输入隔离引用，成员发布和转移校验归属与唯一性。
 
 ## 图三：Team 的组件与角色装配边界
 
@@ -169,10 +169,13 @@ flowchart LR
   V -->|消费采样输入| VP
   FC -->|消费候选数据| FCP
   FP & SP & AP & BP & FCP -->|提交领域操作| S
-  ASSEMBLY["rules/character-assembly.js<br/>rules/character-team.js<br/>持有队级角色组件及阶段顺序"]
+  ASSEMBLY["rules/character-assembly.js<br/>rules/character-team.js<br/>装配并独占队级角色组件"]
+  EXT["rules/extensions/index.js<br/>九角色统一声明"]
+  CONTRACT["rules/extension-contract.js<br/>校验能力、钩子、技能、阶段与投影冲突"]
+  EXT --> CONTRACT --> ASSEMBLY
   T -->|装配与领域操作| ASSEMBLY
   ASSEMBLY ==>|角色组件| HF & SF & FF
-  ASSEMBLY -->|初始化及固定推进| VW & KB & SH & BH
+  ASSEMBLY -->|消费声明中的有序钩子| VW & KB & SH & BH
   LAUNCH["rules/character-launch.js<br/>技能机群、随机支援与光线规则"]
   ASSEMBLY & SP & BH --> LAUNCH
   LAUNCH -->|统一接收成员及入队光线| T
@@ -190,11 +193,11 @@ flowchart LR
 ```mermaid
 flowchart LR
   DEF["characters.js<br/>冻结角色定义、技能元数据"]
-  AS["rules/active-skills.js<br/>普通主动技能声明"]
+  AS["rules/active-skills.js<br/>消费角色声明中的主动技能"]
   SE["rules/ship-effects.js<br/>专属技能、净化和命中挂接"]
   CR["rules/character-rules.js<br/>跨角色属性及资格组合"]
   PROJ["rules/ship-projection.js / status-effects.js<br/>AI bridge/observation.js<br/>分别生成表现与策略读模型"]
-  PH["F5 · rules/character-assembly.js<br/>character-team.js / character-battle.js<br/>初始化、能力、投影与固定角色阶段"]
+  PH["F5 · rules/character-assembly.js<br/>extensions/index.js / extension-contract.js<br/>统一声明、冲突校验、固定阶段装配"]
   subgraph haruhi[普通春日]
     H["haruhi-flagship-runtime.js<br/>强化到期与同帧保护"]
     HS["haruhi-support.js<br/>来源私有调度、支援池、冲撞冷却"]
@@ -202,14 +205,18 @@ flowchart LR
   end
   subgraph bunny[兔女郎春日与伴随阿虚]
     BC["bunny-haruhi-config.js"]
-    BP["bunny-haruhi.js<br/>纯形态、舞台、资源计划"]
-    BR["bunny-haruhi-runtime.js<br/>形态、曝光、舞台采样、持续结算"]
+    BP["bunny-haruhi.js<br/>纯形态、舞台、资源意图"]
+    BR["bunny-haruhi-runtime.js<br/>受限形态事务能力适配"]
+    FORM["rules/bunny-form-runtime.js<br/>形态历史与同步事务"]
+    STAGEPORT["rules/bunny-stage-port.js<br/>实体到编号、事实与有限命令"]
+    STAGE["rules/bunny-stage-runtime.js<br/>舞台区域、接收者、持续游标"]
+    BPROJ["rules/bunny-projection.js<br/>只读协议投影"]
     BS["bunny-haruhi-support.js<br/>显式副舰支援来源"]
     BCP["bunny-haruhi-companion.js<br/>纯伴随与策反计划、资格"]
     BCR["bunny-companion-runtime.js<br/>伴随关系、可靠效果、归还与跟随"]
   end
   subgraph other[其他角色]
-    K["阿虚：character-rules.js<br/>ShipStatus / FleetFormation<br/>被动编队倍率、可靠增益"]
+    K["阿虚：rules/extensions/kyon.js<br/>ShipStatus / FleetFormation<br/>被动编队倍率、可靠增益"]
     Y["长门：visibility-radar.js<br/>AircraftOperations + Scout<br/>雷达、战斗侦察与爆发侦察"]
     KO["古泉：koizumi-barrier.js<br/>koizumi-orb.js<br/>护盾、光球、接触与冲击波"]
     FU["未来1096：future-flagship-form.js<br/>BeamSystem<br/>队级形态与副舰蓄力光线"]
@@ -219,6 +226,11 @@ flowchart LR
   end
   EX["systems/expanding-wave.js<br/>通用波前命中与历史"]
   CONTACT["character-contacts.js<br/>contact-geometry.js<br/>角色接触及几何资格"]
+  BR --> FORM
+  STAGEPORT --> STAGE
+  STAGE -->|有限命令| STAGEPORT
+  BPROJ -.->|只读| FORM & STAGE
+  PROJ --> BPROJ
   DEF -.-> AS & CR & BC & BP
   AS --> H & HP & K & Y & KO & FU & TS & A & SH
   SE --> BR & KO & SH & HP
@@ -229,7 +241,7 @@ flowchart LR
   H --> HS
   HP & A --> EX
   KO & H & BR & A --> CONTACT
-  PH --> BR & BCR & HS & HP & KO & A & SH
+  PH --> BR & STAGEPORT & BCR & HS & HP & KO & A & SH
   CR -.-> H & K & KO & FU & SH & BR & BCR
   PROJ -.-> H & HS & HP & BR & BCR & Y & KO & FU & A & SH
 ```
@@ -237,7 +249,7 @@ flowchart LR
 | 角色 | 主要权威状态所有者 | 写入/消费的特殊约束 |
 | --- | --- | --- |
 | 春日 | 强化组件、支援来源存储、勇者之力运行时 | 强化与支援解锁顺序不变；震慑必须在开火前生效 |
-| 兔女郎春日 | 形态/舞台运行时、支援来源存储 | 形态和解锁一起发布；双方舞台先采样后提交 |
+| 兔女郎春日 | BunnyFormRuntime、BunnyStageRuntime、支援来源存储 | 形态和解锁一起发布；双方舞台先采样后提交 |
 | 伴随阿虚 | 伴随运行时、每个接收者的可靠效果、舰体资源 | 母舰关系、临时策反、归还、弹体清理保持同步事务 |
 | 阿虚 | ShipStatus 与舰体资源；被动倍率是规则查询 | 增益生效帧保护；回血只通过舰体操作 |
 | 长门 | 雷达运行时、航空组件、Scout 自身 | 出生时采样战斗能力；策反后不能错误重新采样身份 |
@@ -271,8 +283,10 @@ flowchart LR
     SKILL["policy/skill-decision-cycle.js<br/>技能时钟、历史决策"]
   end
   subgraph heuristics[受限能力启发式]
-    READ["view.js / geometry.js<br/>evaluation.js / energy.js / context.js"]
-    PLAN["split.js / mode.js / detached.js<br/>targets.js / movement.js"]
+    READ["view.js / energy.js / context.js<br/>逐方法声明事实及查询输入"]
+    PURE["geometry.js / evaluation.js / mode.js<br/>显式数据计算，无策略回调"]
+    SAMPLE["fact-calculations.js<br/>按需采样当前观测与接触"]
+    PLAN["split.js / detached.js<br/>targets.js / movement.js"]
     ACT["commands.js / scout.js / skills.js<br/>debug-state.js"]
   end
   SEARCH["F3 · policy/search-navigation.js<br/>私有区域、游标、方向、推进时间<br/>候选凭证与版本校验，显式消费"]
@@ -290,11 +304,13 @@ flowchart LR
   READ --> OBS & INDEX
   RP --> PARAM
   RP ==>|私有实例| INTEL & BELIEF & SCOUT & SKILL
-  PROGRAM["policy/policy-program.js<br/>查询上下文无动作或调度权限<br/>执行入口仅获声明的能力"]
+  PROGRAM["policy-program.js / policy-inputs.js<br/>每算法独立输入清单<br/>动作后事实显式重读"]
   RP -->|执行计算| PROGRAM
   PROGRAM --> READ & PLAN & ACT
+  PROGRAM --> SAMPLE --> PURE
+  PURE -->|估值与模式候选| RP
   RP -->|走位准备后提交搜索| SEARCH
-  PROGRAM -.->|查询子调用不继承写权限| READ
+  PROGRAM -.->|子调用只取得自身声明的依赖| READ
   PLAN & ACT -->|候选结果| RP
   RP ==>|独占并消费候选| SEARCH
   INTEL -->|接触事实| SEARCH
@@ -308,7 +324,7 @@ flowchart LR
   DISPATCH --> MATCH
 ```
 
-AI 没有实体兼容通道，也不再通过 `port/rng` getter 或配置操作的链式返回泄露底层能力。观测与索引只读；搜索候选查询不推进游标，实际命令显式消费候选。启发式不再安装到 RulePolicy 原型，查询上下文没有动作提交、随机流或策略调度权限；需要随机数的候选生成和模式规划、动作执行分别声明能力。嵌套查询不继承执行方写权限。走位由协调器先读准备事实，再提交搜索与模式，最后执行路线，不从启发式绕回协调器选模式。卡死采样、移动和分离结果返回协调器提交。诊断只读，不靠覆写策略方法采样。情报外推只在同一观测和参数下复用，动作后立即失效。
+AI 没有实体兼容通道，也不再通过 `port/rng` getter 或配置操作的链式返回泄露底层能力。观测与索引只读；搜索候选查询不推进游标，实际命令显式消费候选。启发式不再安装到 RulePolicy 原型，也没有隐式 this 或共同继承的大读取上下文。每个算法在参数与 policy-inputs 中明确声明直接依赖；查询不能取得动作与调度权限。战力、威胁、几何和模式计算直接接收事实；随机模式规划显式消费随机能力并返回结果。执行算法通过明确的重读函数取得动作后的新观测。走位由协调器先读准备事实，再提交搜索与模式，最后执行路线，不从启发式绕回协调器选模式。卡死采样和移动结果返回协调器提交；能量算法返回换挡意图；分离由协调器逐次规划和提交，第二次规划重新观察第一次动作结果。诊断只读，不靠覆写策略方法采样。情报外推只在同一观测和参数下复用，动作后立即失效。
 
 ## 图六：实际单帧顺序
 
@@ -404,7 +420,7 @@ flowchart LR
 | F2 实体与成员 | Ship/Scout/Wingman 私有状态；FleetRoster/AircraftOperations 独占发布 | 标量/嵌套修改拒绝；重复、错误归属、跨对局拒绝；转移失败无部分副作用 |
 | F3 AI 内部多写 | SearchNavigation 候选及消费；RulePolicy 私有计划与调度；PolicyProgram 只读上下文 | 重复查询不推进；伪造、过期、重复候选拒绝；外部不能写计划与时钟 |
 | F4 求值回绕 | 按用途采样的冻结事实与纯求值器；局部来源关系 | 无实体/回调；历史稳定；同帧变身、净化与归属变化立即生效 |
-| F5 角色接入 | CHARACTER_ASSEMBLY；队级/对局角色所有者；独立投影 | 核心实体不再持有具体角色组件或列举推进；固定阶段拒绝未声明入口 |
+| F5 角色接入 | CHARACTER_EXTENSIONS 统一声明主动技能、规则、钩子、队级/对局工厂及投影；装配器校验 | 独立声明直接接入；未知阶段、重复顺序、能力/投影冲突与覆盖生命周期均拒绝 |
 | F6 房间多写 | Room 聚合；SnapshotSchedule | 重复席位、冒名就绪、外部赋值拒绝；倒计时/运行/完成及快照顺序保持 |
 
 对应源码分别见 [观测端口](../shared/game/ai/bridge/action-port.js)、[舰船](../shared/game/model/ship.js)、[搜索所有者](../shared/game/ai/policy/search-navigation.js)、[属性事实](../shared/game/rules/attribute-facts.js)、[角色装配](../shared/game/rules/character-assembly.js)、[房间聚合](../server/room.js)。测试入口为 `scripts/verify-domain-boundaries.mjs`，完整证据记录在重构记录中。
@@ -430,3 +446,36 @@ flowchart LR
 | 支援旧快照消费 | 冷却消费相信调用方的旧资格样本，重复使用可能重入消费 | 私有所有者重新校验并提交，旧样本不能授权或阻止当前消费 |
 
 保留的关系均有明确用途：成员集合里的活实体用于同步领域命令；承伤仍即时分摊并完成死亡收尾；属性适配层组合可替换的规则能力；角色运行时持有来源身份以处理同帧死亡与转队。这些调用保留即时状态语义，不把内部可写容器交给消费者。
+
+
+## 图九：资源事务与 AI 计划的实际消费边界
+
+```mermaid
+flowchart TB
+  subgraph character[角色变身同步事务]
+    direction TB
+    REQUEST["SkillCycle：校验施放资格"]
+    FORM["BunnyFormRuntime<br/>纯计划与形态历史"]
+    SAMPLE["适配器采样旧运动、支援解锁<br/>不发布半提交形态"]
+    COMMIT["发布形态与支援"]
+    RESOURCE["Ship.grantResources<br/>当前容量和余额校验<br/>比例意图转为资源落值"]
+    MOTION["换算本舰与伴随运动<br/>必要时生成伴随"]
+    COMPLETE["SkillCycle<br/>冷却、统计、显形、视野"]
+    REQUEST --> FORM --> SAMPLE --> COMMIT --> RESOURCE --> MOTION --> COMPLETE
+  end
+  subgraph ai[AI 逐次规划与消费]
+    direction TB
+    OBS["最新只读观测与记忆"]
+    FACT["fact-calculations<br/>本次计算所需事实"]
+    EVAL["纯估值、威胁、几何、模式评分"]
+    PLAN["候选或明确动作意图"]
+    OWNER["RulePolicy<br/>提交私有计划与调度"]
+    ACTION["动作桥<br/>校验并立即提交"]
+    INVALIDATE["失效观测<br/>下一次规划重读"]
+    OBS --> FACT --> EVAL --> PLAN --> OWNER --> ACTION --> INVALIDATE --> OBS
+  end
+```
+
+资源校验失败不会部分扣费或发放同次资源奖励；角色事务仍在既有同步调用栈中完成。需要同步观察双方的舞台只统一采样区域；伤害、死亡、分离和后续 AI 观察仍按图六的顺序即时消费。协议字段顺序由 `projection-order.js` 保留，角色自行贡献投影字段，投影不能推进状态。
+
+四项工作的源码入口分别为 `model/ship.js`、`rules/bunny-form-runtime.js` 与 `bunny-stage-runtime.js`、`rules/extensions/` 与 `extension-contract.js`、`ai/policy/fact-calculations.js` 与 `policy-inputs.js`。剩余实体引用集中在需要同步领域操作的适配器；纯状态机与数值算法不取得世界对象。该边界约束合作代码的职责，不宣称 JavaScript 模块是对恶意代码的安全沙箱。

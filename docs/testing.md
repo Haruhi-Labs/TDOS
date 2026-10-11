@@ -10,7 +10,7 @@
 | `npm run test:logic` | 规则/AI/教程、协议、权威回放、插值、房间/运行时模块、统计存储、票据验签和表现辅助函数 | 不运行浏览器或真实远程服务 |
 | `npm run test:browser` | Chromium 中的更新日志、统计、身份、交互、WebGL 和测试服隔离场景 | 不证明真实账号登录、物理移动设备或生产可用 |
 | `npm run test:integration` | 本地真实 WebSocket 服务的协议、容量门禁、版本和公开字段隔离 | 不证明生产容量或部署成功 |
-| `npm run test:ai:simulation` | 16 局固定种子的 AI 对抗回归 | 不证明所有阵容平衡 |
+| `npm run test:ai:simulation` | 18 局固定种子的 AI 对抗回归 | 不证明所有阵容平衡 |
 | `npm run test:all` | 以上各层的完整回归 | 不包含生产构建、独立容量压测或人工验收 |
 | `npm run build` | 模块/表现守卫与 Vite 生产构建 | 不替代行为测试或浏览器验收 |
 
@@ -180,3 +180,6 @@ AI 测试场景在测试侧投影实体；生产策略拒绝实体和能力回�
 兔女郎离线采样器可用 `--output-dir=<目录>` 将局部复测写入隔离目录，默认仍使用 `bench/bunny-haruhi-acceptance`；例如 `node scripts/measure-bunny-haruhi.mjs --balance --scenarios=hold-encore,conversion-ready --output-dir=node_modules/.cache/role-balance`。观察伴随舰使用成员发布入口，不覆盖角色生成事务。场景成功运行不等于其中每种事件都已发生，应核对伴随舰存活秒数、策反次数等实际指标。
 
 角色调用链复查追加：`verify-ai-program-capabilities` 随架构门禁验证嵌套查询与执行能力、观测不可回写和策略调度入口关闭；导航专项拒绝四个旧属性 setter，并验证击退结束后航线缓存失效；航空专项验证专属生成已经脱离通用组件，仍进入统一成员集合；支援专项覆盖保留旧资格快照后的重复消费拒绝。场景构造使用实际领域操作，不再直接替换 Ship 航线进度或击退字段。AI 投影专项另验证 `port/rng` 不可取/不可赋值、strict 模式切换正确失效缓存，以及链式配置后仍拒绝实体参数。
+
+
+四项边界细化随 `test:architecture` 增加：`verify-resource-ownership` 验证资源比例、容量和失败原子性；`verify-bunny-stage-runtime` 在无实体夹具中验证形态事务与舞台区间消费；`verify-character-extensions` 验证独立声明接入、阶段完整顺序和冲突拒绝；`verify-ai-explicit-facts` 直接向纯算法提供事实，验证输入隔离、模式候选和随机次数。全部离线且不访问身份、统计或远程服务。原始回放继续锁定完整快照字节与 AI 输出，不能通过重排基线规避装配顺序差异。
