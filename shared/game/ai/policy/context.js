@@ -185,7 +185,7 @@ export const contextMethods = {
     const winning = !this.params.features.closeout ? false : (ownAliveCount > enemyAliveCount || ownHullTeam > enemyHullTeam + X.winningHullLead);
     const closeoutWindow = !this.params.features.closeout ? false : (enemyAliveCount > 0
       && (enemyAliveCount < ownAliveCount || enemyHullTeam < X.closeoutEnemyHull || (killWindow && winning)));
-    const enemyMainContact = this.projectContact(this.enemyIntel.main, X.enemyMainLead);
+    const enemyMainContact = this.projectContact(this.rememberedMain, X.enemyMainLead);
     const advancedCounterplay = this.usesAdvancedSkillCounterplay();
     const barrierTactics = buildKoizumiBarrierTactics({
       obs: this.obs,

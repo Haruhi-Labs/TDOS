@@ -44,7 +44,7 @@ function profileDecisionCheck() {
   assert.equal(future1096.shouldCast(policy, { K, estimate: moving, context: { skillAggression: 1 }, blockedByBarrier: true }), false);
 
   assert.deepEqual(
-    characterProfile("tsuruya").sub.target({ enemyIntel: { searchZoneId: 7 } }, { estimate: null }),
+    characterProfile("tsuruya").sub.target({ searchZoneId: 7 }, { estimate: null }),
     { zoneId: 7 },
   );
   assert.equal(characterProfile("haruhi").flagship.shouldCast, undefined, "春日旗舰通过通用前置条件即施放");

@@ -1,10 +1,44 @@
 // 情报记忆：带反应延迟地吸收可见实体、雷达接触与猎杀标记，并把旧情报外推成当前估计。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// 情报组件独占接触记录和待确认队列；策略只接收不可变记录及搜索区域通知。
+import { copyPlainData, freezePlainData } from "../../../data/plain-data.js";
 import { CHARACTER_DEFS } from "../../characters.js";
 import { TICK_DT } from "../../constants.js";
-import { clamp } from "../../math.js";
+import { zoneContains, clamp } from "../../math.js";
 
-export const intelTrackerMethods = {
+export class IntelTracker {
+  #port;
+  #entities = new Map();
+  #main;
+  #pending = new Map();
+  constructor(port, enemyMain) {
+    this.#port = port;
+    this.#main = Object.freeze({
+      id: enemyMain.id, kind: "ship", key: enemyMain.key, slotKey: enemyMain.slotKey,
+      x: enemyMain.x, y: enemyMain.y, angle: enemyMain.angle, speed: 0,
+      seenAt: this.obs.time, zoneId: this.zoneForPoint(enemyMain.x, enemyMain.y).id, source: "spawn",
+    });
+  }
+  get obs() { return this.#port.observe(); }
+  get params() { return this.#port.parameters().params; }
+  get profile() { return this.#port.parameters().profile; }
+  get reactionMult() { return this.#port.parameters().reactionMult; }
+  get main() { return this.#main; }
+  get contacts() { return Object.freeze([...this.#entities.values()]); }
+  get pendingCount() { return this.#pending.size; }
+  get contactCount() { return this.#entities.size; }
+  zoneForPoint(x, y) { return this.obs.world.zones.find((zone) => zoneContains(zone, x, y)) || this.obs.world.zones[4]; }
+  safeRoutePadding() { return clamp(this.obs.world.size * 0.08, 90, 145); }
+  stableNoise(seed, salt = 0) {
+    const value = Math.sin(seed * 12.9898 + salt * 78.233 + 0.9157) * 43758.5453;
+    return value - Math.floor(value);
+  }
+  #store(snapshot, trackMain = false) {
+    snapshot = freezePlainData(copyPlainData(snapshot));
+    this.#entities.set(snapshot.id, snapshot);
+    if (trackMain && snapshot.slotKey === "main") this.#main = snapshot;
+    this.#port.contactZone(snapshot.zoneId);
+  }
+
   perceptionDelayFor(entity) {
     const P = this.params.perception;
     const base = entity.kind === "ship" ? P.shipDelay : entity.kind === "wingman" ? P.wingmanDelay : P.otherDelay;
@@ -16,48 +50,44 @@ export const intelTrackerMethods = {
       this.profile.reactionMin * mult,
       this.profile.reactionMax * mult,
     );
-  },
+  }
 
   queueSighting(entity) {
     const snapshot = this.snapshotEnemyContact(entity, "visible");
     const now = this.obs.time;
-    const pending = this.pendingSightings.get(snapshot.id);
+    const pending = this.#pending.get(snapshot.id);
     if (pending) {
       pending.snapshot = snapshot;
       return;
     }
 
-    const committed = this.enemyIntel.entities.get(snapshot.id) || (snapshot.slotKey === "main" ? this.enemyIntel.main : null);
+    const committed = this.#entities.get(snapshot.id) || (snapshot.slotKey === "main" ? this.#main : null);
     const delay = this.perceptionDelayFor(entity);
     if (committed && now - committed.seenAt < delay * 0.82) {
       return;
     }
 
-    this.pendingSightings.set(snapshot.id, {
+    this.#pending.set(snapshot.id, {
       snapshot,
       readyAt: now + delay,
     });
-  },
+  }
 
   flushPendingSightings() {
     const now = this.obs.time;
-    for (const [id, pending] of this.pendingSightings) {
+    for (const [id, pending] of this.#pending) {
       if (pending.readyAt > now) {
         continue;
       }
       const snapshot = pending.snapshot;
-      this.enemyIntel.entities.set(snapshot.id, snapshot);
-      if (snapshot.slotKey === "main") {
-        this.enemyIntel.main = snapshot;
-      }
-      this.enemyIntel.searchZoneId = snapshot.zoneId;
-      this.pendingSightings.delete(id);
+      this.#store(snapshot, true);
+      this.#pending.delete(id);
     }
-  },
+  }
 
   snapshotEnemyContact(entity, source = "visible") {
     const zone = this.zoneForPoint(entity.x, entity.y);
-    return {
+    return freezePlainData(copyPlainData({
       id: entity.id,
       kind: entity.kind || "ship",
       key: entity.key || entity.slotKey || null,
@@ -80,8 +110,8 @@ export const intelTrackerMethods = {
         future1096Form: null, koizumiBarrierActive: false, koizumiBarrierRadius: 0,
         koizumiBarrierDisabledRemaining: 0,
       }),
-    };
-  },
+    }));
+  }
 
   ingestRadarContacts() {
     const radar = this.obs.self.radar;
@@ -100,7 +130,7 @@ export const intelTrackerMethods = {
         || !Number.isFinite(radarContact?.x)
         || !Number.isFinite(radarContact?.y)
         || (Number.isFinite(expiresAt) && expiresAt <= now)
-        || this.visibleIds.has(targetId)
+        || this.obs.enemy.visible.some((entity) => entity.id === targetId)
       ) {
         continue;
       }
@@ -117,8 +147,8 @@ export const intelTrackerMethods = {
         continue;
       }
 
-      const existing = this.enemyIntel.entities.get(targetId)
-        || (this.enemyIntel.main?.id === targetId ? this.enemyIntel.main : null);
+      const existing = this.#entities.get(targetId)
+        || (this.#main?.id === targetId ? this.#main : null);
       if (existing && existing.seenAt >= detectedAt) {
         continue;
       }
@@ -150,10 +180,9 @@ export const intelTrackerMethods = {
         uncertainty: clamp(Number(radarContact.uncertainty) || 90, 8, 260),
         radarExpiresAt: Number.isFinite(expiresAt) ? expiresAt : detectedAt + 3,
       };
-      this.enemyIntel.entities.set(targetId, snapshot);
-      this.enemyIntel.searchZoneId = snapshot.zoneId;
+      this.#store(snapshot);
     }
-  },
+  }
 
   ingestShamisenHuntTarget() {
     const hunt = this.obs.self.hunt;
@@ -184,9 +213,8 @@ export const intelTrackerMethods = {
       uncertainty: 0,
       visible: false,
     };
-    this.enemyIntel.entities.set(target.id, snapshot);
-    this.enemyIntel.searchZoneId = zone.id;
-  },
+    this.#store(snapshot);
+  }
 
   predictEnemyVector(contact) {
     if (!contact) {
@@ -216,7 +244,7 @@ export const intelTrackerMethods = {
       angle: Math.atan2(vy, vx),
       speed: len,
     };
-  },
+  }
 
   projectContact(contact, maxLead = 2.4) {
     const I = this.params.intel.projection;
@@ -278,17 +306,13 @@ export const intelTrackerMethods = {
       radarDerived,
       visible: source === "visible",
     };
-  },
+  }
 
   rememberContact(entity, source = "visible") {
     const snapshot = this.snapshotEnemyContact(entity, source);
-    this.enemyIntel.entities.set(snapshot.id, snapshot);
-    if (snapshot.slotKey === "main") {
-      this.enemyIntel.main = snapshot;
-    }
-    this.enemyIntel.searchZoneId = snapshot.zoneId;
+    this.#store(snapshot, true);
     return this.projectContact(snapshot, 0);
-  },
+  }
 
   refreshIntel() {
     this.ingestRadarContacts();
@@ -299,23 +323,23 @@ export const intelTrackerMethods = {
     this.flushPendingSightings();
 
     const staleCutoff = this.obs.time - 18;
-    for (const [id, contact] of this.enemyIntel.entities) {
+    for (const [id, contact] of this.#entities) {
       if (contact.seenAt < staleCutoff) {
-        this.enemyIntel.entities.delete(id);
+        this.#entities.delete(id);
       }
     }
-  },
+  }
 
   visibleMainContact() {
-    if (!this.enemyIntel.main || this.enemyIntel.main.source !== "visible") {
+    if (!this.#main || this.#main.source !== "visible") {
       return null;
     }
-    const age = this.obs.time - this.enemyIntel.main.seenAt;
+    const age = this.obs.time - this.#main.seenAt;
     if (age > 0.7) {
       return null;
     }
-    return this.projectContact(this.enemyIntel.main, 0.3);
-  },
+    return this.projectContact(this.#main, 0.3);
+  }
 
   contactPriority(contact) {
     if (contact.slotKey === "main") {
@@ -331,11 +355,11 @@ export const intelTrackerMethods = {
       return 2;
     }
     return 1;
-  },
+  }
 
   freshestKnownContact({ requireShip = false, maxAge = 12 } = {}) {
     let best = null;
-    for (const contact of this.enemyIntel.entities.values()) {
+    for (const contact of this.#entities.values()) {
       if (requireShip && contact.kind !== "ship") {
         continue;
       }
@@ -352,7 +376,7 @@ export const intelTrackerMethods = {
       }
     }
     return best ? this.projectContact(best, 1.8) : null;
-  },
+  }
 
   primaryEnemyEstimate() {
     const visibleMain = this.visibleMainContact();
@@ -362,7 +386,7 @@ export const intelTrackerMethods = {
 
     // 雷达无法判断旗舰席位，但最新扫描到的任意舰船都比陈旧出生点更适合作为搜索焦点。
     let freshestRadar = null;
-    for (const stored of this.enemyIntel.entities.values()) {
+    for (const stored of this.#entities.values()) {
       if (stored.source !== "radar") continue;
       const projected = this.projectContact(stored, 1.8);
       if (
@@ -376,7 +400,7 @@ export const intelTrackerMethods = {
       return freshestRadar;
     }
 
-    const mainIntel = this.projectContact(this.enemyIntel.main, this.enemyIntel.main?.source === "spawn" ? 0 : 2.6);
+    const mainIntel = this.projectContact(this.#main, this.#main?.source === "spawn" ? 0 : 2.6);
     if (mainIntel && (mainIntel.age <= 16 || mainIntel.source === "spawn")) {
       return mainIntel;
     }
@@ -387,11 +411,11 @@ export const intelTrackerMethods = {
     }
 
     return this.freshestKnownContact({ requireShip: false, maxAge: 6 }) || mainIntel;
-  },
+  }
 
   knownEnemyContacts({ maxAge = 10, includeScouts = false } = {}) {
     const contacts = [];
-    for (const stored of this.enemyIntel.entities.values()) {
+    for (const stored of this.#entities.values()) {
       const projected = this.projectContact(stored, 1.8);
       if (!projected || projected.age > maxAge) {
         continue;
@@ -402,12 +426,12 @@ export const intelTrackerMethods = {
       contacts.push(projected);
     }
 
-    const mainEstimate = this.projectContact(this.enemyIntel.main, this.enemyIntel.main?.source === "spawn" ? 0 : 1.8);
+    const mainEstimate = this.projectContact(this.#main, this.#main?.source === "spawn" ? 0 : 1.8);
     if (mainEstimate && mainEstimate.age <= maxAge && !contacts.some((item) => item.id === mainEstimate.id)) {
       if (includeScouts || mainEstimate.kind !== "scout" || mainEstimate.combatCapable) {
         contacts.unshift(mainEstimate);
       }
     }
     return contacts;
-  },
-};
+  }
+}

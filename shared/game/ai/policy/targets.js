@@ -6,7 +6,7 @@ export const targetsMethods = {
   acquireSearchCenter(main, enemyEstimate = null) {
     // 看得见敌人→直接以其所在战区为中心
     if (enemyEstimate && enemyEstimate.visible && enemyEstimate.zoneId) {
-      this.enemyIntel.searchZoneId = enemyEstimate.zoneId;
+      this.searchZoneId = enemyEstimate.zoneId;
       return this.zoneCenter(enemyEstimate.zoneId);
     }
 
@@ -14,27 +14,27 @@ export const targetsMethods = {
     const peak = this.beliefPeak();
     if (peak) {
       const zone = this.zoneForPoint(peak.x, peak.y);
-      if (zone) this.enemyIntel.searchZoneId = zone.id;
-      return { zoneId: this.enemyIntel.searchZoneId || 5, x: peak.x, y: peak.y };
+      if (zone) this.searchZoneId = zone.id;
+      return { zoneId: this.searchZoneId || 5, x: peak.x, y: peak.y };
     }
 
-    if (!this.enemyIntel.searchZoneId) {
-      this.enemyIntel.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
+    if (!this.searchZoneId) {
+      this.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
       this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
     }
 
-    const current = this.zoneCenter(this.enemyIntel.searchZoneId);
+    const current = this.zoneCenter(this.searchZoneId);
     if (
       distance(main.x, main.y, current.x, current.y) <= this.profile.searchArrivalRadius
       || this.obs.time - this.lastSearchAdvanceAt > this.profile.searchAdvanceWindow
     ) {
-      this.enemyIntel.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
+      this.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
       this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
       this.searchSweepSign *= -1;
       this.lastSearchAdvanceAt = this.obs.time;
     }
 
-    return this.zoneCenter(this.enemyIntel.searchZoneId);
+    return this.zoneCenter(this.searchZoneId);
   },
 
   combatCenter(enemyEstimate) {

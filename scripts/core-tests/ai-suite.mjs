@@ -1,3 +1,4 @@
+import { SearchBelief } from "../../shared/game/ai/policy/belief.js";
 import { cancelVisionWaveSkill } from "../../shared/game/vision-wave.js";
 import { disruptKoizumiBarrier } from "../../shared/game/koizumi-barrier.js";
 import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
@@ -57,7 +58,7 @@ function aiReactionDelayCheck() {
   const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
   const enemyMain = sim.teamA.ships.main;
-  const spawnIntel = { x: bot.enemyIntel.main.x, y: bot.enemyIntel.main.y };
+  const spawnIntel = { x: bot.rememberedMain.x, y: bot.rememberedMain.y };
 
   // 反应延迟测试显式把目标放进视野；出生点距离属于独立平衡参数。
   enemyMain.x = aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65);
@@ -419,9 +420,13 @@ function aiYukiRadarIntelCheck() {
     "长门 AI 绕过雷达误差读取了敌舰真实位置",
   );
 
-  bot.belief.w.fill(0);
-  bot.updateBelief(TICK_DT);
-  const peak = bot.beliefPeak();
+  // 无出生点先验的组件场景，单独验证雷达注入，避免篡改策略的网格。
+  const belief = new SearchBelief(bot.obs.world.size, null);
+  belief.update(TICK_DT, {
+    observation: bot.obs, indirectIntel: true, contacts: bot.rememberedContacts,
+    main: bot.rememberedMain, projectContact: (contact, lead) => bot.projectContact(contact, lead),
+  });
+  const peak = belief.peak();
   assert(peak && Math.hypot(peak.x - radarPoint.x, peak.y - radarPoint.y) < 230, "雷达接触未引导 AI 的搜索占据图");
 }
 
@@ -488,9 +493,8 @@ function aiYukiScoutDoctrineCheck() {
   assert(retasked >= 1, "长门AI由警戒转入接敌时没有重新编组既有战斗僚机");
   assert(primaryCount >= 2, "长门AI没有把足够僚机集中到主战场");
 
-  const stored = bot.enemyIntel.entities.get(enemyMain.id);
-  stored.source = "visible";
-  stored.seenAt = sim.elapsed - 6;
+  sim.elapsed += 6;
+  const stored = bot.rememberedContacts.find((contact) => contact.id === enemyMain.id);
   const memoryFocus = bot.projectContact(stored, 1.8);
   const harassContext = bot.buildTacticalContext(team.ships.main, memoryFocus);
   const harassPlan = bot.planScoutDeployment(harassContext);
@@ -742,11 +746,8 @@ function aiSectorEncirclementCheck() {
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
-  const stored = bot.enemyIntel.entities.get(enemyMain.id);
-  stored.seenAt = sim.elapsed - 6.4;
-  if (bot.enemyIntel.main && bot.enemyIntel.main.id === enemyMain.id) {
-    bot.enemyIntel.main.seenAt = sim.elapsed - 6.4;
-  }
+  // 时间推进自然老化情报，不能直接篡改已确认记录。
+  sim.elapsed += 6.4;
 
   enemyMain.x = 180;
   enemyMain.y = 200;
@@ -1727,7 +1728,7 @@ function aiShamisenHuntIntelCheck() {
     sim.teamA.visibleEnemyIds = new Set();
     bot.refreshIntel();
 
-    const contact = bot.enemyIntel.entities.get(targetId);
+    const contact = bot.rememberedContacts.find((contact) => contact.id === targetId);
     assert(contact?.source === "hunt", "AI没有把无视野猎杀标记作为特殊追踪情报读取");
     assert(contact.characterId === null && contact.hp === null, "AI通过猎杀标记偷看了角色或血量");
     assert(!sim.teamA.visibleEnemyIds.has(targetId), "AI读取猎杀标记时错误获得了真实视野");
@@ -1796,7 +1797,7 @@ function aiShamisenHuntAttackFormationCheck() {
     ship.command = { x: ship.x, y: ship.y };
   }
   team.visibleEnemyIds = new Set();
-  bot.enemyIntel.entities.delete(blocker.id);
+  sim.elapsed += 19; // 离开视野后由情报组件自然淘汰陈旧记录。
   bot.refreshIntel();
   const stretchedFocus = bot.selectEnemyFocus(team.ships.main);
   const stretchedContext = bot.buildTacticalContext(team.ships.main, stretchedFocus);

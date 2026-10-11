@@ -87,7 +87,7 @@ export const movementMethods = {
     for (const ship of activeOrbs) {
       const barrier = context?.barrierTactics?.enemy;
       const knownBarrierMain = barrier?.active
-        ? this.projectContact(this.enemyIntel.main, 0.8)
+        ? this.projectContact(this.rememberedMain, 0.8)
         : null;
       const estimate = knownBarrierMain
         ? { ...knownBarrierMain, x: barrier.x, y: barrier.y }

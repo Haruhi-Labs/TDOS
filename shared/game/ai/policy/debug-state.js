@@ -193,9 +193,9 @@ export const debugStateMethods = {
   },
 
   serializeDebugState() {
-    const focus = this.currentContext?.focus || this.lastTacticalPlan?.focus || this.enemyIntel.main;
+    const focus = this.currentContext?.focus || this.lastTacticalPlan?.focus || this.rememberedMain;
     let visibleContacts = 0;
-    for (const contact of this.enemyIntel.entities.values()) {
+    for (const contact of this.rememberedContacts) {
       const age = this.obs.time - contact.seenAt;
       if ((contact.source === "visible" || age <= 0.6) && age <= 1.2) {
         visibleContacts += 1;
@@ -214,10 +214,10 @@ export const debugStateMethods = {
         sub2: this.subTimers.sub2,
       },
       intel: {
-        searchZoneId: this.enemyIntel.searchZoneId || null,
-        knownContacts: this.enemyIntel.entities.size,
+        searchZoneId: this.searchZoneId || null,
+        knownContacts: this.knownContactCount,
         visibleContacts,
-        pendingContacts: this.pendingSightings.size,
+        pendingContacts: this.pendingContactCount,
       },
       focus: this.debugContact(focus),
       context: this.debugContext(this.currentContext),

@@ -1,5 +1,5 @@
 // 规则策略：只通过端口读取观测、提交动作，数值来自参数表，随机取自分配的随机流。
-// 决策的各个阶段分布在同目录的模块里，由下方统一安装到原型上；本文件负责状态初始化与每帧的阶段编排。
+// 本文件持有决策计时与计划并编排阶段；情报记忆和搜索占据图由独立组件持有，启发式阶段共享策略上下文。
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { normalizeAiDifficulty, resolveAiParams } from "../params/index.js";
 import { createScoutDoctrineState, recordScoutDeployment } from "./tactics/yuki-scout.js";
@@ -7,8 +7,8 @@ import { viewMethods } from "./view.js";
 import { commandsMethods } from "./commands.js";
 import { debugStateMethods } from "./debug-state.js";
 import { geometryMethods } from "./geometry.js";
-import { intelTrackerMethods } from "./intel-tracker.js";
-import { beliefMethods } from "./belief.js";
+import { IntelTracker } from "./intel-tracker.js";
+import { SearchBelief } from "./belief.js";
 import { evaluationMethods } from "./evaluation.js";
 import { energyMethods } from "./energy.js";
 import { contextMethods } from "./context.js";
@@ -21,6 +21,13 @@ import { targetsMethods } from "./targets.js";
 import { movementMethods } from "./movement.js";
 
 export class RulePolicy {
+  #intel;
+  #belief;
+  get rememberedMain() { return this.#intel.main; }
+  get rememberedContacts() { return this.#intel.contacts; }
+  get knownContactCount() { return this.#intel.contactCount; }
+  get pendingContactCount() { return this.#intel.pendingCount; }
+
   // port 是 AI 与对局之间的唯一通道：port.observe() 读取观测，port.submit(action) 提交动作。
   // params 指定难度、预设与覆盖：{ difficulty, preset, overrides }。
   constructor(port, { rng, params } = {}) {
@@ -59,31 +66,19 @@ export class RulePolicy {
     const spawnZone = this.zoneForPoint(enemyMain.x, enemyMain.y);
     this.searchOrder = [5, 2, 8, 4, 6, 1, 7, 3, 9];
     this.searchCursor = 0;
-    this.enemyIntel = {
-      entities: new Map(),
-      main: {
-        id: enemyMain.id,
-        kind: "ship",
-        key: enemyMain.key,
-        slotKey: enemyMain.slotKey,
-        x: enemyMain.x,
-        y: enemyMain.y,
-        angle: enemyMain.angle,
-        speed: 0,
-        seenAt: this.obs.time,
-        zoneId: spawnZone.id,
-        source: "spawn",
-      },
-      searchZoneId: spawnZone.id,
-    };
-    this.pendingSightings = new Map();
+    this.searchZoneId = spawnZone.id;
+    this.#intel = new IntelTracker({
+      observe: () => this.obs,
+      parameters: () => ({ params: this.params, profile: this.profile, reactionMult: this.reactionMult }),
+      contactZone: (zoneId) => { this.searchZoneId = zoneId; },
+    }, enemyMain);
     this.searchSweepSign = 1;
     this.lastSearchAdvanceAt = this.obs.time;
     // 情报占据图(belief)：像人一样推理敌人位置——持续预测(向外扩散可能区)、排除(己方视野
     // 看过且无敌的区清零)、缩小到最高概率未排除区去搜。初始以敌出生点为峰。
-    this.belief = this.initBelief(enemyMain);
+    this.#belief = new SearchBelief(this.obs.world.size, enemyMain);
     this.lastTacticalPlan = {
-      focus: this.debugContact(this.enemyIntel.main),
+      focus: this.debugContact(this.rememberedMain),
       searchCenter: this.debugPoint(this.zoneCenter(spawnZone.id)),
       combatCenter: null,
       searchAssignments: null,
@@ -128,6 +123,23 @@ export class RulePolicy {
       at: this.obs.time,
     };
   }
+
+  predictEnemyVector(...args) { return this.#intel.predictEnemyVector(...args); }
+  projectContact(...args) { return this.#intel.projectContact(...args); }
+  rememberContact(...args) { return this.#intel.rememberContact(...args); }
+  refreshIntel(...args) { return this.#intel.refreshIntel(...args); }
+  primaryEnemyEstimate(...args) { return this.#intel.primaryEnemyEstimate(...args); }
+  knownEnemyContacts(...args) { return this.#intel.knownEnemyContacts(...args); }
+
+  updateBelief(dt) {
+    this.#belief.update(dt, {
+      observation: this.obs, indirectIntel: this.params.features.indirectIntel,
+      contacts: this.rememberedContacts, main: this.rememberedMain,
+      projectContact: (contact, lead) => this.#intel.projectContact(contact, lead),
+    });
+  }
+  beliefPeak() { return this.#belief.peak(); }
+  beliefZoneWeights() { return this.#belief.zoneWeights(this.obs.world.zones); }
 
   get obs() {
     return this.port.observe();
@@ -292,7 +304,7 @@ export class RulePolicy {
       } else {
         this.lastScoutDecision = {
           action: "hold",
-          zoneId: this.enemyIntel.searchZoneId || null,
+          zoneId: this.searchZoneId || null,
           launched: false,
           urgent: false,
           doctrineMode: scoutPlan?.mode || null,
@@ -321,8 +333,6 @@ for (const methods of [
   commandsMethods,
   debugStateMethods,
   geometryMethods,
-  intelTrackerMethods,
-  beliefMethods,
   evaluationMethods,
   energyMethods,
   contextMethods,

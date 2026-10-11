@@ -1,44 +1,32 @@
 // 情报占据图：推理敌人可能的位置，用于搜索与侦察选点。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
-import { clamp, distance } from "../../math.js";
+// 概率网格只属于搜索组件；每次推进显式消费观测和情报，不持有策略或实体引用。
+import { clamp, distance, zoneContains } from "../../math.js";
 
-export const beliefMethods = {
-  // ── 情报占据图(belief)：类人地推理"敌人可能在哪" ──
-  initBelief(enemyMain) {
-    const ws = this.obs.world.size;
+export class SearchBelief {
+  #grid;
+  constructor(worldSize, enemyMain) {
     const cols = 16;
     const rows = 16;
-    const belief = { cols, rows, cell: ws / cols, w: new Float64Array(cols * rows) };
-    if (enemyMain) {
-      belief.w[this.beliefIdxFor(belief, enemyMain.x, enemyMain.y)] = 1;
-    }
-    return belief;
-  },
+    this.#grid = { cols, rows, cell: worldSize / cols, w: new Float64Array(cols * rows) };
+    if (enemyMain) this.#grid.w[this.beliefIdxFor(this.#grid, enemyMain.x, enemyMain.y)] = 1;
+  }
 
   beliefIdxFor(b, x, y) {
     const cx = clamp(Math.floor(x / b.cell), 0, b.cols - 1);
     const cy = clamp(Math.floor(y / b.cell), 0, b.rows - 1);
     return cy * b.cols + cx;
-  },
-
-  // 该点是否在我方任一视野源覆盖内(用于"只采信我方能看见的间接情报",保持公平)
-  perceivesPoint(x, y) {
-    for (const src of this.obs.self.visionSources) {
-      if (distance(x, y, src.x, src.y) <= src.range) return true;
-    }
-    return false;
-  },
+  }
 
   // 每tick更新：①看见→坍缩到可见处；否则 ②预测(向四邻扩散) ③排除(己方视野看过且无敌的区清零)
   // ④间接情报(敌子弹/侦察机反推) ⑤兜底重播种
-  updateBelief(dt) {
-    const b = this.belief;
+  update(dt, { observation, indirectIntel, contacts, main, projectContact }) {
+    const b = this.#grid;
     if (!b) return;
     const { cols, rows, cell } = b;
     const n = cols * rows;
 
     const visible = [];
-    for (const s of this.obs.enemy.visible) {
+    for (const s of observation.enemy.visible) {
       if (s.kind === "ship") visible.push(s);
     }
     if (visible.length) {
@@ -75,7 +63,7 @@ export const beliefMethods = {
     }
 
     // ② 排除：己方每个视野源覆盖到的cell若无敌→几乎清零(看过、是空的)
-    for (const src of this.obs.self.visionSources) {
+    for (const src of observation.self.visionSources) {
       const r = src.range;
       if (!(r > 0)) continue;
       const minx = clamp(Math.floor((src.x - r) / cell), 0, cols - 1);
@@ -95,10 +83,10 @@ export const beliefMethods = {
 
     // ── 间接情报(很关键:敌舰本体多数时间在视野外，靠"看到的子弹/敌侦察机"反推敌方范围) ──
     // noIndirectIntel=true 时整体跳过(用于控制变量对照实验)
-    if (this.params.features.indirectIntel) {
+    if (indirectIntel) {
       // (a) 敌方子弹:朝我方飞来→开火的敌舰在其"逆飞行方向"、射程之内。只用我方能感知到的子弹(公平)。
       {
-        for (const p of this.obs.enemy.projectiles) {
+        for (const p of observation.enemy.projectiles) {
           const vx = p.targetX - p.x;
           const vy = p.targetY - p.y;
           const vl = Math.hypot(vx, vy);
@@ -117,7 +105,7 @@ export const beliefMethods = {
       let bx0 = 0;
       let by0 = 0;
       let bn = 0;
-      for (const sc of this.obs.enemy.visible) {
+      for (const sc of observation.enemy.visible) {
         if (sc.kind !== "scout") continue;
         if (sc.pattern === "burst") {
           bx0 += sc.x; by0 += sc.y; bn++;
@@ -135,16 +123,16 @@ export const beliefMethods = {
 
     // “猫爪印记”的标记本来就持续显示精确位置，因此可以形成一个精确搜索峰；它仍不把
     // 其它敌人或目标属性写入情报。长门雷达则只注入带误差的接触。
-    for (const stored of this.enemyIntel.entities.values()) {
+    for (const stored of contacts) {
       if (stored.source !== "hunt") continue;
       w[this.beliefIdxFor(b, stored.x, stored.y)] += 2.4;
     }
 
     // 长门雷达只把带误差的接触注入占据图，不会像真实视野一样把概率坍缩到真值。
     // 模糊接触铺得更宽，近距离高置信接触则形成更集中的搜索峰。
-    for (const stored of this.enemyIntel.entities.values()) {
+    for (const stored of contacts) {
       if (stored.source !== "radar") continue;
-      const contact = this.projectContact(stored, 1.2);
+      const contact = projectContact(stored, 1.2);
       if (!contact || contact.age > 9 || contact.confidence < 0.1) continue;
       const sigma = Math.max(cell * 0.65, contact.uncertainty * 0.62);
       const radiusCells = clamp(Math.ceil((sigma * 2.2) / cell), 1, 4);
@@ -169,14 +157,14 @@ export const beliefMethods = {
     for (let i = 0; i < n; i++) total += w[i];
     if (total < 0.04) {
       for (let i = 0; i < n; i++) w[i] += 0.015;
-      const seed = this.enemyIntel?.main;
+      const seed = main;
       if (seed && Number.isFinite(seed.x)) w[this.beliefIdxFor(b, seed.x, seed.y)] += 0.4;
     }
-  },
+  }
 
   // 最高概率(且未排除)区域的中心——下一步该去搜/侦察的地方
-  beliefPeak() {
-    const b = this.belief;
+  peak() {
+    const b = this.#grid;
     if (!b) return null;
     let best = -1;
     let bi = -1;
@@ -187,20 +175,20 @@ export const beliefMethods = {
     const cx = bi % b.cols;
     const cy = Math.floor(bi / b.cols);
     return { x: (cx + 0.5) * b.cell, y: (cy + 0.5) * b.cell, weight: best };
-  },
+  }
 
-  beliefZoneWeights() {
-    const weights = new Map(this.obs.world.zones.map((zone) => [zone.id, 0]));
-    const belief = this.belief;
+  zoneWeights(zones) {
+    const weights = new Map(zones.map((zone) => [zone.id, 0]));
+    const belief = this.#grid;
     if (!belief) return weights;
     for (let index = 0; index < belief.w.length; index += 1) {
       const col = index % belief.cols;
       const row = Math.floor(index / belief.cols);
       const x = (col + 0.5) * belief.cell;
       const y = (row + 0.5) * belief.cell;
-      const zone = this.zoneForPoint(x, y);
+      const zone = zones.find((zone) => zoneContains(zone, x, y)) || zones[4];
       weights.set(zone.id, (weights.get(zone.id) || 0) + belief.w[index]);
     }
     return weights;
-  },
-};
+  }
+}

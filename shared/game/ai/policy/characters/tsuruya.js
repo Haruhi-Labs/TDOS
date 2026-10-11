@@ -15,7 +15,7 @@ export default {
       );
     },
     target(policy, { estimate }) {
-      return { zoneId: estimate?.zoneId || policy.enemyIntel.searchZoneId || 5 };
+      return { zoneId: estimate?.zoneId || policy.searchZoneId || 5 };
     },
   },
 };

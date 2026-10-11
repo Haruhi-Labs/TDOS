@@ -36,13 +36,13 @@ export const scoutMethods = {
     if (focus && focus.zoneId) {
       const probeZoneId = this.likelyProbeZoneId(focus);
       if (focus.visible) {
-        this.enemyIntel.searchZoneId = focus.zoneId;
+        this.searchZoneId = focus.zoneId;
         return this.stableNoise(Math.round(this.obs.time * 10), focus.zoneId) < 0.72 && probeZoneId
           ? probeZoneId
           : focus.zoneId;
       }
       if (focus.age <= 12) {
-        this.enemyIntel.searchZoneId = probeZoneId || focus.zoneId;
+        this.searchZoneId = probeZoneId || focus.zoneId;
         if (probeZoneId && this.stableNoise(Math.round(this.obs.time * 8), probeZoneId) < 0.92) {
           return probeZoneId;
         }
