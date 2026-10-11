@@ -16,6 +16,7 @@ radar.contacts[0].x = -100;
 assert.notEqual(team.serializeRadarPassive().contacts[0].x, -100);
 activateVisionWaveSkill(team);
 const state = team.visionWaveSkill;
+assert.equal(team.visionWaveSkill, state, "只读查询不重复复制未变化的波纹");
 assert.throws(() => { state.waves[0].expiresAt = 999; }, TypeError);
 assert.throws(() => state.waves.pop(), TypeError);
 assert.throws(() => { team.visionWaveSkill = {}; }, TypeError);

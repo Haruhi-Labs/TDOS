@@ -31,10 +31,17 @@ import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
-  get effects() { return Object.freeze({ haruhiBoostUntil: this.#haruhi.expiresAt, sponsorUntil: this.#sponsor.expiresAt }); }
-  #extraShips = [];
+  #effectView;
+  get effects() {
+    const haruhiBoostUntil = this.#haruhi.expiresAt;
+    const sponsorUntil = this.#sponsor.expiresAt;
+    if (!this.#effectView || this.#effectView.haruhiBoostUntil !== haruhiBoostUntil || this.#effectView.sponsorUntil !== sponsorUntil)
+      this.#effectView = Object.freeze({ haruhiBoostUntil, sponsorUntil });
+    return this.#effectView;
+  }
+  #extraShips = Object.freeze([]);
   #ships;
-  get extraShips() { return Object.freeze([...this.#extraShips]); }
+  get extraShips() { return this.#extraShips; }
   get ships() { return this.#ships; }
   #aircraft;
   get scouts() { return this.#aircraft.scouts; }
@@ -197,11 +204,11 @@ export class Team {
   }
 
   addAuxiliaryShip(ship) {
-    this.#extraShips.push(ship);
+    this.#extraShips = Object.freeze([...this.#extraShips, ship]);
   }
 
   removeAuxiliaryShip(ship) {
-    this.#extraShips = this.#extraShips.filter((candidate) => candidate !== ship);
+    this.#extraShips = Object.freeze(this.#extraShips.filter((candidate) => candidate !== ship));
   }
 
   getAllShips() {

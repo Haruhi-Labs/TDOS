@@ -1,5 +1,6 @@
 import { copyPlainData, freezePlainData } from "../data/plain-data.js";
 const states = new WeakMap();
+const views = new WeakMap();
 import { createExpandingWave as createWave, expandingWaveCoversEntity } from "./systems/expanding-wave.js";
 
 // 保留技能模块原有入口；通用几何只消费显式的时间、地图和来源数据。
@@ -10,6 +11,7 @@ export function createExpandingWave(team, source, id) {
 export { expandingWaveCoversEntity } from "./systems/expanding-wave.js";
 
 function emitVisionWave(team, source) {
+  views.delete(team);
   const state = states.get(team);
   state.sequence += 1;
   state.waves.push(createExpandingWave(team, source, state.sequence));
@@ -28,6 +30,7 @@ export function createVisionWaveSkillState() {
 }
 
 export function activateVisionWaveSkill(team, options = {}) {
+  views.delete(team);
   const source = team.ships.main;
   if (!source?.alive) return false;
 
@@ -46,6 +49,7 @@ export function activateVisionWaveSkill(team, options = {}) {
 }
 
 export function cancelVisionWaveSkill(team, { preserveCurrentTick = true } = {}) {
+  views.delete(team);
   const state = states.get(team);
   if (!state) return false;
   if (preserveCurrentTick && state.startedTick === team.match.tick) return false;
@@ -59,6 +63,7 @@ export function cancelVisionWaveSkill(team, { preserveCurrentTick = true } = {})
 }
 
 export function updateVisionWaveSkill(team) {
+  views.delete(team);
   const state = states.get(team);
   if (!state) return;
   const now = team.match.elapsed;
@@ -110,6 +115,9 @@ export function initializeVisionWaves(team) {
   if (states.has(team)) return;
   states.set(team, createVisionWaveSkillState());
   Object.defineProperty(team, "visionWaveSkill", { enumerable: true,
-    get: () => freezePlainData(copyPlainData(states.get(team))),
+    get: () => {
+      if (!views.has(team)) views.set(team, freezePlainData(copyPlainData(states.get(team))));
+      return views.get(team);
+    },
   });
 }

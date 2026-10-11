@@ -8,7 +8,7 @@ import { createShipNavigationPort } from "../rules/navigation-port.js";
 import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES, normalizeThrottleToGear } from "../throttle.js";
 import { fireArcDensityMultiplier } from "../combat-rules.js";
 import { characterDefinition as getCharacterDef, slotLabel } from "../characters.js";
-import { clamp, distance, shortestAngleDelta } from "../math.js";
+import { clamp, shortestAngleDelta } from "../math.js";
 import { rngFor } from "../rng.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
 import { nextEntityId } from "../model/model-support.js";

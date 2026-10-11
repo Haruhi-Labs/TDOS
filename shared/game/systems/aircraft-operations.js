@@ -2,19 +2,33 @@ import { clamp } from "../math.js";
 const TAU = Math.PI * 2;
 
 export class AircraftOperations {
+  #scoutView;
+  #wingmanView;
   #port;
   #config;
   #scouts = [];
   #wingmen = [];
   #autoScout = Object.freeze({ enabled: false, zoneId: 5 });
   constructor(port, config) { this.#port = port; this.#config = Object.freeze({ ...config }); }
-  get scouts() { return Object.freeze([...this.#scouts]); }
-  get wingmen() { return Object.freeze([...this.#wingmen]); }
+  get scouts() { return this.#scoutView ??= Object.freeze([...this.#scouts]); }
+  get wingmen() { return this.#wingmanView ??= Object.freeze([...this.#wingmen]); }
   get autoScout() { return this.#autoScout; }
-  addScout(scout) { this.#scouts.push(scout); }
-  removeScout(scout) { this.#scouts = this.#scouts.filter((item) => item !== scout); }
-  addWingman(wingman) { this.#wingmen.push(wingman); }
-  removeWingman(wingman) { this.#wingmen = this.#wingmen.filter((item) => item !== wingman); }
+  addScout(scout) {
+    this.#scoutView = undefined;
+    this.#scouts.push(scout);
+  }
+  removeScout(scout) {
+    this.#scoutView = undefined;
+    this.#scouts = this.#scouts.filter((item) => item !== scout);
+  }
+  addWingman(wingman) {
+    this.#wingmanView = undefined;
+    this.#wingmen.push(wingman);
+  }
+  removeWingman(wingman) {
+    this.#wingmanView = undefined;
+    this.#wingmen = this.#wingmen.filter((item) => item !== wingman);
+  }
   configureAutoScout(enabled, zoneId) {
     this.#autoScout = Object.freeze({ enabled: Boolean(enabled), zoneId: Number.isFinite(Number(zoneId))
       ? clamp(Number(zoneId), 1, 9) : this.#autoScout.zoneId });
@@ -26,6 +40,8 @@ export class AircraftOperations {
     for (const wingman of this.#wingmen) wingman.update(dt);
   }
   collectRetired() {
+    this.#wingmanView = undefined;
+    this.#scoutView = undefined;
     this.#scouts = this.#scouts.filter((item) => item.alive);
     this.#wingmen = this.#wingmen.filter((item) => item.alive);
   }
@@ -48,6 +64,7 @@ export class AircraftOperations {
   }
 
   launchScout(zoneId, options = {}) {
+    this.#scoutView = undefined;
     if (!this.#port.orderAvailable(options.fromShipKey)) return false;
     const cost = this.#config.scoutCost;
     const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
@@ -93,6 +110,7 @@ export class AircraftOperations {
   }
 
   launchWingman(zoneId) {
+    this.#wingmanView = undefined;
     const cost = 55;
     if (this.#port.cooldowns.flagship > 0) {
       return false;
@@ -110,6 +128,7 @@ export class AircraftOperations {
   }
 
   launchBurstScouts(ship) {
+    this.#scoutView = undefined;
     const directions = 8;
     for (let i = 0; i < directions; i += 1) {
       const angle = (TAU / directions) * i;
@@ -135,6 +154,7 @@ export class AircraftOperations {
   }
 
   launchHaruhiAlienWingmen(ship) {
+    this.#scoutView = undefined;
     const zone = this.#port.zoneForPoint(ship.x, ship.y);
     const releaseAngle = this.#port.randomRange(0, TAU);
     const spawnRadius = ship.radius + 12;

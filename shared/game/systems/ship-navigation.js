@@ -6,16 +6,26 @@ import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 export class ShipNavigation {
   #port;
   #route = null;
+  #routeView;
+  #commandView;
   #command;
   #forcedKnockback = null;
   constructor(port, point) { this.#port = port; this.#command = { x: point.x, y: point.y }; }
-  get route() { return freezePlainData(copyPlainData(this.#route)); }
-  get command() { return Object.freeze({ ...this.#command }); }
-  get forcedKnockback() { return this.#forcedKnockback && Object.freeze({ ...this.#forcedKnockback }); }
-  replaceRoute(route) { this.#route = copyPlainData(route); }
+  get route() { return this.#routeView ??= freezePlainData(copyPlainData(this.#route)); }
+  get command() {
+    if (!this.#commandView || this.#commandView.x !== this.#command.x || this.#commandView.y !== this.#command.y)
+      this.#commandView = Object.freeze({ ...this.#command });
+    return this.#commandView;
+  }
+  get forcedKnockback() { return this.#forcedKnockback; }
+  replaceRoute(route) {
+    this.#routeView = undefined;
+    this.#route = copyPlainData(route);
+  }
   target(point) { this.#command = { x: point.x, y: point.y }; }
-  knockback(motion) { this.#forcedKnockback = motion && { ...motion }; }
+  knockback(motion) { this.#forcedKnockback = motion && Object.freeze({ ...motion }); }
   advanceSpecialRoute(traveledDistance, minimumLength, captureRadius) {
+    this.#routeView = undefined;
     if (!this.#route) return;
     this.#route.t = clamp((Number(this.#route.t) || 0) + traveledDistance / Math.max(minimumLength, Number(this.#route.length) || 1), 0, 1);
     if (this.#route.t >= 1 && Math.hypot(this.#route.p2.x - this.#port.x, this.#route.p2.y - this.#port.y) <= captureRadius) this.#route = null;
@@ -92,6 +102,7 @@ export class ShipNavigation {
   }
 
   enforceRouteFeasibility(desiredControlPoint = null, resetProgress = true) {
+    this.#routeView = undefined;
     if (!this.#route) {
       return;
     }
@@ -165,6 +176,7 @@ export class ShipNavigation {
   }
 
   setBezierRoute(controlX, controlY, endX, endY, throttle, anchorToMain = true) {
+    this.#routeView = undefined;
     const match = this.#port.world;
     this.#port.throttle = normalizeThrottleToGear(throttle, this.#port.throttle);
     this.#route = {
@@ -191,6 +203,7 @@ export class ShipNavigation {
   }
 
   setRouteControl(controlX, controlY, resetProgress = false) {
+    this.#routeView = undefined;
     if (!this.#route) {
       return;
     }
@@ -205,6 +218,7 @@ export class ShipNavigation {
   }
 
   setRouteEndpoint(endX, endY, resetProgress = false) {
+    this.#routeView = undefined;
     if (!this.#route) {
       return;
     }
@@ -217,10 +231,12 @@ export class ShipNavigation {
   }
 
   clearRoute() {
+    this.#routeView = undefined;
     this.#route = null;
   }
 
   advance(dt) {
+    this.#routeView = undefined;
     const match = this.#port.world;
     if (this.#port.isAttached()) {
       this.followLeader(dt);
@@ -315,6 +331,7 @@ export class ShipNavigation {
   }
 
   followLeader(dt) {
+    this.#routeView = undefined;
     const match = this.#port.world;
     const leader = this.#port.leader();
     const compactMode = this.#port.formationSize() > 1;

@@ -21,6 +21,7 @@ const wingman = { alive: true, update: () => sequence.push("僚机") };
 aircraft.addScout(scout);
 aircraft.addWingman(wingman);
 const roster = aircraft.scouts;
+assert.equal(aircraft.scouts, roster, "成员未变更时复用只读集合");
 aircraft.advance(1);
 assert.deepEqual(sequence, ["侦察机", "僚机"]);
 scout.alive = false;
