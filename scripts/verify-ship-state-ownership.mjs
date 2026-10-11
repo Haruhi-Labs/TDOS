@@ -17,6 +17,10 @@ const extra = new Ship(a, "probe", 500, 500, 0, { characterId: "kyon", isAuxilia
 assert.equal(a.addAuxiliaryShip(extra), true);
 assert.equal(a.addAuxiliaryShip(extra), false);
 assert.equal(b.addAuxiliaryShip(extra), false);
+for (const key of ["main", "sub1", "sub2"]) {
+  const reserved = new Ship(a, key, 500, 500, 0, { characterId: "kyon", isAuxiliary: true });
+  assert.equal(a.addAuxiliaryShip(reserved), false, "额外成员不能占用固定舰位的键");
+}
 const original = a.extraShips;
 const other = new MatchSimulation({ mode: "pvp", seed: 913 });
 assert.equal(extra.transferToTeam(other.teamA), false);

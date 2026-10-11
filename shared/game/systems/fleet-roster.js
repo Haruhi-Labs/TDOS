@@ -16,6 +16,7 @@ export class FleetRoster {
   }
   accepts(ship) {
     if (!ship?.isAuxiliary || ship.team.match !== this.#owner.match || ship.kind !== "ship") return false;
+    if (Object.hasOwn(this.#ships || {}, ship.key)) return false;
     if (this.#extra.some((member) => member === ship || member.id === ship.id || member.key === ship.key)) return false;
     return true;
   }
