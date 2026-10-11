@@ -2,6 +2,7 @@
 // 实时 Team 仅保留在桥接闭包；决策代码无法取得实体或切换到绕过校验的执行路径。
 import { applyMatchAction } from "../../action-dispatcher.js";
 import { AI_ACTION_TYPES } from "../actions.js";
+import { freezePlainData } from "../../../data/plain-data.js";
 import {
   buildObservation,
   observeEnemySpawn,
@@ -61,13 +62,13 @@ export function createActionPort(match, seat) {
     observe() {
       if (!observation) {
         const built = buildObservation(match, seat);
-        observation = port.strict ? pureData(built) : built;
+        observation = freezePlainData(port.strict ? pureData(built) : built);
       }
       return observation;
     },
 
     enemySpawn() {
-      return observeEnemySpawn(match, seat);
+      return freezePlainData(observeEnemySpawn(match, seat));
     },
 
     // 立即执行并返回是否被接受。被拒绝的动作也可能触发规则层的状态整理，因此一律让观测失效。

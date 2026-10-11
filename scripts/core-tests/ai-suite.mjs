@@ -391,7 +391,7 @@ function aiYukiRadarIntelCheck() {
   sim.elapsed = 1;
   const observe = bot.port.observe;
   bot.port.observe = () => {
-    const data = observe();
+    const data = structuredClone(observe());
     data.self.radar = { contacts: [{
     id: enemyMain.id,
     targetId: enemyMain.id,

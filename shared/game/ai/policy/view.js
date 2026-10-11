@@ -3,33 +3,6 @@
 import { clamp } from "../../math.js";
 
 export const viewMethods = {
-  indexObservation() {
-    const obs = this.obs;
-    if (this.indexedObservation !== obs) {
-      this.indexedObservation = obs;
-      const self = obs.self;
-      const ships = [self.ships.main, self.ships.sub1, self.ships.sub2, ...self.extraShips];
-      this.observationIndex = {
-        ships,
-        shipById: new Map(ships.map((ship) => [ship.id, ship])),
-        visibleIds: new Set(obs.enemy.visible.map((entity) => entity.id)),
-      };
-    }
-    return this.observationIndex;
-  },
-
-  ownShips() {
-    return this.indexObservation().ships;
-  },
-
-  ownShipById(id) {
-    return this.indexObservation().shipById.get(id) || null;
-  },
-
-  get visibleIds() {
-    return this.indexObservation().visibleIds;
-  },
-
   ownShip(shipOrKey) {
     if (typeof shipOrKey === "string") {
       return this.obs.self.ships[shipOrKey] || this.ownShips().find((ship) => ship.key === shipOrKey) || null;

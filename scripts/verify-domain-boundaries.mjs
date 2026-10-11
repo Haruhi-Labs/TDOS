@@ -1,3 +1,4 @@
+import "./verify-ai-observation-ownership.mjs";
 import { convertZoneSupport } from "../shared/game/rules/support-conversion.js";
 import { sampleVisibility } from "./core-tests/visibility-fixture.mjs";
 import assert from "node:assert/strict";
@@ -64,7 +65,7 @@ vandalize(detached);
 assert.equal(JSON.stringify(isolated.serializeState()), expected, "修改输出快照不得回写权威或 AI 状态");
 const observation = isolated.bot.port.observe();
 const zoneX = isolated.zones[0].x;
-observation.world.zones[0].x = -500;
+assert.throws(() => { observation.world.zones[0].x = -500; }, TypeError);
 assert.equal(isolated.zones[0].x, zoneX, "AI 观察不得引用权威地图对象");
 console.log("输出隔离校验通过：外部修改快照及观察不能回写对局。");
 

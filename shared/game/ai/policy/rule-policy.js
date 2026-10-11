@@ -3,6 +3,7 @@
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { normalizeAiDifficulty, resolveAiParams } from "../params/index.js";
 import { ScoutDoctrine } from "./tactics/yuki-scout.js";
+import { ObservationView } from "./observation-view.js";
 import { viewMethods } from "./view.js";
 import { commandsMethods } from "./commands.js";
 import { debugStateMethods } from "./debug-state.js";
@@ -23,6 +24,11 @@ import { targetsMethods } from "./targets.js";
 import { movementMethods } from "./movement.js";
 
 export class RulePolicy {
+  #observationView = new ObservationView();
+  ownShips() { return this.#observationView.ships(this.obs); }
+  ownShipById(id) { return this.#observationView.ship(this.obs, id); }
+  get visibleIds() { return this.#observationView.visible(this.obs); }
+
   #skillCycle;
   #intel;
   #belief;
@@ -38,8 +44,6 @@ export class RulePolicy {
   constructor(port, { rng, params } = {}) {
     this.port = port;
     this.seat = port.seat;
-    this.indexedObservation = null;
-    this.observationIndex = null;
     // 每席 AI 使用对局分配的随机流；未带种子的对局里它就是环境随机源。
     this.rng = rng;
     // 决策用到的全部数值都来自参数表；难度与旧版对照是其上的覆盖层。
