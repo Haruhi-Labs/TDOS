@@ -1,3 +1,4 @@
+import "./verify-ai-search-ownership.mjs";
 import "./verify-ai-observation-ownership.mjs";
 import { convertZoneSupport } from "../shared/game/rules/support-conversion.js";
 import { sampleVisibility } from "./core-tests/visibility-fixture.mjs";

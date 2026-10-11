@@ -30,27 +30,6 @@ export const scoutMethods = {
     return bestKey;
   },
 
-  pickScoutZoneId(main, enemyEstimate = null) {
-    const focus = enemyEstimate || this.primaryEnemyEstimate();
-    if (focus && focus.zoneId) {
-      const probeZoneId = this.likelyProbeZoneId(focus);
-      if (focus.visible) {
-        this.searchZoneId = focus.zoneId;
-        return this.stableNoise(Math.round(this.obs.time * 10), focus.zoneId) < 0.72 && probeZoneId
-          ? probeZoneId
-          : focus.zoneId;
-      }
-      if (focus.age <= 12) {
-        this.searchZoneId = probeZoneId || focus.zoneId;
-        if (probeZoneId && this.stableNoise(Math.round(this.obs.time * 8), probeZoneId) < 0.92) {
-          return probeZoneId;
-        }
-        return focus.zoneId;
-      }
-    }
-    return this.acquireSearchCenter(main, focus).zoneId;
-  },
-
   planScoutDeployment(context = this.currentContext) {
     if (!this.obs.self.flags.yukiFlagship || !this.obs.self.ships.main.alive) {
       return null;

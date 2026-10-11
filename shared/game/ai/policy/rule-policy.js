@@ -9,6 +9,7 @@ import { commandsMethods } from "./commands.js";
 import { debugStateMethods } from "./debug-state.js";
 import { geometryMethods } from "./geometry.js";
 import { IntelTracker } from "./intel-tracker.js";
+import { SearchNavigation } from "./search-navigation.js";
 import { SearchBelief } from "./belief.js";
 import { evaluationMethods } from "./evaluation.js";
 import { energyMethods } from "./energy.js";
@@ -28,6 +29,37 @@ export class RulePolicy {
   ownShips() { return this.#observationView.ships(this.obs); }
   ownShipById(id) { return this.#observationView.ship(this.obs, id); }
   get visibleIds() { return this.#observationView.visible(this.obs); }
+
+  #search;
+  get searchZoneId() { return this.#search.state.zoneId; }
+  get searchSweepSign() { return this.#search.state.sweepSign; }
+  #searchInput(main, focus) {
+    const peak = focus?.visible && focus.zoneId ? null : this.beliefPeak();
+    return {
+      main, focus, peak, peakZoneId: peak ? this.zoneForPoint(peak.x, peak.y)?.id : null,
+      zones: this.obs.world.zones, now: this.obs.time,
+      arrivalRadius: this.profile.searchArrivalRadius, advanceWindow: this.profile.searchAdvanceWindow,
+    };
+  }
+  acquireSearchCenter(main, focus = null) {
+    return this.#search.planCenter(this.#searchInput(main, focus)).point;
+  }
+  advanceSearchCenter(main, focus) {
+    return this.#search.consume(this.#search.planCenter(this.#searchInput(main, focus))).point;
+  }
+  #scoutSearchPlan(main, enemyEstimate) {
+    const focus = enemyEstimate || this.primaryEnemyEstimate();
+    const probeZoneId = focus?.zoneId ? this.likelyProbeZoneId(focus) : null;
+    const input = focus?.zoneId && (focus.visible || focus.age <= 12)
+      ? { focus } : this.#searchInput(main, focus);
+    return this.#search.planScout({
+      ...input, probeZoneId,
+      visibleNoise: focus?.visible ? this.stableNoise(Math.round(this.obs.time * 10), focus.zoneId) : 1,
+      recentNoise: !focus?.visible && probeZoneId ? this.stableNoise(Math.round(this.obs.time * 8), probeZoneId) : 1,
+    });
+  }
+  pickScoutZoneId(main, focus = null) { return this.#scoutSearchPlan(main, focus).zoneId; }
+  #selectScoutZone(main, focus) { return this.#search.consume(this.#scoutSearchPlan(main, focus)).zoneId; }
 
   #skillCycle;
   #intel;
@@ -70,16 +102,12 @@ export class RulePolicy {
 
     const enemyMain = this.port.enemySpawn();
     const spawnZone = this.zoneForPoint(enemyMain.x, enemyMain.y);
-    this.searchOrder = [5, 2, 8, 4, 6, 1, 7, 3, 9];
-    this.searchCursor = 0;
-    this.searchZoneId = spawnZone.id;
+    this.#search = new SearchNavigation(spawnZone.id, this.obs.time);
     this.#intel = new IntelTracker({
       observe: () => this.obs,
       parameters: () => ({ params: this.params, profile: this.profile, reactionMult: this.reactionMult }),
-      contactZone: (zoneId) => { this.searchZoneId = zoneId; },
+      contactZone: (zoneId) => this.#search.contact(zoneId),
     }, enemyMain);
-    this.searchSweepSign = 1;
-    this.lastSearchAdvanceAt = this.obs.time;
     // 情报占据图(belief)：像人一样推理敌人位置——持续预测(向外扩散可能区)、排除(己方视野
     // 看过且无敌的区清零)、缩小到最高概率未排除区去搜。初始以敌出生点为峰。
     this.#belief = new SearchBelief(this.obs.world.size, enemyMain);
@@ -274,7 +302,7 @@ export class RulePolicy {
     if (this.scoutTimer <= 0 && !this.obs.self.scoutsDisabled) {
       if (this.shouldLaunchScout(this.currentContext, scoutPlan)) {
         const focusEst = this.currentContext?.focus || this.primaryEnemyEstimate();
-        const zoneId = scoutPlan?.zoneId || this.pickScoutZoneId(this.obs.self.ships.main, focusEst);
+        const zoneId = scoutPlan?.zoneId || this.#selectScoutZone(this.obs.self.ships.main, focusEst);
         // 侦察目标点：看得见就奔可见处；看不见就奔 belief 占据图的最高概率(未排除)区——
         // 让侦察去"最该排查"的地方，系统化缩小可能区(类人搜索)。前出分离舰就近发出，最快覆盖。
         const peak = (focusEst && focusEst.visible) ? null : this.beliefPeak();

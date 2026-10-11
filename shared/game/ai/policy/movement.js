@@ -116,7 +116,7 @@ export const movementMethods = {
     }
 
     const tactical = context || this.buildTacticalContext(main, enemyEstimate);
-    const searchCenter = this.acquireSearchCenter(main, enemyEstimate);
+    const searchCenter = this.advanceSearchCenter(main, enemyEstimate);
     const mode = this.chooseMode(tactical);
     const center = mode === "search" ? searchCenter : this.combatCenter(enemyEstimate);
     const sectorPlan = ((mode === "search" || mode === "cutoff" || mode === "collapse" || mode === "press") && (tactical.trackableIntel || tactical.searchRequired || tactical.isolatedTargetScore > 0.28 || !tactical.intelSolid))

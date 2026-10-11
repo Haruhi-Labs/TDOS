@@ -3,40 +3,6 @@
 import { clamp, distance, lerp } from "../../math.js";
 
 export const targetsMethods = {
-  acquireSearchCenter(main, enemyEstimate = null) {
-    // 看得见敌人→直接以其所在战区为中心
-    if (enemyEstimate && enemyEstimate.visible && enemyEstimate.zoneId) {
-      this.searchZoneId = enemyEstimate.zoneId;
-      return this.zoneCenter(enemyEstimate.zoneId);
-    }
-
-    // 看不见→去 belief 占据图的"最高概率(且未被排除)区域"——类人:持续预测+排除看过的+缩小可能区
-    const peak = this.beliefPeak();
-    if (peak) {
-      const zone = this.zoneForPoint(peak.x, peak.y);
-      if (zone) this.searchZoneId = zone.id;
-      return { zoneId: this.searchZoneId || 5, x: peak.x, y: peak.y };
-    }
-
-    if (!this.searchZoneId) {
-      this.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
-      this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
-    }
-
-    const current = this.zoneCenter(this.searchZoneId);
-    if (
-      distance(main.x, main.y, current.x, current.y) <= this.profile.searchArrivalRadius
-      || this.obs.time - this.lastSearchAdvanceAt > this.profile.searchAdvanceWindow
-    ) {
-      this.searchZoneId = this.searchOrder[this.searchCursor % this.searchOrder.length];
-      this.searchCursor = (this.searchCursor + 1) % this.searchOrder.length;
-      this.searchSweepSign *= -1;
-      this.lastSearchAdvanceAt = this.obs.time;
-    }
-
-    return this.zoneCenter(this.searchZoneId);
-  },
-
   combatCenter(enemyEstimate) {
     const worldCenter = this.obs.world.size * 0.5;
     return {
