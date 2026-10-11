@@ -150,6 +150,51 @@ export class Ship {
     this.energy = energy;
   }
 
+  scaleHullCapacity(ratio) {
+    this.maxHp = Math.max(1, Math.round(this.maxHp * ratio));
+    this.hp = Math.min(this.maxHp, this.hp * ratio);
+  }
+
+  configureTraining(stats, position) {
+    this.base = { ...this.base, ...stats };
+    this.maxHp = this.hp = stats.hp;
+    this.maxEnergy = this.energy = stats.energy;
+    this.x = position.x;
+    this.y = position.y;
+    this.command = { ...position };
+    this.route = null;
+    this.speed = 0;
+  }
+
+  activateTimedEffect(key, duration) {
+    this.effects[key] = this.team.match.elapsed + duration;
+    this.markActiveSkillEffectStarted(key);
+  }
+
+  silenceUntil(until) {
+    this.effects.silencedUntil = Math.max(Number(this.effects.silencedUntil) || 0, until);
+  }
+
+  stunUntil(until) {
+    this.effects.stunnedUntil = Math.max(this.effects.stunnedUntil || 0, until);
+    this.applyControlSpeedLimit();
+  }
+
+  boostCombatTempo(multiplier) {
+    this.speed *= multiplier;
+    this.cooldown /= multiplier;
+  }
+
+  advanceSpecialRoute(traveledDistance, minimumLength, captureRadius) {
+    if (!this.route) return;
+    this.route.t = clamp((Number(this.route.t) || 0) + traveledDistance / Math.max(minimumLength, Number(this.route.length) || 1), 0, 1);
+    if (this.route.t >= 1 && Math.hypot(this.route.p2.x - this.x, this.route.p2.y - this.y) <= captureRadius) {
+      this.route = null;
+    } else {
+      this.enforceRouteFeasibility(this.route.p1, false);
+    }
+  }
+
   resetHullCapacity(maxHp) {
     this.maxHp = maxHp;
     this.hp = maxHp;

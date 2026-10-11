@@ -38,8 +38,7 @@ export function activateHaruhiFlagship(team, duration, random = Math.random) {
     return null;
   }
   const now = team.match.elapsed;
-  team.effects.haruhiBoostUntil = now + Math.max(0, Number(duration) || 0);
-  team.markActiveSkillEffectStarted("haruhiBoostUntil");
+  team.activateTimedEffect("haruhiBoostUntil", Math.max(0, Number(duration) || 0));
 
   return unlockSupport(team.haruhiFlagship, HARUHI_SUPPORTS, now, random);
 }

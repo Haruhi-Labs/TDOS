@@ -13,6 +13,7 @@ function fixture() {
   const team = {
     match: { elapsed: 0 }, effects: {}, marks: [], ships: {},
     mainCharacterId: () => "haruhi", haruhiFlagship: legacy.createHaruhiFlagshipState(),
+    activateTimedEffect(key, duration) { this.effects[key] = this.match.elapsed + duration; this.markActiveSkillEffectStarted(key); },
     markActiveSkillEffectStarted(key) { this.marks.push(key); },
   };
   team.ships.main = {

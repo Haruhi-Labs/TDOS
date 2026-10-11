@@ -206,22 +206,12 @@ export function updateKoizumiOrb(ship, dt) {
 
   if (!returning && ship.route) {
     const alignment = clamp((Math.cos(delta) + 0.35) / 1.35, 0.16, 1);
-    ship.route.t = clamp(
-      (Number(ship.route.t) || 0) + (ship.speed * dt * alignment) / Math.max(130, Number(ship.route.length) || 1),
-      0,
-      1,
-    );
-    if (ship.route.t >= 1 && Math.hypot(ship.route.p2.x - ship.x, ship.route.p2.y - ship.y) <= 38) {
-      ship.route = null;
-    } else {
-      // 光球运动走独立更新分支，不会经过 Ship.update 中的常规航线约束刷新。
-      // 在移动完成后重新锚定航线，保证航线起点与高速移动的古泉始终贴合。
-      ship.enforceRouteFeasibility(ship.route.p1, false);
-    }
+    // 特殊飞行也由舰船推进并重新锚定航线，不跨组件修改 route。
+    ship.advanceSpecialRoute(ship.speed * dt * alignment, 130, 38);
   }
 
   if (returning) {
-    ship.route = null;
+    ship.clearRoute();
     const centerProbe = linePointDistance(state.previousX, state.previousY, ship.x, ship.y, center, center);
     if (centerProbe.dist <= ORB_RETURN_CAPTURE_RADIUS || centerDistance <= ORB_RETURN_CAPTURE_RADIUS) {
       finishReturn(ship);
@@ -329,10 +319,7 @@ export function resolveKoizumiOrbContacts(match) {
         team.koizumiImpactWaves.push(wave);
         applyCollisionKnockback(match, source, target, direction);
         if (!target.isControlImmune()) {
-          target.effects.silencedUntil = Math.max(
-            Number(target.effects.silencedUntil) || 0,
-            match.elapsed + ORB_SILENCE_DURATION,
-          );
+          target.silenceUntil(match.elapsed + ORB_SILENCE_DURATION);
           match.spawnFloatingTextKey(target.x + 12, target.y - 18, "沉默", {}, "#ff8fb5");
         }
         match.spawnBurst(target.x, target.y, "#ff4168", 13);
@@ -352,8 +339,7 @@ export function updateKoizumiImpactWaves(match) {
         // 一圈波对每艘敌舰只施加一次，避免宽波带每帧续期眩晕。
         wave.hitShipIds.add(target.id);
         if (target.isControlImmune()) continue;
-        target.effects.stunnedUntil = Math.max(target.effects.stunnedUntil || 0, match.elapsed + 1);
-        target.applyControlSpeedLimit();
+        target.stunUntil(match.elapsed + 1);
         match.spawnFloatingTextKey(target.x + 10, target.y - 14, "眩晕", {}, "#ff9bad");
       }
     }

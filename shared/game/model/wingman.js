@@ -38,6 +38,14 @@ export class Wingman {
     };
   }
 
+  transferToTeam(destination, zone) {
+    this.team.removeWingman(this);
+    this.team = destination;
+    this.zone = zone;
+    this.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+    destination.addWingman(this);
+  }
+
   update(dt) {
     if (!this.alive) {
       return;

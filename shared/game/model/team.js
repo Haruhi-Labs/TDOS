@@ -199,6 +199,27 @@ export class Team {
     return [this.ships.main, this.ships.sub1, this.ships.sub2];
   }
 
+  addScout(scout) {
+    this.scouts.push(scout);
+  }
+
+  removeScout(scout) {
+    this.scouts = this.scouts.filter((candidate) => candidate !== scout);
+  }
+
+  addWingman(wingman) {
+    this.wingmen.push(wingman);
+  }
+
+  removeWingman(wingman) {
+    this.wingmen = this.wingmen.filter((candidate) => candidate !== wingman);
+  }
+
+  activateTimedEffect(key, duration) {
+    this.effects[key] = this.match.elapsed + duration;
+    this.markActiveSkillEffectStarted(key);
+  }
+
   addAuxiliaryShip(ship) {
     this.extraShips.push(ship);
   }
@@ -223,8 +244,7 @@ export class Team {
     if (m !== prev) {
       const ratio = m / prev;
       for (const ship of this.getAllShips()) {
-        ship.maxHp = Math.max(1, Math.round(ship.maxHp * ratio));
-        ship.hp = Math.min(ship.maxHp, ship.hp * ratio);
+        ship.scaleHullCapacity(ratio);
       }
     }
     this.statMult = m;
@@ -410,7 +430,7 @@ export class Team {
     if (spent < cost) {
       const richest = [...members].sort((a, b) => b.energy - a.energy)[0];
       if (richest) {
-        richest.energy = Math.max(0, richest.energy - (cost - spent));
+        richest.spendEnergy(cost - spent);
       }
     }
     return true;
@@ -433,8 +453,7 @@ export class Team {
   }
 
   setShipEffect(ship, key, duration) {
-    ship.effects[key] = this.match.elapsed + duration;
-    ship.markActiveSkillEffectStarted(key);
+    ship.activateTimedEffect(key, duration);
   }
 
   markActiveSkillEffectStarted(effectKey) {
@@ -672,19 +691,7 @@ export class Team {
       return false;
     }
     const zone = this.match.zoneById(options.zoneId || scout.zone?.id || 5);
-    const seekPoint = options.seekPoint && Number.isFinite(options.seekPoint.x) && Number.isFinite(options.seekPoint.y)
-      ? options.seekPoint
-      : { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
-    scout.zone = zone;
-    scout.pattern = "zone";
-    scout.mission = options.mission || scout.mission || "patrol";
-    scout.patrolCenter = options.patrolCenter && Number.isFinite(options.patrolCenter.x) && Number.isFinite(options.patrolCenter.y)
-      ? { x: options.patrolCenter.x, y: options.patrolCenter.y }
-      : { x: seekPoint.x, y: seekPoint.y };
-    scout.patrolRadius = Number.isFinite(options.patrolRadius) ? Math.max(24, options.patrolRadius) : scout.patrolRadius;
-    scout.command = { x: seekPoint.x, y: seekPoint.y };
-    scout.mode = "transit";
-    scout.patrolTimer = rngFor(this.match).range(1, 2.1);
+    scout.assignMission(zone, options);
     return true;
   }
 
@@ -825,8 +832,7 @@ export class Team {
       if (!boostWasActive) {
         for (const ship of this.getPlayerShips()) {
           if (ship.alive) {
-            ship.speed *= 1.15;
-            ship.cooldown /= 1.15;
+            ship.boostCombatTempo(1.15);
           }
         }
       }
@@ -843,8 +849,7 @@ export class Team {
       if (!this.spendEnergyForShip("main", meta.cost || 0)) {
         return false;
       }
-      this.effects.sponsorUntil = this.match.elapsed + (meta.duration || 8);
-      this.markActiveSkillEffectStarted("sponsorUntil");
+      this.activateTimedEffect("sponsorUntil", meta.duration || 8);
       for (const ship of this.getAllShips()) {
         if (!ship.alive) {
           continue;
@@ -1007,28 +1012,21 @@ export class Team {
     const enemyTeam = this.match.enemyTeamBySeat(this.seat);
     let converted = 0;
 
-    for (const scout of enemyTeam.scouts) {
+    for (const scout of [...enemyTeam.scouts]) {
       if (!scout.alive || !zoneContains(zone, scout.x, scout.y)) {
         continue;
       }
-      scout.team = this;
-      this.scouts.push(scout);
-      scout.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+      scout.transferToTeam(this, zone);
       converted += 1;
     }
-    enemyTeam.scouts = enemyTeam.scouts.filter((scout) => scout.team === enemyTeam);
 
-    for (const wingman of enemyTeam.wingmen) {
+    for (const wingman of [...enemyTeam.wingmen]) {
       if (!wingman.alive || !zoneContains(zone, wingman.x, wingman.y)) {
         continue;
       }
-      wingman.team = this;
-      wingman.zone = zone;
-      wingman.command = { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
-      this.wingmen.push(wingman);
+      wingman.transferToTeam(this, zone);
       converted += 1;
     }
-    enemyTeam.wingmen = enemyTeam.wingmen.filter((wingman) => wingman.team === enemyTeam);
 
     // 使用固定集合，避免原地转移遗漏实体；普通飞行器保留原永久策反语义。
     for (const companion of [...enemyTeam.extraShips]) {

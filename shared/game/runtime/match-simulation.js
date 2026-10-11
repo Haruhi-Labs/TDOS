@@ -161,17 +161,7 @@ export class MatchSimulation {
       sub2: { x: this.worldSize * 0.69, y: this.worldSize * 0.26 },
     };
     for (const ship of this.teamB.getAllShips()) {
-      ship.base = { ...ship.base, ...trainingStats };
-      ship.maxHp = trainingStats.hp;
-      ship.hp = trainingStats.hp;
-      ship.maxEnergy = trainingStats.energy;
-      ship.energy = trainingStats.energy;
-      const pos = positions[ship.key] || positions.main;
-      ship.x = pos.x;
-      ship.y = pos.y;
-      ship.command = { x: pos.x, y: pos.y };
-      ship.route = null;
-      ship.speed = 0;
+      ship.configureTraining(trainingStats, positions[ship.key] || positions.main);
     }
   }
 
@@ -409,7 +399,7 @@ export class MatchSimulation {
       );
       if (barrierImpact) {
         consumeKoizumiBarrierHit(defendingTeam, barrierImpact, projectile.team.seat);
-        projectile.alive = false;
+        projectile.discard();
         this.spawnKoizumiBarrierImpact({
           ...barrierImpact,
           teamSeat: defendingTeam.seat,
@@ -421,7 +411,7 @@ export class MatchSimulation {
       const orb = haruhiEsperOrb(defendingTeam);
       const absorbedAt = projectileAbsorptionPoint(projectile, dt, orb);
       if (absorbedAt) {
-        projectile.alive = false;
+        projectile.discard();
         this.spawnBurst(absorbedAt.x, absorbedAt.y, "#ff526f", 6);
         continue;
       }
@@ -431,7 +421,7 @@ export class MatchSimulation {
           .filter(Boolean)
           .sort((a, b) => distance(projectile.x, projectile.y, a.x, a.y) - distance(projectile.x, projectile.y, b.x, b.y))[0];
         if (hit) {
-          projectile.alive = false;
+          projectile.discard();
           this.spawnBurst(hit.x, hit.y, "#ff526f", 6);
           continue;
         }

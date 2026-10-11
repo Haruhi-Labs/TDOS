@@ -63,6 +63,30 @@ export class Scout {
     this.patrolTimer = rngFor(this.team.match).range(1.0, 2.4);
   }
 
+  assignMission(zone, options = {}) {
+    const seekPoint = options.seekPoint && Number.isFinite(options.seekPoint.x) && Number.isFinite(options.seekPoint.y)
+      ? options.seekPoint
+      : { x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 };
+    this.zone = zone;
+    this.pattern = "zone";
+    this.mission = options.mission || this.mission || "patrol";
+    this.patrolCenter = options.patrolCenter && Number.isFinite(options.patrolCenter.x) && Number.isFinite(options.patrolCenter.y)
+      ? { x: options.patrolCenter.x, y: options.patrolCenter.y }
+      : { x: seekPoint.x, y: seekPoint.y };
+    this.patrolRadius = Number.isFinite(options.patrolRadius) ? Math.max(24, options.patrolRadius) : this.patrolRadius;
+    this.command = { x: seekPoint.x, y: seekPoint.y };
+    this.mode = "transit";
+    this.patrolTimer = rngFor(this.team.match).range(1, 2.1);
+  }
+
+  transferToTeam(destination, commandZone) {
+    this.team.removeScout(this);
+    this.team = destination;
+    destination.addScout(this);
+    // 永久策反保留既有巡逻区域，只将下一目标指向策反战区中心。
+    this.command = { x: commandZone.x + commandZone.width * 0.5, y: commandZone.y + commandZone.height * 0.5 };
+  }
+
   randomPatrolPoint() {
     if (!this.zone) {
       return;
