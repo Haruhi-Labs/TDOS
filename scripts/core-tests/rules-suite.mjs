@@ -1331,7 +1331,7 @@ function koizumiControlImmunityCheck() {
     sim.elapsed = 2.1;
     ship.collisionSlowUntil = 5;
     ship.forcedKnockback = { startedAt: 2, endsAt: 3, fromX: 400, fromY: 500, toX: 600, toY: 500 };
-    ship.clawMarks = { ...ship.clawMarks, stacks: 1, sourceSeat: enemy.seat, expiresAt: 10 };
+    ship.registerClawHit({ sourceSeat: enemy.seat, triggerHits: 4, markDuration: 10 - sim.elapsed }, sim);
     assert(team.castSubSkill("sub1"), "光球免控测试未能施放技能");
     assert(ship.heroPowerShock.recoveryUntil === 0 && !ship.forcedKnockback && ship.collisionSlowUntil === 0, "进入光球没有清除已有控制");
     assert(ship.clawMarks.stacks === 1, "光球免控错误清除了非控制标记");
@@ -2123,7 +2123,9 @@ function asakuraAllyCleanseCheck() {
       ship.effects.silencedUntil = 10;
       ship.heroPowerShock = { hitAt: 0, lockUntil: 2, recoveryUntil: 5 };
       ship.collisionSlowUntil = 5;
-      ship.clawMarks = { sourceSeat: seat === "A" ? "B" : "A", stacks: 3, expiresAt: 8 };
+      for (let hit = 0; hit < 3; hit += 1) {
+        ship.registerClawHit({ sourceSeat: seat === "A" ? "B" : "A", triggerHits: 4, markDuration: 8 }, sim);
+      }
       ship.effects.reliableUntil = 10;
     }
     // 沉默期间不能主动施法，此处只激活波纹以验证已经发出的波的驱散行为。

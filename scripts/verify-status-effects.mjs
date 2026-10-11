@@ -36,7 +36,7 @@ main.effects.silencedUntil = 16;
 main.effects.nextShotDamageMultiplier = 2;
 main.collisionSlowUntil = 14;
 main.forcedKnockback = { startedAt: 11, endsAt: 11.58 };
-main.clawMarks = { ...main.clawMarks, stacks: 2, required: 4, expiresAt: 19 };
+for (let hit = 0; hit < 2; hit += 1) main.registerClawHit({ triggerHits: 4, markDuration: 8 }, simulation);
 applyHaruhiHeroPowerShock(main, 11);
 simulation.teamB.shamisenHunt.targetId = main.id;
 const beforeSerialize = JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]);
