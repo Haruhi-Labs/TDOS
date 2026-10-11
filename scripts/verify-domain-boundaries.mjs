@@ -67,7 +67,7 @@ function vandalize(value) {
 }
 vandalize(detached);
 assert.equal(JSON.stringify(isolated.serializeState()), expected, "修改输出快照不得回写权威或 AI 状态");
-const observation = isolated.bot.port.observe();
+const observation = isolated.bot.obs;
 const zoneX = isolated.zones[0].x;
 assert.throws(() => { observation.world.zones[0].x = -500; }, TypeError);
 assert.equal(isolated.zones[0].x, zoneX, "AI 观察不得引用权威地图对象");

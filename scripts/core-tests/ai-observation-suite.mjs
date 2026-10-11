@@ -177,12 +177,13 @@ function facadeCheck() {
   const aiMain = sim.teamB.ships.main;
   // 决策只读取新观测，不再接收真实实体，也不暴露舰队兼容字段。
   assert.equal(bot.team, undefined);
-  assert.equal(bot.port.team, undefined);
+  assert.equal(bot.port, undefined);
+  assert.equal(bot.rng, undefined);
   assert.equal(bot.guardedEntry, undefined);
   assert.equal(bot.entryGuards, undefined);
   assert.throws(() => bot.energyProfile(() => aiMain), /不接受.*回调/);
-  assert.equal(bot.port.observeLive, undefined);
-  assert.equal(bot.port.observeTactics, undefined);
+  assert.equal(sim.aiRunners.B.port.observeLive, undefined);
+  assert.equal(sim.aiRunners.B.port.observeTactics, undefined);
   assert.throws(() => bot.energyProfile(aiMain), /只接受观测数据/);
   setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.5);
   const before = bot.energyProfile("main").current;

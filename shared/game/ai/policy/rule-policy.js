@@ -49,9 +49,7 @@ export class RulePolicy {
   #replanMult;
   get replanMult() { return this.#replanMult; }
   #rng;
-  get rng() { return this.#rng; }
   #port;
-  get port() { return this.#port; }
   #seat;
   get seat() { return this.#seat; }
   ownShip(...args) { return this.#program.run("ownShip", ...args); }
@@ -219,7 +217,7 @@ export class RulePolicy {
   // params 指定难度、预设与覆盖：{ difficulty, preset, overrides }。
   constructor(port, { rng, params } = {}) {
     const commands = Object.freeze({ submit: (action) => port.submit(action) });
-    this.#program = createPolicyProgram((key) => key === "port" ? commands : this[key], (key, args) => this[key](...args));
+    this.#program = createPolicyProgram((key) => key === "port" ? commands : key === "rng" ? this.#rng : this[key], (key, args) => this[key](...args));
     this.#port = port;
     this.#seat = port.seat;
     // 每席 AI 使用对局分配的随机流；未带种子的对局里它就是环境随机源。

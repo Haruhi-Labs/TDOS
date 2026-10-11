@@ -390,8 +390,8 @@ function aiYukiRadarIntelCheck() {
   enemyMain.followTarget({ x: enemyMain.x, y: enemyMain.y });
   enemyMain.clearRoute();
   sim.elapsed = 1;
-  const observe = bot.port.observe;
-  bot.port.observe = () => {
+  const observe = sim.aiRunners.B.port.observe;
+  sim.aiRunners.B.port.observe = () => {
     const data = structuredClone(observe());
     data.self.radar = { contacts: [{
     id: enemyMain.id,

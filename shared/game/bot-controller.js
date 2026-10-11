@@ -3,10 +3,12 @@
 import { RulePolicy } from "./ai/policy/rule-policy.js";
 
 export class BotController extends RulePolicy {
+  #observationPort;
   constructor(port, options) {
     super(port, options);
+    this.#observationPort = port;
     const entries = new Map();
-    return new Proxy(this, {
+    const proxy = new Proxy(this, {
       set(target, property, value) {
         // 仅允许声明过的配置入口；代理不能成为状态字段或新属性的写入后门。
         let owner = target;
@@ -22,22 +24,25 @@ export class BotController extends RulePolicy {
         if (typeof value !== "function" || property === "constructor" || Object.hasOwn(target, property)) return value;
         if (!entries.has(property)) entries.set(property, (...args) => {
           for (const arg of args) assertDataArgument(arg);
-          target.port.invalidate();
-          return value.apply(target, args);
+          port.invalidate();
+          const result = value.apply(target, args);
+          // 配置操作的链式返回保持在门面内，不能泄露绕过数据校验的原始策略。
+          return result === target ? proxy : result;
         });
         return entries.get(property);
       },
     });
+    return proxy;
   }
 
   // 校验用：观测先经 JSON 往返再交给决策。
   get strictObservation() {
-    return this.port.strict;
+    return this.#observationPort.strict;
   }
 
   set strictObservation(value) {
-    this.port.strict = Boolean(value);
-    this.port.invalidate();
+    this.#observationPort.strict = Boolean(value);
+    this.#observationPort.invalidate();
   }
 }
 

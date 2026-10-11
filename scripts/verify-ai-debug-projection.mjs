@@ -35,6 +35,23 @@ const metricsHistory = bot.decisionMetrics;
 assert.throws(() => { metricsHistory.scoutRetasks = -1; }, TypeError);
 assert.throws(() => { bot.decisionMetrics = {}; }, TypeError);
 assert.throws(() => { bot.unownedState = {}; }, TypeError);
-const rejectionHistory = bot.port.permissionRejections;
+const rejectionHistory = match.aiRunners.B.port.permissionRejections;
 assert.throws(() => { rejectionHistory.count = -1; }, TypeError);
-assert.throws(() => { bot.port.permissionRejections = {}; }, TypeError);
+assert.throws(() => { match.aiRunners.B.port.permissionRejections = {}; }, TypeError);
+
+for (const field of ['port', 'rng']) {
+  assert.equal(field in bot, false, `策略不得向消费者泄露 ${field} 能力`);
+  assert.throws(() => { bot[field] = {}; }, TypeError);
+}
+const observationPort = match.aiRunners.B.port;
+bot.strictObservation = true;
+assert.equal(observationPort.strict, true);
+const strictObservation = bot.obs;
+assert.ok(Object.isFrozen(strictObservation));
+bot.strictObservation = false;
+assert.equal(observationPort.strict, false);
+assert.notEqual(bot.obs, strictObservation, '模式切换仍要使观察缓存失效');
+
+const configured = bot.setDifficulty(bot.difficulty);
+assert.equal(configured, bot, '链式配置必须返回同一个受校验门面');
+assert.throws(() => configured.energyProfile(match.teamB.ships.main), /只接受观测数据/);
