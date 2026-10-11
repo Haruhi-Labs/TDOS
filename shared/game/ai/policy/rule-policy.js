@@ -347,10 +347,15 @@ export class RulePolicy {
   beliefZoneWeights() { return this.#belief.zoneWeights(this.obs.world.zones); }
 
   planYukiDeployment(input) { return this.#scouting.plan(input); }
+  #scoutRetasks = 0;
+  get decisionMetrics() { return Object.freeze({ ...this.#program.metrics, scoutRetasks: this.#scoutRetasks }); }
+
   retaskYukiCombatScouts(plan) {
-    return this.#scouting.retask(plan, {
+    const count = this.#scouting.retask(plan, {
       now: this.obs.time, scouts: this.obs.self.scouts, zones: this.obs.world.zones,
     }, (id, options) => this.writeScoutMission(id, options));
+    this.#scoutRetasks += count;
+    return count;
   }
 
   get obs() {

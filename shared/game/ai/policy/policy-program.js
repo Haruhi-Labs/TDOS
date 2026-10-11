@@ -75,13 +75,21 @@ const OPERATIONS = Object.freeze([
 
 // 启发式只能读取事实并调用列出的领域操作，不能取得策略对象或写入其字段。
 export function createPolicyProgram(read, invoke) {
+  let visionWaveBuffDeferrals = 0;
   const context = {};
+  const evaluate = (name, args) => {
+    const result = METHODS[name].apply(context, args);
+    if (name === "incomingVisionWaveWillPurge" && result) visionWaveBuffDeferrals += 1;
+    return result;
+  };
   for (const name of READS) Object.defineProperty(context, name, { get: () => read(name) });
   for (const name of OPERATIONS) context[name] = (...args) => invoke(name, args);
-  for (const [name, method] of Object.entries(METHODS)) context[name] = (...args) => method.apply(context, args);
+  for (const name of Object.keys(METHODS)) context[name] = (...args) => evaluate(name, args);
   Object.freeze(context);
-  return Object.freeze({ run(name, ...args) {
+  return Object.freeze({
+    get metrics() { return Object.freeze({ visionWaveBuffDeferrals }); },
+    run(name, ...args) {
     if (!Object.hasOwn(METHODS, name)) throw new Error(`未声明的策略计算：${name}`);
-    return METHODS[name].apply(context, args);
+    return evaluate(name, args);
   } });
 }

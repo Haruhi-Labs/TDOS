@@ -100,25 +100,6 @@ function runBattle({ index, loadoutA, loadoutB }) {
   });
   instrumentSkills(simulation.teamA, counters);
   instrumentSkills(simulation.teamB, counters);
-  let visionWaveBuffDeferrals = 0;
-  for (const bot of Object.values(simulation.bots)) {
-    const incomingVisionWaveWillPurge = bot.incomingVisionWaveWillPurge.bind(bot);
-    bot.incomingVisionWaveWillPurge = (...args) => {
-      const shouldDefer = incomingVisionWaveWillPurge(...args);
-      if (shouldDefer) visionWaveBuffDeferrals += 1;
-      return shouldDefer;
-    };
-    const retaskYukiCombatScouts = bot.retaskYukiCombatScouts.bind(bot);
-    bot.retaskYukiCombatScouts = (...args) => {
-      const retasked = retaskYukiCombatScouts(...args);
-      if (retasked > 0) {
-        const characterId = bot.obs.self.loadout.main;
-        counters.scoutRetasks[characterId] = (counters.scoutRetasks[characterId] || 0) + retasked;
-      }
-      return retasked;
-    };
-  }
-
   const maxTicks = Math.ceil(MATCH_LIMIT_SECONDS / TICK_DT);
   let minEnergyRatio = 1;
   let minHullRatio = 1;
@@ -185,6 +166,14 @@ function runBattle({ index, loadoutA, loadoutB }) {
     if ((simulation.teamA.serializeRadarPassive()?.contacts.length || 0) > 0 || (simulation.teamB.serializeRadarPassive()?.contacts.length || 0) > 0) {
       radarContactTicks += 1;
     }
+  }
+
+  let visionWaveBuffDeferrals = 0;
+  for (const bot of Object.values(simulation.bots)) {
+    const metrics = bot.decisionMetrics;
+    visionWaveBuffDeferrals += metrics.visionWaveBuffDeferrals;
+    const characterId = bot.obs.self.loadout.main;
+    counters.scoutRetasks[characterId] = (counters.scoutRetasks[characterId] || 0) + metrics.scoutRetasks;
   }
 
   return {

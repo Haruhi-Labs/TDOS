@@ -30,3 +30,11 @@ for (let tick = 0; tick < 120; tick += 1) match.update();
 assert.deepEqual(expected, history, "后续真实决策不得修改历史投影");
 assert.notDeepEqual(bot.serializeDebugState(), history, "对局确实推进到新的决策状态");
 console.log("AI 计划所有权校验通过：外部与策略模块无字段写权，历史决策及调试投影相互隔离。");
+
+const metricsHistory = bot.decisionMetrics;
+assert.throws(() => { metricsHistory.scoutRetasks = -1; }, TypeError);
+assert.throws(() => { bot.decisionMetrics = {}; }, TypeError);
+assert.throws(() => { bot.unownedState = {}; }, TypeError);
+const rejectionHistory = bot.port.permissionRejections;
+assert.throws(() => { rejectionHistory.count = -1; }, TypeError);
+assert.throws(() => { bot.port.permissionRejections = {}; }, TypeError);

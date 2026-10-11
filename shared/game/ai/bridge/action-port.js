@@ -47,12 +47,13 @@ const PERMISSION_CHECKED_TYPES = new Set([
 export function createActionPort(match, seat) {
   const team = match.teamBySeat(seat);
   let observation = null;
+  const permissionRejections = { count: 0, controlLocked: 0, firstTick: null };
   const port = {
     seat,
     // 校验用：观测先经 JSON 往返再交给决策，证明决策没有依赖实时对象引用或非纯数据值。
     strict: false,
     // 标准执行链拒绝、而旧路径会生效的动作计数，用于归因两种模式的行为差异。
-    permissionRejections: { count: 0, controlLocked: 0, firstTick: null },
+    get permissionRejections() { return Object.freeze({ ...permissionRejections }); },
 
     invalidate() {
       observation = null;
@@ -76,9 +77,9 @@ export function createActionPort(match, seat) {
       const accepted = Boolean(applyDispatch(team, action));
       if (!accepted && PERMISSION_CHECKED_TYPES.has(action.type)) {
         const ship = team.ships[action.shipKey];
-        port.permissionRejections.count += 1;
-        if (ship?.alive && !ship.canControl()) port.permissionRejections.controlLocked += 1;
-        port.permissionRejections.firstTick ??= match.tick;
+        permissionRejections.count += 1;
+        if (ship?.alive && !ship.canControl()) permissionRejections.controlLocked += 1;
+        permissionRejections.firstTick ??= match.tick;
       }
       observation = null;
       return accepted;
