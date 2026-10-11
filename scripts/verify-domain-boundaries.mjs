@@ -1,3 +1,4 @@
+import "./verify-attribute-facts.mjs";
 import "./verify-ship-state-ownership.mjs";
 import { setScenarioField, assignScenario } from './core-tests/ship-fixture.mjs';
 import "./verify-ai-search-ownership.mjs";

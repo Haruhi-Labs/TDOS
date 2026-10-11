@@ -19,6 +19,7 @@ const companionFactories = new WeakMap();
 const forms = new WeakMap();
 const formViews = new WeakMap();
 const exposures = new WeakMap();
+const exposureSources = new WeakMap();
 const battles = new WeakMap();
 
 /** 对局只编排阶段；持续结算游标与舞台样本由角色运行时独占。 */
@@ -93,8 +94,9 @@ export function purgeBunnyShipForm(ship, preservedTick) {
 export function bunnyStageEnabled(ship) {
   const exposure = ship.bunnyStageExposure;
   if (!exposure?.inside || !ship.alive) return false;
-  const enemy = ship.team.match.enemyTeamBySeat(ship.team.seat);
-  return enemy.ships.main.id === exposure.sourceShipId && enemy.ships.main.alive && !enemy.areSkillsDisabled();
+  const source = exposureSources.get(ship);
+  return Boolean(source && source.id === exposure.sourceShipId && source.team !== ship.team
+    && source.alive && !source.team.areSkillsDisabled());
 }
 
 export function bunnyTransformBlockReason(ship) {
@@ -164,6 +166,7 @@ export function resolveBunnyStages(match) {
       const resolved = resolveBunnyStageExposure(ship.bunnyStageExposure || createBunnyStageExposure(), {
         inside, sourceShipId: sample?.sourceShipId, now: match.elapsed, tick: match.tick,
       });
+      if (sample) exposureSources.set(ship, (i === 0 ? match.teamB : match.teamA).ships.main);
       commitExposure(ship, resolved.state);
       if (resolved.healRatio && ship.alive) ship.restoreHull(ship.maxHp * resolved.healRatio);
       if (!ship.isControlImmune() && isBunnyControlLocked(resolved.state, match.elapsed)) ship.setFlightSpeed(0);

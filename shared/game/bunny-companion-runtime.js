@@ -8,6 +8,8 @@ import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 // 伴随舰和接收者效果由该运行时独占写入，实体只提供冻结读视图。
 const companions = new WeakMap();
 const reliableEffects = new WeakMap();
+const owners = new WeakMap();
+const reliableSources = new WeakMap();
 
 export function initializeBunnyReliableReceiver(ship) {
   Object.defineProperty(ship, "bunnyReliable", { enumerable: true, get: () => reliableEffects.get(ship) });
@@ -31,10 +33,7 @@ export function purgeBunnyReliableEffect(ship, preservedTick) {
 }
 
 export function bunnyCompanionOwner(ship) {
-  const state = ship?.bunnyCompanion;
-  if (!state) return null;
-  return ship.team.match.teamBySeat(state.ownerSeat).getPlayerShips()
-    .find((candidate) => candidate.id === state.ownerShipId) || null;
+  return owners.get(ship) || null;
 }
 
 export function bunnyCompanionForm(ship) {
@@ -63,6 +62,7 @@ export function createBunnyCompanion(owner, createShip) {
     entityRole: C.companionRole, baseStats: deriveBunnyCompanionBase(owner.base), roleLabel: "伴随舰",
   });
   Object.defineProperty(ship, "bunnyCompanion", { enumerable: true, get: () => companions.get(ship) });
+  owners.set(ship, owner);
   commitCompanionState(ship, createBunnyCompanionState(owner.id, team.seat, team.match.elapsed));
   ship.resetHullCapacity(Math.max(1, Math.round(ship.base.hp * (team.statMult || 1))));
   ship.setThrottle(owner.throttle);
@@ -77,9 +77,9 @@ export function bunnyCompanions(match) {
 /** 接收者单独持有资格；来源死亡或换阵营后属性查询立即失效。 */
 export function bunnyReliableState(ship) {
   if (!ship?.alive || !ship.bunnyReliable) return null;
-  const source = bunnyCompanions(ship.team.match).find((candidate) => candidate.id === ship.bunnyReliable.sourceCompanionId);
+  const source = reliableSources.get(ship);
   const owner = source && bunnyCompanionOwner(source);
-  const valid = source?.alive && owner?.alive && source.team === owner.team && source.team === ship.team
+  const valid = source?.alive && source.team.extraShips.includes(source) && owner?.alive && source.team === owner.team && source.team === ship.team
     && !source.bunnyCompanion.convertedUntil && (ship === source || ship === owner);
   return expireBunnyReliable(ship.bunnyReliable, ship.team.match.elapsed, valid);
 }
@@ -168,6 +168,7 @@ export function prepareBunnyCompanions(match) {
     if (result.triggerReliable) {
       for (const receiver of [owner, ship]) {
         receiver.applyResourcePlan(bunnyReliableRecovery(receiver));
+        reliableSources.set(receiver, ship);
         commitReliableEffect(receiver, createBunnyReliableState(ship.id, match.elapsed, match.tick));
       }
     }

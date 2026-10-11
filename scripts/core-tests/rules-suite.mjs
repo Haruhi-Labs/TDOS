@@ -1770,7 +1770,7 @@ function haruhiHeroPowerCheck() {
   assert(Math.abs(enemyMain.damageTakenMultiplier() - 1.2) < 1e-9, "勇者之力硬控末段易伤提前消失");
   runSteps(sim, 0.1);
   assert(enemyMain.canControl(), "勇者之力命中2秒后仍未恢复控制");
-  const baseSpeed = teamB.fleetSpeedForShip(enemyMain);
+  const baseSpeed = Math.min(...teamB.fleetMembersForShip(enemyMain).map((member) => member.baseSpeed()));
   assert(enemyMain.effectiveSpeed() < baseSpeed * 0.05, "勇者之力控制结束时航速没有从接近0开始恢复");
   runSteps(sim, 1.45);
   assert(

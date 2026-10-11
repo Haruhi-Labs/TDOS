@@ -65,14 +65,6 @@ export class FleetFormation {
     return this.#port.accelerationMultiplier();
   }
 
-  fleetSpeedForShip(shipOrKey) {
-    const members = this.fleetMembersForShip(shipOrKey);
-    if (members.length === 0) {
-      return 0;
-    }
-    return members.reduce((min, ship) => Math.min(min, ship.baseSpeed()), Infinity);
-  }
-
   fleetEnergyForShip(shipOrKey) {
     const members = this.fleetMembersForShip(shipOrKey);
     return {

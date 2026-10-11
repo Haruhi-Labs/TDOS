@@ -358,7 +358,6 @@ export class Team {
   fleetMemberCountForShip(shipOrKey) { return this.fleetMembersForShip(shipOrKey).length; }
   turnModifierForShip(shipOrKey) { return this.#formation.turnModifierForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
   accelerationModifierForShip(shipOrKey) { return this.#formation.accelerationModifierForShip(); }
-  fleetSpeedForShip(shipOrKey) { return this.#formation.fleetSpeedForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
   fleetEnergyForShip(shipOrKey) { return this.#formation.fleetEnergyForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key); }
   availableEnergyForShip(shipOrKey) { return this.fleetEnergyForShip(shipOrKey).current; }
   spendEnergyForShip(shipOrKey, cost) { return this.#formation.spendEnergyForShip(typeof shipOrKey === "string" ? shipOrKey : shipOrKey.key, cost); }

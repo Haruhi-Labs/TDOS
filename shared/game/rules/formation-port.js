@@ -10,7 +10,6 @@ export function createFormationPort(team) {
       get angle() { return ship.angle; }, get radius() { return ship.radius; },
       get energy() { return ship.energy; }, get maxEnergy() { return ship.maxEnergy; },
       get participates() { return team.match.rules.isFleetParticipant(ship); },
-      baseSpeed: () => ship.baseSpeed(),
       spendEnergy: (amount) => ship.spendEnergy(amount),
       isControlLocked: () => ship.isControlLocked(),
       setBezierRoute: (...args) => ship.setBezierRoute(...args),
