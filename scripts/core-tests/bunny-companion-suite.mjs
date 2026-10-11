@@ -3,7 +3,6 @@ import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
 import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
 import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
-import { resolveShipCollisions } from "../../shared/game/collision-system.js";
 import { resolveBunnyOtherworlderContacts } from "../../shared/game/character-contacts.js";
 import { createInputQueue } from "../../server/input-queue.js";
 import { applyStatePatch, createStatePatch, quantizeNetworkState } from "../../shared/network-patch.js";
@@ -56,7 +55,7 @@ function entityCheck() {
   assert.equal(team.fleetMembersByKey("main").length, 3);
   companion.x = owner.x + 1;
   companion.y = owner.y;
-  resolveShipCollisions(sim);
+  sim.resolveShipCollisions();
   assert.ok(Math.hypot(companion.x - owner.x, companion.y - owner.y) >= companion.radius + owner.radius - 1e-7,
     "母舰附着时阿虚仍保持实体碰撞体积");
   const hp = companion.hp;

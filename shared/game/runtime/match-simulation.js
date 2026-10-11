@@ -1,3 +1,4 @@
+import { createHullCollisionPort } from "../rules/collision-port.js";
 import { CHARACTER_RULES } from "../rules/character-rules.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../constants.js";
@@ -258,7 +259,12 @@ export class MatchSimulation {
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
   // (用上一帧的接触集做迟滞判定),持续贴着不再反复减速,避免被一路压停。同队编队跟随的舰不互撞。
   resolveShipCollisions() {
-    this._contactPairs = resolveMatchShipCollisions(this);
+    this._contactPairs = resolveMatchShipCollisions({
+      ships: [...this.teamA.getAllShips(), ...this.teamB.getAllShips()]
+        .filter((ship) => ship.alive).map((ship) => createHullCollisionPort(ship, this.rules)),
+      previousContacts: this._contactPairs,
+      elapsed: this.elapsed,
+    });
   }
 
   resolveHaruhiOtherworlderContacts() {
@@ -274,7 +280,14 @@ export class MatchSimulation {
   }
 
   resolveScoutClashes() {
-    resolveMatchScoutClashes(this);
+    resolveMatchScoutClashes({
+      leftScouts: this.teamA.scouts,
+      rightScouts: this.teamB.scouts,
+      collide: (left, right) => {
+        left.takeDamage(1, null, this);
+        right.takeDamage(1, null, this);
+      },
+    });
   }
 
   resolveBladeQueenContacts() {

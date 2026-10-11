@@ -127,3 +127,26 @@ assert.equal(scout.zone, sourceZone, "侦察机策反只改变下一目标，保
 assert.equal(wingman.zone, targetZone);
 assert.equal(sourceTeam.assignScoutMission(scout, { zoneId: 2 }), false, "原所有者不得继续指挥已转移实体");
 console.log("实体所有权校验通过：任务输入隔离，策反同时移交实体与集合归属。");
+
+const { resolveShipCollisions } = await import("../shared/game/collision-system.js");
+const hulls = [100, 101, 102].map((x, index) => ({
+  id: index + 1, x, y: 100, radius: 2, seat: index, participates: true, attached: false, collidesWithAttachedAllies: false,
+  displaceTo(nextX, nextY) { this.x = nextX; this.y = nextY; },
+  applyCollisionSlow(until) { this.slowUntil = until; },
+}));
+const oldContacts = new Set();
+const nextContacts = resolveShipCollisions({
+  ships: hulls, previousContacts: oldContacts, elapsed: 10,
+});
+assert.deepEqual(hulls.map((ship) => ship.x), [98.25, 104.375, 100.375], "后续碰撞应消费前一次位移后的几何");
+assert.equal(oldContacts.size, 0, "碰撞查询不得修改所有者上一帧的接触集合");
+assert.equal(nextContacts.size, 3);
+assert.ok(hulls.every((ship) => ship.slowUntil === 13));
+console.log("碰撞端口校验通过：无需对局对象，位移顺序与接触历史所有权保持不变。");
+
+const { createHullCollisionPort } = await import("../shared/game/rules/collision-port.js");
+const hullPort = createHullCollisionPort(left, match.rules);
+assert.equal(hullPort.team, undefined);
+assert.equal(hullPort.effects, undefined);
+assert.equal(hullPort.hp, undefined);
+assert.throws(() => { hullPort.x = 0; }, TypeError, "碰撞几何只能通过位移操作提交");
