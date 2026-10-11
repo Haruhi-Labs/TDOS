@@ -39,31 +39,31 @@ function closeRangeCombatCheck() {
 
   aMain.x = 650;
   aMain.y = 720;
-  aMain.command.x = aMain.x;
-  aMain.command.y = aMain.y;
+  aMain.command = { ...aMain.command, x: aMain.x };
+  aMain.command = { ...aMain.command, y: aMain.y };
   aMain.route = null;
   aMain.throttle = 0.25;
 
   bMain.x = 770;
   bMain.y = 720;
-  bMain.command.x = bMain.x;
-  bMain.command.y = bMain.y;
+  bMain.command = { ...bMain.command, x: bMain.x };
+  bMain.command = { ...bMain.command, y: bMain.y };
   bMain.route = null;
   bMain.throttle = 0.25;
 
   for (const ship of [sim.teamA.ships.sub1, sim.teamA.ships.sub2]) {
     ship.x = aMain.x - 16;
     ship.y = aMain.y + (ship.key === "sub1" ? 12 : -12);
-    ship.command.x = ship.x;
-    ship.command.y = ship.y;
+    ship.command = { ...ship.command, x: ship.x };
+    ship.command = { ...ship.command, y: ship.y };
     ship.route = null;
     ship.throttle = 0.25;
   }
   for (const ship of [sim.teamB.ships.sub1, sim.teamB.ships.sub2]) {
     ship.x = bMain.x + 16;
     ship.y = bMain.y + (ship.key === "sub1" ? 12 : -12);
-    ship.command.x = ship.x;
-    ship.command.y = ship.y;
+    ship.command = { ...ship.command, x: ship.x };
+    ship.command = { ...ship.command, y: ship.y };
     ship.route = null;
     ship.throttle = 0.25;
   }
@@ -537,8 +537,8 @@ function future1096FormSwitchCheck() {
   const movingMain = teamA.ships.main;
   const movingMainBase = baseline.get(movingMain.id);
   const startX = movingMain.x;
-  movingMain.command.x = movingMain.x + 600;
-  movingMain.command.y = movingMain.y;
+  movingMain.command = { ...movingMain.command, x: movingMain.x + 600 };
+  movingMain.command = { ...movingMain.command, y: movingMain.y };
   runSteps(sim, 0.25);
   assert(
     movingMain.x - startX > movingMainBase.actualSpeed * 0.25 * 1.25,
@@ -1181,13 +1181,13 @@ function koizumiOrbRamCheck() {
   sub1.x = 720;
   sub1.y = 720;
   sub1.angle = 0;
-  sub1.command.x = sub1.x;
-  sub1.command.y = sub1.y;
+  sub1.command = { ...sub1.command, x: sub1.x };
+  sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
   enemyMain.x = 790;
   enemyMain.y = 730;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   const meta = CHARACTER_DEFS.koizumi.subSkill;
@@ -2052,8 +2052,8 @@ function asakuraFlagshipCheck() {
   for (const ship of [...teamA.getAllShips(), ...teamB.getAllShips()]) {
     ship.speed = 0;
     ship.throttle = 0;
-    ship.command.x = ship.x;
-    ship.command.y = ship.y;
+    ship.command = { ...ship.command, x: ship.x };
+    ship.command = { ...ship.command, y: ship.y };
     ship.route = null;
   }
   enemyMain.x = ownMain.x + 500;
@@ -2245,8 +2245,8 @@ function asakuraBladeQueenCheck() {
   sub1.energy = sub1.maxEnergy;
   sub1.x = 720;
   sub1.y = 720;
-  sub1.command.x = sub1.x;
-  sub1.command.y = sub1.y;
+  sub1.command = { ...sub1.command, x: sub1.x };
+  sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
   sub1.cooldown = 999;
   const originalEffectRadius = sub1.radius + 4;
@@ -2254,8 +2254,8 @@ function asakuraBladeQueenCheck() {
   const expandedHitRadius = originalEffectRadius * BLADE_QUEEN_RANGE_MULTIPLIER + enemyMain.radius;
   enemyMain.x = sub1.x + (originalHitRadius + expandedHitRadius) / 2;
   enemyMain.y = 720;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
   enemyMain.cooldown = 999;
   for (const enemy of [teamB.ships.sub1, teamB.ships.sub2]) {

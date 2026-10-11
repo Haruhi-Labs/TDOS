@@ -165,6 +165,7 @@ for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projecti
     "shared/game/math.js", "shared/game/rng.js", "shared/game/damage.js", "shared/game/collision-system.js",
     "shared/game/model/model-support.js",
     "shared/data/plain-data.js",
+    "shared/game/systems/ship-navigation.js", "shared/game/rules/navigation-port.js",
   ]);
   for (const specifier of importSpecifiers(resolve(ROOT, fileName))) {
     const target = display(resolveImport(resolve(ROOT, fileName), specifier));
@@ -185,7 +186,7 @@ for (const fileName of ["shared/game/collision-system.js", "shared/game/targetin
   const file = resolve(ROOT, fileName);
   for (const specifier of importSpecifiers(file)) {
     const target = display(resolveImport(file, specifier));
-    if (!["shared/game/math.js", "shared/game/damage.js", "shared/game/throttle.js"].includes(target)) {
+    if (!["shared/game/math.js", "shared/game/damage.js", "shared/game/throttle.js", "shared/data/plain-data.js"].includes(target)) {
       failures.push(`${fileName} 不得导入角色实现或状态所有者 ${target}`);
     }
   }

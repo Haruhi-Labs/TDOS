@@ -36,8 +36,8 @@ function aiFogOfWarCheck() {
 
   enemyMain.x = 180;
   enemyMain.y = 240;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.issueMovement();
@@ -60,8 +60,8 @@ function aiReactionDelayCheck() {
   enemyMain.x = aiMain.x - Math.min(100, aiMain.effectiveVision() * 0.65);
   enemyMain.y = aiMain.y;
   enemyMain.angle = Math.PI;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   sim.teamB.computeVisibility(sim.teamA);
@@ -89,14 +89,14 @@ function aiSearchSweepCheck() {
   aiTeam.split(2);
   for (const ship of [aiTeam.ships.sub1, aiTeam.ships.sub2]) {
     ship.route = null;
-    ship.command.x = ship.x;
-    ship.command.y = ship.y;
+    ship.command = { ...ship.command, x: ship.x };
+    ship.command = { ...ship.command, y: ship.y };
   }
 
   enemyMain.x = 180;
   enemyMain.y = 240;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.issueMovement();
@@ -124,14 +124,14 @@ function aiRetreatJudgementCheck() {
   aiMain.y = 720;
   aiMain.hp = aiMain.maxHp * 0.22;
   aiMain.energy = aiMain.maxEnergy * 0.14;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   enemyMain.x = 860;
   enemyMain.y = 720;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -206,15 +206,15 @@ function aiFireArcAwarenessCheck() {
   aiMain.x = 1080;
   aiMain.y = 720;
   aiMain.angle = Math.PI;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   enemyMain.x = 760;
   enemyMain.y = 720;
   enemyMain.angle = Math.PI * 0.5;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -247,8 +247,8 @@ function aiProbePressureCheck() {
   enemyMain.x = 640;
   enemyMain.y = 720;
   enemyMain.angle = Math.PI;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -287,8 +287,8 @@ function aiSplitInitiativeCheck() {
   enemyMain.x = 760;
   enemyMain.y = 720;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -324,21 +324,21 @@ function aiYukiVisionLeadCheck() {
 
   aiMain.x = 1100;
   aiMain.y = 760;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   yuki.x = 1030;
   yuki.y = 700;
-  yuki.command.x = yuki.x;
-  yuki.command.y = yuki.y;
+  yuki.command = { ...yuki.command, x: yuki.x };
+  yuki.command = { ...yuki.command, y: yuki.y };
   yuki.route = null;
 
   enemyMain.x = 790;
   enemyMain.y = 720;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -677,29 +677,29 @@ function aiWoundedDetachedRetreatCheck() {
 
   aiMain.x = 1080;
   aiMain.y = 720;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   sub1.x = 1020;
   sub1.y = 780;
-  sub1.command.x = sub1.x;
-  sub1.command.y = sub1.y;
+  sub1.command = { ...sub1.command, x: sub1.x };
+  sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
   sub1.hp = sub1.maxHp * 0.22;
   sub1.energy = sub1.maxEnergy * 0.14;
 
   sub2.x = 1020;
   sub2.y = 660;
-  sub2.command.x = sub2.x;
-  sub2.command.y = sub2.y;
+  sub2.command = { ...sub2.command, x: sub2.x };
+  sub2.command = { ...sub2.command, y: sub2.y };
   sub2.route = null;
 
   enemyMain.x = 790;
   enemyMain.y = 720;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -731,8 +731,8 @@ function aiSectorEncirclementCheck() {
   enemyMain.x = 760;
   enemyMain.y = 520;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -744,8 +744,8 @@ function aiSectorEncirclementCheck() {
 
   enemyMain.x = 180;
   enemyMain.y = 200;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.issueMovement();
@@ -801,27 +801,27 @@ function aiBacklineFlankCheck() {
 
   aiMain.x = 1080;
   aiMain.y = 720;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   sub1.x = 1020;
   sub1.y = 770;
-  sub1.command.x = sub1.x;
-  sub1.command.y = sub1.y;
+  sub1.command = { ...sub1.command, x: sub1.x };
+  sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
 
   sub2.x = 1020;
   sub2.y = 670;
-  sub2.command.x = sub2.x;
-  sub2.command.y = sub2.y;
+  sub2.command = { ...sub2.command, x: sub2.x };
+  sub2.command = { ...sub2.command, y: sub2.y };
   sub2.route = null;
 
   enemyMain.x = 780;
   enemyMain.y = 720;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -853,36 +853,36 @@ function aiOverwhelmedEscapeCheck() {
 
   aiMain.x = 1100;
   aiMain.y = 720;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   sub1.x = 890;
   sub1.y = 740;
-  sub1.command.x = sub1.x;
-  sub1.command.y = sub1.y;
+  sub1.command = { ...sub1.command, x: sub1.x };
+  sub1.command = { ...sub1.command, y: sub1.y };
   sub1.route = null;
   sub1.hp = sub1.maxHp * 0.42;
   sub1.energy = sub1.maxEnergy * 0.24;
 
   sub2.x = 1060;
   sub2.y = 650;
-  sub2.command.x = sub2.x;
-  sub2.command.y = sub2.y;
+  sub2.command = { ...sub2.command, x: sub2.x };
+  sub2.command = { ...sub2.command, y: sub2.y };
   sub2.route = null;
 
   enemyMain.x = 760;
   enemyMain.y = 700;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   enemySub1.x = 790;
   enemySub1.y = 785;
   enemySub1.angle = 0;
-  enemySub1.command.x = enemySub1.x;
-  enemySub1.command.y = enemySub1.y;
+  enemySub1.command = { ...enemySub1.command, x: enemySub1.x };
+  enemySub1.command = { ...enemySub1.command, y: enemySub1.y };
   enemySub1.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -923,8 +923,8 @@ function aiEnergyRecoveryModeCheck() {
   enemyMain.x = 640;
   enemyMain.y = 360;
   enemyMain.angle = 0;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.rememberContact(enemyMain, "visible");
@@ -1000,8 +1000,8 @@ function aiScoutEnergyReserveCheck() {
   const scoutSource = aiTeam.ships.sub1;
   scoutSource.x = 620;
   scoutSource.y = 720;
-  scoutSource.command.x = scoutSource.x;
-  scoutSource.command.y = scoutSource.y;
+  scoutSource.command = { ...scoutSource.command, x: scoutSource.x };
+  scoutSource.command = { ...scoutSource.command, y: scoutSource.y };
   scoutSource.route = null;
   scoutSource.energy = SCOUT_LAUNCH_COST + scoutSource.maxEnergy * 0.08;
   bot.scoutTimer = 0;
@@ -1048,21 +1048,21 @@ function aiHighEnergySkillAggressionCheck() {
   aiTeam.split(1);
   aiMain.x = 980;
   aiMain.y = 720;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   aiTeam.ships.sub1.x = 948;
   aiTeam.ships.sub1.y = 764;
-  aiTeam.ships.sub1.command.x = aiTeam.ships.sub1.x;
-  aiTeam.ships.sub1.command.y = aiTeam.ships.sub1.y;
+  aiTeam.ships.sub1.command = { ...aiTeam.ships.sub1.command, x: aiTeam.ships.sub1.x };
+  aiTeam.ships.sub1.command = { ...aiTeam.ships.sub1.command, y: aiTeam.ships.sub1.y };
   aiTeam.ships.sub1.route = null;
 
   enemyMain.x = 770;
   enemyMain.y = 720;
   enemyMain.angle = Math.PI;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   aiMain.energy = aiMain.maxEnergy * 0.9;
@@ -1616,15 +1616,15 @@ function aiEmergencyEnergyReserveCheck() {
 
   aiMain.x = 960;
   aiMain.y = 720;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   enemyMain.x = 790;
   enemyMain.y = 720;
   enemyMain.angle = Math.PI;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   aiMain.energy = 30;
@@ -1862,14 +1862,14 @@ function aiEdgeRecoveryCheck() {
   aiMain.x = 1410;
   aiMain.y = 720;
   aiMain.angle = Math.PI;
-  aiMain.command.x = aiMain.x;
-  aiMain.command.y = aiMain.y;
+  aiMain.command = { ...aiMain.command, x: aiMain.x };
+  aiMain.command = { ...aiMain.command, y: aiMain.y };
   aiMain.route = null;
 
   enemyMain.x = 760;
   enemyMain.y = 720;
-  enemyMain.command.x = enemyMain.x;
-  enemyMain.command.y = enemyMain.y;
+  enemyMain.command = { ...enemyMain.command, x: enemyMain.x };
+  enemyMain.command = { ...enemyMain.command, y: enemyMain.y };
   enemyMain.route = null;
 
   bot.issueMovement();
