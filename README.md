@@ -100,7 +100,7 @@ src/
   tutorial.js         新手引导教程
   guide.js / credits.js / profile.js …
 shared/
-  game-core.js        游戏规则兼容入口与模拟编排
+  game-core.js        游戏规则与模拟的稳定导出入口
   game/               角色、规则、推进能量、视野/雷达、固定时钟、数学工具与 AI
   protocol/           标准战斗动作与规则版本协商
 server/               房间、输入队列、权威循环、协议、快照流与对局统计归档
@@ -108,6 +108,8 @@ scripts/              核心、联机、网络与模块边界校验
 AGENTS.md             项目底线与按需文档入口
 docs/                 开发、架构、测试与发布运维约定
 ```
+
+开发定位：[战斗代码目录](shared/game/README.md) · [角色实现](shared/game/characters/README.md) · [AI 策略](shared/game/ai/README.md) · [架构地图](docs/architecture-map.md)。
 
 ## 制作人员
 
@@ -125,5 +127,3 @@ docs/                 开发、架构、测试与发布运维约定
 ## 版权与致谢
 
 本作为**非商业同人作品**,取材自谷川流《凉宫春日》系列;角色、世界观与《射手座之日》设定的版权归原作者及相关版权方所有,本项目与版权方无任何关联。仅供学习交流与粉丝同好娱乐使用。
-
-开发定位：[战斗代码目录](shared/game/README.md) · [角色实现](shared/game/characters/README.md) · [架构地图](docs/architecture-map.md)。

@@ -1,6 +1,6 @@
 // 情报占据图：推理敌人可能的位置，用于搜索与侦察选点。
 // 概率网格只属于搜索组件；每次推进显式消费观测和情报，不持有策略或实体引用。
-import { clamp, distance, zoneContains } from "../../foundation/math.js";
+import { clamp, distance, zoneContains } from "../../../foundation/math.js";
 
 export class SearchBelief {
   #grid;

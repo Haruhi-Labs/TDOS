@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
-import { SearchNavigation } from "../shared/game/ai/policy/search-navigation.js";
+import { SearchNavigation } from "../shared/game/ai/policy/state/search-navigation.js";
 
 const match = new MatchSimulation({ mode: "ai", seed: 912 });
 const bot = match.bot;

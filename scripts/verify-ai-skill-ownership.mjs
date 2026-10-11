@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { SkillDecisionCycle } from "../shared/game/ai/policy/skill-decision-cycle.js";
+import { SkillDecisionCycle } from "../shared/game/ai/policy/state/skill-decision-cycle.js";
 import { resolveAiParams } from "../shared/game/ai/params/index.js";
 import { MatchSimulation } from "../shared/game-core.js";
 

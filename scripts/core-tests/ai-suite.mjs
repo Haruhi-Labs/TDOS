@@ -1,6 +1,6 @@
 import { setScenarioField } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
-import { SearchBelief } from "../../shared/game/ai/policy/belief.js";
+import { SearchBelief } from "../../shared/game/ai/policy/state/belief.js";
 import { cancelVisionWaveSkill } from "../../shared/game/characters/asakura/vision-wave.js";
 import { disruptKoizumiBarrier } from "../../shared/game/characters/koizumi/barrier.js";
 import { selectShamisenHuntTarget } from "../../shared/game/characters/shamisen/hunt.js";

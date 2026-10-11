@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
-import { IntelTracker } from "../shared/game/ai/policy/intel-tracker.js";
+import { IntelTracker } from "../shared/game/ai/policy/state/intel-tracker.js";
 import { resolveAiParams } from "../shared/game/ai/params/index.js";
-import { SearchBelief } from "../shared/game/ai/policy/belief.js";
+import { SearchBelief } from "../shared/game/ai/policy/state/belief.js";
 
 const match = new MatchSimulation({ mode: "ai", seed: 9142 });
 const bot = match.botBySeat("B");

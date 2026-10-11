@@ -6,11 +6,11 @@ import { SCOUT_LAUNCH_COST } from "../../rules/combat-rules.js";
 import { normalizeAiDifficulty, resolveAiParams } from "../params/index.js";
 import { ScoutDoctrine } from "./tactics/yuki-scout.js";
 import { ObservationView } from "./observation-view.js";
-import { IntelTracker } from "./intel-tracker.js";
-import { SearchNavigation } from "./search-navigation.js";
-import { SearchBelief } from "./belief.js";
+import { IntelTracker } from "./state/intel-tracker.js";
+import { SearchNavigation } from "./state/search-navigation.js";
+import { SearchBelief } from "./state/belief.js";
 import { characterDecisionInput } from "./characters/decision-view.js";
-import { SkillDecisionCycle } from "./skill-decision-cycle.js";
+import { SkillDecisionCycle } from "./state/skill-decision-cycle.js";
 
 export class RulePolicy {
   #program;

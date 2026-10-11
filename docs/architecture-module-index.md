@@ -1,6 +1,6 @@
 # 架构模块索引
 
-源码基线 `0d773a0`（生成时工作树）。共 249 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
+源码基线 `a4dd462`（生成时工作树）。共 249 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
 
 运行 `node scripts/generate-architecture-index.mjs` 更新。本表按相对静态 import/export 引用生成；出边为不同本地 JS 模块，入边仅统计本表范围。行数与引用数量不衡量架构质量，状态持有和实际消费见 [架构地图](architecture-map.md)。
 
@@ -78,29 +78,22 @@
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
-| [belief.js](../shared/game/ai/policy/belief.js) | 194 | 1 | 1 |
 | [commands.js](../shared/game/ai/policy/commands.js) | 38 | 1 | 1 |
-| [context.js](../shared/game/ai/policy/context.js) | 278 | 3 | 1 |
 | [debug-state.js](../shared/game/ai/policy/debug-state.js) | 287 | 1 | 1 |
-| [detached.js](../shared/game/ai/policy/detached.js) | 403 | 3 | 1 |
-| [energy.js](../shared/game/ai/policy/energy.js) | 91 | 1 | 1 |
-| [evaluation.js](../shared/game/ai/policy/evaluation.js) | 296 | 3 | 1 |
 | [fact-calculations.js](../shared/game/ai/policy/fact-calculations.js) | 42 | 3 | 1 |
-| [geometry.js](../shared/game/ai/policy/geometry.js) | 57 | 2 | 2 |
-| [intel-tracker.js](../shared/game/ai/policy/intel-tracker.js) | 456 | 4 | 1 |
-| [mode.js](../shared/game/ai/policy/mode.js) | 185 | 0 | 1 |
-| [movement.js](../shared/game/ai/policy/movement.js) | 598 | 5 | 1 |
 | [observation-view.js](../shared/game/ai/policy/observation-view.js) | 22 | 1 | 1 |
 | [policy-inputs.js](../shared/game/ai/policy/policy-inputs.js) | 63 | 0 | 1 |
 | [policy-program.js](../shared/game/ai/policy/policy-program.js) | 112 | 13 | 1 |
 | [rule-policy.js](../shared/game/ai/policy/rule-policy.js) | 552 | 11 | 1 |
-| [scout.js](../shared/game/ai/policy/scout.js) | 143 | 3 | 1 |
-| [search-navigation.js](../shared/game/ai/policy/search-navigation.js) | 75 | 2 | 1 |
-| [skill-decision-cycle.js](../shared/game/ai/policy/skill-decision-cycle.js) | 122 | 2 | 1 |
-| [skills.js](../shared/game/ai/policy/skills.js) | 157 | 5 | 1 |
-| [split.js](../shared/game/ai/policy/split.js) | 105 | 3 | 1 |
-| [targets.js](../shared/game/ai/policy/targets.js) | 375 | 1 | 1 |
 | [view.js](../shared/game/ai/policy/view.js) | 39 | 1 | 1 |
+
+## `shared/game/ai/policy/algorithms`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [evaluation.js](../shared/game/ai/policy/algorithms/evaluation.js) | 296 | 3 | 1 |
+| [geometry.js](../shared/game/ai/policy/algorithms/geometry.js) | 57 | 2 | 2 |
+| [mode.js](../shared/game/ai/policy/algorithms/mode.js) | 185 | 0 | 1 |
 
 ## `shared/game/ai/policy/characters`
 
@@ -117,6 +110,28 @@
 | [shamisen.js](../shared/game/ai/policy/characters/shamisen.js) | 19 | 0 | 1 |
 | [tsuruya.js](../shared/game/ai/policy/characters/tsuruya.js) | 21 | 0 | 1 |
 | [yuki.js](../shared/game/ai/policy/characters/yuki.js) | 11 | 0 | 1 |
+
+## `shared/game/ai/policy/heuristics`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [context.js](../shared/game/ai/policy/heuristics/context.js) | 278 | 3 | 1 |
+| [detached.js](../shared/game/ai/policy/heuristics/detached.js) | 403 | 3 | 1 |
+| [energy.js](../shared/game/ai/policy/heuristics/energy.js) | 91 | 1 | 1 |
+| [movement.js](../shared/game/ai/policy/heuristics/movement.js) | 598 | 5 | 1 |
+| [scout.js](../shared/game/ai/policy/heuristics/scout.js) | 143 | 3 | 1 |
+| [skills.js](../shared/game/ai/policy/heuristics/skills.js) | 157 | 5 | 1 |
+| [split.js](../shared/game/ai/policy/heuristics/split.js) | 105 | 3 | 1 |
+| [targets.js](../shared/game/ai/policy/heuristics/targets.js) | 375 | 1 | 1 |
+
+## `shared/game/ai/policy/state`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [belief.js](../shared/game/ai/policy/state/belief.js) | 194 | 1 | 1 |
+| [intel-tracker.js](../shared/game/ai/policy/state/intel-tracker.js) | 456 | 4 | 1 |
+| [search-navigation.js](../shared/game/ai/policy/state/search-navigation.js) | 75 | 2 | 1 |
+| [skill-decision-cycle.js](../shared/game/ai/policy/state/skill-decision-cycle.js) | 122 | 2 | 1 |
 
 ## `shared/game/ai/policy/tactics`
 

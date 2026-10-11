@@ -1,10 +1,10 @@
-import { characterDecisionFacts, characterDecisionInput } from "./characters/decision-view.js";
+import { characterDecisionFacts, characterDecisionInput } from "../characters/decision-view.js";
 // 技能施放的无状态条件评估；检查节拍由 SkillDecisionCycle 独占。
 // 这些方法安装在 RulePolicy 的原型上，读取观测与战术上下文，不持有技能时钟或执行技能。
-import { skillMetaForCharacter } from "../../characters/catalog.js";
-import { distance } from "../../foundation/math.js";
-import { characterProfile } from "./characters/index.js";
-import { barrierBlocksRangedAttack } from "./tactics/character-counterplay.js";
+import { skillMetaForCharacter } from "../../../characters/catalog.js";
+import { distance } from "../../../foundation/math.js";
+import { characterProfile } from "../characters/index.js";
+import { barrierBlocksRangedAttack } from "../tactics/character-counterplay.js";
 
 export const skillsMethods = {
   characterSkillFacts({

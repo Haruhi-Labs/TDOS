@@ -1,6 +1,6 @@
 // 能量管理：能量池状态、推进档位护栏与支出许可。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { energyRateForThrottle, throttleForGear, throttleGearForValue } from "../../rules/throttle.js";
+import { energyRateForThrottle, throttleForGear, throttleGearForValue } from "../../../rules/throttle.js";
 
 export const energyMethods = {
   energyProfile({ fleetMembers: capFleetMembers, fleetEnergy: capFleetEnergy, params: policyParams }, shipOrKey) {

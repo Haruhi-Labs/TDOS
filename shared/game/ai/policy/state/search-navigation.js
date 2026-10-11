@@ -1,5 +1,5 @@
-import { distance } from "../../foundation/math.js";
-import { freezePlainData } from "../../../data/plain-data.js";
+import { distance } from "../../../foundation/math.js";
+import { freezePlainData } from "../../../../data/plain-data.js";
 
 const ORDER = Object.freeze([5, 2, 8, 4, 6, 1, 7, 3, 9]);
 

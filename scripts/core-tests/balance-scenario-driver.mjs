@@ -1,4 +1,4 @@
-import { SkillDecisionCycle } from '../../shared/game/ai/policy/skill-decision-cycle.js';
+import { SkillDecisionCycle } from '../../shared/game/ai/policy/state/skill-decision-cycle.js';
 import { aiActions, AI_ACTION_TYPES } from '../../shared/game/ai/actions.js';
 import { clamp } from '../../shared/game/foundation/math.js';
 import { BUNNY_HARUHI_CONFIG as C } from '../../shared/game/characters/bunny-haruhi/config.js';

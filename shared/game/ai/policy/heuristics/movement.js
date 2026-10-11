@@ -1,10 +1,10 @@
 // 走位下发：卡死检测、航线提交、光球转向与每轮改航的编排。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { clamp, distance } from "../../foundation/math.js";
-import { throttleForGear } from "../../rules/throttle.js";
-import { bunnyStageRoute } from "./tactics/bunny-stage.js";
-import { applyKoizumiBarrierMainStrategy, clampPointToAnchorRadius, keepDirectiveInsideKoizumiBarrier } from "./tactics/character-counterplay.js";
-import { planShamisenHuntFormation } from "./tactics/shamisen-hunt.js";
+import { clamp, distance } from "../../../foundation/math.js";
+import { throttleForGear } from "../../../rules/throttle.js";
+import { bunnyStageRoute } from "../tactics/bunny-stage.js";
+import { applyKoizumiBarrierMainStrategy, clampPointToAnchorRadius, keepDirectiveInsideKoizumiBarrier } from "../tactics/character-counterplay.js";
+import { planShamisenHuntFormation } from "../tactics/shamisen-hunt.js";
 
 export const movementMethods = {
   sampleStuckState({ stuckTimer: policyStuckTimer, lastMainPos: policyLastMainPos, obs: policyObs, edgePressure: capEdgePressure }, dt) {

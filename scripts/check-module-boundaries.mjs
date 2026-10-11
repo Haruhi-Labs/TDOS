@@ -45,6 +45,14 @@ const failures = [];
 const files = SOURCE_ROOTS.flatMap(walk);
 const graph = new Map(files.map((file) => [file, []]));
 
+// 战斗根目录只提供导航；新增模块必须选择明确的职责目录。
+for (const file of files) {
+  if (dirname(file) === resolve(ROOT, "shared/game")) {
+    failures.push(`${display(file)} 应按职责放入战斗子目录，不能恢复根目录散放`);
+  }
+}
+
+
 for (const file of files) {
   for (const specifier of importSpecifiers(file)) {
     const target = resolveImport(file, specifier);
@@ -90,6 +98,11 @@ const leafBoundaries = [
       "shared/protocol",
     ],
     reason: "AI 策略只消费观测数据，不得导入运行时规则模块、观测桥或战斗内核",
+  },
+  {
+    dir: "shared/game/ai/policy/algorithms",
+    allowedRoots: ["shared/game/ai/policy/algorithms", "shared/game/foundation", "shared/game/rules", "shared/game/characters/catalog.js", "shared/data"],
+    reason: "AI 事实算法不得导入策略协调器、状态组件、启发式或动作桥",
   },
   {
     dir: "shared/protocol",
@@ -233,8 +246,8 @@ const requiredLinks = [
   ["shared/game/ai/bridge/action-port.js", "../../runtime/action-dispatcher.js"],
   ["shared/game/ai/bridge/action-port.js", "./observation.js"],
   ["shared/game/ai/policy/rule-policy.js", "../params/index.js"],
-  ["shared/game/ai/policy/context.js", "./tactics/character-counterplay.js"],
-  ["shared/game/ai/policy/context.js", "./tactics/shamisen-hunt.js"],
+  ["shared/game/ai/policy/heuristics/context.js", "../tactics/character-counterplay.js"],
+  ["shared/game/ai/policy/heuristics/context.js", "../tactics/shamisen-hunt.js"],
   ["server/match-runtime.js", "../shared/game/runtime/fixed-step-clock.js"],
   ["server/server.js", "../shared/protocol/ruleset-version.js"],
   ["shared/game/runtime/action-dispatcher.js", "../../protocol/match-actions.js"],

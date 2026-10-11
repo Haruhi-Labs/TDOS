@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { resolveAiParams } from "../shared/game/ai/params/index.js";
-import { contactHpRatio, contactCombatValue, enemyThreatAround, shipThreatSnapshot, friendlyPowerAround } from "../shared/game/ai/policy/evaluation.js";
-import { safeRoutePadding, zoneCenter } from "../shared/game/ai/policy/geometry.js";
-import { planMode } from "../shared/game/ai/policy/mode.js";
+import { contactHpRatio, contactCombatValue, enemyThreatAround, shipThreatSnapshot, friendlyPowerAround } from "../shared/game/ai/policy/algorithms/evaluation.js";
+import { safeRoutePadding, zoneCenter } from "../shared/game/ai/policy/algorithms/geometry.js";
+import { planMode } from "../shared/game/ai/policy/algorithms/mode.js";
 import { freezePlainData } from "../shared/data/plain-data.js";
 import { POLICY_PROGRAM_INPUTS } from "../shared/game/ai/policy/policy-inputs.js";
 const params = resolveAiParams();

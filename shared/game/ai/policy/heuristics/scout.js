@@ -1,8 +1,8 @@
 // 侦察机的发射判断、选区与长门侦察条令的接入。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { skillMetaForCharacter } from "../../characters/catalog.js";
-import { SCOUT_LAUNCH_COST } from "../../rules/combat-rules.js";
-import { clamp, distance } from "../../foundation/math.js";
+import { skillMetaForCharacter } from "../../../characters/catalog.js";
+import { SCOUT_LAUNCH_COST } from "../../../rules/combat-rules.js";
+import { clamp, distance } from "../../../foundation/math.js";
 
 export const scoutMethods = {
   likelyProbeZoneId({

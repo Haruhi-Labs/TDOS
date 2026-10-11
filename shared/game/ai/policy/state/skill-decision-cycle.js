@@ -1,5 +1,5 @@
-import { copyPlainData, freezePlainData } from "../../../data/plain-data.js";
-import { characterProfile } from "./characters/index.js";
+import { copyPlainData, freezePlainData } from "../../../../data/plain-data.js";
+import { characterProfile } from "../characters/index.js";
 
 // 技能调度独占检查时钟与历史决策；执行端口只提供判定、施放及施放后的冷却读取。
 // 破盾后仅返回重规划结果，移动时钟由策略协调层消费。

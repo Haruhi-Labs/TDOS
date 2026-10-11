@@ -5,9 +5,9 @@ import {
   distance,
   lerp,
   shortestAngleDelta,
-} from "../../foundation/math.js";
-import { koizumiBarrierRoleDirective } from "./tactics/character-counterplay.js";
-import { characterProfile } from "./characters/index.js";
+} from "../../../foundation/math.js";
+import { koizumiBarrierRoleDirective } from "../tactics/character-counterplay.js";
+import { characterProfile } from "../characters/index.js";
 
 export const detachedMethods = {
   chooseDetachedIntelLead({

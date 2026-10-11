@@ -3,14 +3,14 @@ import { POLICY_PROGRAM_INPUTS } from "./policy-inputs.js";
 import { viewMethods } from "./view.js";
 import { commandsMethods } from "./commands.js";
 import { debugStateMethods } from "./debug-state.js";
-import { energyMethods } from "./energy.js";
-import { contextMethods } from "./context.js";
-import { splitMethods } from "./split.js";
-import { scoutMethods } from "./scout.js";
-import { skillsMethods } from "./skills.js";
-import { detachedMethods } from "./detached.js";
-import { targetsMethods } from "./targets.js";
-import { movementMethods } from "./movement.js";
+import { energyMethods } from "./heuristics/energy.js";
+import { contextMethods } from "./heuristics/context.js";
+import { splitMethods } from "./heuristics/split.js";
+import { scoutMethods } from "./heuristics/scout.js";
+import { skillsMethods } from "./heuristics/skills.js";
+import { detachedMethods } from "./heuristics/detached.js";
+import { targetsMethods } from "./heuristics/targets.js";
+import { movementMethods } from "./heuristics/movement.js";
 
 const METHODS = Object.freeze({
   ...viewMethods,

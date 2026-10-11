@@ -1,6 +1,6 @@
-import * as geometry from "./geometry.js";
-import * as evaluation from "./evaluation.js";
-import { scoreMode, planMode } from "./mode.js";
+import * as geometry from "./algorithms/geometry.js";
+import * as evaluation from "./algorithms/evaluation.js";
+import { scoreMode, planMode } from "./algorithms/mode.js";
 
 // 唯一采样边界：纯算法收到普通数据，不取得策略查询、动作端口或整个策略对象。
 export function createFactCalculations(read, invoke) {

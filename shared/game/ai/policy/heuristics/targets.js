@@ -1,6 +1,6 @@
 // 主舰目标点：搜索、包围与各走位模式的候选点，以及视野交火距离修正。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { clamp, distance, lerp } from "../../foundation/math.js";
+import { clamp, distance, lerp } from "../../../foundation/math.js";
 
 export const targetsMethods = {
   combatCenter({ obs: policyObs }, enemyEstimate) {

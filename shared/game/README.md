@@ -16,14 +16,14 @@
 | [`projection/`](projection/) | 舰船、舰队、状态效果的只读输出 | 推进、扣费或伤害结算 |
 | [`ai/`](ai/) | 观测桥、动作端口、参数与策略 | 权威角色状态的所有权 |
 
-目录表示职责分区，不表示所有调用都沿一条继承式层级。`Team` 负责装配组件和协调领域操作，角色端口可以持实体引用；通用组件通过注入端口消费。`check:modules` 约束基础工具、通用规则、组件及 AI 的依赖边界。
+目录表示职责分区，不表示所有调用都沿一条继承式层级。`Team` 负责装配组件和协调领域操作，角色端口可以持实体引用；通用组件通过注入端口消费。`check:modules` 约束基础工具、通用规则、组件及 AI 的依赖边界，并拒绝把新模块散放回战斗根目录。
 
 ## 按任务找入口
 
 - **新增角色**：先看 [`characters/README.md`](characters/README.md)，从相近角色的 `extension.js` 及实现开始；数值目录为 `characters/catalog.js`。
 - **修改移动、开火、编队或伤害**：先找 `systems/` 对应能力，再沿 `adapters/` 看事实来源和提交出口；资源落值在 `model/ship.js`。
 - **修改同帧顺序**：从 `runtime/match-simulation.js` 看通用阶段，再看 `characters/assembly/extension-contract.js` 与各角色声明；跨角色事务在 `characters/interactions/`。
-- **修改 AI**：从 `ai/bridge/observation.js` 看输入，从 `ai/policy/rule-policy.js` 看调度，从 `ai/bridge/action-port.js` 看命令消费。
+- **修改 AI**：先看 [AI 代码导航](ai/README.md)，从 `ai/bridge/observation.js` 看输入，从 `ai/policy/rule-policy.js` 看调度，从 `ai/bridge/action-port.js` 看命令消费。
 - **修改快照或状态栏**：从 `projection/` 进入；显示层在 `src/battle/`，不得回写权威状态。
 
 文件名中的 `*-runtime.js` 表示生命周期/私有状态，`*-port.js` 表示实体适配，`extension.js` 表示装配声明；模块实际依赖仍以源码为准。不要为旧内部路径增加逐文件转发壳。移动文件时同步源码、测试、动态加载路径和当前文档；读取旧 Git 版本的离线脚本保留明确的历史路径处理。

@@ -269,7 +269,7 @@ flowchart LR
 flowchart LR
   MATCH["MatchSimulation"]
   RUN["bridge/runner.js<br/>每席随机流与驱动"]
-  BOT["ai/bot-controller.js<br/>Proxy 数据参数校验<br/>不发布端口或随机流，链式返回留在门面"]
+  BOT["bot-controller.js<br/>Proxy 数据参数校验<br/>不发布端口或随机流，链式返回留在门面"]
   RP["policy/rule-policy.js<br/>RulePolicy：私有调度、模式与计划提交"]
   OBSBUILD["bridge/observation.js<br/>实体到有权知道的纯数据"]
   PORT["bridge/action-port.js<br/>观察缓存、提交动作、失效"]
@@ -277,23 +277,23 @@ flowchart LR
   INDEX["F1 · policy/observation-view.js<br/>私有 Map、冻结数组、只读 ID 集合"]
   PARAM["params/index.js<br/>default.js / difficulty.js / presets.js<br/>冻结参数"]
   subgraph private[真正私有的状态组件]
-    INTEL["policy/intel-tracker.js<br/>已确认记忆、反应延迟队列"]
-    BELIEF["policy/belief.js<br/>搜索概率网格"]
+    INTEL["policy/state/intel-tracker.js<br/>已确认记忆、反应延迟队列"]
+    BELIEF["policy/state/belief.js<br/>搜索概率网格"]
     SCOUT["policy/tactics/yuki-scout.js<br/>ScoutDoctrine：缓存、承诺、重编组"]
-    SKILL["policy/skill-decision-cycle.js<br/>技能时钟、历史决策"]
+    SKILL["policy/state/skill-decision-cycle.js<br/>技能时钟、历史决策"]
   end
   subgraph heuristics[受限能力启发式]
-    READ["view.js / energy.js / context.js<br/>逐方法声明事实及查询输入"]
-    PURE["geometry.js / evaluation.js / mode.js<br/>显式数据计算，无策略回调"]
-    SAMPLE["fact-calculations.js<br/>按需采样当前观测与接触"]
-    PLAN["split.js / detached.js<br/>targets.js / movement.js"]
-    ACT["commands.js / scout.js / skills.js<br/>debug-state.js"]
+    READ["policy/view.js<br/>policy/heuristics/energy.js / context.js<br/>逐方法声明事实及查询输入"]
+    PURE["policy/algorithms/<br/>geometry.js / evaluation.js / mode.js<br/>显式数据计算，无策略回调"]
+    SAMPLE["policy/fact-calculations.js<br/>按需采样当前观测与接触"]
+    PLAN["policy/heuristics/<br/>split.js / detached.js<br/>targets.js / movement.js"]
+    ACT["policy/commands.js / debug-state.js<br/>policy/heuristics/scout.js / skills.js"]
   end
-  SEARCH["F3 · policy/search-navigation.js<br/>私有区域、游标、方向、推进时间<br/>候选凭证与版本校验，显式消费"]
-  TACTIC["tactics/bunny-stage.js<br/>character-counterplay.js / characters/shamisen/hunt.js"]
-  FACT["characters/decision-view.js<br/>复制并冻结事实和输入"]
-  PROFILE["characters/index.js + 九个角色档案<br/>冻结注册表、纯角色决策"]
-  DISPATCH["runtime/action-dispatcher.js<br/>标准动作；侦察扩展由桥适配"]
+  SEARCH["F3 · policy/state/search-navigation.js<br/>私有区域、游标、方向、推进时间<br/>候选凭证与版本校验，显式消费"]
+  TACTIC["policy/tactics/bunny-stage.js<br/>character-counterplay.js / shamisen-hunt.js"]
+  FACT["policy/characters/decision-view.js<br/>复制并冻结事实和输入"]
+  PROFILE["policy/characters/index.js + 九个角色档案<br/>冻结注册表、纯角色决策"]
+  DISPATCH["../runtime/action-dispatcher.js<br/>标准动作；侦察扩展由桥适配"]
   MATCH --> RUN
   RUN --> BOT --> RP
   RUN --> PORT
@@ -304,7 +304,7 @@ flowchart LR
   READ --> OBS & INDEX
   RP --> PARAM
   RP ==>|私有实例| INTEL & BELIEF & SCOUT & SKILL
-  PROGRAM["policy-program.js / policy-inputs.js<br/>每算法独立输入清单<br/>动作后事实显式重读"]
+  PROGRAM["policy/policy-program.js / policy-inputs.js<br/>每算法独立输入清单<br/>动作后事实显式重读"]
   RP -->|执行计算| PROGRAM
   PROGRAM --> READ & PLAN & ACT
   PROGRAM --> SAMPLE --> PURE
@@ -423,7 +423,7 @@ flowchart LR
 | F5 角色接入 | CHARACTER_EXTENSIONS 统一声明主动技能、规则、钩子、队级/对局工厂及投影；装配器校验 | 独立声明直接接入；未知阶段、重复顺序、能力/投影冲突与覆盖生命周期均拒绝 |
 | F6 房间多写 | Room 聚合；SnapshotSchedule | 重复席位、冒名就绪、外部赋值拒绝；倒计时/运行/完成及快照顺序保持 |
 
-对应源码分别见 [观测端口](../shared/game/ai/bridge/action-port.js)、[舰船](../shared/game/model/ship.js)、[搜索所有者](../shared/game/ai/policy/search-navigation.js)、[属性事实](../shared/game/characters/abilities/attribute-facts.js)、[角色装配](../shared/game/characters/assembly/character-assembly.js)、[房间聚合](../server/room.js)。测试入口为 `scripts/verify-domain-boundaries.mjs`，完整证据记录在重构记录中。
+对应源码分别见 [观测端口](../shared/game/ai/bridge/action-port.js)、[舰船](../shared/game/model/ship.js)、[搜索所有者](../shared/game/ai/policy/state/search-navigation.js)、[属性事实](../shared/game/characters/abilities/attribute-facts.js)、[角色装配](../shared/game/characters/assembly/character-assembly.js)、[房间聚合](../server/room.js)。测试入口为 `scripts/verify-domain-boundaries.mjs`，完整证据记录在重构记录中。
 
 ## 保留的合理耦合与验收边界
 
