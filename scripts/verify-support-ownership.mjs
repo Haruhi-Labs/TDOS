@@ -36,9 +36,18 @@ resumeSupportSchedule(owner, 40);
 assert.equal(read().timeTravelerNextAt, 50);
 unlockSupport(owner, ["otherworlder"], 40, () => 0);
 assert.equal(unlocked.has("otherworlder"), false, "集合读视图也保持采样时的值");
+const staleSource = { ...source };
 assert.equal(triggerSupportOtherworlder(source, 40), true);
 assert.equal(triggerSupportOtherworlder(source, 40), false);
 assert.equal(read().otherworlderReadyAt, 48);
+assert.equal(triggerSupportOtherworlder(staleSource, 40), false, "保留旧资格快照不能重复消费同一冷却");
+assert.equal(staleSource.state.otherworlderReadyAt, 40, "消费不能反向修改历史资格样本");
+assert.equal(triggerSupportOtherworlder({ ...source, state }, 48), true, "旧的未解锁快照不能否定所有者当前资格");
+assert.equal(read().otherworlderReadyAt, 56);
+assert.equal(triggerSupportOtherworlder(source, Number.NaN), false, "无效时钟不能消费支援");
+assert.equal(read().otherworlderReadyAt, 56);
+assert.throws(() => triggerSupportOtherworlder({ ...staleSource, owner: {} }, 60), /已初始化的来源/);
+
 
 const match = new MatchSimulation({ seed: 876, aiSeats: [], teamLoadouts: {
   A: { main: "haruhi", sub1: "bunny_haruhi", sub2: "yuki" },

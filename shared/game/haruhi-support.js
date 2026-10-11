@@ -150,7 +150,10 @@ export function supportOtherworlderReady(source, now) {
 }
 
 export function triggerSupportOtherworlder(source, now) {
-  if (!supportOtherworlderReady(source, now)) return false;
-  writableState(source.owner).otherworlderReadyAt = now + HARUHI_OTHERWORLDER_COOLDOWN;
+  if (!source?.enabled || !source.sourceShip?.alive) return false;
+  // 查询样本可以过期；消费必须以所有者当前状态重新校验，不能把旧快照当作许可。
+  const state = writableState(source.owner);
+  if (!state.supporters.has("otherworlder") || !(now + 1e-9 >= state.otherworlderReadyAt)) return false;
+  state.otherworlderReadyAt = now + HARUHI_OTHERWORLDER_COOLDOWN;
   return true;
 }
