@@ -29,7 +29,7 @@ assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable")
 simulation.elapsed = 11;
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 13);
 for (const support of ["alien", "time_traveler", "otherworlder", "esper"]) {
-  unlockSupport(team.haruhiFlagship, [support], simulation.elapsed, () => 0);
+  unlockSupport(team, [support], simulation.elapsed, () => 0);
 }
 const main = team.ships.main;
 main.stunUntil(12);

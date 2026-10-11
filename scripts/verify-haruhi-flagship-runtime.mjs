@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import { HaruhiFlagshipRuntime } from "../shared/game/haruhi-flagship-runtime.js";
-import { HARUHI_SUPPORTS, createSupportState, ownSupportState, unlockSupport } from "../shared/game/haruhi-support.js";
+import { HARUHI_SUPPORTS, createSupportState, initializeSupport, readSupportState, unlockSupport } from "../shared/game/haruhi-support.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 let now = 0, tick = 1, enabled = true, rolls = 0;
-const support = ownSupportState(createSupportState());
+const support = {};
+initializeSupport(support, createSupportState());
 const events = [];
 const runtime = new HaruhiFlagshipRuntime({
   enabled: () => enabled, now: () => now, tick: () => tick,
@@ -16,7 +17,7 @@ const runtime = new HaruhiFlagshipRuntime({
   },
   boostTempo: (multiplier) => {
     assert.equal(runtime.active(), true);
-    assert.ok(support.supporters.size > 0, "属性换算前支援已解锁");
+    assert.ok(readSupportState(support).supporters.size > 0, "属性换算前支援已解锁");
     assert.equal(multiplier, 1.15);
     events.push("tempo");
   },
@@ -33,7 +34,7 @@ assert.equal(runtime.clear(), false);
 tick = 3;
 assert.equal(runtime.clear(), true);
 assert.equal(runtime.active(), false);
-assert.equal(support.supporters.size, 2, "净化强化不得撤销常驻支援");
+assert.equal(readSupportState(support).supporters.size, 2, "净化强化不得撤销常驻支援");
 assert.equal(runtime.clear(), false);
 runtime.cast(16);
 assert.deepEqual(events.slice(-3), ["unlock", "tempo", "otherworlder"]);

@@ -2,7 +2,7 @@ import { HaruhiFlagshipRuntime } from "../../shared/game/haruhi-flagship-runtime
 import assert from "node:assert/strict";
 import * as legacy from "../../shared/game/haruhi-flagship.js";
 import {
-  createSupportState, unlockSupport, tickSupportSource, supportOrbGeometry,
+  createSupportState, initializeSupport, readSupportState, unlockSupport, tickSupportSource, supportOrbGeometry,
   supportOtherworlderReady, triggerSupportOtherworlder,
 } from "../../shared/game/haruhi-support.js";
 import {
@@ -10,16 +10,20 @@ import {
 } from "../../shared/game/bunny-haruhi-support.js";
 import { createBunnyHaruhiState } from "../../shared/game/bunny-haruhi.js";
 
+function initializedSource(initial) { const owner = {}; initializeSupport(owner, initial); return owner; }
+
 function fixture() {
   const team = {
     match: { elapsed: 0, tick: 0 }, effects: {}, ships: {},
-    mainCharacterId: () => "haruhi", haruhiFlagship: legacy.createHaruhiFlagshipState(),
+    mainCharacterId: () => "haruhi",
 
   };
+  initializeSupport(team);
+  Object.defineProperty(team, "haruhiFlagship", { get: () => readSupportState(team) });
   team.flagshipRuntime = new HaruhiFlagshipRuntime({
     enabled: () => team.mainCharacterId() === "haruhi",
     now: () => team.match.elapsed, tick: () => team.match.tick,
-    unlockSupport: (now, random) => unlockSupport(team.haruhiFlagship, legacy.HARUHI_SUPPORTS, now, random),
+    unlockSupport: (now, random) => unlockSupport(team, legacy.HARUHI_SUPPORTS, now, random),
   });
   team.activateHaruhiSupport = (duration, random) => team.flagshipRuntime.activate(duration, random);
   Object.defineProperty(team.effects, "haruhiBoostUntil", { get: () => team.flagshipRuntime.expiresAt });
@@ -32,6 +36,8 @@ function fixture() {
     x: 500, y: 600, radius: 12.8, effectiveVision: () => 172,
     bunnyHaruhi: createBunnyHaruhiState(),
   };
+  initializeSupport(team.ships.sub1);
+  Object.defineProperty(team.ships.sub1.bunnyHaruhi, "support", { get: () => readSupportState(team.ships.sub1) });
   return team;
 }
 
@@ -83,9 +89,9 @@ function factoryAndUnlockCheck() {
   assert.equal(source.state.otherworlderReadyAt, 5);
   assert.equal(source.state.supporters.has("alien"), false);
   for (const [roll, expected] of [[-1, "alien"], [NaN, "alien"], [undefined, "alien"], [Infinity, "esper"], [1, "esper"]]) {
-    assert.equal(unlockSupport(createSupportState(), legacy.HARUHI_SUPPORTS, 0, () => roll), expected);
+    assert.equal(unlockSupport(initializedSource(), legacy.HARUHI_SUPPORTS, 0, () => roll), expected);
   }
-  assert.equal(unlockSupport(b, [], 0, () => { throw new Error("空池不应消费随机数"); }), null);
+  assert.equal(unlockSupport(initializedSource(b), [], 0, () => { throw new Error("空池不应消费随机数"); }), null);
 }
 
 function legacySchedulingCheck() {
@@ -127,7 +133,7 @@ function legacySchedulingCheck() {
   assert.equal(legacy.haruhiOtherworlderReady(team), false);
   const invalid = fixture();
   invalid.mainCharacterId = () => "bunny_haruhi";
-  const before = structuredClone(invalid.haruhiFlagship);
+  const before = invalid.haruhiFlagship;
   assert.equal(legacy.activateHaruhiFlagship(invalid, 16, random), null);
   legacy.updateHaruhiFlagship(invalid, hooks);
   assert.equal(legacy.hasHaruhiSupport(invalid, "esper"), false);
@@ -140,7 +146,7 @@ function legacySchedulingCheck() {
 
 function geometryAndCooldownCheck() {
   const team = fixture();
-  team.haruhiFlagship.supporters = new Set(legacy.HARUHI_SUPPORTS);
+  for (const id of legacy.HARUHI_SUPPORTS) unlockSupport(team, [id], 0, () => 0);
   const oldOrb = legacy.haruhiEsperOrb(team);
   assert.deepEqual(oldOrb, {
     x: 200, y: 200, angle: 0, orbitRadius: 100,
@@ -153,9 +159,10 @@ function geometryAndCooldownCheck() {
   const view = legacy.serializeHaruhiFlagship(team);
   assert.deepEqual(Object.keys(view), ["boostActive", "supporters", "otherworlderReady", "esperOrb"]);
   assert.deepEqual(view.supporters, ["alien", "time_traveler", "otherworlder", "esper"]);
-  team.haruhiFlagship.otherworlderReadyAt = 37;
+  team.match.elapsed = 29;
+  assert.equal(legacy.triggerHaruhiOtherworlder(team), true);
   const source = bunnyHaruhiSupportSource(team.ships.sub1, true);
-  source.state.supporters = new Set(["esper", "otherworlder"]);
+  for (const id of ["esper", "otherworlder"]) unlockSupport(source.owner, [id], 0, () => 0);
   const newOrb = supportOrbGeometry(source);
   assert.equal(newOrb.x, 672);
   assert.equal(newOrb.y, 600);
@@ -187,7 +194,7 @@ function explicitSourceCheck() {
   const source = bunnyHaruhiSupportSource(ship, true);
   assert.equal(source.sourceShip, ship);
   assert.notEqual(source.state, team.haruhiFlagship);
-  const originalOldState = structuredClone(team.haruhiFlagship);
+  const originalOldState = team.haruhiFlagship;
   unlockBunnyHaruhiSupport(source, 0, () => 0);
   const emitters = [];
   const hooks = { launchRandomBeam: (emitter) => emitters.push(emitter) };

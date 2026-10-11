@@ -9,7 +9,7 @@ export function createTeamHaruhiFlagship(team) {
     now: () => team.match.elapsed,
     tick: () => team.match.tick,
     random: () => rngFor(team.match).next(),
-    unlockSupport: (now, random) => unlockSupport(team.haruhiFlagship, HARUHI_SUPPORTS, now, random),
+    unlockSupport: (now, random) => unlockSupport(team, HARUHI_SUPPORTS, now, random),
     boostTempo: (multiplier) => {
       for (const ship of team.getPlayerShips()) {
         if (ship.alive) ship.boostCombatTempo(multiplier);

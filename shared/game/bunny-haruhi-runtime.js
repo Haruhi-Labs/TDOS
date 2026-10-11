@@ -11,11 +11,12 @@ import {
 import { rngFor } from "./rng.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
 import { bunnyCompanions, bunnyCompanionOwner, createBunnyCompanion } from "./bunny-companion-runtime.js";
-import { supportOrbGeometry, supportOtherworlderReady, clearSupportQueue, ownSupportState } from "./haruhi-support.js";
+import { supportOrbGeometry, supportOtherworlderReady, clearSupportQueue, initializeSupport, replaceSupportState, readSupportState } from "./haruhi-support.js";
 
 export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
 
 const forms = new WeakMap();
+const formViews = new WeakMap();
 const exposures = new WeakMap();
 const battles = new WeakMap();
 
@@ -36,9 +37,9 @@ export function initializeBunnyBattle(match) {
 }
 
 function commitForm(ship, state) {
-  forms.set(ship, Object.freeze({ ...state,
-    visitedForms: readonlyIdSet(state.visitedForms), support: ownSupportState(state.support),
-  }));
+  replaceSupportState(ship, state.support);
+  forms.set(ship, Object.freeze({ ...state, visitedForms: readonlyIdSet(state.visitedForms) }));
+  formViews.delete(ship);
 }
 
 function commitExposure(ship, state) {
@@ -58,7 +59,15 @@ export function spawnBunnyCompanion(owner, createShip) {
 export function initializeBunnyShip(ship) {
   Object.defineProperty(ship, "bunnyStageExposure", { enumerable: true, get: () => exposures.get(ship) });
   if (ship.character !== BUNNY_HARUHI_CHARACTER) return;
-  Object.defineProperty(ship, "bunnyHaruhi", { enumerable: true, get: () => forms.get(ship) });
+  Object.defineProperty(ship, "bunnyHaruhi", { enumerable: true, get: () => {
+    const support = readSupportState(ship);
+    let view = formViews.get(ship);
+    if (!view || view.support !== support) {
+      view = Object.freeze({ ...forms.get(ship), support });
+      formViews.set(ship, view);
+    }
+    return view;
+  } });
   commitForm(ship, createBunnyHaruhiState());
   // 保留锁档的实时读取与最终落值语义，覆盖已有动作、航线和兼容调用。
   ship.configureThrottleConstraint((value) => resolveBunnyThrottle(
@@ -110,11 +119,13 @@ export function commitBunnyTransform(ship) {
   const oldThrottle = ship.throttle;
   const companions = bunnyCompanions(match).filter((candidate) => candidate.alive && bunnyCompanionOwner(candidate) === ship && candidate.team === team)
     .map((candidate) => ({ ship: candidate, speed: candidate.effectiveSpeed(), rate: candidate.effectiveFireRate() }));
-  if (result.unlockSupport) {
-    const source = { ...bunnyHaruhiSupportSource(ship, true), state: result.state.support };
-    unlockBunnyHaruhiSupport(source, match.elapsed, rngFor(match).next);
-  }
-  commitForm(ship, result.state);
+  // 解锁先在事务私有来源上完成，再连同形态发布；随机回调不能看到半提交形态。
+  const plannedSupport = {};
+  initializeSupport(plannedSupport, result.state.support);
+  if (result.unlockSupport) unlockBunnyHaruhiSupport({
+    ...bunnyHaruhiSupportSource(ship, true), owner: plannedSupport,
+  }, match.elapsed, rngFor(match).next);
+  commitForm(ship, { ...result.state, support: readSupportState(plannedSupport) });
   ship.applyResourcePlan(result);
   ship.setThrottle(resolveBunnyThrottle(result.state, oldThrottle, true, match.elapsed));
   ship.rescaleCombatTiming(oldSpeed, oldRate);
@@ -198,7 +209,7 @@ export function cleanupBunnySources(match) {
     for (const ship of team.getPlayerShips()) {
       if (ship.bunnyHaruhi && !ship.alive) {
         commitForm(ship, clearBunnyFormWindows(ship.bunnyHaruhi));
-        clearSupportQueue(ship.bunnyHaruhi.support);
+        clearSupportQueue(ship);
       }
       if (ship.bunnyStageExposure?.inside && !bunnyStageEnabled(ship)) commitExposure(ship, leaveBunnyStage(ship.bunnyStageExposure));
     }

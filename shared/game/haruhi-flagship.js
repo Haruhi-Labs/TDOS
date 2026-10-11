@@ -23,7 +23,7 @@ export function createHaruhiFlagshipState(initialAngle = 0) {
 function flagshipSupportSource(team) {
   if (!team || team.mainCharacterId() !== "haruhi") return null;
   // 普通春日沿用原存活判断；不附加新角色的封印/恢复语义。
-  return { sourceShip: team.ships.main, state: team.haruhiFlagship, enabled: true };
+  return { sourceShip: team.ships.main, owner: team, get state() { return team.haruhiFlagship; }, enabled: true };
 }
 
 export function hasHaruhiSupport(team, supportId) {

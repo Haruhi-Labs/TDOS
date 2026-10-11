@@ -7,7 +7,7 @@ import { createTeamSkillPort } from "../rules/team-skill-port.js";
 import { FleetFormation } from "../systems/fleet-formation.js";
 import { createFormationPort } from "../rules/formation-port.js";
 import { createTeamHaruhiFlagship } from "../rules/haruhi-flagship-port.js";
-import { ownSupportState } from "../haruhi-support.js";
+import { initializeSupport, readSupportState } from "../haruhi-support.js";
 import { createTeamSponsor } from "../rules/sponsor-port.js";
 import { createTeamFutureForm } from "../rules/future-form-port.js";
 import { futureFormDefinition } from "../future-flagship-form.js";
@@ -99,8 +99,9 @@ export class Team {
     this.#sponsor = createTeamSponsor(this);
     this.#haruhi = createTeamHaruhiFlagship(this);
     this.#futureForm = createTeamFutureForm(this);
+    initializeSupport(this, createHaruhiFlagshipState(facing));
     Object.defineProperty(this, "haruhiFlagship", {
-      enumerable: true, value: ownSupportState(createHaruhiFlagshipState(facing)),
+      enumerable: true, get: () => readSupportState(this),
     });
     initializeKoizumiBarrier(this);
     initializeShamisenHunt(this);

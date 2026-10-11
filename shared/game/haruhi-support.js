@@ -17,7 +17,8 @@ export const HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER = 3;
 /**
  * @typedef {Object} SupportSource
  * @property {Object} sourceShip 实际发射/几何来源，不通过队伍旗舰反查。
- * @property {Object} state 此来源独占的支援状态。
+ * @property {Object} owner 已初始化的支援来源身份，供调度写入。
+ * @property {Object} state 此来源的不可变支援快照，仅供查询。
  * @property {boolean} enabled 由角色适配器决定是否启用。
  */
 
@@ -28,55 +29,63 @@ export function createSupportState(initialAngle = 0) {
   };
 }
 
-// 纯规则计划可以使用普通状态；实时来源装配后，写权限只留在本模块。
+// 写入口以来源身份定位私有存储；读快照不再充当写入凭证，也不回退修改普通对象。
 const ownedStates = new WeakMap();
-const writableState = (state) => ownedStates.get(state)?.state || state;
-
-export function ownSupportState(initial) {
-  if (ownedStates.has(initial)) return initial;
-  const state = { ...initial, supporters: new Set(initial.supporters), queuedBeamAt: [...initial.queuedBeamAt] };
-  const record = { state, supporters: readonlyIdSet(state.supporters) };
-  const view = {};
-  for (const key of ["alienNextAt", "timeTravelerNextAt", "otherworlderReadyAt", "esperAngle", "suspended"]) {
-    Object.defineProperty(view, key, { enumerable: true, get: () => state[key] });
-  }
-  Object.defineProperties(view, {
-    supporters: { enumerable: true, get: () => record.supporters },
-    queuedBeamAt: { enumerable: true, get: () => Object.freeze([...state.queuedBeamAt]) },
+function writableState(owner) {
+  const record = ownedStates.get(owner);
+  if (!record) throw new TypeError("支援写入要求已初始化的来源");
+  return record.state;
+}
+export function replaceSupportState(owner, initial) {
+  ownedStates.set(owner, { state: { ...initial,
+    supporters: new Set(initial.supporters), queuedBeamAt: [...initial.queuedBeamAt],
+  }, view: null });
+}
+export function initializeSupport(owner, initial = createSupportState()) {
+  if (!ownedStates.has(owner)) replaceSupportState(owner, initial);
+}
+export function readSupportState(owner) {
+  const record = ownedStates.get(owner);
+  if (!record) return null;
+  const { state, view } = record;
+  // 发射回调可在同一次追帧中读取支援；逐项比较确保回调后继续推进不会留下旧缓存。
+  if (view && Object.keys(view).length === Object.keys(state).length
+    && ["alienNextAt", "timeTravelerNextAt", "otherworlderReadyAt", "esperAngle", "suspended"].every((key) => view[key] === state[key])
+    && view.supporters.size === state.supporters.size && [...state.supporters].every((id) => view.supporters.has(id))
+    && view.queuedBeamAt.length === state.queuedBeamAt.length && state.queuedBeamAt.every((at, index) => view.queuedBeamAt[index] === at)) return view;
+  return record.view = Object.freeze({ ...record.state,
+    supporters: readonlyIdSet(record.state.supporters),
+    queuedBeamAt: Object.freeze([...record.state.queuedBeamAt]),
   });
-  ownedStates.set(view, record);
-  return Object.freeze(view);
 }
 
-export function clearSupportQueue(state) {
-  state = writableState(state);
+export function clearSupportQueue(owner) {
+  const state = writableState(owner);
   state.queuedBeamAt.length = 0;
 }
 
 // 新来源选择封印后重新计时；旧旗舰仍保留原有追帧规则。
-export function suspendSupportSchedule(state) {
-  state = writableState(state);
+export function suspendSupportSchedule(owner) {
+  const state = writableState(owner);
   state.suspended = true;
 }
 
-export function resumeSupportSchedule(state, now) {
-  state = writableState(state);
+export function resumeSupportSchedule(owner, now) {
+  const state = writableState(owner);
   if (!state.suspended) return;
   state.timeTravelerNextAt = state.supporters.has("time_traveler") ? now + HARUHI_TIME_TRAVELER_INTERVAL : 0;
-  clearSupportQueue(state);
+  state.queuedBeamAt.length = 0;
   delete state.suspended;
 }
 
 /** eligibleIds由可信角色配置提供有序、无重复的池；只有实际解锁才取一次随机数。 */
-export function unlockSupport(state, eligibleIds, now, random) {
-  const record = ownedStates.get(state);
-  state = writableState(state);
+export function unlockSupport(owner, eligibleIds, now, random) {
+  const state = writableState(owner);
   const remaining = eligibleIds.filter((id) => !state.supporters.has(id));
   if (remaining.length === 0) return null;
   const roll = clamp(Number(random()) || 0, 0, 0.999999);
   const supportId = remaining[Math.floor(roll * remaining.length)];
   state.supporters.add(supportId);
-  if (record) record.supporters = readonlyIdSet(state.supporters);
   if (supportId === "alien") state.alienNextAt = now + HARUHI_ALIEN_INTERVAL;
   else if (supportId === "time_traveler") state.timeTravelerNextAt = now + HARUHI_TIME_TRAVELER_INTERVAL;
   else if (supportId === "otherworlder") state.otherworlderReadyAt = now;
@@ -91,9 +100,9 @@ export function unlockSupport(state, eligibleIds, now, random) {
 export function tickSupportSource(source, now, dt, hooks = {}) {
   if (!source) return;
   const { sourceShip, enabled } = source;
-  const state = writableState(source.state);
+  const state = writableState(source.owner);
   if (!enabled || !sourceShip?.alive) {
-    clearSupportQueue(state);
+    state.queuedBeamAt.length = 0;
     return;
   }
   if (state.supporters.has("alien")) {
@@ -142,6 +151,6 @@ export function supportOtherworlderReady(source, now) {
 
 export function triggerSupportOtherworlder(source, now) {
   if (!supportOtherworlderReady(source, now)) return false;
-  writableState(source.state).otherworlderReadyAt = now + HARUHI_OTHERWORLDER_COOLDOWN;
+  writableState(source.owner).otherworlderReadyAt = now + HARUHI_OTHERWORLDER_COOLDOWN;
   return true;
 }

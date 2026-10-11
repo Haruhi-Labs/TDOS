@@ -11,7 +11,7 @@ export function bunnyHaruhiSupportSource(ship, enabled) {
     || !["sub1", "sub2"].includes(ship.slotKey)
     || ship.team?.ships?.[ship.slotKey] !== ship
     || !ship.bunnyHaruhi?.support) return null;
-  return { sourceShip: ship, state: ship.bunnyHaruhi.support, enabled: Boolean(enabled) };
+  return { sourceShip: ship, owner: ship, get state() { return ship.bunnyHaruhi.support; }, enabled: Boolean(enabled) };
 }
 
 /** 仅新角色对局调用；固定ID次序使多来源消耗与几何判定可回放。 */
@@ -24,19 +24,19 @@ export function bunnyTeamSupportSources(team) {
 /** 只由成功形态事务调用；穷尽三项池后不再消费随机数。 */
 export function unlockBunnyHaruhiSupport(source, now, random) {
   if (!source?.enabled || !source.sourceShip?.alive) return null;
-  return unlockSupport(source.state, BUNNY_HARUHI_CONFIG.supportIds, now, random);
+  return unlockSupport(source.owner, BUNNY_HARUHI_CONFIG.supportIds, now, random);
 }
 
 /** 由Team.update显式传入副舰来源，不改变旧旗舰的支援调度。 */
 export function updateBunnyHaruhiSupport(source, now, dt, hooks = {}) {
   if (!source) return;
-  const { state } = source;
+  const { owner } = source;
   if (!source.enabled || !source.sourceShip?.alive) {
-    suspendSupportSchedule(state);
+    suspendSupportSchedule(owner);
     tickSupportSource(source, now, dt, hooks);
     return;
   }
   // 恢复只重排发射日程，不返还冲撞冷却或补发封印期间的光线。
-  resumeSupportSchedule(state, now);
+  resumeSupportSchedule(owner, now);
   tickSupportSource(source, now, dt, hooks);
 }

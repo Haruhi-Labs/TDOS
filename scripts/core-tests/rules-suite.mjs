@@ -891,7 +891,7 @@ function koizumiFlagshipBarrierCheck() {
       attackingTeam.split(1);
       assert(attackingTeam.castSubSkill("sub1"), `${ramKind}破盾测试未能释放分舰技能`);
     } else {
-      unlockSupport(attackingTeam.haruhiFlagship, ["otherworlder"], ramSim.elapsed, () => 0);
+      unlockSupport(attackingTeam, ["otherworlder"], ramSim.elapsed, () => 0);
     }
 
     const barrierRadius = defendingMain.effectiveVision();
@@ -1376,7 +1376,7 @@ function koizumiControlImmunityCheck() {
     const ram = setup(seat, phase, "haruhi");
     const haruhi = ram.enemy.ships.main;
     Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
-    unlockSupport(ram.enemy.haruhiFlagship, ["otherworlder"], 0, () => 0);
+    unlockSupport(ram.enemy, ["otherworlder"], 0, () => 0);
     const hpBefore = ram.ship.hp;
     ram.sim.resolveHaruhiOtherworlderContacts();
     assert(!haruhiOtherworlderReady(ram.enemy), "免控测试没有发生真实异世界冲撞");
@@ -2388,7 +2388,7 @@ function asakuraBladeQueenFlightCheck() {
   ram.sim.teamB.configureFormation(2);
   const haruhi = ram.sim.teamB.ships.main;
   Object.assign(haruhi, { x: ram.ship.x - 40, y: ram.ship.y, angle: 0, speed: haruhi.effectiveSpeed() });
-  unlockSupport(ram.sim.teamB.haruhiFlagship, ["otherworlder"], 0, () => 0);
+  unlockSupport(ram.sim.teamB, ["otherworlder"], 0, () => 0);
   const hpBefore = ram.ship.hp;
   ram.sim.resolveHaruhiOtherworlderContacts();
   assert(ram.ship.hp < hpBefore, "刀锋错误免除了异世界冲撞伤害");

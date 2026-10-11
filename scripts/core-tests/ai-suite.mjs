@@ -1107,7 +1107,7 @@ function aiHaruhiFlagshipAggressionCheck() {
   assert(bot.flagshipTimer > team.cooldowns.flagship, "春日AI的下一次检查没有与真实冷却安全对齐");
 
   for (const supporter of ["alien", "time_traveler", "otherworlder", "esper"]) {
-    unlockSupport(team.haruhiFlagship, [supporter], 0, () => 0);
+    unlockSupport(team, [supporter], 0, () => 0);
   }
   for (const ship of team.fleetMembersForShip("main")) {
     ship.energy = ship.maxEnergy;
@@ -1541,7 +1541,7 @@ function aiHaruhiOtherworlderBarrierBreachCheck() {
   const bot = aiFixture(sim);
   const haruhi = sim.teamB.ships.main;
   const defendingMain = sim.teamA.ships.main;
-  unlockSupport(sim.teamB.haruhiFlagship, ["otherworlder"], sim.elapsed, () => 0);
+  unlockSupport(sim.teamB, ["otherworlder"], sim.elapsed, () => 0);
 
   haruhi.x = 980;
   haruhi.y = 720;

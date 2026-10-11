@@ -325,7 +325,7 @@ function tickOrderingCheck() {
 function supportIntegrationCheck() {
   const sim = simulation();
   const ship = sim.teamA.ships.sub1;
-  unlockSupport(ship.bunnyHaruhi.support, ["time_traveler"], 0, () => 0);
+  unlockSupport(ship, ["time_traveler"], 0, () => 0);
   sim.elapsed = 10 - TICK_DT;
   sim.update(TICK_DT);
   assert.equal(sim.teamA.beams.length, 1);
@@ -341,7 +341,7 @@ function supportIntegrationCheck() {
   const attacker = ram.teamA.ships.sub1;
   const defender = ram.teamB.ships.main;
   const radius = defender.effectiveVision();
-  unlockSupport(attacker.bunnyHaruhi.support, ["otherworlder"], 0, () => 0);
+  unlockSupport(attacker, ["otherworlder"], 0, () => 0);
   attacker.x = defender.x - radius + 1;
   attacker.y = defender.y;
   attacker.previousX = attacker.x - 2;
