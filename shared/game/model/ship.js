@@ -1,3 +1,6 @@
+import { WeaponCycle } from "../systems/weapon-cycle.js";
+import { resolveHullDamage } from "../systems/hull-damage.js";
+import { createWeaponPort, createDamagePort } from "../rules/ship-combat-port.js";
 import { ShipNavigation } from "../systems/ship-navigation.js";
 import { createShipNavigationPort } from "../rules/navigation-port.js";
 // 舰船状态所有者与领域操作。
@@ -7,12 +10,14 @@ import { characterDefinition as getCharacterDef, slotLabel } from "../characters
 import { clamp, distance, shortestAngleDelta } from "../math.js";
 import { rngFor } from "../rng.js";
 import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
-import { normalizeDamageContext } from "../damage.js";
-import { FORMATION_DAMAGE_SHARE, nextEntityId } from "../model/model-support.js";
+import { nextEntityId } from "../model/model-support.js";
 import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 
 export class Ship {
   #base;
+  #weapon;
+  get cooldown() { return this.#weapon.remaining; }
+  set cooldown(value) { this.#weapon.reset(value); }
   #navigation;
   get route() { return this.#navigation.route; }
   set route(value) { this.#navigation.replaceRoute(value); }
@@ -62,7 +67,7 @@ export class Ship {
     this.collisionSlowUntil = 0; // 撞击粘滞:在此时刻前速度上限被压低并随时间回升
     this.forcedKnockback = null;
 
-    this.cooldown = rngFor(this.team.match).range(0, 0.5);
+    this.#weapon = new WeaponCycle(rngFor(this.team.match).range(0, 0.5));
     this.formationOffset = { ...(options.formationOffset || { x: 0, y: 0 }) };
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
@@ -459,7 +464,7 @@ export class Ship {
     this.previousX = this.x;
     this.previousY = this.y;
     this.previousAngle = this.angle;
-    this.cooldown = Math.max(0, this.cooldown - dt);
+    this.#weapon.advance(dt);
 
     if (this.updateForcedKnockback()) {
       return;
@@ -487,95 +492,22 @@ export class Ship {
     return fireArcDensityMultiplier(relative, this.team.match.rules.improvedFireArcs(this.team));
   }
 
-  tryAttack(match, enemyTeam) {
-    if (
-      !this.alive
-      || this.cooldown > 0
-      || !this.team.match.rules.weaponAvailable(this)
-      || this.isControlLocked()
-    ) {
-      return;
-    }
-    const target = this.team.pickTargetFor(this, enemyTeam);
-    if (!target) {
-      return;
-    }
+  tryAttack(match, enemyTeam) { return this.#weapon.fire(createWeaponPort(this, match, enemyTeam)); }
 
-    const targetDistance = distance(this.x, this.y, target.x, target.y);
-    const predictedX = target.x + (target.speed || 0) * Math.cos(target.angle || 0) * (targetDistance / 300);
-    const predictedY = target.y + (target.speed || 0) * Math.sin(target.angle || 0) * (targetDistance / 300);
-    const spread = clamp(targetDistance / 18, 4, 26);
-    const aimX = predictedX + rngFor(this.team.match).range(-spread, spread);
-    const aimY = predictedY + rngFor(this.team.match).range(-spread, spread);
-    const fireDensity = this.broadsideMultiplier(target);
-    if (fireDensity <= 0) {
-      return;
-    }
-    const damage = this.team.match.shipEffects.prepareShotDamage(this, this.effectiveDamage(), match);
-
-    const projectileProfile = this.team.match.rules.projectileProfile(this);
-    match.spawnProjectile({
-      team: this.team,
-      source: this,
-      x: this.x,
-      y: this.y,
-      targetX: match.clampX(aimX, 0),
-      targetY: match.clampY(aimY, 0),
-      damage,
-      speed: 240,
-      hitRadius: 8,
-      ...projectileProfile,
-    });
-    match.recordAttack(this.team.seat, "projectile");
-    this.cooldown = 1 / Math.max(0.01, this.effectiveFireRate() * fireDensity);
+  takeDamage(amount, source = null, match = null, context = undefined) {
+    return resolveHullDamage(createDamagePort(this, source, match), amount, context);
   }
 
-  takeDamage(amount, _source = null, match = null, context = undefined) {
-    if (!this.team.match.rules.canDamage(_source, this)) return false;
-    if (!this.alive) {
-      return;
-    }
-    if (this.isDamageImmune()) {
-      return;
-    }
-    const { share, kind: damageKind } = normalizeDamageContext(context);
-    // “猫爪印记”只放大子弹和攻击命中特效。先乘二再分摊，保证整次攻击总伤害正确；
-    // 分摊递归以 share=false 投递，不会因份额碰巧落到猎杀目标而再次乘二。
-    if (share) {
-      amount *= this.team.match.rules.attackDamageMultiplier(_source, this, damageKind);
-    }
-    // 不分离(本船所在编队还有其它存活船):本次伤害的 FORMATION_DAMAGE_SHARE 比例平摊给其它船,
-    // 本船只承担其余部分。平摊出去的份额以 share=false 再投递,不会二次平摊(避免连锁/递归)。
-    if (share) {
-      const others = this.team.fleetMembersForShip(this).filter((m) => m !== this && m.alive);
-      if (others.length > 0) {
-        const shared = amount * FORMATION_DAMAGE_SHARE;
-        amount -= shared;
-        const per = shared / others.length;
-        for (const m of others) {
-          m.takeDamage(per, _source, match, { share: false, kind: damageKind });
-        }
-      }
-    }
-    const finalAmount = amount * this.damageTakenMultiplier();
-    const damageFloor = this.maxHp * clamp(Number(this.team.damageFloorRatio) || 0, 0, 1);
-    const hpBefore = this.hp;
-    this.hp = Math.max(damageFloor, this.hp - finalAmount);
-    if (match) {
-      match.recordDamage(_source, this, hpBefore - this.hp, damageKind);
-    }
-    if (this.hp > 0) {
-      return;
-    }
+  applyHullDamage(amount, floor) {
+    const before = this.hp;
+    this.hp = Math.max(floor, this.hp - amount);
+    return before - this.hp;
+  }
+
+  retireAfterDamage() {
     this.alive = false;
     this.speed = 0;
-    this.route = null;
-    this.team.resolvePostCasualtyState(match);
-    if (match) {
-      if (this.team.match.rules.countsForVictory(this)) match.recordShipLoss(this.team.seat);
-      match.spawnBurst(this.x, this.y, "#ff9d7d", 10);
-      match.onShipDestroyed(this, _source);
-    }
+    this.clearRoute();
   }
 
   serialize() {
