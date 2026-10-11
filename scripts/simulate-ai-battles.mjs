@@ -1,3 +1,4 @@
+import { unlockSupport } from "../shared/game/haruhi-support.js";
 import {
   CHARACTER_ORDER,
   MatchSimulation,
@@ -229,8 +230,7 @@ function runBarrierBreachScenario(breakerKind, seed) {
   const breaker = isHaruhi ? attackingTeam.ships.main : attackingTeam.ships.sub1;
   if (!isHaruhi) attackingTeam.split(1);
   if (isHaruhi) {
-    attackingTeam.haruhiFlagship.supporters.add("otherworlder");
-    attackingTeam.haruhiFlagship.otherworlderReadyAt = simulation.elapsed;
+    unlockSupport(attackingTeam.haruhiFlagship, ["otherworlder"], simulation.elapsed, () => 0);
     bot.flagshipTimer = 999;
   } else {
     bot.subTimers.sub1 = 0;

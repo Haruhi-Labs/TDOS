@@ -1,3 +1,4 @@
+import { readonlyIdSet } from "../data/readonly-id-set.js";
 import { CHARACTER_DEFS } from "./characters.js";
 import { BUNNY_HARUHI_CONFIG as C } from "./bunny-haruhi-config.js";
 import {
@@ -10,7 +11,7 @@ import {
 import { rngFor } from "./rng.js";
 import { bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport } from "./bunny-haruhi-support.js";
 import { bunnyCompanions, bunnyCompanionOwner, createBunnyCompanion } from "./bunny-companion-runtime.js";
-import { supportOrbGeometry, supportOtherworlderReady, clearSupportQueue } from "./haruhi-support.js";
+import { supportOrbGeometry, supportOtherworlderReady, clearSupportQueue, ownSupportState } from "./haruhi-support.js";
 
 export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
 
@@ -18,7 +19,9 @@ const forms = new WeakMap();
 const exposures = new WeakMap();
 
 function commitForm(ship, state) {
-  forms.set(ship, Object.freeze(state));
+  forms.set(ship, Object.freeze({ ...state,
+    visitedForms: readonlyIdSet(state.visitedForms), support: ownSupportState(state.support),
+  }));
 }
 
 function commitExposure(ship, state) {

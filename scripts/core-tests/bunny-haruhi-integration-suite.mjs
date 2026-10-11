@@ -1,3 +1,4 @@
+import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import assert from "node:assert/strict";
 import { MatchSimulation, __resetEntityIds, TICK_DT, CHARACTER_DEFS, CHARACTER_ORDER, energyRateForThrottle } from "../../shared/game-core.js";
 import { normalizeLoadout } from "../../shared/game/characters.js";
@@ -324,8 +325,8 @@ function tickOrderingCheck() {
 function supportIntegrationCheck() {
   const sim = simulation();
   const ship = sim.teamA.ships.sub1;
-  ship.bunnyHaruhi.support.supporters.add("time_traveler");
-  ship.bunnyHaruhi.support.timeTravelerNextAt = TICK_DT;
+  unlockSupport(ship.bunnyHaruhi.support, ["time_traveler"], 0, () => 0);
+  sim.elapsed = 10 - TICK_DT;
   sim.update(TICK_DT);
   assert.equal(sim.teamA.beams.length, 1);
   assert.equal(sim.teamA.beams[0].shipKey, "sub1");
@@ -340,7 +341,7 @@ function supportIntegrationCheck() {
   const attacker = ram.teamA.ships.sub1;
   const defender = ram.teamB.ships.main;
   const radius = defender.effectiveVision();
-  attacker.bunnyHaruhi.support.supporters.add("otherworlder");
+  unlockSupport(attacker.bunnyHaruhi.support, ["otherworlder"], 0, () => 0);
   attacker.x = defender.x - radius + 1;
   attacker.y = defender.y;
   attacker.previousX = attacker.x - 2;

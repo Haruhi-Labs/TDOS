@@ -184,3 +184,5 @@ await import("./verify-future-form.mjs");
 await import("./verify-sponsor-effect.mjs");
 
 await import("./verify-bunny-ownership.mjs");
+
+await import("./verify-support-ownership.mjs");

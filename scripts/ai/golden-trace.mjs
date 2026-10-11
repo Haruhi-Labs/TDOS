@@ -1,3 +1,4 @@
+import { unlockSupport } from "../../shared/game/haruhi-support.js";
 // AI 重构期的黄金轨迹工具：在固定随机序列下逐帧记录对局摘要，用于证明重构前后行为一致。
 // 基线对任何规则改动都敏感，只作为本地门禁使用，不加入 test:all。
 //
@@ -106,8 +107,7 @@ function buildBarrierBreach(breakerKind) {
   const breaker = isHaruhi ? attackingTeam.ships.main : attackingTeam.ships.sub1;
   if (!isHaruhi) attackingTeam.split(1);
   if (isHaruhi) {
-    attackingTeam.haruhiFlagship.supporters.add("otherworlder");
-    attackingTeam.haruhiFlagship.otherworlderReadyAt = simulation.elapsed;
+    unlockSupport(attackingTeam.haruhiFlagship, ["otherworlder"], simulation.elapsed, () => 0);
     bot.flagshipTimer = 999;
   } else {
     bot.subTimers.sub1 = 0;

@@ -1,3 +1,4 @@
+import { unlockSupport } from "../../shared/game/haruhi-support.js";
 import {
   CHARACTER_DEFS,
   MatchSimulation,
@@ -1097,7 +1098,7 @@ function aiHaruhiFlagshipAggressionCheck() {
   assert(bot.flagshipTimer > team.cooldowns.flagship, "春日AI的下一次检查没有与真实冷却安全对齐");
 
   for (const supporter of ["alien", "time_traveler", "otherworlder", "esper"]) {
-    team.haruhiFlagship.supporters.add(supporter);
+    unlockSupport(team.haruhiFlagship, [supporter], 0, () => 0);
   }
   for (const ship of team.fleetMembersForShip("main")) {
     ship.energy = ship.maxEnergy;
@@ -1535,8 +1536,8 @@ function aiHaruhiOtherworlderBarrierBreachCheck() {
   const bot = sim.bot;
   const haruhi = sim.teamB.ships.main;
   const defendingMain = sim.teamA.ships.main;
-  sim.teamB.haruhiFlagship.supporters.add("otherworlder");
-  sim.teamB.haruhiFlagship.otherworlderReadyAt = sim.elapsed;
+  unlockSupport(sim.teamB.haruhiFlagship, ["otherworlder"], sim.elapsed, () => 0);
+
   haruhi.x = 980;
   haruhi.y = 720;
   defendingMain.x = 650;

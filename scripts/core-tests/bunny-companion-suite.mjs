@@ -35,7 +35,6 @@ function setup(mult = 1, dual = false) {
     team.cooldowns.sub1 = 0;
     assert.equal(team.castSubSkill("sub1"), true);
   }
-  owner.bunnyHaruhi.support.supporters.clear();
   return { sim, team, owner, companion: team.extraShips[0] };
 }
 
@@ -221,13 +220,12 @@ function conversionCheck() {
   assert.equal(JSON.stringify(sim.telemetry), telemetry);
   companion.takeDamage(10, team.ships.sub2, sim);
   near(companion.hp, health - 10, "其他原友舰可以正常伤害阿虚");
-  owner.bunnyHaruhi.support.supporters.add("otherworlder");
+  assert.ok(owner.bunnyHaruhi.support.supporters.has("otherworlder"), "四次真实变身已领取全部支援");
   owner.speed = owner.effectiveSpeed() * 1.4;
   owner.angle = 0;
   resolveBunnyOtherworlderContacts(sim);
   assert.equal(owner.bunnyHaruhi.support.otherworlderReadyAt, 0, "保护目标不能消耗异世界冲撞冷却");
   assert.equal(companion.forcedKnockback, null);
-  owner.bunnyHaruhi.support.supporters.clear();
   // 由真实弹体验证母舰命中不产生伤害、命中统计或猫爪附效。
   companion.angle = 0;
   companion.cooldown = 0;

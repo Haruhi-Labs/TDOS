@@ -1,3 +1,4 @@
+import { ownSupportState } from "../haruhi-support.js";
 import { createTeamSponsor } from "../rules/sponsor-port.js";
 import { createTeamFutureForm } from "../rules/future-form-port.js";
 import { futureFormDefinition } from "../future-flagship-form.js";
@@ -74,7 +75,9 @@ export class Team {
       enumerable: true, get: () => this.#sponsor.expiresAt,
     });
     this.#futureForm = createTeamFutureForm(this);
-    this.haruhiFlagship = createHaruhiFlagshipState(facing);
+    Object.defineProperty(this, "haruhiFlagship", {
+      enumerable: true, value: ownSupportState(createHaruhiFlagshipState(facing)),
+    });
     this.koizumiBarrier = createKoizumiBarrierState();
     this.shamisenHunt = createShamisenHuntState();
     this.activeSkillEffectStartedTicks = Object.create(null);

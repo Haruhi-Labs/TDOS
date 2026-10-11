@@ -26,6 +26,9 @@ const oldLoadout = (value) => {
 
 async function measureWorker(moduleRoot, worst) {
   const core = await import(pathToFileURL(join(moduleRoot, "shared/game-core.js")));
+  // 旧版普通阵容基线早于支援模块抽取，只有压力场景需要这项装配能力。
+  const unlockSupport = worst
+    ? (await import(pathToFileURL(join(moduleRoot, "shared/game/haruhi-support.js")))).unlockSupport : null;
   return withSeededRandom(20261003, () => {
     core.__resetEntityIds(1);
     const roster = worst ? loadout("haruhi", C.characterId, "asakura") : loadout("haruhi", "koizumi", "asakura");
@@ -37,9 +40,10 @@ async function measureWorker(moduleRoot, worst) {
         team.cooldowns.sub1 = 0;
         assert.equal(team.castSubSkill("sub1"), true);
       }
-      for (const id of ["alien", "time_traveler", "otherworlder", "esper"]) team.haruhiFlagship.supporters.add(id);
-      team.haruhiFlagship.alienNextAt = 1;
-      team.haruhiFlagship.timeTravelerNextAt = 1;
+      // 用相同解锁操作构造已运行中的日程，保持原压力夹具首次发射在第 1 秒。
+      for (const [id, unlockedAt] of [["alien", -5], ["time_traveler", -9], ["otherworlder", 0], ["esper", 0]]) {
+        unlockSupport(team.haruhiFlagship, [id], unlockedAt, () => 0);
+      }
     }
     const samples = [];
     let maxBytes = 0;

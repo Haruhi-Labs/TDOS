@@ -1,3 +1,4 @@
+import { unlockSupport } from "../shared/game/haruhi-support.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
@@ -26,7 +27,9 @@ collect(team.ships.sub2);
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 14);
 simulation.elapsed = 11;
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 13);
-team.haruhiFlagship.supporters = new Set(["alien", "time_traveler", "otherworlder", "esper"]);
+for (const support of ["alien", "time_traveler", "otherworlder", "esper"]) {
+  unlockSupport(team.haruhiFlagship, [support], simulation.elapsed, () => 0);
+}
 const main = team.ships.main;
 main.effects.stunnedUntil = 12;
 main.effects.silencedUntil = 16;
