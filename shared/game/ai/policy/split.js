@@ -1,6 +1,6 @@
 // 分离决策。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { clamp } from "../../math.js";
+import { clamp } from "../../foundation/math.js";
 import { shamisenHuntNeedsSplit } from "./tactics/shamisen-hunt.js";
 import { characterProfile } from "./characters/index.js";
 

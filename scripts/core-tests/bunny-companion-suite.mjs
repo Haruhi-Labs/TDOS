@@ -1,12 +1,12 @@
 import { setScenarioField } from './ship-fixture.mjs';
-import { spawnBunnyCompanion } from "../../shared/game/bunny-haruhi-runtime.js";
-import { convertZoneSupport } from "../../shared/game/rules/support-conversion.js";
+import { spawnBunnyCompanion } from "../../shared/game/characters/bunny-haruhi/form-port.js";
+import { convertZoneSupport } from "../../shared/game/characters/interactions/support-conversion.js";
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
-import { prepareBunnyCompanions, convertBunnyCompanion } from "../../shared/game/bunny-companion-runtime.js";
-import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
-import { resolveBunnyOtherworlderContacts } from "../../shared/game/character-contacts.js";
+import { prepareBunnyCompanions, convertBunnyCompanion } from "../../shared/game/characters/bunny-haruhi/companion-runtime.js";
+import { selectShamisenHuntTarget } from "../../shared/game/characters/shamisen/hunt.js";
+import { resolveBunnyOtherworlderContacts } from "../../shared/game/characters/interactions/character-contacts.js";
 import { createInputQueue } from "../../server/input-queue.js";
 import { applyStatePatch, createStatePatch, quantizeNetworkState } from "../../shared/network-patch.js";
 import { createOnlineStateSync } from "../../src/online/state-sync.js";

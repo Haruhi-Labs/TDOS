@@ -4,7 +4,7 @@ import {
   MAX_SPECTATORS_PER_ROOM,
   MAX_STREAM_CAPACITY_UNITS,
 } from "./config.js";
-import { normalizeLoadout, DEFAULT_TEAM_LOADOUT } from "../shared/game/characters.js";
+import { normalizeLoadout, DEFAULT_TEAM_LOADOUT } from "../shared/game/characters/catalog.js";
 import { messageCode } from "./protocol.js";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 

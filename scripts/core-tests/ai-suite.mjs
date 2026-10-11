@@ -1,11 +1,11 @@
 import { setScenarioField } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import { SearchBelief } from "../../shared/game/ai/policy/belief.js";
-import { cancelVisionWaveSkill } from "../../shared/game/vision-wave.js";
-import { disruptKoizumiBarrier } from "../../shared/game/koizumi-barrier.js";
-import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
+import { cancelVisionWaveSkill } from "../../shared/game/characters/asakura/vision-wave.js";
+import { disruptKoizumiBarrier } from "../../shared/game/characters/koizumi/barrier.js";
+import { selectShamisenHuntTarget } from "../../shared/game/characters/shamisen/hunt.js";
 import { aiFixture } from "./ai-fixture.mjs";
-import { unlockSupport } from "../../shared/game/haruhi-support.js";
+import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 import {
   CHARACTER_DEFS,
   MatchSimulation,

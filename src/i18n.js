@@ -1,6 +1,6 @@
 import { gameStorageKey } from "./deployment.js";
 import { CHARACTER_TEXT, MESSAGES } from "./i18n/catalog.js";
-import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/characters/bunny-haruhi/view-params.js";
 
 const STORAGE_KEY = gameStorageKey("haruhi-locale-v1");
 

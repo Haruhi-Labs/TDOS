@@ -1,5 +1,5 @@
 // 每个 AI 席位的运行器：创建动作端口与策略，并在每个逻辑帧驱动策略一次。
-import { BotController } from "../../bot-controller.js";
+import { BotController } from "../bot-controller.js";
 import { createActionPort } from "./action-port.js";
 
 export function createAiRunner(match, seat, { params } = {}) {

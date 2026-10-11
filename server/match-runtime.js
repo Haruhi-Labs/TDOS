@@ -1,6 +1,6 @@
 import { startRoomRunning, finishRoomMatch } from "./room-state.js";
-import { TICK_DT } from "../shared/game/constants.js";
-import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
+import { TICK_DT } from "../shared/game/foundation/constants.js";
+import { createFixedStepClock } from "../shared/game/runtime/fixed-step-clock.js";
 import {
   FINISHED_ROOM_CLOSE_DELAY_MS,
   LOOP_IDLE_MS,

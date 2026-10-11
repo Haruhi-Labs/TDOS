@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT } from "../../shared/game-core.js";
-import { randomInRange } from "../../shared/game/math.js";
-import { createAmbientRng, createSeededRng, rngFor } from "../../shared/game/rng.js";
+import { randomInRange } from "../../shared/game/foundation/math.js";
+import { createAmbientRng, createSeededRng, rngFor } from "../../shared/game/foundation/rng.js";
 import { withSeededRandom } from "./helpers.mjs";
 
 function take(rng, count) {

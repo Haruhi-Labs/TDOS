@@ -513,3 +513,12 @@ Ship 的 `route/command/forcedKnockback/cooldown` 改为只读，不再通过 se
 增加的普通 tick 中位成本约 0.061 ms，单人帧 p95 约 0.045 ms；超过 5% 建议线，不标记为性能无回退。此次接受有限开销以换取明确边界，未放宽指标。最大样本如表完整保留，未对离群原因作未经分析的归因。单人样本包含 840 个模拟帧及 840 个仅插值帧；模拟帧中位数 0.354208→0.386500 ms，p95 0.704375→0.741917 ms。
 
 本地详细证据：`node_modules/.cache/architecture-four-all.log`、`architecture-four-final-logic.log`、`architecture-four-final-command.log`、`architecture-four-build.log`、`architecture-four-diagrams.log`；原始性能样本位于忽略目录 `bench/architecture-acceptance/four-boundaries/`。这些证明本地固定种子、页面和回环网络行为，仍不等于远程多端、物理设备、所有阵容穷尽或线上生效。
+
+
+## 按职责与角色重排战斗目录（2026-10-12）
+
+迁移 82 个内部模块：基础工具归 `foundation/`，通用规则归 `rules/`，通用状态组件归 `systems/`，实体端口归 `adapters/`，快照归 `projection/`，对局时钟和动作入口归 `runtime/`。角色实现与 `extension.js` 归 `characters/<角色>/`；装配、跨角色能力和事务分别位于 `characters/assembly/`、`abilities/`、`interactions/`。角色特有纯求值仍属于角色层，不放进通用规则目录。
+
+`shared/game-core.js` 保持全部导出；内部调用直接迁移，不增加逐文件转发壳。同步静态/动态导入、测试、性能脚本、当前架构图与自动索引。旧 Git 性能对照保留历史路径；本文此前各节描述的是当时实现，历史路径请按当前[目录导航](../shared/game/README.md)定位。
+
+验证：静态门禁、完整 `test:logic`（含 32400 帧原始权威与 AI 回放）通过。251 个生产源码模块逐文件消除路径差异后与任务起点一致；没有修改算法、状态流、规则版本、发布版本或回放基线。新增基础工具和通用规则的目录依赖约束，原组件与 AI 边界没有放宽。

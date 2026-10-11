@@ -1,6 +1,6 @@
 // 焦点目标选择与战术上下文。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { clamp, distance } from "../../math.js";
+import { clamp, distance } from "../../foundation/math.js";
 import { buildKoizumiBarrierTactics, characterTargetPriorityBonus } from "./tactics/character-counterplay.js";
 import { buildShamisenHuntTactics } from "./tactics/shamisen-hunt.js";
 

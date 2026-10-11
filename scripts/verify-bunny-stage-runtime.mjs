@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { BunnyStageRuntime } from "../shared/game/rules/bunny-stage-runtime.js";
+import { BunnyStageRuntime } from "../shared/game/characters/bunny-haruhi/stage-runtime.js";
 let now = 0, valid = true;
 const calls = [];
 const runtime = new BunnyStageRuntime({
@@ -28,7 +28,7 @@ assert.equal(runtime.exposure(1).inside, false);
 assert.equal(history.inside, true);
 console.log("舞台运行时通过：无实体输入、受限命令、区间一次消费与历史隔离");
 
-const { BunnyFormRuntime } = await import("../shared/game/rules/bunny-form-runtime.js");
+const { BunnyFormRuntime } = await import("../shared/game/characters/bunny-haruhi/form-runtime.js");
 const steps = [];
 let support;
 const form = new BunnyFormRuntime({

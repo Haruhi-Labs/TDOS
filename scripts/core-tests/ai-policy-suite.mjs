@@ -5,7 +5,7 @@ import { resolveAiParams } from "../../shared/game/ai/params/index.js";
 import { characterProfile } from "../../shared/game/ai/policy/characters/index.js";
 import { characterDecisionFacts, characterDecisionInput } from "../../shared/game/ai/policy/characters/decision-view.js";
 import { RulePolicy } from "../../shared/game/ai/policy/rule-policy.js";
-import { createSeededRng } from "../../shared/game/rng.js";
+import { createSeededRng } from "../../shared/game/foundation/rng.js";
 
 const params = resolveAiParams();
 

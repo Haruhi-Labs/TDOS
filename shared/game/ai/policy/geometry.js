@@ -1,6 +1,6 @@
 // 几何计算只消费显式地图数据，不读取策略或观测上下文。
-import { fireArcDensityMultiplier } from "../../combat-rules.js";
-import { clamp, shortestAngleDelta, zoneContains } from "../../math.js";
+import { fireArcDensityMultiplier } from "../../rules/combat-rules.js";
+import { clamp, shortestAngleDelta, zoneContains } from "../../foundation/math.js";
 export function zoneById(zones, zoneId) {
 const safeId = clamp(Number(zoneId) || 5, 1, 9);
 return zones.find((zone) => zone.id === safeId) || zones[4];

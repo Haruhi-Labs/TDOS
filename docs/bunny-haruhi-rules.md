@@ -14,7 +14,7 @@
 
 ## 共享视图与前端合同
 
-`bunny-haruhi-view-params.js` 从冻结配置和支援常量派生文案数值；`src/battle/bunny-haruhi-view.js` 提供三个模式共用的技能展示元数据、原因和舰况。选角简介保持简短，完整规则与倍率放入可滚动技能详情。单人、联机及观战终局也通过统一素材地址复用原皮春日，身份仍为 `bunny_haruhi`。
+`characters/bunny-haruhi/view-params.js` 从冻结配置和支援常量派生文案数值；`src/battle/bunny-haruhi-view.js` 提供三个模式共用的技能展示元数据、原因和舰况。选角简介保持简短，完整规则与倍率放入可滚动技能详情。单人、联机及观战终局也通过统一素材地址复用原皮春日，身份仍为 `bunny_haruhi`。
 
 `serializeBunnyShip()` 在既有可选 `bunnyHaruhi` 内追加以下只读字段：
 
@@ -44,13 +44,13 @@
 
 | 文件                                        | 职责                                                                         |
 | ------------------------------------------- | ---------------------------------------------------------------------------- |
-| `shared/game/bunny-haruhi-config.js`        | 深冻结的独立基础值、技能ID、三项支援池、形态/舞台枚举、所有新倍率和时长      |
-| `shared/game/bunny-haruhi.js`               | 状态工厂、成功施放序列、资源方案、舞台状态转换、纯属性查询、持续区间计算     |
-| `shared/game/bunny-haruhi-companion.js`     | 伴随舰基础值派生、独立状态、可靠技能周期、策反/归还/退场意图及接收者生命周期 |
-| `shared/game/haruhi-support.js`             | 共用支援状态、有限池抽取、旧节拍调度、光球几何与碰撞冷却                     |
-| `shared/game/bunny-haruhi-support.js`       | 显式副舰来源、三项池以及新来源封印/恢复策略                                  |
-| `shared/game/bunny-haruhi-runtime.js`       | 内部构造定义、施放提交、舞台采样、持续资源、广播、来源清理及白名单摘要       |
-| `shared/game/bunny-companion-runtime.js`    | 注入实体工厂、跟随、死亡清理、自动技能、临时换队、母舰形态查询及公开摘要     |
+| `shared/game/characters/bunny-haruhi/config.js`        | 深冻结的独立基础值、技能ID、三项支援池、形态/舞台枚举、所有新倍率和时长      |
+| `shared/game/characters/bunny-haruhi/rules.js`               | 状态工厂、成功施放序列、资源方案、舞台状态转换、纯属性查询、持续区间计算     |
+| `shared/game/characters/bunny-haruhi/companion-rules.js`     | 伴随舰基础值派生、独立状态、可靠技能周期、策反/归还/退场意图及接收者生命周期 |
+| `shared/game/characters/haruhi/support.js`             | 共用支援状态、有限池抽取、旧节拍调度、光球几何与碰撞冷却                     |
+| `shared/game/characters/bunny-haruhi/support.js`       | 显式副舰来源、三项池以及新来源封印/恢复策略                                  |
+| `shared/game/characters/bunny-haruhi/form-port.js`       | 内部构造定义、施放提交、舞台采样、持续资源、广播、来源清理及白名单摘要       |
+| `shared/game/characters/bunny-haruhi/companion-runtime.js`    | 注入实体工厂、跟随、死亡清理、自动技能、临时换队、母舰形态查询及公开摘要     |
 | `scripts/core-tests/bunny-haruhi-suite.mjs` | 上述规则的边界测试，默认随 `test:core` 执行                                  |
 
 纯规则依赖仅为配置、共用支援及已有推进/数学叶模块。运行时适配层可读取角色目录、调用注入的Ship工厂，但不反向导入战斗入口、服务端或显示模块，不新增依赖包。配置完全独立于普通春日，不能通过修改旧角色对象构造变体。普通春日和兔女郎的状态工厂调用同一个 `createSupportState`，各自持有独立容器。
@@ -143,7 +143,7 @@ bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少
 
 ## 支援有限抽取合同
 
-`haruhi-flagship.js` 保留全部24个旧导出、普通春日旗舰身份判断、主动增益、吸弹线段算法及原快照结构。仅把状态工厂、池抽取、定时调度、环绕几何和异世界人冷却委托给 `haruhi-support.js`。旧 `hasHaruhiSupport` 不识别兔女郎，不替换 `team.haruhiFlagship`，不改旧碰撞/屏障调用方。
+`characters/haruhi/flagship.js` 保留全部24个旧导出、普通春日旗舰身份判断、主动增益、吸弹线段算法及原快照结构。仅把状态工厂、池抽取、定时调度、环绕几何和异世界人冷却委托给 `characters/haruhi/support.js`。旧 `hasHaruhiSupport` 不识别兔女郎，不替换 `team.haruhiFlagship`，不改旧碰撞/屏障调用方。
 
 | 接口                                                                              | 输入、更新与边界                                                                                                            |
 | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |

@@ -1,4 +1,4 @@
-import { clamp, distance, shortestAngleDelta } from "../math.js";
+import { clamp, distance, shortestAngleDelta } from "../foundation/math.js";
 
 // 武器拥有开火周期；瞄准算法只消费目标数据和发射能力。
 export class WeaponCycle {

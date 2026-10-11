@@ -1,4 +1,4 @@
-import { CHARACTER_DEFS, characterDefinition } from "../shared/game/characters.js";
+import { CHARACTER_DEFS, characterDefinition } from "../shared/game/characters/catalog.js";
 import { characterText, getLocale, skillText } from "./i18n.js";
 
 const localized = new Map();

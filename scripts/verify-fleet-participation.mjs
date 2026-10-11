@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { Ship } from "../shared/game/model/ship.js";
-import { selectShamisenHuntTarget } from "../shared/game/shamisen-hunt.js";
+import { selectShamisenHuntTarget } from "../shared/game/characters/shamisen/hunt.js";
 
 const match = new MatchSimulation({ seed: 311, teamLoadouts: {
   A: { main: "kyon", sub1: "yuki", sub2: "future1096" },

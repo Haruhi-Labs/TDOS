@@ -1,6 +1,6 @@
 import { Room } from "./room.js";
 import { copyPlainData } from "../shared/data/plain-data.js";
-import { cloneLoadout, DEFAULT_AI_LOADOUT, randomAiLoadout } from "../shared/game/characters.js";
+import { cloneLoadout, DEFAULT_AI_LOADOUT, randomAiLoadout } from "../shared/game/characters/catalog.js";
 import { ROOM_CAPACITY } from "./config.js";
 
 const PLAYER_SEATS = ["A", "B"];

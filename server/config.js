@@ -1,4 +1,4 @@
-import { SNAPSHOT_RATE } from "../shared/game/constants.js";
+import { SNAPSHOT_RATE } from "../shared/game/foundation/constants.js";
 import { resolve } from "node:path";
 
 function envInteger(name, fallback, min, max) {

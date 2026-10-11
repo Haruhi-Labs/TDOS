@@ -6,7 +6,7 @@ import { createServer } from "vite";
 import { CHARACTER_ORDER, MatchSimulation, skillMetaForCharacter } from "../shared/game-core.js";
 import { setLocale, skillText } from "../src/i18n.js";
 import { CHARACTER_TEXT } from "../src/i18n/catalog.js";
-import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/characters/bunny-haruhi/view-params.js";
 import { skillDetailRows, skillOverview } from "../src/character-select/skill-presentation.js";
 const onlyCharacter = process.argv.find((arg) => arg.startsWith("--character="))?.slice("--character=".length);
 if (onlyCharacter) assert.ok(CHARACTER_ORDER.includes(onlyCharacter), "未知的定向视觉角色");

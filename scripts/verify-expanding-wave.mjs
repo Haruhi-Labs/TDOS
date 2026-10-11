@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createExpandingWave, expandingWaveCoversEntity } from "../shared/game/systems/expanding-wave.js";
-import { createExpandingWave as createVisionWave } from "../shared/game/vision-wave.js";
+import { createExpandingWave as createVisionWave } from "../shared/game/characters/asakura/vision-wave.js";
 
 const source = Object.freeze({ id: 17, x: 300, y: 400 });
 const wave = createExpandingWave({ worldSize: 1000, now: 2, source, id: 3 });

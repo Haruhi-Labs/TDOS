@@ -2,7 +2,7 @@ import { createPolicyProgram } from "./policy-program.js";
 import { copyPlainData, freezePlainData } from "../../../data/plain-data.js";
 // 规则策略：只通过端口读取观测、提交动作，数值来自参数表，随机取自分配的随机流。
 // 本文件编排阶段并持有移动计划；情报、搜索、侦察和技能调度由各组件独占，启发式阶段读取策略上下文。
-import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
+import { SCOUT_LAUNCH_COST } from "../../rules/combat-rules.js";
 import { normalizeAiDifficulty, resolveAiParams } from "../params/index.js";
 import { ScoutDoctrine } from "./tactics/yuki-scout.js";
 import { ObservationView } from "./observation-view.js";

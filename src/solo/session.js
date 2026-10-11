@@ -1,6 +1,6 @@
 import { MatchSimulation } from "../../shared/game/runtime/match-simulation.js";
-import { TICK_DT } from "../../shared/game/constants.js";
-import { createFixedStepClock } from "../../shared/game/fixed-step-clock.js";
+import { TICK_DT } from "../../shared/game/foundation/constants.js";
+import { createFixedStepClock } from "../../shared/game/runtime/fixed-step-clock.js";
 import { freezePlainData } from "../../shared/data/plain-data.js";
 import { interpolateBattleState } from "../battle/state-interpolation.js";
 

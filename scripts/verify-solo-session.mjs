@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createSoloSession } from "../src/solo/session.js";
-import { TICK_DT } from "../shared/game/constants.js";
+import { TICK_DT } from "../shared/game/foundation/constants.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 
 const ticks = (state) => Math.round(state.elapsed / TICK_DT);

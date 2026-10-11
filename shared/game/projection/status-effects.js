@@ -1,0 +1,112 @@
+import { CHARACTER_DEFS } from "../characters/catalog.js";
+import { COLLISION_SLOW_DURATION } from "../systems/collision-system.js";
+import { HARUHI_SUPPORT_LABELS } from "../characters/haruhi/flagship.js";
+import { serializeKoizumiBarrier } from "../characters/koizumi/barrier.js";
+import { STATUS_EFFECT_DEFS } from "./status-effect-definitions.js";
+import { BUNNY_VIEW_PARAMS } from "../characters/bunny-haruhi/view-params.js";
+import { BUNNY_HARUHI_CONFIG as C } from "../characters/bunny-haruhi/config.js";
+import { bunnyBroadcastsShip } from "../characters/bunny-haruhi/form-port.js";
+import { bunnyStageEnabled } from "../characters/bunny-haruhi/stage-port.js";
+import { bunnyCompanionForm, bunnyReliableState } from "../characters/bunny-haruhi/companion-runtime.js";
+
+// 只发送该图标需要的文案参数，避免覆盖 duration 等状态寿命字段。
+const BUNNY_STATUS_PARAMS = Object.fromEntries(Object.entries(STATUS_EFFECT_DEFS)
+  .filter(([id]) => id.startsWith("bunny_"))
+  .map(([id, definition]) => [id, Object.fromEntries([...definition.description.matchAll(/\{(\w+)\}/g)]
+    .map(([, key]) => [key, BUNNY_VIEW_PARAMS[key]]))]));
+
+export function statusEffectNames(effects) {
+  return effects.map(({ id }) => STATUS_EFFECT_DEFS[id].name);
+}
+
+// 状态卡只读取权威数据；常驻效果不虚构倒计时，复合形态分别列出增益与减益。
+export function serializeShipStatusEffects(ship) {
+  if (!ship.alive) return [];
+  const team = ship.team;
+  const now = team.match.elapsed;
+  const statuses = [];
+  const add = (id, expiresAt = null, duration = null, detail = {}) => {
+    if (expiresAt !== null && expiresAt <= now) return;
+    statuses.push({ id, expiresAt, duration, remaining: expiresAt === null ? null : Math.max(0, expiresAt - now), ...detail });
+  };
+  const timed = (id, expiresAt, duration) => add(id, Number(expiresAt) || 0, Math.max(duration, (Number(expiresAt) || 0) - now));
+  timed("reliable", ship.effects.reliableUntil, CHARACTER_DEFS.kyon.subSkill.duration);
+  timed("blade_queen", ship.effects.bladeQueenUntil, CHARACTER_DEFS.asakura.subSkill.duration);
+  timed("cat_paw", ship.effects.catPawUntil, CHARACTER_DEFS.shamisen.subSkill.duration);
+  if (ship.effects.nextShotDamageMultiplier > 1) add("next_shot", null, null, { multiplier: ship.effects.nextShotDamageMultiplier });
+  if (ship.koizumiOrb) {
+    if (ship.koizumiOrb.phase === "active") timed("esper_orb", ship.koizumiOrb.activeUntil, CHARACTER_DEFS.koizumi.subSkill.duration);
+    else add("esper_return");
+  }
+  timed("stun", ship.effects.stunnedUntil, CHARACTER_DEFS.koizumi.subSkill.stunDuration);
+  timed("silence", ship.effects.silencedUntil, CHARACTER_DEFS.koizumi.subSkill.silenceDuration);
+  const shock = ship.heroPowerShock;
+  timed("hero_lock", shock.lockUntil, Math.max(0, shock.lockUntil - shock.hitAt));
+  timed("hero_shock", shock.recoveryUntil, Math.max(0, shock.recoveryUntil - shock.hitAt));
+  timed("collision_slow", ship.collisionSlowUntil, COLLISION_SLOW_DURATION);
+  if (ship.forcedKnockback) {
+    const { startedAt, endsAt } = ship.forcedKnockback;
+    timed("knockback", endsAt, endsAt - startedAt);
+  }
+  if (ship.clawMarks.stacks > 0) add("claw_marks", ship.clawMarks.expiresAt, CHARACTER_DEFS.shamisen.subSkill.markDuration, {
+    stacks: ship.clawMarks.stacks, required: ship.clawMarks.required,
+  });
+  const enemy = team.match.enemyTeamBySeat(team.seat);
+  if (enemy?.mainCharacterId() === "shamisen" && enemy.shamisenHunt.targetId === ship.id) add("hunt", null, null, { multiplier: CHARACTER_DEFS.shamisen.flagshipSkill.damageMultiplier });
+  timed("sponsor", team.effects.sponsorUntil, CHARACTER_DEFS.tsuruya.flagshipSkill.duration);
+  timed("vision_wave", team.visionWaveSkill.activeUntil, CHARACTER_DEFS.asakura.flagshipSkill.duration);
+  if (team.hasKyonFlagship()) add("kyon_maneuver");
+  if (team.mainCharacterId() === "haruhi") {
+    timed("haruhi_boost", team.effects.haruhiBoostUntil, CHARACTER_DEFS.haruhi.flagshipSkill.duration);
+    timed("broadcast", team.effects.haruhiBoostUntil, CHARACTER_DEFS.haruhi.flagshipSkill.duration);
+    if (ship.key === "main") {
+      for (const support of Object.keys(HARUHI_SUPPORT_LABELS)) {
+        if (team.haruhiFlagship.supporters.has(support)) add(`support_${support}`);
+      }
+    }
+  }
+  if (team.mainCharacterId() === "future1096" && team.future1096Form) {
+    add(team.future1096Form === "A" ? "form_a_boost" : "form_b_defense");
+    add(team.future1096Form === "A" ? "form_a_vulnerable" : "form_b_slow");
+  }
+  if (ship.key === "main" && team.mainCharacterId() === "koizumi") {
+    const barrier = serializeKoizumiBarrier(team);
+    if (barrier.active) add("barrier", null, null, { stacks: barrier.remainingHits, required: barrier.maxHits });
+  }
+  const form = ship.bunnyHaruhi || (ship.bunnyCompanion ? bunnyCompanionForm(ship) : null);
+  const enabled = !team.areSkillsDisabled();
+  const bunny = (id, end = null, duration = null) => add(id, end, duration, BUNNY_STATUS_PARAMS[id]);
+  if (form) {
+    if (form.form === "bless") {
+      if (enabled && !form.positiveSuppressed) bunny("bunny_bless");
+      bunny("bunny_vulnerable");
+    }
+    if (form.form === "knows") {
+      bunny("bunny_knows");
+      if (enabled) {
+        bunny("bunny_immunity", form.immunityUntil, C.knows.immunitySeconds);
+        if (ship.bunnyHaruhi) bunny("bunny_drain", form.drainUntil, C.knows.selfDrainSeconds);
+      }
+    }
+    if (ship.bunnyHaruhi && enabled && form.form === "encore") {
+      bunny("bunny_encore", form.formStartedAt + C.encore.lockSeconds, C.encore.lockSeconds);
+    }
+    if (ship.bunnyHaruhi && ship.key !== "main" && enabled) {
+      for (const id of C.supportIds) if (form.support.supporters.has(id)) bunny(`bunny_${id}`);
+    }
+  }
+  const stage = ship.bunnyStageExposure;
+  if (stage && bunnyStageEnabled(ship)) {
+    if (stage.phase === "speechless") bunny("bunny_speechless", stage.enteredAt + C.stage.entranceSeconds, C.stage.entranceSeconds);
+    if (stage.phase === "entranced") bunny("bunny_entranced");
+    if (!ship.isControlImmune()) {
+      bunny("bunny_lock", stage.lockUntil, C.stage.lockSeconds);
+      if (now >= stage.lockUntil) bunny("bunny_recovery", stage.recoveryUntil, C.stage.recoverySeconds);
+    }
+  }
+  const reliable = ship.bunnyReliable && bunnyReliableState(ship);
+  if (enabled && reliable && !reliable.suppressed) bunny("bunny_reliable", reliable.until, C.companion.durationSeconds);
+  if (ship.bunnyCompanion?.convertedUntil > now) bunny("bunny_converted", ship.bunnyCompanion.convertedUntil, C.companion.bribeSeconds);
+  if (team.match.bunnyHaruhiActive && bunnyBroadcastsShip(team, ship)) bunny("bunny_broadcast");
+  return statuses;
+}

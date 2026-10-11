@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolveVisionWavePurges } from "../shared/game/vision-wave-purge.js";
+import { resolveVisionWavePurges } from "../shared/game/systems/vision-wave-purge.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 // 编号是阶段中的不透明目标，阶段无需取得真实舰船或其组件。

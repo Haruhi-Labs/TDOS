@@ -1,6 +1,6 @@
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import assert from "node:assert/strict";
-import { SponsorEffect } from "../shared/game/sponsor-effect.js";
+import { SponsorEffect } from "../shared/game/characters/tsuruya/sponsor-effect.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 let now = 10;

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { FleetPerception } from "../shared/game/systems/visibility.js";
-import { FleetFireControl } from "../shared/game/targeting-system.js";
+import { FleetFireControl } from "../shared/game/systems/targeting-system.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 const perception = new FleetPerception();

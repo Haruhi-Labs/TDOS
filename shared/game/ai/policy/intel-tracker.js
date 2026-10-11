@@ -1,9 +1,9 @@
 // 情报记忆：带反应延迟地吸收可见实体、雷达接触与猎杀标记，并把旧情报外推成当前估计。
 // 情报组件独占接触记录和待确认队列；策略只接收不可变记录及搜索区域通知。
 import { copyPlainData, freezePlainData } from "../../../data/plain-data.js";
-import { CHARACTER_DEFS } from "../../characters.js";
-import { TICK_DT } from "../../constants.js";
-import { zoneContains, clamp } from "../../math.js";
+import { CHARACTER_DEFS } from "../../characters/catalog.js";
+import { TICK_DT } from "../../foundation/constants.js";
+import { zoneContains, clamp } from "../../foundation/math.js";
 
 export class IntelTracker {
   #port;

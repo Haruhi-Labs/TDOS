@@ -1,5 +1,5 @@
 import { freezePlainData } from "../shared/data/plain-data.js";
-import { SNAPSHOT_RATE } from "../shared/game/constants.js";
+import { SNAPSHOT_RATE } from "../shared/game/foundation/constants.js";
 import { createStatePatch } from "../shared/network-patch.js";
 import {
   CONGESTION_ACK_AGE_MS,

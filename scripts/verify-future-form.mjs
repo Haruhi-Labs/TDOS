@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { FutureFlagshipForm } from "../shared/game/future-flagship-form.js";
+import { FutureFlagshipForm } from "../shared/game/characters/future1096/flagship-form.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 let enabled = true;

@@ -1,4 +1,4 @@
-import { STATUS_EFFECT_DEFS } from "../../shared/game/status-effect-definitions.js";
+import { STATUS_EFFECT_DEFS } from "../../shared/game/projection/status-effect-definitions.js";
 import { t } from "../i18n.js";
 import "./status-effects.css";
 

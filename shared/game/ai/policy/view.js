@@ -1,6 +1,6 @@
 // 观测访问助手：己方舰船索引、编队能量池、可见敌方编号与世界边界钳制。
 // 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
-import { clamp } from "../../math.js";
+import { clamp } from "../../foundation/math.js";
 
 export const viewMethods = {
   ownShip({ obs: policyObs, ownShips: capOwnShips, ownShipById: capOwnShipById }, shipOrKey) {

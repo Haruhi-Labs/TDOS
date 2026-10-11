@@ -1,8 +1,8 @@
 # 游戏模块架构图与状态所有权
 
-源码基线：`9139545`，资源、运行时、角色契约与 AI 输入输出重构后，2026-10-11。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
+行为基线：`9139545`；目录与路径更新于 2026-10-12，与本文件同提交的源码对应。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
 
-这是一张分成九个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。静态模块全量索引见 [模块索引](architecture-module-index.md)。
+这是一张分成九个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。目录选择与任务定位见 [战斗代码导航](../shared/game/README.md)，静态模块全量索引见 [模块索引](architecture-module-index.md)。
 
 核心写权限已由对应所有者收回：实体和组件发布只读状态，AI 只消费冻结观测与候选，角色求值消费事实，角色装配与固定阶段归角色层，房间聚合独占成员和生命周期。图中仍保留必要的跨所有者命令与适配关系；它们必须通过领域操作同步完成，不能退回共享字段赋值。
 
@@ -27,8 +27,8 @@ flowchart TB
     localMatch["浏览器 MatchSimulation"]
     serverMatch["服务端 MatchSimulation"]
     core["shared/game-core.js<br/>兼容导出，不承载规则实现"]
-    clock["shared/game/fixed-step-clock.js<br/>固定 30Hz 步进"]
-    dispatch["shared/game/action-dispatcher.js<br/>动作与领域资格校验"]
+    clock["shared/game/runtime/fixed-step-clock.js<br/>固定 30Hz 步进"]
+    dispatch["shared/game/runtime/action-dispatcher.js<br/>动作与领域资格校验"]
   end
   subgraph server[回环或远程服务]
     ws["server/server.js / protocol.js<br/>连接、握手、消息分发"]
@@ -90,19 +90,19 @@ flowchart LR
     ST["systems/ship-status.js<br/>ShipStatus<br/>定时效果、生效帧、下发充能"]
   end
   subgraph ports[受限能力适配]
-    NP["rules/navigation-port.js<br/>只读运动参数与飞行提交操作"]
-    CP["rules/ship-combat-port.js<br/>武器端口与承伤端口"]
-    COL["rules/collision-port.js<br/>实时只读几何与位移操作"]
+    NP["adapters/navigation-port.js<br/>只读运动参数与飞行提交操作"]
+    CP["adapters/ship-combat-port.js<br/>武器端口与承伤端口"]
+    COL["adapters/collision-port.js<br/>实时只读几何与位移操作"]
   end
   subgraph rules[规则与角色扩展]
     HD["systems/hull-damage.js<br/>攻击增幅、分摊、扣血、死亡顺序"]
-    CR["rules/character-rules.js<br/>属性、资格、伤害、控制、广播"]
-    SE["rules/ship-effects.js<br/>初始化、净化、专属移动、命中扩展"]
-    DEST["rules/ship-destruction.js<br/>伴随清理、猎杀后继效果"]
+    CR["characters/abilities/character-rules.js<br/>属性、资格、伤害、控制、广播"]
+    SE["characters/assembly/ship-effects.js<br/>初始化、净化、专属移动、命中扩展"]
+    DEST["characters/interactions/ship-destruction.js<br/>伴随清理、猎杀后继效果"]
     ROLE["角色运行时<br/>光球、震慑、抓痕、形态、可靠效果"]
   end
   PUB["F2 · Ship 私有基础状态<br/>资源、运动、归属、存活、偏移<br/>getter 发布，无原始导航 setter<br/>资源比例意图校验后提交"]
-  PROJ["rules/ship-projection.js<br/>status-effects.js<br/>独立协议数据"]
+  PROJ["projection/ship-projection.js<br/>projection/status-effects.js<br/>独立协议数据"]
   TEAM["Team / MatchSimulation<br/>成员、世界、生成与退场"]
   S ==>|独占实例| N & W & ST
   N --> NP
@@ -117,7 +117,7 @@ flowchart LR
   S -->|阶段扩展| SE
   SE --> ROLE
   CR -.->|读角色状态| ROLE
-  CR -->|F4：即时采样，求值器不接收实体| FACTS["rules/attribute-facts.js<br/>rules/attribute-evaluation.js"]
+  CR -->|F4：即时采样，求值器不接收实体| FACTS["characters/abilities/attribute-facts.js<br/>characters/abilities/attribute-evaluation.js"]
   ROLE -->|调用领域操作| S
   HD -->|死亡端口| DEST
   DEST --> TEAM
@@ -139,24 +139,24 @@ flowchart LR
     AC["systems/aircraft-operations.js<br/>AircraftOperations<br/>侦察机、僚机集合与生产周期"]
     BM["systems/beam-system.js<br/>BeamSystem<br/>蓄力光线与命中生命周期"]
     V["systems/visibility.js<br/>FleetPerception<br/>可见集合的不可变采样"]
-    FC["targeting-system.js<br/>FleetFireControl<br/>当轮集火分配"]
+    FC["systems/targeting-system.js<br/>FleetFireControl<br/>当轮集火分配"]
   end
   subgraph adapters[各组件能力端口]
-    FP["rules/formation-port.js"]
-    SP["rules/team-skill-port.js<br/>rules/active-skills.js"]
-    AP["rules/aircraft-port.js"]
-    BP["rules/beam-port.js"]
-    VP["visibility-radar.js<br/>visibilityInputs / 雷达状态"]
-    FCP["rules/fire-control.js<br/>候选 DTO 与实体映射"]
+    FP["adapters/formation-port.js"]
+    SP["adapters/team-skill-port.js<br/>characters/assembly/active-skills.js"]
+    AP["adapters/aircraft-port.js"]
+    BP["adapters/beam-port.js"]
+    VP["adapters/visibility-radar.js<br/>visibilityInputs / 雷达状态"]
+    FCP["adapters/fire-control.js<br/>候选 DTO 与实体映射"]
   end
   subgraph specific[队级角色组件与运行时]
-    HF["rules/haruhi-flagship-port.js<br/>haruhi-flagship-runtime.js<br/>haruhi-flagship.js / haruhi-support.js"]
-    SF["rules/sponsor-port.js<br/>sponsor-effect.js"]
-    FF["rules/future-form-port.js<br/>future-flagship-form.js"]
-    VW["vision-wave.js<br/>波纹持有与发波周期"]
-    KB["koizumi-barrier.js / koizumi-orb.js<br/>护盾与冲击波队级状态"]
-    SH["shamisen-hunt.js<br/>猎杀目标与后继选择"]
-    BH["bunny-haruhi-runtime.js<br/>队伍支援阶段"]
+    HF["characters/haruhi/flagship-port.js<br/>characters/haruhi/flagship-runtime.js<br/>characters/haruhi/flagship.js / characters/haruhi/support.js"]
+    SF["characters/tsuruya/sponsor-port.js<br/>characters/tsuruya/sponsor-effect.js"]
+    FF["characters/future1096/form-port.js<br/>characters/future1096/flagship-form.js"]
+    VW["characters/asakura/vision-wave.js<br/>波纹持有与发波周期"]
+    KB["characters/koizumi/barrier.js / characters/koizumi/orb.js<br/>护盾与冲击波队级状态"]
+    SH["characters/shamisen/hunt.js<br/>猎杀目标与后继选择"]
+    BH["characters/bunny-haruhi/form-port.js<br/>队伍支援阶段"]
   end
   M["runtime/match-simulation.js"]
   S["Ship / Scout / Wingman<br/>各自提交实体状态"]
@@ -169,19 +169,19 @@ flowchart LR
   V -->|消费采样输入| VP
   FC -->|消费候选数据| FCP
   FP & SP & AP & BP & FCP -->|提交领域操作| S
-  ASSEMBLY["rules/character-assembly.js<br/>rules/character-team.js<br/>装配并独占队级角色组件"]
-  EXT["rules/extensions/index.js<br/>九角色统一声明"]
-  CONTRACT["rules/extension-contract.js<br/>校验能力、钩子、技能、阶段与投影冲突"]
+  ASSEMBLY["characters/assembly/character-assembly.js<br/>characters/assembly/character-team.js<br/>装配并独占队级角色组件"]
+  EXT["characters/assembly/registry.js<br/>九角色统一声明"]
+  CONTRACT["characters/assembly/extension-contract.js<br/>校验能力、钩子、技能、阶段与投影冲突"]
   EXT --> CONTRACT --> ASSEMBLY
   T -->|装配与领域操作| ASSEMBLY
   ASSEMBLY ==>|角色组件| HF & SF & FF
   ASSEMBLY -->|消费声明中的有序钩子| VW & KB & SH & BH
-  LAUNCH["rules/character-launch.js<br/>技能机群、随机支援与光线规则"]
+  LAUNCH["characters/interactions/character-launch.js<br/>技能机群、随机支援与光线规则"]
   ASSEMBLY & SP & BH --> LAUNCH
   LAUNCH -->|统一接收成员及入队光线| T
   M -->|A 后 B 固定顺序| T
   T -->|逐实体推进、立即开火| S
-  TP["rules/team-projection.js<br/>角色与通用状态的协议投影"]
+  TP["projection/team-projection.js<br/>角色与通用状态的协议投影"]
   T -->|只读序列化| TP
   TP -.->|消费状态| VW & KB & SH & HF
 ```
@@ -192,40 +192,40 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  DEF["characters.js<br/>冻结角色定义、技能元数据"]
-  AS["rules/active-skills.js<br/>消费角色声明中的主动技能"]
-  SE["rules/ship-effects.js<br/>专属技能、净化和命中挂接"]
-  CR["rules/character-rules.js<br/>跨角色属性及资格组合"]
-  PROJ["rules/ship-projection.js / status-effects.js<br/>AI bridge/observation.js<br/>分别生成表现与策略读模型"]
-  PH["F5 · rules/character-assembly.js<br/>extensions/index.js / extension-contract.js<br/>统一声明、冲突校验、固定阶段装配"]
+  DEF["characters/catalog.js<br/>冻结角色定义、技能元数据"]
+  AS["characters/assembly/active-skills.js<br/>消费角色声明中的主动技能"]
+  SE["characters/assembly/ship-effects.js<br/>专属技能、净化和命中挂接"]
+  CR["characters/abilities/character-rules.js<br/>跨角色属性及资格组合"]
+  PROJ["projection/ship-projection.js / projection/status-effects.js<br/>AI bridge/observation.js<br/>分别生成表现与策略读模型"]
+  PH["F5 · characters/assembly/character-assembly.js<br/>characters/assembly/registry.js / extension-contract.js<br/>统一声明、冲突校验、固定阶段装配"]
   subgraph haruhi[普通春日]
-    H["haruhi-flagship-runtime.js<br/>强化到期与同帧保护"]
-    HS["haruhi-support.js<br/>来源私有调度、支援池、冲撞冷却"]
-    HP["haruhi-hero-power.js<br/>rules/hero-power-runtime.js<br/>勇者之力事件、震慑"]
+    H["characters/haruhi/flagship-runtime.js<br/>强化到期与同帧保护"]
+    HS["characters/haruhi/support.js<br/>来源私有调度、支援池、冲撞冷却"]
+    HP["characters/haruhi/hero-power.js<br/>characters/haruhi/hero-power-runtime.js<br/>勇者之力事件、震慑"]
   end
   subgraph bunny[兔女郎春日与伴随阿虚]
-    BC["bunny-haruhi-config.js"]
-    BP["bunny-haruhi.js<br/>纯形态、舞台、资源意图"]
-    BR["bunny-haruhi-runtime.js<br/>受限形态事务能力适配"]
-    FORM["rules/bunny-form-runtime.js<br/>形态历史与同步事务"]
-    STAGEPORT["rules/bunny-stage-port.js<br/>实体到编号、事实与有限命令"]
-    STAGE["rules/bunny-stage-runtime.js<br/>舞台区域、接收者、持续游标"]
-    BPROJ["rules/bunny-projection.js<br/>只读协议投影"]
-    BS["bunny-haruhi-support.js<br/>显式副舰支援来源"]
-    BCP["bunny-haruhi-companion.js<br/>纯伴随与策反计划、资格"]
-    BCR["bunny-companion-runtime.js<br/>伴随关系、可靠效果、归还与跟随"]
+    BC["characters/bunny-haruhi/config.js"]
+    BP["characters/bunny-haruhi/rules.js<br/>纯形态、舞台、资源意图"]
+    BR["characters/bunny-haruhi/form-port.js<br/>受限形态事务能力适配"]
+    FORM["characters/bunny-haruhi/form-runtime.js<br/>形态历史与同步事务"]
+    STAGEPORT["characters/bunny-haruhi/stage-port.js<br/>实体到编号、事实与有限命令"]
+    STAGE["characters/bunny-haruhi/stage-runtime.js<br/>舞台区域、接收者、持续游标"]
+    BPROJ["characters/bunny-haruhi/projection.js<br/>只读协议投影"]
+    BS["characters/bunny-haruhi/support.js<br/>显式副舰支援来源"]
+    BCP["characters/bunny-haruhi/companion-rules.js<br/>纯伴随与策反计划、资格"]
+    BCR["characters/bunny-haruhi/companion-runtime.js<br/>伴随关系、可靠效果、归还与跟随"]
   end
   subgraph other[其他角色]
-    K["阿虚：rules/extensions/kyon.js<br/>ShipStatus / FleetFormation<br/>被动编队倍率、可靠增益"]
-    Y["长门：visibility-radar.js<br/>AircraftOperations + Scout<br/>雷达、战斗侦察与爆发侦察"]
-    KO["古泉：koizumi-barrier.js<br/>koizumi-orb.js<br/>护盾、光球、接触与冲击波"]
-    FU["未来1096：future-flagship-form.js<br/>BeamSystem<br/>队级形态与副舰蓄力光线"]
-    TS["鹤屋：sponsor-effect.js<br/>rules/support-conversion.js<br/>赞助与战区策反事务"]
-    A["朝仓：vision-wave.js<br/>vision-wave-purge.js<br/>ShipStatus / character-contacts.js"]
-    SH["三味线：shamisen-hunt.js<br/>shamisen-claw.js<br/>猎杀、抓痕、猫爪弹体"]
+    K["阿虚：characters/kyon/extension.js<br/>ShipStatus / FleetFormation<br/>被动编队倍率、可靠增益"]
+    Y["长门：adapters/visibility-radar.js<br/>AircraftOperations + Scout<br/>雷达、战斗侦察与爆发侦察"]
+    KO["古泉：characters/koizumi/barrier.js<br/>characters/koizumi/orb.js<br/>护盾、光球、接触与冲击波"]
+    FU["未来1096：characters/future1096/flagship-form.js<br/>BeamSystem<br/>队级形态与副舰蓄力光线"]
+    TS["鹤屋：characters/tsuruya/sponsor-effect.js<br/>characters/interactions/support-conversion.js<br/>赞助与战区策反事务"]
+    A["朝仓：characters/asakura/vision-wave.js<br/>systems/vision-wave-purge.js<br/>ShipStatus / characters/interactions/character-contacts.js"]
+    SH["三味线：characters/shamisen/hunt.js<br/>characters/shamisen/claw.js<br/>猎杀、抓痕、猫爪弹体"]
   end
   EX["systems/expanding-wave.js<br/>通用波前命中与历史"]
-  CONTACT["character-contacts.js<br/>contact-geometry.js<br/>角色接触及几何资格"]
+  CONTACT["characters/interactions/character-contacts.js<br/>rules/contact-geometry.js<br/>角色接触及几何资格"]
   BR --> FORM
   STAGEPORT --> STAGE
   STAGE -->|有限命令| STAGEPORT
@@ -263,13 +263,13 @@ flowchart LR
 
 ## 图五：AI 的实际内部结构
 
-相对路径位于 `shared/game/ai/`，BotController 位于上一级。
+相对路径位于 `shared/game/ai/`，BotController 位于该目录的 `bot-controller.js`。
 
 ```mermaid
 flowchart LR
   MATCH["MatchSimulation"]
   RUN["bridge/runner.js<br/>每席随机流与驱动"]
-  BOT["bot-controller.js<br/>Proxy 数据参数校验<br/>不发布端口或随机流，链式返回留在门面"]
+  BOT["ai/bot-controller.js<br/>Proxy 数据参数校验<br/>不发布端口或随机流，链式返回留在门面"]
   RP["policy/rule-policy.js<br/>RulePolicy：私有调度、模式与计划提交"]
   OBSBUILD["bridge/observation.js<br/>实体到有权知道的纯数据"]
   PORT["bridge/action-port.js<br/>观察缓存、提交动作、失效"]
@@ -290,10 +290,10 @@ flowchart LR
     ACT["commands.js / scout.js / skills.js<br/>debug-state.js"]
   end
   SEARCH["F3 · policy/search-navigation.js<br/>私有区域、游标、方向、推进时间<br/>候选凭证与版本校验，显式消费"]
-  TACTIC["tactics/bunny-stage.js<br/>character-counterplay.js / shamisen-hunt.js"]
+  TACTIC["tactics/bunny-stage.js<br/>character-counterplay.js / characters/shamisen/hunt.js"]
   FACT["characters/decision-view.js<br/>复制并冻结事实和输入"]
   PROFILE["characters/index.js + 九个角色档案<br/>冻结注册表、纯角色决策"]
-  DISPATCH["action-dispatcher.js<br/>标准动作；侦察扩展由桥适配"]
+  DISPATCH["runtime/action-dispatcher.js<br/>标准动作；侦察扩展由桥适配"]
   MATCH --> RUN
   RUN --> BOT --> RP
   RUN --> PORT
@@ -360,12 +360,12 @@ flowchart TB
 ```mermaid
 flowchart TB
   S["Ship 属性与资格查询"]
-  R["rules/character-rules.js<br/>实体读取适配边界"]
+  R["characters/abilities/character-rules.js<br/>实体读取适配边界"]
   M["Team / FleetFormation<br/>只返回编队成员关系"]
-  A["rules/attribute-facts.js<br/>sampleAttributeFacts / sampleControlFacts<br/>sampleImmunityFacts / sampleDamageFacts"]
+  A["characters/abilities/attribute-facts.js<br/>sampleAttributeFacts / sampleControlFacts<br/>sampleImmunityFacts / sampleDamageFacts"]
   REL["伴随、可靠与舞台来源关系<br/>创建或授予时登记 WeakMap<br/>即时校验存活、归属、成员资格"]
   FACT["冻结普通事实<br/>时间、效果、形态、数值<br/>不含实体、世界、回调"]
-  E["rules/attribute-evaluation.js<br/>纯属性、控制、免伤、承伤和航速求值"]
+  E["characters/abilities/attribute-evaluation.js<br/>纯属性、控制、免伤、承伤和航速求值"]
   OUT["能力结果<br/>供导航、武器、伤害等系统消费"]
   S --> R
   R -->|仅航速需要成员| M
@@ -423,7 +423,7 @@ flowchart LR
 | F5 角色接入 | CHARACTER_EXTENSIONS 统一声明主动技能、规则、钩子、队级/对局工厂及投影；装配器校验 | 独立声明直接接入；未知阶段、重复顺序、能力/投影冲突与覆盖生命周期均拒绝 |
 | F6 房间多写 | Room 聚合；SnapshotSchedule | 重复席位、冒名就绪、外部赋值拒绝；倒计时/运行/完成及快照顺序保持 |
 
-对应源码分别见 [观测端口](../shared/game/ai/bridge/action-port.js)、[舰船](../shared/game/model/ship.js)、[搜索所有者](../shared/game/ai/policy/search-navigation.js)、[属性事实](../shared/game/rules/attribute-facts.js)、[角色装配](../shared/game/rules/character-assembly.js)、[房间聚合](../server/room.js)。测试入口为 `scripts/verify-domain-boundaries.mjs`，完整证据记录在重构记录中。
+对应源码分别见 [观测端口](../shared/game/ai/bridge/action-port.js)、[舰船](../shared/game/model/ship.js)、[搜索所有者](../shared/game/ai/policy/search-navigation.js)、[属性事实](../shared/game/characters/abilities/attribute-facts.js)、[角色装配](../shared/game/characters/assembly/character-assembly.js)、[房间聚合](../server/room.js)。测试入口为 `scripts/verify-domain-boundaries.mjs`，完整证据记录在重构记录中。
 
 ## 保留的合理耦合与验收边界
 
@@ -478,4 +478,4 @@ flowchart TB
 
 资源校验失败不会部分扣费或发放同次资源奖励；角色事务仍在既有同步调用栈中完成。需要同步观察双方的舞台只统一采样区域；伤害、死亡、分离和后续 AI 观察仍按图六的顺序即时消费。协议字段顺序由 `projection-order.js` 保留，角色自行贡献投影字段，投影不能推进状态。
 
-四项工作的源码入口分别为 `model/ship.js`、`rules/bunny-form-runtime.js` 与 `bunny-stage-runtime.js`、`rules/extensions/` 与 `extension-contract.js`、`ai/policy/fact-calculations.js` 与 `policy-inputs.js`。剩余实体引用集中在需要同步领域操作的适配器；纯状态机与数值算法不取得世界对象。该边界约束合作代码的职责，不宣称 JavaScript 模块是对恶意代码的安全沙箱。
+四项工作的源码入口分别为 `model/ship.js`、`characters/bunny-haruhi/form-runtime.js` 与 `characters/bunny-haruhi/stage-runtime.js`、`characters/<角色>/extension.js` 与 `characters/assembly/extension-contract.js`、`ai/policy/fact-calculations.js` 与 `policy-inputs.js`。剩余实体引用集中在需要同步领域操作的适配器；纯状态机与数值算法不取得世界对象。该边界约束合作代码的职责，不宣称 JavaScript 模块是对恶意代码的安全沙箱。

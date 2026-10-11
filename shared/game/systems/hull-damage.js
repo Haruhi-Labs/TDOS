@@ -1,4 +1,4 @@
-import { normalizeDamageContext } from "../damage.js";
+import { normalizeDamageContext } from "../rules/damage.js";
 
 // 承伤事务保持增幅、递归分摊、自身扣血、死亡收尾的同步顺序。
 // 目标句柄只允许投递份额，不能改写其他舰船的资源。

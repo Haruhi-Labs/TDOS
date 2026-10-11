@@ -1,4 +1,4 @@
-import { clamp, distance, lerp, shortestAngleDelta } from "../../shared/game/math.js";
+import { clamp, distance, lerp, shortestAngleDelta } from "../../shared/game/foundation/math.js";
 import { advanceStatusEffects } from "../battle/status-effect-timing.js";
 import {
   advanceProjectile,

@@ -1,4 +1,4 @@
-import { clamp } from "../math.js";
+import { clamp } from "../foundation/math.js";
 
 const WAVE_SPEED = 480;
 const COVERAGE_SECONDS = 0.24;

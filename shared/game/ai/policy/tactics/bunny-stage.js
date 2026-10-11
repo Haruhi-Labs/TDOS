@@ -1,6 +1,6 @@
 // 兔女郎春日的变身时机与舞台走位。输入是观测中的己方舰船与已有情报。
-import { BUNNY_HARUHI_CONFIG as C } from "../../../bunny-haruhi-config.js";
-import { distance } from "../../../math.js";
+import { BUNNY_HARUHI_CONFIG as C } from "../../../characters/bunny-haruhi/config.js";
+import { distance } from "../../../foundation/math.js";
 
 // 只消费本舰的观测状态和 Bot 已取得的情报；不查询敌方实体或额外抽取随机数。
 export function shouldTransformBunny(ship, estimate, context = {}) {

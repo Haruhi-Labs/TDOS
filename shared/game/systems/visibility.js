@@ -1,4 +1,4 @@
-import { distanceSq } from "../math.js";
+import { distanceSq } from "../foundation/math.js";
 
 // 按现有实体顺序采样；可见集合只由感知组件替换，读方没有集合写权限。
 export function collectVisibleEntityIds({ sensors, entities, coveredByWave, broadcast }) {

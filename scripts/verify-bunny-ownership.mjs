@@ -1,8 +1,8 @@
-import { spawnBunnyCompanion } from "../shared/game/bunny-haruhi-runtime.js";
+import { spawnBunnyCompanion } from "../shared/game/characters/bunny-haruhi/form-port.js";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
-import { prepareBunnyCompanions, convertBunnyCompanion, cleanupBunnyCompanions } from "../shared/game/bunny-companion-runtime.js";
-import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../shared/game/rules/bunny-stage-port.js";
+import { prepareBunnyCompanions, convertBunnyCompanion, cleanupBunnyCompanions } from "../shared/game/characters/bunny-haruhi/companion-runtime.js";
+import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../shared/game/characters/bunny-haruhi/stage-port.js";
 
 const sim = new MatchSimulation({ seed: 188, teamLoadouts: { A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" } } });
 const team = sim.teamA;

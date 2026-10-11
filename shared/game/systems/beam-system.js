@@ -1,4 +1,4 @@
-import { clamp, linePointDistance } from "../math.js";
+import { clamp, linePointDistance } from "../foundation/math.js";
 
 // 光线只拥有自身队列；角色、护盾、伤害和表现由装配端口提交。
 export class BeamSystem {

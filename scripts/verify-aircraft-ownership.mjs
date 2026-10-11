@@ -72,8 +72,8 @@ for (const key of ['match', 'seat', 'name', 'color', 'projectileColor']) {
 }
 console.log('飞行器内部状态校验通过：私有运动、武器、寿命和任务状态，输入隔离，转队与成员发布一致。');
 
-const { createAircraftPort } = await import('../shared/game/rules/aircraft-port.js');
-const { launchBurstScouts, launchHaruhiAlienWingmen, launchHaruhiRandomBeam } = await import('../shared/game/rules/character-launch.js');
+const { createAircraftPort } = await import('../shared/game/adapters/aircraft-port.js');
+const { launchBurstScouts, launchHaruhiAlienWingmen, launchHaruhiRandomBeam } = await import('../shared/game/characters/interactions/character-launch.js');
 for (const operation of ['launchBurstScouts', 'launchHaruhiAlienWingmen', 'launchHaruhiRandomBeam']) {
   assert.equal(operation in team, false, '角色发射不能绕回舰队门面');
   assert.equal(operation in aircraft, false, '通用航空组件不能决定角色发射规则');

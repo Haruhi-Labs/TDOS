@@ -1,11 +1,11 @@
 import { characterPresentation } from "./character-presentation.js";
-import { BUNNY_HARUHI_CONFIG } from "../shared/game/bunny-haruhi-config.js";
+import { BUNNY_HARUHI_CONFIG } from "../shared/game/characters/bunny-haruhi/config.js";
 import { getPortraitAssetUrl } from "./character-select/portraits.js";
-import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
+import { DEFAULT_WORLD_SIZE } from "../shared/game/foundation/constants.js";
 import { createSoloSession } from "./solo/session.js";
-import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, randomAiLoadout, cloneLoadout, normalizeLoadout } from "../shared/game/characters.js";
-import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
-import { clamp, distance } from "../shared/game/math.js";
+import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, randomAiLoadout, cloneLoadout, normalizeLoadout } from "../shared/game/characters/catalog.js";
+import { SCOUT_LAUNCH_COST } from "../shared/game/rules/combat-rules.js";
+import { clamp, distance } from "../shared/game/foundation/math.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 
 import {

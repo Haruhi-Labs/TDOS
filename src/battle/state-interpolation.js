@@ -1,4 +1,4 @@
-import { clamp, lerp, shortestAngleDelta } from "../../shared/game/math.js";
+import { clamp, lerp, shortestAngleDelta } from "../../shared/game/foundation/math.js";
 import { interpolateStatusEffects } from "./status-effect-timing.js";
 
 function clonePoint(point) {

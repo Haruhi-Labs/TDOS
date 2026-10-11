@@ -1,6 +1,6 @@
 // 战斗实体的状态与生命周期。
-import { clamp, distance, normalizeAngle } from "../math.js";
-import { rngFor } from "../rng.js";
+import { clamp, distance, normalizeAngle } from "../foundation/math.js";
+import { rngFor } from "../foundation/rng.js";
 import { TAU, nextEntityId } from "../model/model-support.js";
 
 export class Scout {

@@ -1,5 +1,5 @@
 import { characterPresentation } from "../character-presentation.js";
-import { CHARACTER_ORDER, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters.js";
+import { CHARACTER_ORDER, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters/catalog.js";
 import {
   getLoadout,
   getNickname as getProfileNickname,

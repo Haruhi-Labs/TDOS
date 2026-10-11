@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { FleetFormation } from "../shared/game/systems/fleet-formation.js";
-import { createFormationPort } from "../shared/game/rules/formation-port.js";
+import { createFormationPort } from "../shared/game/adapters/formation-port.js";
 
 const match = new MatchSimulation({ seed: 67 });
 const team = match.teamA;

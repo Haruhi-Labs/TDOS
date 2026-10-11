@@ -1,4 +1,4 @@
-import { clamp } from "../../shared/game/math.js";
+import { clamp } from "../../shared/game/foundation/math.js";
 import { battleSkillMeta as skillMetaForCharacter, bunnyBlockLabel, bunnyFormLabel, renderBunnyReadout } from "../battle/bunny-haruhi-view.js";
 import { characterName, skillText, slotLabel, splitLabel, t, translateServerText } from "../i18n.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";

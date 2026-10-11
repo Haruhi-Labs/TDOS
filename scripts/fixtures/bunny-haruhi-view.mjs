@@ -1,8 +1,8 @@
-import { convertZoneSupport } from "../../shared/game/rules/support-conversion.js";
+import { convertZoneSupport } from "../../shared/game/characters/interactions/support-conversion.js";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../../shared/game-core.js";
-import { resolveBunnyStages } from "../../shared/game/rules/bunny-stage-port.js";
-import { prepareBunnyCompanions } from "../../shared/game/bunny-companion-runtime.js";
+import { resolveBunnyStages } from "../../shared/game/characters/bunny-haruhi/stage-port.js";
+import { prepareBunnyCompanions } from "../../shared/game/characters/bunny-haruhi/companion-runtime.js";
 
 // 只供本地验收使用；通过领域调用构造完整生命周期的权威快照。
 export function createBunnyViewFixture(collect = () => {}) {

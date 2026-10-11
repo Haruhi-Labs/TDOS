@@ -1,13 +1,13 @@
 import { setScenarioField } from './ship-fixture.mjs';
-import { unlockSupport } from "../../shared/game/haruhi-support.js";
+import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 import assert from "node:assert/strict";
 import { MatchSimulation, __resetEntityIds, TICK_DT, CHARACTER_DEFS, CHARACTER_ORDER, energyRateForThrottle } from "../../shared/game-core.js";
-import { normalizeLoadout } from "../../shared/game/characters.js";
+import { normalizeLoadout } from "../../shared/game/characters/catalog.js";
 import { validateMatchAction } from "../../shared/protocol/match-actions.js";
 import { createInputQueue } from "../../server/input-queue.js";
 import { applyStatePatch, createStatePatch, quantizeNetworkState } from "../../shared/network-patch.js";
-import { refreshBunnyVisibility } from "../../shared/game/bunny-haruhi-runtime.js";
-import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../../shared/game/rules/bunny-stage-port.js";
+import { refreshBunnyVisibility } from "../../shared/game/characters/bunny-haruhi/form-port.js";
+import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../../shared/game/characters/bunny-haruhi/stage-port.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} 应接近 ${b}`);
 function simulation(stage = false, enabled = true, opponentMain = "kyon") {

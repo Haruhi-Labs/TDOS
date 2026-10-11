@@ -10,7 +10,7 @@ import { isShipSelectable } from "../src/battle/ship-selection.js";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { createStatePatch, applyStatePatch, quantizeNetworkState } from "../shared/network-patch.js";
 import { BUNNY_MESSAGES } from "../src/i18n/bunny-haruhi-text.js";
-import { STATUS_EFFECT_DEFS } from "../shared/game/status-effect-definitions.js";
+import { STATUS_EFFECT_DEFS } from "../shared/game/projection/status-effect-definitions.js";
 
 const { states } = createBunnyViewFixture();
 const saved = JSON.stringify(states);

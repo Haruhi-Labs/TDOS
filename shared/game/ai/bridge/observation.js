@@ -1,11 +1,11 @@
-import { hasShamisenFlagship } from "../../shamisen-hunt.js";
+import { hasShamisenFlagship } from "../../characters/shamisen/hunt.js";
 // 规则层到 AI 的唯一读取出口：把实时对局对象翻译成某一席位有权知道的纯数据。
 // 这里可以接触 Team/Ship 实例；AI 决策代码只消费本模块产出的观测。
-import { nextBunnyForm } from "../../bunny-haruhi.js";
-import { bunnyTransformBlockReason } from "../../bunny-haruhi-runtime.js";
-import { haruhiOtherworlderReady } from "../../haruhi-flagship.js";
-import { koizumiBarrierGeometry } from "../../koizumi-barrier.js";
-import { distance } from "../../math.js";
+import { nextBunnyForm } from "../../characters/bunny-haruhi/rules.js";
+import { bunnyTransformBlockReason } from "../../characters/bunny-haruhi/form-port.js";
+import { haruhiOtherworlderReady } from "../../characters/haruhi/flagship.js";
+import { koizumiBarrierGeometry } from "../../characters/koizumi/barrier.js";
+import { distance } from "../../foundation/math.js";
 
 export const OBSERVATION_SCHEMA = 1;
 

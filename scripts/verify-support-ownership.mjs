@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { createSupportState, initializeSupport, readSupportState, unlockSupport, tickSupportSource,
-  suspendSupportSchedule, resumeSupportSchedule, triggerSupportOtherworlder } from "../shared/game/haruhi-support.js";
+  suspendSupportSchedule, resumeSupportSchedule, triggerSupportOtherworlder } from "../shared/game/characters/haruhi/support.js";
 
 const initial = createSupportState();
 const owner = {};

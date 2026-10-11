@@ -1,7 +1,7 @@
 // 战斗实体的状态与生命周期。
-import { clamp, distance, shortestAngleDelta } from "../math.js";
-import { rngFor } from "../rng.js";
-import { DAMAGE_KIND } from "../damage.js";
+import { clamp, distance, shortestAngleDelta } from "../foundation/math.js";
+import { rngFor } from "../foundation/rng.js";
+import { DAMAGE_KIND } from "../rules/damage.js";
 
 import { DEG_TO_RAD, REAR_STRIKE_MIN_DEG, REAR_STRIKE_MULT, SMALL_TARGET_REF_RADIUS, SMALL_TARGET_MAX_MISS, nextEntityId } from "../model/model-support.js";
 

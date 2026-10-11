@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { ShipNavigation } from "../shared/game/systems/ship-navigation.js";
-import { createShipNavigationPort } from "../shared/game/rules/navigation-port.js";
+import { createShipNavigationPort } from "../shared/game/adapters/navigation-port.js";
 
 const match = new MatchSimulation({ seed: 61 });
 const ship = match.teamA.ships.main;

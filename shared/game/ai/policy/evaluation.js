@@ -1,6 +1,6 @@
 // 估值与威胁计算只消费事实；接触过滤与策略状态采样由调用边界负责。
-import { CHARACTER_DEFS } from "../../characters.js";
-import { clamp, distance } from "../../math.js";
+import { CHARACTER_DEFS } from "../../characters/catalog.js";
+import { clamp, distance } from "../../foundation/math.js";
 import { clampPosition, safeRoutePadding, pointEdgeClearance, arcDensityFromState, broadsideIntentAngle } from "./geometry.js";
 
 export function contactHpRatio(valueParams, contact) {

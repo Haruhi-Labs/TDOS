@@ -1,22 +1,22 @@
-import { CHARACTER_ASSEMBLY } from "../rules/character-assembly.js";
+import { CHARACTER_ASSEMBLY } from "../characters/assembly/character-assembly.js";
 import { FleetRoster } from "../systems/fleet-roster.js";
 import { FleetPerception } from "../systems/visibility.js";
-import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
+import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../rules/combat-rules.js";
 import { AircraftOperations } from "../systems/aircraft-operations.js";
-import { createAircraftPort } from "../rules/aircraft-port.js";
+import { createAircraftPort } from "../adapters/aircraft-port.js";
 import { SkillCycle } from "../systems/skill-cycle.js";
-import { createTeamSkillPort } from "../rules/team-skill-port.js";
+import { createTeamSkillPort } from "../adapters/team-skill-port.js";
 import { FleetFormation } from "../systems/fleet-formation.js";
-import { createFormationPort } from "../rules/formation-port.js";
+import { createFormationPort } from "../adapters/formation-port.js";
 import { BeamSystem } from "../systems/beam-system.js";
-import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
+import { createTeamBeamPort, beamCasterState } from "../adapters/beam-port.js";
 // 舰队状态所有者与领域操作。
-import { DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../characters.js";
-import { rotateOffset } from "../math.js";
-import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
-import { visibilityInputs, serializeRadarPassive as serializeTeamRadarPassive } from "../visibility-radar.js";
-import { FleetFireControl } from "../targeting-system.js";
-import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../rules/fire-control.js";
+import { DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../characters/catalog.js";
+import { rotateOffset } from "../foundation/math.js";
+import { serializeShipStatusEffects, statusEffectNames } from "../projection/status-effects.js";
+import { visibilityInputs, serializeRadarPassive as serializeTeamRadarPassive } from "../adapters/visibility-radar.js";
+import { FleetFireControl } from "../systems/targeting-system.js";
+import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../adapters/fire-control.js";
 import { Ship } from "../model/ship.js";
 import { BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 

@@ -1,4 +1,4 @@
-import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
+import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../shared/game/characters/haruhi/hero-power.js";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
@@ -44,7 +44,7 @@ const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logL
   name: "ship-selection-fixture",
   transform(code, id) {
     if (id.endsWith("/src/solo/session.js")) return code.replace("simulation = createSimulation(options);", "simulation = createSimulation(options); globalThis.testSoloSimulation = simulation; globalThis.invalidateSoloSnapshot = () => { dirty = true; };");
-    if (id.endsWith("/src/solo.js")) return `import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "/shared/game/haruhi-hero-power.js";\n${code}\nglobalThis.selectionFixture = { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock, get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, refresh() { globalThis.invalidateSoloSnapshot(); app.state = globalThis.testSoloSimulation.serializeState(); app.renderState = app.state; updateUi(); } };`;
+    if (id.endsWith("/src/solo.js")) return `import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "/shared/game/characters/haruhi/hero-power.js";\n${code}\nglobalThis.selectionFixture = { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock, get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, refresh() { globalThis.invalidateSoloSnapshot(); app.state = globalThis.testSoloSimulation.serializeState(); app.renderState = app.state; updateUi(); } };`;
     if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },

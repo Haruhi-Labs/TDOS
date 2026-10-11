@@ -1,16 +1,16 @@
 import { ShipStatus } from "../systems/ship-status.js";
 import { WeaponCycle } from "../systems/weapon-cycle.js";
 import { resolveHullDamage } from "../systems/hull-damage.js";
-import { createWeaponPort, createDamagePort } from "../rules/ship-combat-port.js";
+import { createWeaponPort, createDamagePort } from "../adapters/ship-combat-port.js";
 import { ShipNavigation } from "../systems/ship-navigation.js";
-import { createShipNavigationPort } from "../rules/navigation-port.js";
+import { createShipNavigationPort } from "../adapters/navigation-port.js";
 // 舰船状态所有者与领域操作。
-import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES, normalizeThrottleToGear } from "../throttle.js";
-import { fireArcDensityMultiplier } from "../combat-rules.js";
-import { characterDefinition as getCharacterDef, slotLabel } from "../characters.js";
-import { clamp, lerp, shortestAngleDelta } from "../math.js";
-import { rngFor } from "../rng.js";
-import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../collision-system.js";
+import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES, normalizeThrottleToGear } from "../rules/throttle.js";
+import { fireArcDensityMultiplier } from "../rules/combat-rules.js";
+import { characterDefinition as getCharacterDef, slotLabel } from "../characters/catalog.js";
+import { clamp, lerp, shortestAngleDelta } from "../foundation/math.js";
+import { rngFor } from "../foundation/rng.js";
+import { COLLISION_SLOW_DURATION, COLLISION_SLOW_FLOOR } from "../systems/collision-system.js";
 import { nextEntityId } from "../model/model-support.js";
 import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 

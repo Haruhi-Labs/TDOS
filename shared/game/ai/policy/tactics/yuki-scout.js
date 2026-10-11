@@ -1,6 +1,6 @@
 // 长门旗舰的侦察条令：前沿覆盖、动向预测、战场集中、骚扰分配与重新编组。纯数据计算。
 import { copyPlainData, freezePlainData } from "../../../../data/plain-data.js";
-import { clamp } from "../../../math.js";
+import { clamp } from "../../../foundation/math.js";
 
 const YUKI_SCOUT_MODE_CONFIG = Object.freeze({
   intercept: Object.freeze({ desiredActive: 5, maxActive: 7, cadence: [2.6, 3.05], patrolRadius: 78, commitment: 5.5 }),

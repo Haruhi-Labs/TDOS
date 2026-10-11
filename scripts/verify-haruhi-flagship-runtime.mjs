@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import { HaruhiFlagshipRuntime } from "../shared/game/haruhi-flagship-runtime.js";
-import { HARUHI_SUPPORTS, createSupportState, initializeSupport, readSupportState, unlockSupport } from "../shared/game/haruhi-support.js";
+import { HaruhiFlagshipRuntime } from "../shared/game/characters/haruhi/flagship-runtime.js";
+import { HARUHI_SUPPORTS, createSupportState, initializeSupport, readSupportState, unlockSupport } from "../shared/game/characters/haruhi/support.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 let now = 0, tick = 1, enabled = true, rolls = 0;

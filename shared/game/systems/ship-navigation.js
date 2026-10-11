@@ -1,5 +1,5 @@
-import { clamp, distance, dot, lerp, quadraticLengthApprox, quadraticPoint, quadraticStartCurvature, rotateOffset, shortestAngleDelta } from "../math.js";
-import { normalizeThrottleToGear } from "../throttle.js";
+import { clamp, distance, dot, lerp, quadraticLengthApprox, quadraticPoint, quadraticStartCurvature, rotateOffset, shortestAngleDelta } from "../foundation/math.js";
+import { normalizeThrottleToGear } from "../rules/throttle.js";
 import { copyPlainData, freezePlainData } from "../../data/plain-data.js";
 
 // 导航独占航线、目标点与击退过程。端口只提供船体运动能力，不携带舰队或对局。

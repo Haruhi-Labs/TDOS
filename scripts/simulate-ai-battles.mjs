@@ -1,6 +1,6 @@
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import { observeEnemyEntity } from "../shared/game/ai/bridge/observation.js";
-import { unlockSupport } from "../shared/game/haruhi-support.js";
+import { unlockSupport } from "../shared/game/characters/haruhi/support.js";
 import {
   CHARACTER_ORDER,
   MatchSimulation,

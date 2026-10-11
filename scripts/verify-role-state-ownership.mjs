@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
-import { activateKoizumiOrb, sampleKoizumiOrbMotion } from "../shared/game/koizumi-orb.js";
-import { consumeKoizumiBarrierHit } from "../shared/game/koizumi-barrier.js";
-import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
+import { activateKoizumiOrb, sampleKoizumiOrbMotion } from "../shared/game/characters/koizumi/orb.js";
+import { consumeKoizumiBarrierHit } from "../shared/game/characters/koizumi/barrier.js";
+import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../shared/game/characters/haruhi/hero-power.js";
 
 const match = new MatchSimulation({ seed: 881, teamLoadouts: {
   A: { main: "koizumi", sub1: "kyon", sub2: "yuki" },

@@ -1,4 +1,4 @@
-import { CHARACTER_DEFS, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters.js";
+import { CHARACTER_DEFS, DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../../shared/game/characters/catalog.js";
 import { getPortraitAssetUrl } from "../character-select/portraits.js";
 import {
   characterShortName,

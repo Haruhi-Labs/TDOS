@@ -1,6 +1,6 @@
 # 架构模块索引
 
-源码基线 `9139545`（生成时工作树）。共 249 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
+源码基线 `0d773a0`（生成时工作树）。共 249 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
 
 运行 `node scripts/generate-architecture-index.mjs` 更新。本表按相对静态 import/export 引用生成；出边为不同本地 JS 模块，入边仅统计本表范围。行数与引用数量不衡量架构质量，状态持有和实际消费见 [架构地图](architecture-map.md)。
 
@@ -36,53 +36,26 @@
 | [plain-data.js](../shared/data/plain-data.js) | 26 | 0 | 21 |
 | [readonly-id-set.js](../shared/data/readonly-id-set.js) | 14 | 0 | 4 |
 
-## `shared/game`
+## `shared/game/adapters`
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
-| [action-dispatcher.js](../shared/game/action-dispatcher.js) | 90 | 1 | 2 |
-| [bot-controller.js](../shared/game/bot-controller.js) | 60 | 1 | 2 |
-| [bunny-companion-runtime.js](../shared/game/bunny-companion-runtime.js) | 198 | 2 | 7 |
-| [bunny-haruhi-companion.js](../shared/game/bunny-haruhi-companion.js) | 142 | 1 | 4 |
-| [bunny-haruhi-config.js](../shared/game/bunny-haruhi-config.js) | 55 | 0 | 13 |
-| [bunny-haruhi-runtime.js](../shared/game/bunny-haruhi-runtime.js) | 104 | 9 | 6 |
-| [bunny-haruhi-support.js](../shared/game/bunny-haruhi-support.js) | 42 | 2 | 5 |
-| [bunny-haruhi-view-params.js](../shared/game/bunny-haruhi-view-params.js) | 28 | 2 | 4 |
-| [bunny-haruhi.js](../shared/game/bunny-haruhi.js) | 275 | 3 | 7 |
-| [character-contacts.js](../shared/game/character-contacts.js) | 131 | 9 | 3 |
-| [characters.js](../shared/game/characters.js) | 279 | 2 | 30 |
-| [collision-system.js](../shared/game/collision-system.js) | 52 | 1 | 3 |
-| [combat-rules.js](../shared/game/combat-rules.js) | 33 | 0 | 15 |
-| [constants.js](../shared/game/constants.js) | 9 | 0 | 21 |
-| [contact-geometry.js](../shared/game/contact-geometry.js) | 77 | 1 | 3 |
-| [damage.js](../shared/game/damage.js) | 26 | 0 | 7 |
-| [fixed-step-clock.js](../shared/game/fixed-step-clock.js) | 49 | 1 | 2 |
-| [future-flagship-form.js](../shared/game/future-flagship-form.js) | 44 | 0 | 3 |
-| [haruhi-flagship-runtime.js](../shared/game/haruhi-flagship-runtime.js) | 38 | 1 | 1 |
-| [haruhi-flagship.js](../shared/game/haruhi-flagship.js) | 118 | 2 | 9 |
-| [haruhi-hero-power.js](../shared/game/haruhi-hero-power.js) | 203 | 1 | 4 |
-| [haruhi-support.js](../shared/game/haruhi-support.js) | 159 | 2 | 10 |
-| [koizumi-barrier.js](../shared/game/koizumi-barrier.js) | 366 | 1 | 6 |
-| [koizumi-orb.js](../shared/game/koizumi-orb.js) | 395 | 2 | 3 |
-| [match-telemetry.js](../shared/game/match-telemetry.js) | 97 | 1 | 1 |
-| [math.js](../shared/game/math.js) | 139 | 1 | 59 |
-| [rng.js](../shared/game/rng.js) | 55 | 0 | 12 |
-| [shamisen-claw.js](../shared/game/shamisen-claw.js) | 78 | 1 | 1 |
-| [shamisen-hunt.js](../shared/game/shamisen-hunt.js) | 90 | 1 | 5 |
-| [sponsor-effect.js](../shared/game/sponsor-effect.js) | 29 | 0 | 1 |
-| [status-effect-definitions.js](../shared/game/status-effect-definitions.js) | 50 | 0 | 3 |
-| [status-effects.js](../shared/game/status-effects.js) | 112 | 10 | 2 |
-| [targeting-system.js](../shared/game/targeting-system.js) | 92 | 0 | 1 |
-| [throttle.js](../shared/game/throttle.js) | 53 | 0 | 12 |
-| [visibility-radar.js](../shared/game/visibility-radar.js) | 128 | 3 | 2 |
-| [vision-wave-purge.js](../shared/game/vision-wave-purge.js) | 18 | 0 | 1 |
-| [vision-wave.js](../shared/game/vision-wave.js) | 123 | 2 | 4 |
+| [aircraft-port.js](../shared/game/adapters/aircraft-port.js) | 28 | 2 | 1 |
+| [beam-port.js](../shared/game/adapters/beam-port.js) | 55 | 4 | 1 |
+| [collision-port.js](../shared/game/adapters/collision-port.js) | 21 | 0 | 1 |
+| [fire-control.js](../shared/game/adapters/fire-control.js) | 54 | 1 | 1 |
+| [formation-port.js](../shared/game/adapters/formation-port.js) | 34 | 0 | 1 |
+| [navigation-port.js](../shared/game/adapters/navigation-port.js) | 42 | 0 | 1 |
+| [ship-combat-port.js](../shared/game/adapters/ship-combat-port.js) | 50 | 4 | 1 |
+| [team-skill-port.js](../shared/game/adapters/team-skill-port.js) | 60 | 6 | 1 |
+| [visibility-radar.js](../shared/game/adapters/visibility-radar.js) | 128 | 3 | 2 |
 
 ## `shared/game/ai`
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
 | [actions.js](../shared/game/ai/actions.js) | 58 | 1 | 2 |
+| [bot-controller.js](../shared/game/ai/bot-controller.js) | 60 | 1 | 2 |
 
 ## `shared/game/ai/bridge`
 
@@ -154,6 +127,132 @@
 | [shamisen-hunt.js](../shared/game/ai/policy/tactics/shamisen-hunt.js) | 324 | 1 | 3 |
 | [yuki-scout.js](../shared/game/ai/policy/tactics/yuki-scout.js) | 378 | 2 | 1 |
 
+## `shared/game/characters`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [catalog.js](../shared/game/characters/catalog.js) | 279 | 2 | 30 |
+
+## `shared/game/characters/abilities`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [attribute-evaluation.js](../shared/game/characters/abilities/attribute-evaluation.js) | 65 | 6 | 1 |
+| [attribute-facts.js](../shared/game/characters/abilities/attribute-facts.js) | 58 | 4 | 1 |
+| [character-rules.js](../shared/game/characters/abilities/character-rules.js) | 44 | 4 | 1 |
+
+## `shared/game/characters/asakura`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [extension.js](../shared/game/characters/asakura/extension.js) | 33 | 3 | 1 |
+| [vision-wave-port.js](../shared/game/characters/asakura/vision-wave-port.js) | 34 | 1 | 1 |
+| [vision-wave.js](../shared/game/characters/asakura/vision-wave.js) | 123 | 2 | 4 |
+
+## `shared/game/characters/assembly`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [active-skills.js](../shared/game/characters/assembly/active-skills.js) | 7 | 2 | 1 |
+| [character-assembly.js](../shared/game/characters/assembly/character-assembly.js) | 16 | 6 | 2 |
+| [character-battle.js](../shared/game/characters/assembly/character-battle.js) | 13 | 2 | 1 |
+| [character-team.js](../shared/game/characters/assembly/character-team.js) | 22 | 2 | 1 |
+| [common.js](../shared/game/characters/assembly/common.js) | 28 | 2 | 1 |
+| [extension-contract.js](../shared/game/characters/assembly/extension-contract.js) | 94 | 0 | 7 |
+| [registry.js](../shared/game/characters/assembly/registry.js) | 17 | 10 | 7 |
+| [ship-effects.js](../shared/game/characters/assembly/ship-effects.js) | 18 | 2 | 1 |
+
+## `shared/game/characters/bunny-haruhi`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [companion-rules.js](../shared/game/characters/bunny-haruhi/companion-rules.js) | 142 | 1 | 4 |
+| [companion-runtime.js](../shared/game/characters/bunny-haruhi/companion-runtime.js) | 198 | 2 | 7 |
+| [config.js](../shared/game/characters/bunny-haruhi/config.js) | 55 | 0 | 13 |
+| [extension.js](../shared/game/characters/bunny-haruhi/extension.js) | 71 | 8 | 1 |
+| [form-port.js](../shared/game/characters/bunny-haruhi/form-port.js) | 104 | 9 | 6 |
+| [form-runtime.js](../shared/game/characters/bunny-haruhi/form-runtime.js) | 53 | 2 | 1 |
+| [projection.js](../shared/game/characters/bunny-haruhi/projection.js) | 45 | 7 | 1 |
+| [rules.js](../shared/game/characters/bunny-haruhi/rules.js) | 275 | 3 | 7 |
+| [stage-port.js](../shared/game/characters/bunny-haruhi/stage-port.js) | 56 | 2 | 4 |
+| [stage-runtime.js](../shared/game/characters/bunny-haruhi/stage-runtime.js) | 69 | 1 | 1 |
+| [support.js](../shared/game/characters/bunny-haruhi/support.js) | 42 | 2 | 5 |
+| [view-params.js](../shared/game/characters/bunny-haruhi/view-params.js) | 28 | 2 | 4 |
+
+## `shared/game/characters/future1096`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [extension.js](../shared/game/characters/future1096/extension.js) | 18 | 2 | 1 |
+| [flagship-form.js](../shared/game/characters/future1096/flagship-form.js) | 44 | 0 | 3 |
+| [form-port.js](../shared/game/characters/future1096/form-port.js) | 15 | 1 | 1 |
+
+## `shared/game/characters/haruhi`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [extension.js](../shared/game/characters/haruhi/extension.js) | 63 | 9 | 1 |
+| [flagship-port.js](../shared/game/characters/haruhi/flagship-port.js) | 26 | 4 | 1 |
+| [flagship-runtime.js](../shared/game/characters/haruhi/flagship-runtime.js) | 38 | 1 | 1 |
+| [flagship.js](../shared/game/characters/haruhi/flagship.js) | 118 | 2 | 9 |
+| [hero-power-runtime.js](../shared/game/characters/haruhi/hero-power-runtime.js) | 25 | 2 | 1 |
+| [hero-power.js](../shared/game/characters/haruhi/hero-power.js) | 203 | 1 | 4 |
+| [support.js](../shared/game/characters/haruhi/support.js) | 159 | 2 | 10 |
+
+## `shared/game/characters/interactions`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [character-contacts.js](../shared/game/characters/interactions/character-contacts.js) | 131 | 9 | 3 |
+| [character-launch.js](../shared/game/characters/interactions/character-launch.js) | 45 | 3 | 3 |
+| [projectile-phase.js](../shared/game/characters/interactions/projectile-phase.js) | 53 | 5 | 1 |
+| [ship-destruction.js](../shared/game/characters/interactions/ship-destruction.js) | 13 | 2 | 1 |
+| [support-conversion.js](../shared/game/characters/interactions/support-conversion.js) | 37 | 3 | 1 |
+
+## `shared/game/characters/koizumi`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [barrier.js](../shared/game/characters/koizumi/barrier.js) | 366 | 1 | 6 |
+| [extension.js](../shared/game/characters/koizumi/extension.js) | 37 | 2 | 1 |
+| [orb.js](../shared/game/characters/koizumi/orb.js) | 395 | 2 | 3 |
+
+## `shared/game/characters/kyon`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [extension.js](../shared/game/characters/kyon/extension.js) | 27 | 0 | 1 |
+
+## `shared/game/characters/shamisen`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [claw.js](../shared/game/characters/shamisen/claw.js) | 78 | 1 | 1 |
+| [extension.js](../shared/game/characters/shamisen/extension.js) | 49 | 3 | 1 |
+| [hunt.js](../shared/game/characters/shamisen/hunt.js) | 90 | 1 | 5 |
+
+## `shared/game/characters/tsuruya`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [extension.js](../shared/game/characters/tsuruya/extension.js) | 24 | 1 | 1 |
+| [sponsor-effect.js](../shared/game/characters/tsuruya/sponsor-effect.js) | 29 | 0 | 1 |
+| [sponsor-port.js](../shared/game/characters/tsuruya/sponsor-port.js) | 18 | 1 | 1 |
+
+## `shared/game/characters/yuki`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [extension.js](../shared/game/characters/yuki/extension.js) | 30 | 2 | 1 |
+
+## `shared/game/foundation`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [constants.js](../shared/game/foundation/constants.js) | 9 | 0 | 21 |
+| [math.js](../shared/game/foundation/math.js) | 139 | 1 | 59 |
+| [rng.js](../shared/game/foundation/rng.js) | 55 | 0 | 12 |
+
 ## `shared/game/model`
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
@@ -167,66 +266,34 @@
 | [team.js](../shared/game/model/team.js) | 469 | 20 | 1 |
 | [wingman.js](../shared/game/model/wingman.js) | 189 | 2 | 1 |
 
+## `shared/game/projection`
+
+| 模块 | 行数 | 静态出边 | 范围内入边 |
+| --- | ---: | ---: | ---: |
+| [projection-order.js](../shared/game/projection/projection-order.js) | 11 | 0 | 2 |
+| [ship-projection.js](../shared/game/projection/ship-projection.js) | 52 | 4 | 1 |
+| [status-effect-definitions.js](../shared/game/projection/status-effect-definitions.js) | 50 | 0 | 3 |
+| [status-effects.js](../shared/game/projection/status-effects.js) | 112 | 10 | 2 |
+| [team-projection.js](../shared/game/projection/team-projection.js) | 39 | 4 | 1 |
+
 ## `shared/game/rules`
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
-| [active-skills.js](../shared/game/rules/active-skills.js) | 7 | 2 | 1 |
-| [aircraft-port.js](../shared/game/rules/aircraft-port.js) | 28 | 2 | 1 |
-| [attribute-evaluation.js](../shared/game/rules/attribute-evaluation.js) | 65 | 6 | 1 |
-| [attribute-facts.js](../shared/game/rules/attribute-facts.js) | 58 | 4 | 1 |
-| [beam-port.js](../shared/game/rules/beam-port.js) | 55 | 4 | 1 |
-| [bunny-form-runtime.js](../shared/game/rules/bunny-form-runtime.js) | 53 | 2 | 1 |
-| [bunny-projection.js](../shared/game/rules/bunny-projection.js) | 45 | 7 | 1 |
-| [bunny-stage-port.js](../shared/game/rules/bunny-stage-port.js) | 56 | 2 | 4 |
-| [bunny-stage-runtime.js](../shared/game/rules/bunny-stage-runtime.js) | 69 | 1 | 1 |
-| [character-assembly.js](../shared/game/rules/character-assembly.js) | 16 | 6 | 2 |
-| [character-battle.js](../shared/game/rules/character-battle.js) | 13 | 2 | 1 |
-| [character-launch.js](../shared/game/rules/character-launch.js) | 45 | 3 | 3 |
-| [character-rules.js](../shared/game/rules/character-rules.js) | 44 | 4 | 1 |
-| [character-team.js](../shared/game/rules/character-team.js) | 22 | 2 | 1 |
-| [collision-port.js](../shared/game/rules/collision-port.js) | 21 | 0 | 1 |
-| [extension-contract.js](../shared/game/rules/extension-contract.js) | 94 | 0 | 7 |
-| [fire-control.js](../shared/game/rules/fire-control.js) | 54 | 1 | 1 |
-| [formation-port.js](../shared/game/rules/formation-port.js) | 34 | 0 | 1 |
-| [future-form-port.js](../shared/game/rules/future-form-port.js) | 15 | 1 | 1 |
-| [haruhi-flagship-port.js](../shared/game/rules/haruhi-flagship-port.js) | 26 | 4 | 1 |
-| [hero-power-runtime.js](../shared/game/rules/hero-power-runtime.js) | 25 | 2 | 1 |
-| [match-feedback.js](../shared/game/rules/match-feedback.js) | 55 | 2 | 1 |
-| [navigation-port.js](../shared/game/rules/navigation-port.js) | 42 | 0 | 1 |
-| [projectile-phase.js](../shared/game/rules/projectile-phase.js) | 53 | 5 | 1 |
-| [projection-order.js](../shared/game/rules/projection-order.js) | 11 | 0 | 2 |
-| [ship-combat-port.js](../shared/game/rules/ship-combat-port.js) | 50 | 4 | 1 |
-| [ship-destruction.js](../shared/game/rules/ship-destruction.js) | 13 | 2 | 1 |
-| [ship-effects.js](../shared/game/rules/ship-effects.js) | 18 | 2 | 1 |
-| [ship-projection.js](../shared/game/rules/ship-projection.js) | 52 | 4 | 1 |
-| [sponsor-port.js](../shared/game/rules/sponsor-port.js) | 18 | 1 | 1 |
-| [support-conversion.js](../shared/game/rules/support-conversion.js) | 37 | 3 | 1 |
-| [team-projection.js](../shared/game/rules/team-projection.js) | 39 | 4 | 1 |
-| [team-skill-port.js](../shared/game/rules/team-skill-port.js) | 60 | 6 | 1 |
-| [vision-wave-port.js](../shared/game/rules/vision-wave-port.js) | 34 | 1 | 1 |
-
-## `shared/game/rules/extensions`
-
-| 模块 | 行数 | 静态出边 | 范围内入边 |
-| --- | ---: | ---: | ---: |
-| [asakura.js](../shared/game/rules/extensions/asakura.js) | 33 | 3 | 1 |
-| [bunny-haruhi.js](../shared/game/rules/extensions/bunny-haruhi.js) | 71 | 8 | 1 |
-| [common.js](../shared/game/rules/extensions/common.js) | 28 | 2 | 1 |
-| [future1096.js](../shared/game/rules/extensions/future1096.js) | 18 | 2 | 1 |
-| [haruhi.js](../shared/game/rules/extensions/haruhi.js) | 63 | 9 | 1 |
-| [index.js](../shared/game/rules/extensions/index.js) | 17 | 10 | 7 |
-| [koizumi.js](../shared/game/rules/extensions/koizumi.js) | 37 | 2 | 1 |
-| [kyon.js](../shared/game/rules/extensions/kyon.js) | 27 | 0 | 1 |
-| [shamisen.js](../shared/game/rules/extensions/shamisen.js) | 49 | 3 | 1 |
-| [tsuruya.js](../shared/game/rules/extensions/tsuruya.js) | 24 | 1 | 1 |
-| [yuki.js](../shared/game/rules/extensions/yuki.js) | 30 | 2 | 1 |
+| [combat-rules.js](../shared/game/rules/combat-rules.js) | 33 | 0 | 15 |
+| [contact-geometry.js](../shared/game/rules/contact-geometry.js) | 77 | 1 | 3 |
+| [damage.js](../shared/game/rules/damage.js) | 26 | 0 | 7 |
+| [throttle.js](../shared/game/rules/throttle.js) | 53 | 0 | 12 |
 
 ## `shared/game/runtime`
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
+| [action-dispatcher.js](../shared/game/runtime/action-dispatcher.js) | 90 | 1 | 2 |
+| [fixed-step-clock.js](../shared/game/runtime/fixed-step-clock.js) | 49 | 1 | 2 |
+| [match-feedback.js](../shared/game/runtime/match-feedback.js) | 55 | 2 | 1 |
 | [match-simulation.js](../shared/game/runtime/match-simulation.js) | 450 | 21 | 2 |
+| [match-telemetry.js](../shared/game/runtime/match-telemetry.js) | 97 | 1 | 1 |
 
 ## `shared/game/systems`
 
@@ -234,6 +301,7 @@
 | --- | ---: | ---: | ---: |
 | [aircraft-operations.js](../shared/game/systems/aircraft-operations.js) | 139 | 1 | 1 |
 | [beam-system.js](../shared/game/systems/beam-system.js) | 121 | 1 | 1 |
+| [collision-system.js](../shared/game/systems/collision-system.js) | 52 | 1 | 3 |
 | [expanding-wave.js](../shared/game/systems/expanding-wave.js) | 50 | 1 | 2 |
 | [fleet-formation.js](../shared/game/systems/fleet-formation.js) | 181 | 0 | 1 |
 | [fleet-roster.js](../shared/game/systems/fleet-roster.js) | 33 | 0 | 1 |
@@ -242,7 +310,9 @@
 | [ship-navigation.js](../shared/game/systems/ship-navigation.js) | 362 | 3 | 1 |
 | [ship-status.js](../shared/game/systems/ship-status.js) | 30 | 0 | 1 |
 | [skill-cycle.js](../shared/game/systems/skill-cycle.js) | 54 | 0 | 1 |
+| [targeting-system.js](../shared/game/systems/targeting-system.js) | 92 | 0 | 1 |
 | [visibility.js](../shared/game/systems/visibility.js) | 32 | 1 | 1 |
+| [vision-wave-purge.js](../shared/game/systems/vision-wave-purge.js) | 18 | 0 | 1 |
 | [weapon-cycle.js](../shared/game/systems/weapon-cycle.js) | 30 | 1 | 1 |
 
 ## `shared/protocol`

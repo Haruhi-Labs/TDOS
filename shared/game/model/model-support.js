@@ -1,5 +1,5 @@
 // 跨实体的数值、标识分配和纯辅助规则；不持有对局或实体引用。
-import { CHARACTER_DEFS } from "../characters.js";
+import { CHARACTER_DEFS } from "../characters/catalog.js";
 
 export const TAU = Math.PI * 2;
 export const BEAM_CHARGE_DURATION = 1.05;
@@ -14,7 +14,7 @@ export const BEAM_DAMAGE_RATIOS = Object.freeze({
 // 护盾逐颗结算剩余次数，但受击动画无需跟着炮弹数量无限增长。
 // 15 次/秒已经能连续表现密集火力，同时把单人绘制和多人状态同步控制在稳定上限。
 export const KOIZUMI_BARRIER_PROJECTILE_IMPACT_INTERVAL = 1 / 15;
-export { FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM } from "../future-flagship-form.js";
+export { FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM } from "../characters/future1096/flagship-form.js";
 export const DEG_TO_RAD = Math.PI / 180;
 
 export function beamDamageRatioForHitCount(hitCount) {

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { compileHooks, compileBattle, composeCapabilities, projectExtensions } from "../shared/game/rules/extension-contract.js";
-import { CHARACTER_EXTENSIONS } from "../shared/game/rules/extensions/index.js";
-import { createTeamCharacters } from "../shared/game/rules/character-team.js";
-import { createBattleCharacters } from "../shared/game/rules/character-battle.js";
+import { compileHooks, compileBattle, composeCapabilities, projectExtensions } from "../shared/game/characters/assembly/extension-contract.js";
+import { CHARACTER_EXTENSIONS } from "../shared/game/characters/assembly/registry.js";
+import { createTeamCharacters } from "../shared/game/characters/assembly/character-team.js";
+import { createBattleCharacters } from "../shared/game/characters/assembly/character-battle.js";
 import { MatchSimulation } from "../shared/game-core.js";
 const calls = [];
 const extra = {
@@ -36,11 +36,11 @@ assert.deepEqual(actual, {
 });
 console.log("角色扩展契约通过：独立接入、冲突拒绝、冻结声明与完整同帧顺序");
 
-const { orderedProjection } = await import("../shared/game/rules/projection-order.js");
+const { orderedProjection } = await import("../shared/game/projection/projection-order.js");
 assert.throws(() => orderedProjection({ hp: 100 }, { hp: 1 }, ["hp"]), /覆盖基础字段/);
 assert.deepEqual(orderedProjection({ hp: 100 }, { added: 1 }, ["hp"]), { hp: 100, added: 1 });
 
-const { compileActiveSkills } = await import("../shared/game/rules/extension-contract.js");
+const { compileActiveSkills } = await import("../shared/game/characters/assembly/extension-contract.js");
 const effectCalls = [];
 const skills = compileActiveSkills([{ id: "验证技能", activeSkills: { sub: (port, meta) => { port.submit(meta); return true; } } }]);
 assert.equal(skills.execute("sub", "验证技能", { submit: (meta) => effectCalls.push(meta) }, 7), true);

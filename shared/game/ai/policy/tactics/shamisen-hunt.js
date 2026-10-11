@@ -1,5 +1,5 @@
 // 三味线“猫爪印记”的攻守编队。只消费观测中的猎杀标记、可见接触与己方舰船。
-import { clamp, distance } from "../../../math.js";
+import { clamp, distance } from "../../../foundation/math.js";
 
 const HUNT_TRACK_ADVANCE = 210;
 const HUNT_BREACH_ADVANCE = 270;

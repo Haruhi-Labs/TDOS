@@ -2,7 +2,7 @@ import { installBalanceScenario, observeHullTransactions } from "./core-tests/ba
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 // 离线验收：只在内存模拟和 bench 输出，不连接游戏、身份或统计服务。
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir, cpus } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -10,8 +10,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { withSeededRandom } from "./core-tests/helpers.mjs";
-import { BUNNY_HARUHI_CONFIG as C } from "../shared/game/bunny-haruhi-config.js";
-import { DAMAGE_KIND } from "../shared/game/damage.js";
+import { BUNNY_HARUHI_CONFIG as C } from "../shared/game/characters/bunny-haruhi/config.js";
+import { DAMAGE_KIND } from "../shared/game/rules/damage.js";
 
 const root = resolve(import.meta.dirname, "..");
 // 可指定隔离的验收输出目录，避免局部复测覆盖已归档证据。
@@ -31,7 +31,8 @@ async function measureWorker(moduleRoot, worst) {
   const core = await import(pathToFileURL(join(moduleRoot, "shared/game-core.js")));
   // 旧版普通阵容基线早于支援模块抽取，只有压力场景需要这项装配能力。
   const supportModule = worst
-    ? (await import(pathToFileURL(join(moduleRoot, "shared/game/haruhi-support.js")))) : null;
+    ? (await import(pathToFileURL(join(moduleRoot, existsSync(join(moduleRoot, "shared/game/characters/haruhi/support.js"))
+      ? "shared/game/characters/haruhi/support.js" : "shared/game/haruhi-support.js")))) : null;
   return withSeededRandom(20261003, () => {
     core.__resetEntityIds(1);
     const roster = worst ? loadout("haruhi", C.characterId, "asakura") : loadout("haruhi", "koizumi", "asakura");

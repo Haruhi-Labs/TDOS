@@ -1,10 +1,10 @@
 import { characterPresentation } from "./character-presentation.js";
 import { gameStorageKey } from "./deployment.js";
-import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
-import { FIRE_ARC_BANDS } from "../shared/game/combat-rules.js";
+import { DEFAULT_WORLD_SIZE } from "../shared/game/foundation/constants.js";
+import { FIRE_ARC_BANDS } from "../shared/game/rules/combat-rules.js";
 import { MatchSimulation } from "../shared/game-core.js";
-import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../shared/game/characters.js";
-import { clamp, distance, quadraticPoint } from "../shared/game/math.js";
+import { CHARACTER_ORDER, CHARACTER_DEFS, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../shared/game/characters/catalog.js";
+import { clamp, distance, quadraticPoint } from "../shared/game/foundation/math.js";
 
 import { getLoadout } from "./profile.js";
 import {

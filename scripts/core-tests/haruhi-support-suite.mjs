@@ -1,15 +1,15 @@
 import { setScenarioField } from './ship-fixture.mjs';
-import { HaruhiFlagshipRuntime } from "../../shared/game/haruhi-flagship-runtime.js";
+import { HaruhiFlagshipRuntime } from "../../shared/game/characters/haruhi/flagship-runtime.js";
 import assert from "node:assert/strict";
-import * as legacy from "../../shared/game/haruhi-flagship.js";
+import * as legacy from "../../shared/game/characters/haruhi/flagship.js";
 import {
   createSupportState, initializeSupport, readSupportState, unlockSupport, tickSupportSource, supportOrbGeometry,
   supportOtherworlderReady, triggerSupportOtherworlder,
-} from "../../shared/game/haruhi-support.js";
+} from "../../shared/game/characters/haruhi/support.js";
 import {
   bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport,
-} from "../../shared/game/bunny-haruhi-support.js";
-import { createBunnyHaruhiState } from "../../shared/game/bunny-haruhi.js";
+} from "../../shared/game/characters/bunny-haruhi/support.js";
+import { createBunnyHaruhiState } from "../../shared/game/characters/bunny-haruhi/rules.js";
 
 function initializedSource(initial) { const owner = {}; initializeSupport(owner, initial); return owner; }
 

@@ -5,10 +5,10 @@ import {
   TICK_DT,
   __resetEntityIds,
 } from "../shared/game-core.js";
-import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
+import { createFixedStepClock } from "../shared/game/runtime/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 import { createInputQueue } from "../server/input-queue.js";
-import { applyHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
+import { applyHaruhiHeroPowerShock } from "../shared/game/characters/haruhi/hero-power.js";
 
 const LOADOUTS = {
   A: { main: "kyon", sub1: "asakura", sub2: "koizumi" },

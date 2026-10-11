@@ -75,7 +75,7 @@ npm run test:ai:simulation # 16 局固定种子双 AI 模拟对战
 - **规则版本保护**:`shared/protocol/ruleset-version.js` 在客户端与服务端之间协商规则版本。显式版本冲突会阻止进入对局；未声明版本的旧端暂时走兼容模式。
 - **联机服务端**:`server/server.js`(基于 `ws`)只负责编排连接和消息；房间注册、生命周期、输入队列、比赛循环与快照流已拆到 `server/` 下的独立模块。
 - **可选身份链路**:`src/identity.js` 使用 Authorization Code + PKCE 建立游戏站独立 HttpOnly 会话；`server/game-identity.js` 只用 Ed25519 公钥校验 60 秒联机票据并防止 `jti` 重放。认证失败自动保留游客协议，当前不绑定排行榜、成就或统计。
-- **统计归档**:`server/statistics-store.js` 以按月 JSONL 追加日志作为事实来源，在内存中缓存公开阵容聚合；`shared/game/match-telemetry.js` 只维护常数级计数器，且统计字段不会进入 `serializeState()` 或网络快照。
+- **统计归档**:`server/statistics-store.js` 以按月 JSONL 追加日志作为事实来源，在内存中缓存公开阵容聚合；`shared/game/runtime/match-telemetry.js` 只维护常数级计数器，且统计字段不会进入 `serializeState()` 或网络快照。
 - **渲染**:战场由原生 WebGL2 直接绘制，使用批量弹体、GPU 三角形与有界字形/立绘纹理缓存；不支持 WebGL2 的设备使用同源 WebGL1 后端，仅在 WebGL 完全不可用时保留 Canvas 2D 可用性兜底。菜单与普通页面仍按各自现有 DOM/Canvas 实现。
 
 详细依赖方向、权威边界、修改定位表和验证要求见 [`docs/architecture.md`](docs/architecture.md)；测试站发布、正式站隔离与回滚约定见 [`docs/operations.md`](docs/operations.md)。
@@ -125,3 +125,5 @@ docs/                 开发、架构、测试与发布运维约定
 ## 版权与致谢
 
 本作为**非商业同人作品**,取材自谷川流《凉宫春日》系列;角色、世界观与《射手座之日》设定的版权归原作者及相关版权方所有,本项目与版权方无任何关联。仅供学习交流与粉丝同好娱乐使用。
+
+开发定位：[战斗代码目录](shared/game/README.md) · [角色实现](shared/game/characters/README.md) · [架构地图](docs/architecture-map.md)。

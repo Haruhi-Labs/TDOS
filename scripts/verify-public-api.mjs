@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 const contracts = new Map([
-  ["../shared/game/haruhi-flagship.js", [
+  ["../shared/game/characters/haruhi/flagship.js", [
     "HARUHI_ALIEN_INTERVAL", "HARUHI_BOOST_MULTIPLIER", "HARUHI_DAMAGE_TAKEN_MULTIPLIER",
     "HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER", "HARUHI_ESPER_ORBIT_SPEED",
     "HARUHI_OTHERWORLDER_COOLDOWN", "HARUHI_OTHERWORLDER_DAMAGE_RATIO",

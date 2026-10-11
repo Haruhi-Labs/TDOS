@@ -1,4 +1,4 @@
-import { distance } from "../../../math.js";
+import { distance } from "../../../foundation/math.js";
 
 export default {
   id: "haruhi",

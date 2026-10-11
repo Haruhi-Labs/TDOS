@@ -1,6 +1,6 @@
 import { setScenarioField } from '../core-tests/ship-fixture.mjs';
 import { observeEnemyEntity } from "../../shared/game/ai/bridge/observation.js";
-import { unlockSupport } from "../../shared/game/haruhi-support.js";
+import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 // AI 重构期的黄金轨迹工具：在固定随机序列下逐帧记录对局摘要，用于证明重构前后行为一致。
 // 基线对任何规则改动都敏感，只作为本地门禁使用，不加入 test:all。
 //

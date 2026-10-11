@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
-import { sampleAttributeFacts, sampleControlFacts, sampleImmunityFacts, sampleDamageFacts } from "../shared/game/rules/attribute-facts.js";
-import { evaluateAttribute, evaluateControl, evaluateDamageTaken } from "../shared/game/rules/attribute-evaluation.js";
+import { sampleAttributeFacts, sampleControlFacts, sampleImmunityFacts, sampleDamageFacts } from "../shared/game/characters/abilities/attribute-facts.js";
+import { evaluateAttribute, evaluateControl, evaluateDamageTaken } from "../shared/game/characters/abilities/attribute-evaluation.js";
 
 const match = new MatchSimulation({ seed: 944, teamLoadouts: { A: { main: "future1096", sub1: "bunny_haruhi", sub2: "asakura" } } });
 const ship = match.teamA.ships.sub2;

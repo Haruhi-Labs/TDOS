@@ -1,7 +1,7 @@
-import { updateRadarPassive } from "../../shared/game/visibility-radar.js";
+import { updateRadarPassive } from "../../shared/game/adapters/visibility-radar.js";
 import { setScenarioField, assignScenario } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
-import { unlockSupport } from "../../shared/game/haruhi-support.js";
+import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
   CHARACTER_DEFS,
@@ -16,21 +16,21 @@ import {
   throttleForGear,
   throttleGearForValue,
 } from "../../shared/game-core.js";
-import { HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER } from "../../shared/game/contact-geometry.js";
-import { BLADE_QUEEN_RANGE_MULTIPLIER } from "../../shared/game/character-contacts.js";
+import { HARUHI_OTHERWORLDER_AURA_FORWARD_RADIUS_MULTIPLIER } from "../../shared/game/rules/contact-geometry.js";
+import { BLADE_QUEEN_RANGE_MULTIPLIER } from "../../shared/game/characters/interactions/character-contacts.js";
 import {
   HARUHI_ESPER_ORBIT_SPEED,
   HARUHI_OTHERWORLDER_DAMAGE_RATIO,
   HARUHI_OTHERWORLDER_KNOCKBACK_DURATION,
   HARUHI_SUPPORTS,
   haruhiOtherworlderReady,
-} from "../../shared/game/haruhi-flagship.js";
-import { disruptKoizumiBarrier, KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
-import { sampleKoizumiOrbMotion, beginKoizumiOrbReturn, updateKoizumiImpactWaves } from "../../shared/game/koizumi-orb.js";
-import { serializeShipStatusEffects } from "../../shared/game/status-effects.js";
-import { DAMAGE_KIND } from "../../shared/game/damage.js";
-import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../../shared/game/haruhi-hero-power.js";
-import { applyMatchAction } from "../../shared/game/action-dispatcher.js";
+} from "../../shared/game/characters/haruhi/flagship.js";
+import { disruptKoizumiBarrier, KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/characters/koizumi/barrier.js";
+import { sampleKoizumiOrbMotion, beginKoizumiOrbReturn, updateKoizumiImpactWaves } from "../../shared/game/characters/koizumi/orb.js";
+import { serializeShipStatusEffects } from "../../shared/game/projection/status-effects.js";
+import { DAMAGE_KIND } from "../../shared/game/rules/damage.js";
+import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../../shared/game/characters/haruhi/hero-power.js";
+import { applyMatchAction } from "../../shared/game/runtime/action-dispatcher.js";
 import { matchActions } from "../../shared/protocol/match-actions.js";
 import { assert, runSteps } from "./helpers.mjs";
 

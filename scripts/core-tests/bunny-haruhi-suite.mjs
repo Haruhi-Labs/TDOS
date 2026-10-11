@@ -1,20 +1,20 @@
 import { MatchSimulation } from "../../shared/game-core.js";
 import assert from "node:assert/strict";
-import { BUNNY_HARUHI_CONFIG as C, BUNNY_FORMS, BUNNY_STAGE_PHASES } from "../../shared/game/bunny-haruhi-config.js";
+import { BUNNY_HARUHI_CONFIG as C, BUNNY_FORMS, BUNNY_STAGE_PHASES } from "../../shared/game/characters/bunny-haruhi/config.js";
 import {
   createBunnyHaruhiState, createBunnyStageExposure, nextBunnyForm, planBunnyTransform,
   clearBunnyFormWindows, purgeBunnyForm, leaveBunnyStage, resolveBunnyStageExposure,
   cleanseBunnyStageControl, bunnyStatMultiplier, bunnyDamageTakenMultiplier,
   isBunnyDamageImmune, isBunnyBroadcasting, isBunnyControlLocked, bunnyStageSpeedFactor,
   canBunnyLaunchScout, resolveBunnyThrottle, bunnySelfDrainAmount, bunnyStageHealAmount, bunnyEnergyRate,
-} from "../../shared/game/bunny-haruhi.js";
+} from "../../shared/game/characters/bunny-haruhi/rules.js";
 import {
   deriveBunnyCompanionBase, createBunnyCompanionState, planBunnyCompanionConversion,
   advanceBunnyCompanion, createBunnyReliableState, purgeBunnyReliable, expireBunnyReliable,
   bunnyReliableRecovery,
-} from "../../shared/game/bunny-haruhi-companion.js";
-import { CHARACTER_DEFS, CHARACTER_ORDER, normalizeLoadout } from "../../shared/game/characters.js";
-import { energyRateForThrottle } from "../../shared/game/throttle.js";
+} from "../../shared/game/characters/bunny-haruhi/companion-rules.js";
+import { CHARACTER_DEFS, CHARACTER_ORDER, normalizeLoadout } from "../../shared/game/characters/catalog.js";
+import { energyRateForThrottle } from "../../shared/game/rules/throttle.js";
 
 const resources = { hp: 880, maxHp: 880, energy: 0, maxEnergy: 130 };
 const near = (actual, expected, message = "") => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} 应接近 ${expected} ${message}`);

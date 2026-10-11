@@ -1,5 +1,5 @@
 // 战斗实体的状态与生命周期。
-import { rngFor } from "../rng.js";
+import { rngFor } from "../foundation/rng.js";
 import { nextEntityId } from "../model/model-support.js";
 
 export class Wingman {

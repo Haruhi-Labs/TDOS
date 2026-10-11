@@ -1,6 +1,6 @@
 // AI 与对局之间的端口：读取只有观测，写入只有动作。
 // 实时 Team 仅保留在桥接闭包；决策代码无法取得实体或切换到绕过校验的执行路径。
-import { applyMatchAction } from "../../action-dispatcher.js";
+import { applyMatchAction } from "../../runtime/action-dispatcher.js";
 import { AI_ACTION_TYPES } from "../actions.js";
 import { freezePlainData } from "../../../data/plain-data.js";
 import {

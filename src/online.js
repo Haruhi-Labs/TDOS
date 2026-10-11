@@ -1,8 +1,8 @@
 import { copyPlainData, freezePlainData } from "../shared/data/plain-data.js";
-import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../shared/game/characters.js";
-import { DEFAULT_WORLD_SIZE } from "../shared/game/constants.js";
-import { SCOUT_LAUNCH_COST } from "../shared/game/combat-rules.js";
-import { clamp, distance } from "../shared/game/math.js";
+import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../shared/game/characters/catalog.js";
+import { DEFAULT_WORLD_SIZE } from "../shared/game/foundation/constants.js";
+import { SCOUT_LAUNCH_COST } from "../shared/game/rules/combat-rules.js";
+import { clamp, distance } from "../shared/game/foundation/math.js";
 import { MATCH_ACTION_TYPES, matchActions } from "../shared/protocol/match-actions.js";
 import { createOnlineStateSync } from "./online/state-sync.js";
 import { bindDirectorCameraInput } from "./battle/director-camera.js";

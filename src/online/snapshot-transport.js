@@ -1,5 +1,5 @@
 import { freezePlainData } from "../../shared/data/plain-data.js";
-import { clamp, lerp } from "../../shared/game/math.js";
+import { clamp, lerp } from "../../shared/game/foundation/math.js";
 import { applyStatePatch } from "../../shared/network-patch.js";
 import {
   evaluateRulesetCompatibility,

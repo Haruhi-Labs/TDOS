@@ -1,7 +1,7 @@
-import { initializeShamisenHunt, selectShamisenHuntTarget } from "../shared/game/shamisen-hunt.js";
+import { initializeShamisenHunt, selectShamisenHuntTarget } from "../shared/game/characters/shamisen/hunt.js";
 import assert from "node:assert/strict";
-import { createMatchFeedback } from "../shared/game/rules/match-feedback.js";
-import { resolveShipDestruction } from "../shared/game/rules/ship-destruction.js";
+import { createMatchFeedback } from "../shared/game/runtime/match-feedback.js";
+import { resolveShipDestruction } from "../shared/game/characters/interactions/ship-destruction.js";
 import { MatchSimulation } from "../shared/game-core.js";
 
 let now = 0;

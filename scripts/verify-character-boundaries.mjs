@@ -147,7 +147,7 @@ assert.ok(casters.cooldowns.sub2 > 0);
 console.log("角色创建与施放边界校验通过：出生采样能力，施放组件独占成功提交且拒绝不重复消费。");
 
 // 屏障只处理碰撞和自身状态；新的冲撞能力不要求在屏障模块加入角色分支。
-const { koizumiBarrierGeometry } = await import("../shared/game/koizumi-barrier.js");
+const { koizumiBarrierGeometry } = await import("../shared/game/characters/koizumi/barrier.js");
 const barrier = new MatchSimulation({ seed: 331, teamLoadouts: { B: { main: "koizumi", sub1: "yuki", sub2: "kyon" } } });
 const defender = barrier.teamB.ships.main;
 const rammer = barrier.teamA.ships.main;

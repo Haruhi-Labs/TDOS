@@ -1,4 +1,4 @@
-import { clamp } from "../math.js";
+import { clamp } from "../foundation/math.js";
 
 export class AircraftOperations {
   #scoutView;
