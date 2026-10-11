@@ -1,6 +1,6 @@
 import { copyPlainData } from "../../../data/plain-data.js";
 // 调试状态序列化：供推演页展示决策中间量，结构保持稳定。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 
 export const debugStateMethods = {
   debugPoint(point) {
@@ -56,10 +56,10 @@ export const debugStateMethods = {
 
   debugThreatMap(shipThreats) {
     const output = {};
-    if (!(shipThreats instanceof Map)) {
+    if (!shipThreats) {
       return output;
     }
-    for (const [key, threat] of shipThreats.entries()) {
+    for (const [key, threat] of Object.entries(shipThreats)) {
       output[key] = {
         sources: threat.sources || 0,
         pressure: threat.pressure || 0,

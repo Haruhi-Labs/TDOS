@@ -1,5 +1,5 @@
 // 战区、边界与射界的几何工具，以及确定性噪声。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { fireArcDensityMultiplier } from "../../combat-rules.js";
 import { clamp, shortestAngleDelta, zoneContains } from "../../math.js";
 

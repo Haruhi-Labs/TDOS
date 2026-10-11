@@ -1,5 +1,5 @@
 // 侦察机的发射判断、选区与长门侦察条令的接入。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { skillMetaForCharacter } from "../../characters.js";
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { clamp, distance } from "../../math.js";

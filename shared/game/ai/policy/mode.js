@@ -1,5 +1,5 @@
 // 走位模式的评分与选择。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 
 export const modeMethods = {
   scoreMode(mode, context) {
@@ -120,7 +120,9 @@ export const modeMethods = {
     return 0;
   },
 
-  chooseMode(context) {
+  planMode(context) {
+    let mode = this.mode;
+    let modeTimer = this.modeTimer;
     const C = this.params.mode.choose;
     const ownBarrier = context.barrierTactics?.own;
     const forcedMode = context.edgePressure > C.recoverEdgePressure
@@ -146,25 +148,25 @@ export const modeMethods = {
         ? "search"
         : null;
     if (forcedMode) {
-      this.mode = forcedMode;
-      this.modeTimer = this.rng.range(C.forcedHoldMin, forcedMode === "search" ? C.forcedHoldSearch : forcedMode === "harvest" ? C.forcedHoldHarvest : C.forcedHoldOther);
-      return this.mode;
+      mode = forcedMode;
+      modeTimer = this.rng.range(C.forcedHoldMin, forcedMode === "search" ? C.forcedHoldSearch : forcedMode === "harvest" ? C.forcedHoldHarvest : C.forcedHoldOther);
+      return { mode, modeTimer };
     }
 
     // 低血转防守——但若正占优(领先/敌濒覆灭)则不退，继续压制把对手打死，避免领先方陪跑成平局
     if (context.mainHull < C.lowHullBelow && context.dist < context.rangeRef * C.lowHullRange && !context.winning) {
-      this.mode = context.detachedCount > 0 ? "regroup" : "kite";
-      this.modeTimer = this.rng.range(C.lowHullHold[0], C.lowHullHold[1]);
-      return this.mode;
+      mode = context.detachedCount > 0 ? "regroup" : "kite";
+      modeTimer = this.rng.range(C.lowHullHold[0], C.lowHullHold[1]);
+      return { mode, modeTimer };
     }
     if ((context.focus.visible || context.maxShipThreat > C.lowEnergyThreat) && context.energyRatio < C.lowEnergyBelow && context.dist < context.rangeRef * C.lowEnergyRange && !context.winning) {
-      this.mode = "regroup";
-      this.modeTimer = this.rng.range(C.lowEnergyHold[0], C.lowEnergyHold[1]);
-      return this.mode;
+      mode = "regroup";
+      modeTimer = this.rng.range(C.lowEnergyHold[0], C.lowEnergyHold[1]);
+      return { mode, modeTimer };
     }
 
     if (this.modeTimer > 0) {
-      return this.mode;
+      return { mode, modeTimer };
     }
 
     const modes = ["harvest", "regroup", "kite", "collapse", "broadside", "cutoff", "press"];
@@ -177,11 +179,11 @@ export const modeMethods = {
         bestMode = mode;
       }
     }
-    this.mode = bestMode;
-    this.modeTimer = this.rng.range(
+    mode = bestMode;
+    modeTimer = this.rng.range(
       bestMode === "collapse" || bestMode === "kite" || bestMode === "cutoff" ? C.holdMinShort : C.holdMinLong,
       bestMode === "regroup" || bestMode === "harvest" ? C.holdMaxLong : C.holdMaxShort,
     );
-    return this.mode;
+    return { mode, modeTimer };
   },
 };

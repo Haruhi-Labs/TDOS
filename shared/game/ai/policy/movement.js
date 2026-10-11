@@ -1,5 +1,5 @@
 // 走位下发：卡死检测、航线提交、光球转向与每轮改航的编排。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { clamp, distance } from "../../math.js";
 import { throttleForGear } from "../../throttle.js";
 import { bunnyStageRoute } from "./tactics/bunny-stage.js";
@@ -7,12 +7,14 @@ import { applyKoizumiBarrierMainStrategy, clampPointToAnchorRadius, keepDirectiv
 import { planShamisenHuntFormation } from "./tactics/shamisen-hunt.js";
 
 export const movementMethods = {
-  updateStuckState(dt) {
+  sampleStuckState(dt) {
+    let stuckTimer = this.stuckTimer;
+    let lastMainPos = this.lastMainPos;
     const main = this.obs.self.ships.main;
     if (!main.alive || !main.route) {
-      this.stuckTimer = 0;
-      this.lastMainPos = { x: main.x, y: main.y };
-      return;
+      stuckTimer = 0;
+      lastMainPos = { x: main.x, y: main.y };
+      return { stuckTimer, lastMainPos };
     }
 
     const moved = distance(main.x, main.y, this.lastMainPos.x, this.lastMainPos.y);
@@ -20,12 +22,13 @@ export const movementMethods = {
     const edgePressure = this.edgePressure(main);
     const pinnedOnEdge = edgePressure > 0.42 && main.speed < 6.5;
     if ((moved < 2.5 && main.speed < 3.5 && progressing) || pinnedOnEdge) {
-      this.stuckTimer += dt * (1 + edgePressure * 1.8);
+      stuckTimer += dt * (1 + edgePressure * 1.8);
     } else {
-      this.stuckTimer = Math.max(0, this.stuckTimer - dt * (0.9 + edgePressure));
+      stuckTimer = Math.max(0, this.stuckTimer - dt * (0.9 + edgePressure));
     }
 
-    this.lastMainPos = { x: main.x, y: main.y };
+    lastMainPos = { x: main.x, y: main.y };
+    return { stuckTimer, lastMainPos };
   },
 
   issueShipRoute(ship, targetX, targetY, throttle, padding = this.obs.world.mapPadding) {
@@ -74,14 +77,13 @@ export const movementMethods = {
     };
   },
 
-  steerActiveKoizumiOrbs(context = this.currentContext) {
+  executeOrbSteering(context = this.currentContext) {
     if (this.koizumiOrbSteerTimer > 0) return;
     const activeOrbs = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter(
       (ship) => ship?.alive && ship.koizumiOrb?.phase === "active" && ship.canControl,
     );
     if (activeOrbs.length === 0) {
-      this.koizumiOrbSteerTimer = 0;
-      return;
+      return 0;
     }
 
     for (const ship of activeOrbs) {
@@ -101,10 +103,10 @@ export const movementMethods = {
       this.issueShipRoute(ship, targetX, targetY, 1.2, this.safeRoutePadding(4));
     }
     // 高速冲撞需要比常规舰队战术更密的前视修正；难度仍通过反应倍率保留差异。
-    this.koizumiOrbSteerTimer = clamp(0.18 * Math.sqrt(this.reactionMult || 1), 0.18, 0.48);
+    return clamp(0.18 * Math.sqrt(this.reactionMult || 1), 0.18, 0.48);
   },
 
-  issueMovement(context = this.currentContext) {
+  executeMovement(context = this.currentContext) {
     const main = this.obs.self.ships.main;
     if (!main.alive) {
       return;
@@ -538,6 +540,6 @@ export const movementMethods = {
       }
       }
     }
-    this.lastTacticalPlan = debugPlan;
+    return debugPlan;
   },
 };

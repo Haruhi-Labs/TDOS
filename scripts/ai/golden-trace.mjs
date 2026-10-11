@@ -117,7 +117,7 @@ function buildBarrierBreach(breakerKind) {
   setScenarioField(breaker, 'energy', breaker.maxEnergy);
   setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
   setScenarioField(attackingTeam.ships.main, 'y', 720);
-  bot.moveTimer = 0;
+  bot.scheduleDecision("movement", 0);
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;
 }
@@ -138,7 +138,7 @@ function buildBarrierInfiltration() {
   const bot = simulation.botBySeat("B");
   holdShip(defendingMain, 650, 720);
   holdShip(simulation.teamB.ships.main, 930, 720, Math.PI);
-  bot.moveTimer = 0;
+  bot.scheduleDecision("movement", 0);
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;
 }
@@ -266,8 +266,7 @@ function buildScenarios() {
       // 强制模式（搜索、脱离边缘等）会改写 mode，因此每帧重新钉住。
       beforeTick: (simulation) => {
         for (const bot of Object.values(simulation.bots)) {
-          bot.mode = mode;
-          bot.modeTimer = 1e9;
+          bot.pinMode(mode, 1e9);
         }
       },
     });

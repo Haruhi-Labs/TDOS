@@ -1,5 +1,5 @@
 // 能量管理：能量池状态、推进档位护栏与支出许可。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { energyRateForThrottle, throttleForGear, throttleGearForValue } from "../../throttle.js";
 
 export const energyMethods = {

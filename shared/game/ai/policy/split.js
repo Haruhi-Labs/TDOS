@@ -1,5 +1,5 @@
 // 分离决策。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { clamp } from "../../math.js";
 import { shamisenHuntNeedsSplit } from "./tactics/shamisen-hunt.js";
 import { characterProfile } from "./characters/index.js";
@@ -102,7 +102,7 @@ export const splitMethods = {
     return false;
   },
 
-  evaluateSplit(elapsed, context) {
+  executeSplit(elapsed, context) {
     const acted = [];
     const attempt1 = this.shouldSplit(1, context, elapsed);
     if (attempt1 && this.writeSplit(1)) {
@@ -112,7 +112,7 @@ export const splitMethods = {
     if (attempt2 && this.writeSplit(2)) {
       acted.push(2);
     }
-    this.lastSplitDecision = {
+    return {
       attempt1,
       attempt2,
       acted,

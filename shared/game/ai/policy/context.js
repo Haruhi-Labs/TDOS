@@ -1,5 +1,5 @@
 // 焦点目标选择与战术上下文。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { clamp, distance } from "../../math.js";
 import { buildKoizumiBarrierTactics, characterTargetPriorityBonus } from "./tactics/character-counterplay.js";
 import { buildShamisenHuntTactics } from "./tactics/shamisen-hunt.js";
@@ -88,12 +88,12 @@ export const contextMethods = {
     const detachedShips = [this.obs.self.ships.sub1, this.obs.self.ships.sub2].filter((ship) => ship.alive && !ship.attached);
     const detachedSpread = detachedShips.reduce((max, ship) => Math.max(max, distance(ship.x, ship.y, main.x, main.y)), 0);
     const overextended = detachedSpread > X.overextendedSpread && localAdvantage < X.overextendedAdvantage;
-    const shipThreats = new Map();
+    const shipThreats = {};
     let maxShipThreat = 0;
     let overwhelmedShipKey = null;
     for (const ship of [main, ...detachedShips]) {
       const threat = this.shipThreatSnapshot(ship);
-      shipThreats.set(ship.key, threat);
+      shipThreats[ship.key] = threat;
       if (threat.danger > maxShipThreat) {
         maxShipThreat = threat.danger;
       }

@@ -250,7 +250,7 @@ function runBarrierBreachScenario(breakerKind, seed) {
   breaker.route = null;
   setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
   setScenarioField(attackingTeam.ships.main, 'y', 720);
-  bot.moveTimer = 0;
+  bot.scheduleDecision("movement", 0);
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
   const previousRandom = Math.random;
@@ -306,7 +306,7 @@ function runBarrierInfiltrationScenario(seed) {
   setScenarioField(attackingMain, 'angle', Math.PI);
   attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
   attackingMain.route = null;
-  bot.moveTimer = 0;
+  bot.scheduleDecision("movement", 0);
   bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
   let maximumInsideCount = 0;

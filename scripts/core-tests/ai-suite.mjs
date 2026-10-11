@@ -913,7 +913,7 @@ function aiOverwhelmedEscapeCheck() {
     "AI被围攻副舰降档后仍无法回能",
   );
 
-  bot.scoutTimer = 10;
+  bot.scheduleDecision("scout", 10);
   bot.update(TICK_DT, sim.elapsed + TICK_DT);
   assert(bot.scoutTimer <= 0.45, "AI单舰受压时未立刻把侦察节奏提前到高压模式");
 }
@@ -1013,7 +1013,7 @@ function aiScoutEnergyReserveCheck() {
   scoutSource.command = { ...scoutSource.command, y: scoutSource.y };
   scoutSource.route = null;
   setScenarioField(scoutSource, 'energy', SCOUT_LAUNCH_COST + scoutSource.maxEnergy * 0.08);
-  bot.scoutTimer = 0;
+  bot.scheduleDecision("scout", 0);
   setScenarioField(enemyMain, 'x', scoutSource.x - 60);
   setScenarioField(enemyMain, 'y', scoutSource.y);
   bot.rememberContact(enemyMain, "visible");
@@ -1163,7 +1163,7 @@ function aiKoizumiOrbSteeringCheck() {
   bot.trySubSkill("sub1", context);
   assert(koizumi.koizumiOrb?.phase === "active", "古泉AI接敌时没有释放光球冲撞技能");
 
-  bot.koizumiOrbSteerTimer = 0;
+  bot.scheduleDecision("orb", 0);
   bot.steerActiveKoizumiOrbs(context);
   assert(koizumi.route, "古泉AI进入光球形态后没有生成冲撞路线");
   assert(
@@ -1225,7 +1225,7 @@ function aiKoizumiBarrierDefenseCheck() {
   }
 
   disruptKoizumiBarrier(team, { x: main.x, y: main.y, normalX: 1, normalY: 0 });
-  bot.modeTimer = 0;
+  bot.scheduleDecision("mode", 0);
   context = bot.buildTacticalContext(main, bot.selectEnemyFocus(main));
   const beforeDistance = Math.hypot(main.x - enemyMain.x, main.y - enemyMain.y);
   bot.issueMovement(context);
@@ -1494,7 +1494,7 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
   let context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
   context.skillAggression = 1.4;
   assert(!bot.shouldCastSubSkill(future1096, context.focus, context), "1096 AI仍会从盾外浪费光线");
-  bot.modeTimer = 0;
+  bot.scheduleDecision("mode", 0);
   bot.issueMovement(context);
   const activeBarrierMainRange = Math.hypot(
     sim.teamB.ships.main.route.p2.x - defendingMain.x,
@@ -1513,7 +1513,7 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
   context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
   context.skillAggression = 1.4;
   assert(!context.barrierTactics.enemy.active, "AI没有识别闭锁空间的5秒失效窗口");
-  bot.modeTimer = 0;
+  bot.scheduleDecision("mode", 0);
   bot.issueMovement(context);
   const breachWindowMainRange = Math.hypot(
     sim.teamB.ships.main.route.p2.x - defendingMain.x,

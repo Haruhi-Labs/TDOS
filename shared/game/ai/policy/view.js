@@ -1,5 +1,5 @@
 // 观测访问助手：己方舰船索引、编队能量池、可见敌方编号与世界边界钳制。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// this 仅为冻结的读取/操作能力上下文；阶段结果返回给状态所有者消费。
 import { clamp } from "../../math.js";
 
 export const viewMethods = {
