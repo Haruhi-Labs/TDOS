@@ -2,7 +2,7 @@
 // 本文件持有决策计时与计划并编排阶段；情报记忆和搜索占据图由独立组件持有，启发式阶段共享策略上下文。
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { normalizeAiDifficulty, resolveAiParams } from "../params/index.js";
-import { createScoutDoctrineState, recordScoutDeployment } from "./tactics/yuki-scout.js";
+import { ScoutDoctrine } from "./tactics/yuki-scout.js";
 import { viewMethods } from "./view.js";
 import { commandsMethods } from "./commands.js";
 import { debugStateMethods } from "./debug-state.js";
@@ -23,6 +23,8 @@ import { movementMethods } from "./movement.js";
 export class RulePolicy {
   #intel;
   #belief;
+  #scouting = new ScoutDoctrine();
+  get scoutDoctrine() { return this.#scouting.snapshot; }
   get rememberedMain() { return this.#intel.main; }
   get rememberedContacts() { return this.#intel.contacts; }
   get knownContactCount() { return this.#intel.contactCount; }
@@ -44,9 +46,6 @@ export class RulePolicy {
     this.moveTimer = 0;
     this.koizumiOrbSteerTimer = 0;
     this.scoutTimer = this.obs.self.flags.yukiFlagship ? 0.55 : this.profile.initialScoutTimer;
-    this.scoutDoctrine = createScoutDoctrineState();
-    this.currentScoutPlan = null;
-    this.scoutPlanRefreshAt = 0;
     // 春日的首次施放既能立即提供团队强化，也会解锁常驻支援，因此不等待通用的开局观察窗。
     this.flagshipTimer = this.obs.self.loadout.main === "haruhi" ? 0 : this.profile.initialFlagshipTimer;
     this.subTimers = {
@@ -141,6 +140,13 @@ export class RulePolicy {
   beliefPeak() { return this.#belief.peak(); }
   beliefZoneWeights() { return this.#belief.zoneWeights(this.obs.world.zones); }
 
+  planYukiDeployment(input) { return this.#scouting.plan(input); }
+  retaskYukiCombatScouts(plan) {
+    return this.#scouting.retask(plan, {
+      now: this.obs.time, scouts: this.obs.self.scouts, zones: this.obs.world.zones,
+    }, (id, options) => this.writeScoutMission(id, options));
+  }
+
   get obs() {
     return this.port.observe();
   }
@@ -202,17 +208,10 @@ export class RulePolicy {
     this.currentContext = main.alive && focus ? this.buildTacticalContext(main, focus) : null;
     this.evaluateSplit(elapsed, this.currentContext);
     this.enforceEnergyThrottleCaps();
-    const shouldRefreshScoutPlan = this.obs.self.flags.yukiFlagship && (
-      !this.currentScoutPlan
-      || this.obs.time >= this.scoutPlanRefreshAt
-      || this.scoutTimer <= 0
-      || this.obs.time >= this.scoutDoctrine.nextRetaskAt
-    );
-    if (shouldRefreshScoutPlan) {
-      this.currentScoutPlan = this.planScoutDeployment(this.currentContext);
-      this.scoutPlanRefreshAt = this.obs.time + ST.planRefresh;
-    }
-    const scoutPlan = this.currentScoutPlan;
+    const scoutPlan = this.#scouting.selectPlan({
+      enabled: this.obs.self.flags.yukiFlagship, now: this.obs.time,
+      scoutDue: this.scoutTimer <= 0, refreshInterval: ST.planRefresh,
+    }, () => this.planScoutDeployment(this.currentContext));
     const retaskedScouts = this.retaskYukiCombatScouts(scoutPlan);
 
     if (
@@ -268,7 +267,7 @@ export class RulePolicy {
             mission: scoutPlan?.mission,
           });
         if (launched && scoutPlan) {
-          recordScoutDeployment(this.scoutDoctrine, scoutPlan, this.obs.time);
+          this.#scouting.deployed(scoutPlan, this.obs.time);
         }
         this.lastScoutDecision = {
           action: launched ? "launch" : hasScoutReserve ? "retry" : "hold-energy",

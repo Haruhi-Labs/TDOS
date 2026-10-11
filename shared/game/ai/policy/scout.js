@@ -3,7 +3,6 @@
 import { skillMetaForCharacter } from "../../characters.js";
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { clamp, distance } from "../../math.js";
-import { buildScoutRetaskOrders, planYukiScoutDeployment, scoutMissionPoint } from "./tactics/yuki-scout.js";
 
 export const scoutMethods = {
   likelyProbeZoneId(focus) {
@@ -66,8 +65,7 @@ export const scoutMethods = {
         mode: scout.mode,
         mission: scout.mission,
       }));
-    return planYukiScoutDeployment({
-      state: this.scoutDoctrine,
+    return this.planYukiDeployment({
       zones: this.obs.world.zones,
       worldSize: this.obs.world.size,
       ownMain: this.obs.self.ships.main,
@@ -80,40 +78,6 @@ export const scoutMethods = {
       now: this.obs.time,
       probeZoneId: this.likelyProbeZoneId(focus),
     });
-  },
-
-  retaskYukiCombatScouts(plan) {
-    const now = this.obs.time;
-    if (!plan || now < this.scoutDoctrine.nextRetaskAt) {
-      return 0;
-    }
-    const activeScouts = this.obs.self.scouts
-      .filter((scout) => scout.alive && scout.combatCapable)
-      .map((scout) => ({
-        id: scout.id,
-        zoneId: scout.zoneId || this.zoneForPoint(scout.x, scout.y).id,
-        life: scout.life,
-        mode: scout.mode,
-        mission: scout.mission,
-      }));
-    const orders = buildScoutRetaskOrders(plan, activeScouts, 2);
-    let retasked = 0;
-    for (const [index, order] of orders.entries()) {
-      const scout = this.obs.self.scouts.find((item) => item.id === order.scoutId && item.alive);
-      if (!scout) continue;
-      const seekPoint = scoutMissionPoint(plan, this.obs.world.zones, order.zoneId, index + 1);
-      if (this.writeScoutMission(scout.id, {
-        zoneId: order.zoneId,
-        seekPoint,
-        patrolCenter: seekPoint,
-        patrolRadius: plan.patrolRadius,
-        mission: order.mission,
-      })) {
-        retasked += 1;
-      }
-    }
-    this.scoutDoctrine.nextRetaskAt = now + (retasked > 0 ? 2.4 : 1.2);
-    return retasked;
   },
 
   shouldLaunchScout(context = this.currentContext, scoutPlan = null) {

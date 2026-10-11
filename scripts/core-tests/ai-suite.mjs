@@ -488,7 +488,7 @@ function aiYukiScoutDoctrineCheck() {
     battlePlan.primaryZoneId === 3 || battlePlan.coverageZoneIds.includes(3),
     "长门AI的战场部署没有覆盖敌方预计进入的战区",
   );
-  bot.scoutDoctrine.nextRetaskAt = 0;
+  sim.elapsed = Math.max(sim.elapsed, bot.scoutDoctrine.nextRetaskAt);
   const retasked = bot.retaskYukiCombatScouts(battlePlan);
   const primaryCount = team.scouts.filter((scout) => scout.zone?.id === battlePlan.primaryZoneId).length;
   assert(retasked >= 1, "长门AI由警戒转入接敌时没有重新编组既有战斗僚机");

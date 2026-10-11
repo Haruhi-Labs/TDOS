@@ -1,4 +1,5 @@
 // 长门旗舰的侦察条令：前沿覆盖、动向预测、战场集中、骚扰分配与重新编组。纯数据计算。
+import { copyPlainData, freezePlainData } from "../../../../data/plain-data.js";
 import { clamp } from "../../../math.js";
 
 const YUKI_SCOUT_MODE_CONFIG = Object.freeze({
@@ -8,7 +9,7 @@ const YUKI_SCOUT_MODE_CONFIG = Object.freeze({
   screen: Object.freeze({ desiredActive: 4, maxActive: 6, cadence: [3.05, 3.8], patrolRadius: 150, commitment: 4.5 }),
 });
 
-export function createScoutDoctrineState() {
+function createScoutDoctrineState() {
   return {
     mode: "screen",
     primaryZoneId: null,
@@ -275,7 +276,7 @@ export function planYukiScoutDeployment({
   return plan;
 }
 
-export function recordScoutDeployment(state, plan, now) {
+function recordScoutDeployment(state, plan, now) {
   const primaryChanged = state.primaryZoneId !== plan.primaryZoneId || state.mode !== plan.mode;
   state.mode = plan.mode;
   state.primaryZoneId = plan.primaryZoneId;
@@ -339,4 +340,39 @@ export function buildScoutRetaskOrders(plan, activeScouts, maxOrders = 2) {
     if (orders.length >= maxOrders) break;
   }
   return orders;
+}
+
+// 侦察条令拥有承诺窗口、部署游标、计划缓存和重编组时钟，策略阶段只提交观测和动作结果。
+export class ScoutDoctrine {
+  #state = createScoutDoctrineState();
+  #plan = null;
+  #refreshAt = 0;
+  get snapshot() { return freezePlainData(copyPlainData(this.#state)); }
+  plan(input) { return planYukiScoutDeployment({ ...input, state: this.#state }); }
+  selectPlan({ enabled, now, scoutDue, refreshInterval }, build) {
+    if (enabled && (!this.#plan || now >= this.#refreshAt || scoutDue || now >= this.#state.nextRetaskAt)) {
+      this.#plan = freezePlainData(copyPlainData(build()));
+      this.#refreshAt = now + refreshInterval;
+    }
+    return this.#plan;
+  }
+  deployed(plan, now) { recordScoutDeployment(this.#state, plan, now); }
+  retask(plan, { now, scouts, zones }, submit) {
+    if (!plan || now < this.#state.nextRetaskAt) return 0;
+    const active = scouts.filter((scout) => scout.alive && scout.combatCapable).map((scout) => ({
+      id: scout.id, zoneId: scout.zoneId || zoneForPoint(zones, scout.x, scout.y).id,
+      life: scout.life, mode: scout.mode, mission: scout.mission,
+    }));
+    let retasked = 0;
+    for (const [index, order] of buildScoutRetaskOrders(plan, active, 2).entries()) {
+      if (!scouts.some((scout) => scout.id === order.scoutId && scout.alive)) continue;
+      const seekPoint = scoutMissionPoint(plan, zones, order.zoneId, index + 1);
+      if (submit(order.scoutId, {
+        zoneId: order.zoneId, seekPoint, patrolCenter: seekPoint,
+        patrolRadius: plan.patrolRadius, mission: order.mission,
+      })) retasked += 1;
+    }
+    this.#state.nextRetaskAt = now + (retasked > 0 ? 2.4 : 1.2);
+    return retasked;
+  }
 }

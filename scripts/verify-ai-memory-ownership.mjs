@@ -50,3 +50,27 @@ const weights = belief.zoneWeights(zones);
 weights.clear();
 assert.equal(belief.zoneWeights(zones).size, 9, "搜索输出不得泄露概率存储");
 console.log("AI 情报所有权校验通过：延迟确认、输入隔离、不可变记录、过期淘汰和搜索结果隔离。");
+
+const { ScoutDoctrine } = await import("../shared/game/ai/policy/tactics/yuki-scout.js");
+const doctrine = new ScoutDoctrine();
+const plan = { mode: "screen", mission: "screen", zoneId: 1, primaryZoneId: 1, predictedZoneId: 2,
+  coverageZoneIds: [1, 2], commitment: 5 };
+let plansBuilt = 0;
+const select = (now) => doctrine.selectPlan({ enabled: true, now, scoutDue: false, refreshInterval: 10 }, () => {
+  plansBuilt += 1;
+  return plan;
+});
+const cached = select(0);
+doctrine.retask(cached, { now: 0, scouts: [], zones }, () => { throw new Error("空编组不能提交任务"); });
+assert.equal(select(1), cached);
+assert.equal(plansBuilt, 1, "重编组窗口内复用计划");
+doctrine.deployed(cached, 1);
+const doctrineSnapshot = doctrine.snapshot;
+plan.coverageZoneIds.push(3);
+assert.deepEqual(cached.coverageZoneIds, [1, 2]);
+assert.deepEqual(doctrineSnapshot.lastPlan.coverageZoneIds, [1, 2]);
+assert.throws(() => { doctrineSnapshot.nextRetaskAt = 0; }, TypeError);
+assert.equal(doctrineSnapshot.deployments, 1);
+select(1.2);
+assert.equal(plansBuilt, 2, "重编组到期必须重算计划");
+console.log("侦察条令所有权校验通过：计划缓存、重编组窗口、部署消费和只读历史互相隔离。");

@@ -11,7 +11,7 @@ bot.lastScoutDecision = { detail: nested() };
 bot.lastFlagshipDecision = { detail: nested() };
 bot.lastSubSkillDecision = { sub1: { detail: nested() }, sub2: { detail: nested() } };
 bot.lastSplitDecision = { detail: nested() };
-bot.scoutDoctrine.lastPlan = nested();
+const originalDoctrine = structuredClone(bot.scoutDoctrine);
 const expected = bot.serializeDebugState();
 const exposed = bot.serializeDebugState();
 
@@ -31,9 +31,9 @@ bot.lastFlagshipDecision.detail.path[0].id = 8;
 bot.lastSubSkillDecision.sub1.detail.path[0].id = 8;
 bot.lastSubSkillDecision.sub2.detail.path[0].id = 8;
 bot.lastSplitDecision.detail.path[0].id = 8;
-bot.scoutDoctrine.lastPlan.path[0].id = 8;
+assert.throws(() => { bot.scoutDoctrine.lastPlan = nested(); }, TypeError);
 for (const key of planFields) assert.equal(expected[key].path[0].id, 7, "策略后续修改不得污染历史快照");
 for (const decision of [expected.scoutDecision, expected.flagshipDecision, expected.subSkillDecision.sub1,
   expected.subSkillDecision.sub2, expected.splitDecision]) assert.equal(decision.detail.path[0].id, 7);
-assert.equal(expected.scoutDoctrine.lastPlan.path[0].id, 7);
+assert.deepEqual(expected.scoutDoctrine.lastPlan, originalDoctrine.lastPlan);
 console.log("AI 调试投影校验通过：计划、决策与策略嵌套数据独立，消费修改与后续推进均不污染历史。");
