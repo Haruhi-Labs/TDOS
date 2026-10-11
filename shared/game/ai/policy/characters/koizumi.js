@@ -3,7 +3,7 @@ export default {
   splitsEarlyAgainstBarrier: true,
   sub: {
     purgeableBuff: true,
-    shouldCast(policy, { K, ship, estimate, context, dist, assignedToBreach, breachDistance }) {
+    shouldCast(facts, { K, ship, estimate, context, dist, assignedToBreach, breachDistance }) {
       if (assignedToBreach) {
         return Boolean(
           estimate
@@ -19,7 +19,7 @@ export default {
         && estimate.source !== "spawn"
         && (estimate.visible || estimate.age <= K.koizumiAge || context?.trackableIntel)
         && dist <= ship.stats.range * K.koizumiRange
-        && (((context?.skillAggression) || 0) > K.koizumiAggression || policy.energyProfile(ship).high),
+        && (((context?.skillAggression) || 0) > K.koizumiAggression || facts.energyHigh),
       );
     },
   },

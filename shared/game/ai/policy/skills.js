@@ -1,3 +1,4 @@
+import { characterDecisionFacts, characterDecisionInput } from "./characters/decision-view.js";
 // 技能施放：计时、通用前置条件与角色档案的调度。
 // 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
 import { skillMetaForCharacter } from "../../characters.js";
@@ -6,6 +7,12 @@ import { characterProfile } from "./characters/index.js";
 import { barrierBlocksRangedAttack } from "./tactics/character-counterplay.js";
 
 export const skillsMethods = {
+  characterSkillFacts(ship = null) {
+    return characterDecisionFacts({
+      obs: this.obs, mode: this.mode, energyHigh: ship ? this.energyProfile(ship).high : false,
+      skillAimLead: this.params.features.skillAimLead, aimPadding: this.safeRoutePadding(4), searchZoneId: this.searchZoneId,
+    });
+  },
   tryFlagshipSkill(context = this.currentContext) {
     const T = this.params.skills.flagshipTimers;
     if (this.flagshipTimer > 0) {
@@ -85,7 +92,7 @@ export const skillsMethods = {
     }
     let ok = false;
     const subProfile = characterProfile(ship.characterId).sub;
-    const target = subProfile?.target?.(this, { T, estimate });
+    const target = subProfile?.target?.(this.characterSkillFacts(ship), characterDecisionInput({ T, estimate }));
     ok = target ? this.writeSubSkill(shipKey, target) : this.writeSubSkill(shipKey);
     this.lastSubSkillDecision[shipKey] = {
       action: ok ? "cast" : "retry",
@@ -203,7 +210,7 @@ export const skillsMethods = {
       return false;
     }
     const dist = distance(main.x, main.y, estimate.x, estimate.y);
-    return profile?.shouldCast ? profile.shouldCast(this, { K, main, estimate, context, dist }) : true;
+    return profile?.shouldCast ? profile.shouldCast(this.characterSkillFacts(), characterDecisionInput({ K, main, estimate, context, dist })) : true;
   },
 
   shouldCastSubSkill(ship, estimate, context = this.currentContext) {
@@ -212,7 +219,7 @@ export const skillsMethods = {
       return false;
     }
     const profile = characterProfile(ship.characterId).sub;
-    if (profile?.decideAlone) return profile.decideAlone(ship, estimate, context);
+    if (profile?.decideAlone) return profile.decideAlone(this.characterSkillFacts(ship), characterDecisionInput({ ship, estimate, context }));
     const meta = skillMetaForCharacter(ship.characterId, "sub");
     if (this.shouldDelaySubBuff(ship, meta)) {
       return false;
@@ -231,7 +238,7 @@ export const skillsMethods = {
       : dist;
     const blockedByBarrier = barrierBlocksRangedAttack(enemyBarrier, ship, K.barrierBlockMargin);
     return profile?.shouldCast
-      ? profile.shouldCast(this, { K, ship, estimate, context, dist, assignedToBreach, breachDistance, blockedByBarrier })
+      ? profile.shouldCast(this.characterSkillFacts(ship), characterDecisionInput({ K, ship, estimate, context, dist, assignedToBreach, breachDistance, blockedByBarrier }))
       : true;
   },
 };

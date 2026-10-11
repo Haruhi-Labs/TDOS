@@ -3,6 +3,7 @@ import { CHARACTER_ORDER, MatchSimulation, TICK_DT } from "../../shared/game-cor
 import { createActionPort } from "../../shared/game/ai/bridge/action-port.js";
 import { resolveAiParams } from "../../shared/game/ai/params/index.js";
 import { characterProfile } from "../../shared/game/ai/policy/characters/index.js";
+import { characterDecisionFacts, characterDecisionInput } from "../../shared/game/ai/policy/characters/decision-view.js";
 import { RulePolicy } from "../../shared/game/ai/policy/rule-policy.js";
 import { createSeededRng } from "../../shared/game/rng.js";
 
@@ -22,6 +23,21 @@ function profileRegistryCheck() {
 
 // 档案里的判断只依赖传入的纯数据，不需要启动对局。
 function profileDecisionCheck() {
+  const observation = { self: { cooldowns: { flagship: 3 } } };
+  const facts = characterDecisionFacts({ obs: observation, mode: "press", port: { submit() {} }, timers: { main: 0 } });
+  assert.equal("port" in facts, false, "角色档案不得得到动作执行能力");
+  assert.equal("timers" in facts, false, "角色档案不得得到策略状态");
+  assert.throws(() => { facts.obs.self.cooldowns.flagship = 0; }, TypeError);
+  observation.self.cooldowns.flagship = 9;
+  assert.equal(facts.obs.self.cooldowns.flagship, 3, "决策事实必须脱离来源状态");
+  const context = { focus: { x: 1 }, candidates: [{ id: "a" }] };
+  const input = characterDecisionInput({ context, dist: Infinity });
+  context.focus.x = 2;
+  assert.equal(input.context.focus.x, 1);
+  assert.equal(input.dist, Infinity, "不能用 JSON 往返改变无穷距离语义");
+  assert.throws(() => input.context.candidates.push({}), TypeError);
+  assert.throws(() => { characterProfile("future1096").sub.target = () => null; }, TypeError);
+
   const K = params.skills.sub;
   const kyon = characterProfile("kyon").sub;
   const ship = { hp: 100, maxHp: 100, stats: { range: 400 } };
@@ -31,15 +47,15 @@ function profileDecisionCheck() {
 
   const future1096 = characterProfile("future1096").sub;
   const policy = {
-    params,
+    skillAimLead: params.features.skillAimLead,
     obs: { world: { size: 1440 } },
-    safeRoutePadding: () => 100,
+    aimPadding: 100,
   };
   const T = params.skills.subTimers;
   assert.equal(future1096.target(policy, { T, estimate: { source: "spawn", visible: false, age: 0 } }), null, "出生点情报不带目标施放");
   const moving = { source: "visible", visible: true, age: 0, x: 700, y: 700, angle: 0, speed: 40, confidence: 1 };
   assert.deepEqual(future1096.target(policy, { T, estimate: moving }), { targetX: 700 + 40 * T.future1096AimLead, targetY: 700 });
-  const noLead = { ...policy, params: resolveAiParams({ preset: "legacy" }) };
+  const noLead = { ...policy, skillAimLead: resolveAiParams({ preset: "legacy" }).features.skillAimLead };
   assert.deepEqual(future1096.target(noLead, { T, estimate: moving }), { targetX: 700, targetY: 700 }, "legacy 预设不做预判");
   assert.equal(future1096.shouldCast(policy, { K, estimate: moving, context: { skillAggression: 1 }, blockedByBarrier: true }), false);
 
