@@ -201,7 +201,8 @@ export const debugStateMethods = {
         visibleContacts += 1;
       }
     }
-    return copyPlainData({
+    // 已投影的标量和新对象可直接发布，仅复制仍由策略持有的计划与决策。
+    return {
       seat: this.seat,
       mode: this.mode,
       modeTimer: this.modeTimer,
@@ -220,17 +221,17 @@ export const debugStateMethods = {
       },
       focus: this.debugContact(focus),
       context: this.debugContext(this.currentContext),
-      searchCenter: this.lastTacticalPlan?.searchCenter || null,
-      combatCenter: this.lastTacticalPlan?.combatCenter || null,
-      searchAssignments: this.lastTacticalPlan?.searchAssignments || null,
-      sectorPlan: this.lastTacticalPlan?.sectorPlan || null,
-      shamisenHuntPlan: this.lastTacticalPlan?.shamisenHuntPlan || null,
-      detachedPlan: this.lastTacticalPlan?.detachedPlan || null,
-      orders: this.lastTacticalPlan?.orders || {},
+      searchCenter: copyPlainData(this.lastTacticalPlan?.searchCenter || null),
+      combatCenter: copyPlainData(this.lastTacticalPlan?.combatCenter || null),
+      searchAssignments: copyPlainData(this.lastTacticalPlan?.searchAssignments || null),
+      sectorPlan: copyPlainData(this.lastTacticalPlan?.sectorPlan || null),
+      shamisenHuntPlan: copyPlainData(this.lastTacticalPlan?.shamisenHuntPlan || null),
+      detachedPlan: copyPlainData(this.lastTacticalPlan?.detachedPlan || null),
+      orders: copyPlainData(this.lastTacticalPlan?.orders || {}),
       useSearchSectorPlan: Boolean(this.lastTacticalPlan?.useSearchSectorPlan),
       shouldUseDetachedRoles: Boolean(this.lastTacticalPlan?.shouldUseDetachedRoles),
       scoutDecision: {
-        ...this.lastScoutDecision,
+        ...copyPlainData(this.lastScoutDecision),
         nextIn: this.scoutTimer,
       },
       scoutDoctrine: {
@@ -238,26 +239,26 @@ export const debugStateMethods = {
         primaryZoneId: this.scoutDoctrine.primaryZoneId,
         committedUntil: this.scoutDoctrine.committedUntil,
         deployments: this.scoutDoctrine.deployments,
-        lastPlan: this.scoutDoctrine.lastPlan,
+        lastPlan: copyPlainData(this.scoutDoctrine.lastPlan),
       },
       flagshipDecision: {
-        ...this.lastFlagshipDecision,
+        ...copyPlainData(this.lastFlagshipDecision),
         nextIn: this.flagshipTimer,
       },
       subSkillDecision: {
         sub1: {
-          ...this.lastSubSkillDecision.sub1,
+          ...copyPlainData(this.lastSubSkillDecision.sub1),
           nextIn: this.subTimers.sub1,
         },
         sub2: {
-          ...this.lastSubSkillDecision.sub2,
+          ...copyPlainData(this.lastSubSkillDecision.sub2),
           nextIn: this.subTimers.sub2,
         },
       },
       splitDecision: {
-        ...this.lastSplitDecision,
+        ...copyPlainData(this.lastSplitDecision),
         level: this.obs.self.splitLevel,
       },
-    });
+    };
   },
 };

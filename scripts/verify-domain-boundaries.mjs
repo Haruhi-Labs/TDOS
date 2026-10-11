@@ -198,3 +198,5 @@ await import("./verify-feedback-ownership.mjs");
 await import("./verify-expanding-wave.mjs");
 
 await import("./verify-throttle-constraint.mjs");
+
+await import("./verify-ai-debug-projection.mjs");
