@@ -1,5 +1,5 @@
 // 规则策略：只通过端口读取观测、提交动作，数值来自参数表，随机取自分配的随机流。
-// 本文件持有决策计时与计划并编排阶段；情报记忆和搜索占据图由独立组件持有，启发式阶段共享策略上下文。
+// 本文件编排阶段并持有移动计划；情报、搜索、侦察和技能调度由各组件独占，启发式阶段读取策略上下文。
 import { SCOUT_LAUNCH_COST } from "../../combat-rules.js";
 import { normalizeAiDifficulty, resolveAiParams } from "../params/index.js";
 import { ScoutDoctrine } from "./tactics/yuki-scout.js";
@@ -15,12 +15,15 @@ import { contextMethods } from "./context.js";
 import { splitMethods } from "./split.js";
 import { modeMethods } from "./mode.js";
 import { scoutMethods } from "./scout.js";
+import { characterDecisionInput } from "./characters/decision-view.js";
+import { SkillDecisionCycle } from "./skill-decision-cycle.js";
 import { skillsMethods } from "./skills.js";
 import { detachedMethods } from "./detached.js";
 import { targetsMethods } from "./targets.js";
 import { movementMethods } from "./movement.js";
 
 export class RulePolicy {
+  #skillCycle;
   #intel;
   #belief;
   #scouting = new ScoutDoctrine();
@@ -46,12 +49,12 @@ export class RulePolicy {
     this.moveTimer = 0;
     this.koizumiOrbSteerTimer = 0;
     this.scoutTimer = this.obs.self.flags.yukiFlagship ? 0.55 : this.profile.initialScoutTimer;
-    // 春日的首次施放既能立即提供团队强化，也会解锁常驻支援，因此不等待通用的开局观察窗。
-    this.flagshipTimer = this.obs.self.loadout.main === "haruhi" ? 0 : this.profile.initialFlagshipTimer;
-    this.subTimers = {
-      sub1: this.profile.initialSubTimers.sub1,
-      sub2: this.profile.initialSubTimers.sub2,
-    };
+    // 春日第一次立即检查；其余角色保持原开局观察窗。
+    this.#skillCycle = new SkillDecisionCycle({
+      flagship: this.obs.self.loadout.main === "haruhi" ? 0 : this.profile.initialFlagshipTimer,
+      sub1: this.profile.initialSubTimers.sub1, sub2: this.profile.initialSubTimers.sub2,
+      now: this.obs.time,
+    });
     this.modeTimer = 0;
     this.mode = "press";
 
@@ -94,26 +97,6 @@ export class RulePolicy {
       urgent: false,
       at: this.obs.time,
     };
-    this.lastFlagshipDecision = {
-      action: "idle",
-      cast: false,
-      at: this.obs.time,
-      target: null,
-    };
-    this.lastSubSkillDecision = {
-      sub1: {
-        action: "idle",
-        cast: false,
-        at: this.obs.time,
-        target: null,
-      },
-      sub2: {
-        action: "idle",
-        cast: false,
-        at: this.obs.time,
-        target: null,
-      },
-    };
     this.lastSplitDecision = {
       attempt1: false,
       attempt2: false,
@@ -121,6 +104,55 @@ export class RulePolicy {
       level: this.obs.self.splitLevel,
       at: this.obs.time,
     };
+  }
+
+  get flagshipTimer() { return this.#skillCycle.timers.flagship; }
+  get subTimers() {
+    const { sub1, sub2 } = this.#skillCycle.timers;
+    return Object.freeze({ sub1, sub2 });
+  }
+  get lastFlagshipDecision() { return this.#skillCycle.decisions.flagship; }
+  get lastSubSkillDecision() {
+    const { sub1, sub2 } = this.#skillCycle.decisions;
+    return Object.freeze({ sub1, sub2 });
+  }
+  scheduleSkillDecision(key, delay) { this.#skillCycle.schedule(key, delay); }
+
+  tryFlagshipSkill(context = this.currentContext) {
+    if (this.flagshipTimer > 0) return;
+    const estimate = context?.focus || this.primaryEnemyEstimate();
+    this.#skillCycle.tryFlagship(characterDecisionInput({
+      T: this.params.skills.flagshipTimers, now: this.obs.time,
+      characterId: this.obs.self.loadout.main, estimate, context,
+    }), {
+      shouldCast: () => this.shouldCastFlagshipSkill(estimate, context),
+      cast: () => this.writeFlagshipSkill(),
+      cooldown: () => this.obs.self.cooldowns.flagship,
+      randomRange: (min, max) => this.rng.range(min, max),
+      describeTarget: (target) => this.debugContact(target),
+    });
+  }
+
+  trySubSkill(shipKey, context = this.currentContext) {
+    if (this.subTimers[shipKey] > 0) return;
+    const ship = this.obs.self.ships[shipKey];
+    // 不可用分支不读取情报，保留原判定次序。
+    const estimate = ship?.alive && !ship.attached ? context?.focus || this.primaryEnemyEstimate() : null;
+    const replanMovement = this.#skillCycle.trySub(characterDecisionInput({
+      T: this.params.skills.subTimers, now: this.obs.time, shipKey, ship, estimate, context,
+      facts: ship ? this.characterSkillFacts(ship) : null,
+    }), {
+      shouldCast: () => this.shouldCastSubSkill(ship, estimate, context),
+      cast: (target) => target ? this.writeSubSkill(shipKey, target) : this.writeSubSkill(shipKey),
+      cooldown: () => this.obs.self.cooldowns[shipKey],
+      randomRange: (min, max) => this.rng.range(min, max),
+      describeTarget: (target) => this.debugContact(target),
+    });
+    if (replanMovement) {
+      // 破盾成功的同一帧重规划冲撞和能量球，不能等常规改航周期。
+      this.moveTimer = 0;
+      this.koizumiOrbSteerTimer = 0;
+    }
   }
 
   predictEnemyVector(...args) { return this.#intel.predictEnemyVector(...args); }
@@ -195,9 +227,7 @@ export class RulePolicy {
     this.moveTimer -= dt;
     this.koizumiOrbSteerTimer -= dt;
     this.scoutTimer -= dt;
-    this.flagshipTimer -= dt;
-    this.subTimers.sub1 -= dt;
-    this.subTimers.sub2 -= dt;
+    this.#skillCycle.advance(dt);
     this.modeTimer -= dt;
 
     this.refreshIntel();

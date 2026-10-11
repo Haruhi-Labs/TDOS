@@ -107,9 +107,9 @@ function buildBarrierBreach(breakerKind) {
   if (!isHaruhi) attackingTeam.split(1);
   if (isHaruhi) {
     unlockSupport(attackingTeam, ["otherworlder"], simulation.elapsed, () => 0);
-    bot.flagshipTimer = 999;
+    bot.scheduleSkillDecision("flagship", 999);
   } else {
-    bot.subTimers.sub1 = 0;
+    bot.scheduleSkillDecision("sub1", 0);
   }
   holdShip(defendingMain, 650, 720);
   holdShip(breaker, 940, 720, Math.PI);

@@ -590,7 +590,7 @@ function aiAsakuraVisionWaveDecisionCheck() {
   );
 
   enemyMain.activateTimedEffect("reliableUntil", (sim.elapsed + 5) - enemyMain.team.match.elapsed);
-  bot.flagshipTimer = 0;
+  bot.scheduleSkillDecision("flagship", 0);
   bot.tryFlagshipSkill(context);
   assert(aiTeam.hasActiveVisionWaveSkill(), "朝仓 AI 未对可及时净化的可见增益释放视野波");
   runSteps(sim, 0.8);
@@ -644,8 +644,8 @@ function aiVisionWaveBuffCounterplayCheck() {
       !bot.shouldCastSubSkill(kyon, context.focus, context),
       `${difficulty} AI 仍会顶着朝仓视野波释放分舰增益`,
     );
-    bot.flagshipTimer = 0;
-    bot.subTimers.sub1 = 0;
+    bot.scheduleSkillDecision("flagship", 0);
+    bot.scheduleSkillDecision("sub1", 0);
     bot.tryFlagshipSkill(context);
     bot.trySubSkill("sub1", context);
     assert(aiMain.team.effects.sponsorUntil <= bot.obs.time, `${difficulty} AI 未实际暂缓旗舰增益`);
@@ -1076,8 +1076,8 @@ function aiHighEnergySkillAggressionCheck() {
   aiMain.energy = aiMain.maxEnergy * 0.9;
   aiTeam.ships.sub1.energy = aiTeam.ships.sub1.maxEnergy * 0.88;
   aiTeam.ships.sub2.energy = aiTeam.ships.sub2.maxEnergy * 0.9;
-  bot.flagshipTimer = 0;
-  bot.subTimers.sub1 = 0;
+  bot.scheduleSkillDecision("flagship", 0);
+  bot.scheduleSkillDecision("sub1", 0);
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));
@@ -1113,7 +1113,7 @@ function aiHaruhiFlagshipAggressionCheck() {
     ship.energy = ship.maxEnergy;
   }
   team.startCooldown("flagship", 0);
-  bot.flagshipTimer = 0;
+  bot.scheduleSkillDecision("flagship", 0);
   bot.tryFlagshipSkill(bot.currentContext);
   assert(bot.lastFlagshipDecision.cast, "春日AI集齐常驻支援后仍会等待接敌条件才施放团队强化");
   assert(bot.flagshipTimer >= team.cooldowns.flagship, "春日AI施放后没有按冷却到点安排下一次检查");
@@ -1124,7 +1124,7 @@ function aiHaruhiFlagshipAggressionCheck() {
   }
   team.ships.main.energy = meta.cost + SCOUT_LAUNCH_COST - 1;
   team.startCooldown("flagship", 2);
-  bot.flagshipTimer = 2;
+  bot.scheduleSkillDecision("flagship", 2);
   assert(bot.shouldReserveEnergyForHaruhiFlagship(), "春日旗舰技能即将冷却完成时没有预留施放能量");
   assert(!bot.shouldLaunchScout(bot.currentContext), "侦察机仍会抢占春日即将施放旗舰技能所需的能量");
 }
@@ -1158,7 +1158,7 @@ function aiKoizumiOrbSteeringCheck() {
 
   bot.rememberContact(target, "visible");
   const context = bot.buildTacticalContext(team.ships.main, bot.selectEnemyFocus(team.ships.main));
-  bot.subTimers.sub1 = 0;
+  bot.scheduleSkillDecision("sub1", 0);
   bot.trySubSkill("sub1", context);
   assert(koizumi.koizumiOrb?.phase === "active", "古泉AI接敌时没有释放光球冲撞技能");
 
@@ -1310,7 +1310,7 @@ function aiKoizumiBarrierBreachCheck() {
   const context = bot.buildTacticalContext(sim.teamB.ships.main, bot.selectEnemyFocus(sim.teamB.ships.main));
   assert(context.barrierTactics.enemy?.active, "AI没有识别已确认的敌方闭锁空间");
   assert(context.barrierTactics.breachShipKey === "sub1", "AI没有选择朝仓分舰承担破盾任务");
-  bot.subTimers.sub1 = 0;
+  bot.scheduleSkillDecision("sub1", 0);
   bot.trySubSkill("sub1", context);
   assert(asakura.hasEffect("bladeQueenUntil"), "AI没有为破盾主动开启刀锋女王");
   bot.issueMovement(context);
@@ -1522,7 +1522,7 @@ function aiKoizumiBarrierRangedCounterplayCheck() {
     breachWindowMainRange < activeBarrierMainRange - 55,
     `AI没有在闭锁空间失效窗口集中压近：${activeBarrierMainRange.toFixed(1)}→${breachWindowMainRange.toFixed(1)}`,
   );
-  bot.subTimers.sub2 = 0;
+  bot.scheduleSkillDecision("sub2", 0);
   bot.trySubSkill("sub2", context);
   const beam = sim.teamB.beams.at(-1);
   assert(beam && beam.phase === "charge", "1096 AI没有在破盾窗口释放光线");
@@ -1573,7 +1573,7 @@ function aiFuture1096FormDecisionCheck() {
   bot.rememberContact(enemyMain, "visible");
   const estimate = bot.primaryEnemyEstimate();
 
-  bot.flagshipTimer = 0;
+  bot.scheduleSkillDecision("flagship", 0);
   bot.tryFlagshipSkill({
     focus: estimate,
     skillAggression: 1,
@@ -1586,7 +1586,7 @@ function aiFuture1096FormDecisionCheck() {
     ship.hp = ship.maxHp * 0.5;
   }
   aiTeam.startCooldown("flagship", 0);
-  bot.flagshipTimer = 0;
+  bot.scheduleSkillDecision("flagship", 0);
   bot.tryFlagshipSkill({
     focus: estimate,
     skillAggression: 0.1,
@@ -1634,7 +1634,7 @@ function aiEmergencyEnergyReserveCheck() {
   aiMain.energy = 30;
   aiTeam.ships.sub1.energy = 20;
   aiTeam.ships.sub2.energy = 30;
-  bot.flagshipTimer = 0;
+  bot.scheduleSkillDecision("flagship", 0);
 
   bot.rememberContact(enemyMain, "visible");
   const context = bot.buildTacticalContext(aiMain, bot.selectEnemyFocus(aiMain));

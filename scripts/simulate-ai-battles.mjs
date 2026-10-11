@@ -232,9 +232,9 @@ function runBarrierBreachScenario(breakerKind, seed) {
   if (!isHaruhi) attackingTeam.split(1);
   if (isHaruhi) {
     unlockSupport(attackingTeam, ["otherworlder"], simulation.elapsed, () => 0);
-    bot.flagshipTimer = 999;
+    bot.scheduleSkillDecision("flagship", 999);
   } else {
-    bot.subTimers.sub1 = 0;
+    bot.scheduleSkillDecision("sub1", 0);
   }
 
   defendingMain.x = 650;

@@ -1,6 +1,6 @@
 import { characterDecisionFacts, characterDecisionInput } from "./characters/decision-view.js";
-// 技能施放：计时、通用前置条件与角色档案的调度。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// 技能施放的无状态条件评估；检查节拍由 SkillDecisionCycle 独占。
+// 这些方法安装在 RulePolicy 的原型上，读取观测与战术上下文，不持有技能时钟或执行技能。
 import { skillMetaForCharacter } from "../../characters.js";
 import { distance } from "../../math.js";
 import { characterProfile } from "./characters/index.js";
@@ -13,113 +13,6 @@ export const skillsMethods = {
       skillAimLead: this.params.features.skillAimLead, aimPadding: this.safeRoutePadding(4), searchZoneId: this.searchZoneId,
     });
   },
-  tryFlagshipSkill(context = this.currentContext) {
-    const T = this.params.skills.flagshipTimers;
-    if (this.flagshipTimer > 0) {
-      return;
-    }
-    const estimate = context?.focus || this.primaryEnemyEstimate();
-    const characterId = this.obs.self.loadout.main;
-    const followsCooldown = Boolean(characterProfile(characterId).flagship?.timerFollowsCooldown);
-    if (!this.shouldCastFlagshipSkill(estimate, context)) {
-      this.lastFlagshipDecision = {
-        action: "hold",
-        cast: false,
-        at: this.obs.time,
-        target: this.debugContact(estimate),
-      };
-      this.flagshipTimer = followsCooldown
-        ? this.rng.range(T.haruhiHold[0], T.haruhiHold[1])
-        : context?.conserveEnergy
-          ? this.rng.range(T.conserveHold[0], T.conserveHold[1])
-          : context?.skillAggression > T.aggressiveAbove
-            ? this.rng.range(T.aggressiveHold[0], T.aggressiveHold[1])
-            : this.rng.range(T.hold[0], T.hold[1]);
-      return;
-    }
-    const ok = this.writeFlagshipSkill();
-    this.lastFlagshipDecision = {
-      action: ok ? "cast" : "retry",
-      cast: ok,
-      at: this.obs.time,
-      target: this.debugContact(estimate),
-    };
-    this.flagshipTimer = ok
-      ? followsCooldown
-        // 与真实冷却对齐；两者每帧同步递减，冷却归零的同一帧立即进入下一次施放判断。
-        ? Math.max(T.haruhiMinInterval, Number(this.obs.self.cooldowns.flagship) || 0)
-        : (context?.skillAggression > T.aggressiveAbove ? this.rng.range(T.aggressiveCooldown[0], T.aggressiveCooldown[1]) : this.rng.range(T.cooldown[0], T.cooldown[1]))
-      : followsCooldown
-        ? this.rng.range(T.haruhiRetry[0], T.haruhiRetry[1])
-        : context?.conserveEnergy
-          ? this.rng.range(T.conserveRetry[0], T.conserveRetry[1])
-          : context?.skillAggression > T.aggressiveAbove
-            ? this.rng.range(T.aggressiveRetry[0], T.aggressiveRetry[1])
-            : this.rng.range(T.retry[0], T.retry[1]);
-  },
-
-  trySubSkill(shipKey, context = this.currentContext) {
-    const T = this.params.skills.subTimers;
-    if (this.subTimers[shipKey] > 0) {
-      return;
-    }
-    const ship = this.obs.self.ships[shipKey];
-    if (!ship || !ship.alive || ship.attached) {
-      this.lastSubSkillDecision[shipKey] = {
-        action: "unavailable",
-        cast: false,
-        at: this.obs.time,
-        target: null,
-      };
-      this.subTimers[shipKey] = this.rng.range(T.unavailable[0], T.unavailable[1]);
-      return;
-    }
-
-    const estimate = context?.focus || this.primaryEnemyEstimate();
-    if (!this.shouldCastSubSkill(ship, estimate, context)) {
-      this.lastSubSkillDecision[shipKey] = {
-        action: "hold",
-        cast: false,
-        at: this.obs.time,
-        target: this.debugContact(estimate),
-      };
-      this.subTimers[shipKey] = context?.conserveEnergy
-        ? this.rng.range(T.conserveHold[0], T.conserveHold[1])
-        : context?.skillAggression > T.aggressiveAbove
-          ? this.rng.range(T.aggressiveHold[0], T.aggressiveHold[1])
-          : this.rng.range(T.hold[0], T.hold[1]);
-      return;
-    }
-    let ok = false;
-    const subProfile = characterProfile(ship.characterId).sub;
-    const target = subProfile?.target?.(this.characterSkillFacts(ship), characterDecisionInput({ T, estimate }));
-    ok = target ? this.writeSubSkill(shipKey, target) : this.writeSubSkill(shipKey);
-    this.lastSubSkillDecision[shipKey] = {
-      action: ok ? "cast" : "retry",
-      cast: ok,
-      at: this.obs.time,
-      target: this.debugContact(estimate),
-    };
-    if (
-      ok
-      && context?.barrierTactics?.enemy?.active
-      && context.barrierTactics.breachShipKey === shipKey
-    ) {
-      // 破盾技能刚生效便立即重规划冲撞路线，不能等常规 1～2 秒改航周期。
-      this.moveTimer = 0;
-      this.koizumiOrbSteerTimer = 0;
-    }
-    this.subTimers[shipKey] = ok
-      ? subProfile?.timerFollowsCooldown
-        ? Math.max(T.haruhiMinInterval, Number(this.obs.self.cooldowns[shipKey]) || 0)
-        : (context?.skillAggression > T.aggressiveAbove ? this.rng.range(T.aggressiveCooldown[0], T.aggressiveCooldown[1]) : this.rng.range(T.cooldown[0], T.cooldown[1]))
-      : context?.conserveEnergy
-        ? this.rng.range(T.conserveRetry[0], T.conserveRetry[1])
-        : context?.skillAggression > T.aggressiveAbove
-          ? this.rng.range(T.aggressiveRetry[0], T.aggressiveRetry[1])
-          : this.rng.range(T.retry[0], T.retry[1]);
-  },
-
   usesAdvancedSkillCounterplay() {
     return this.params.features.advancedCounterplay;
   },
