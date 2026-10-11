@@ -650,9 +650,11 @@ function yukiPassiveCheck() {
   Object.assign(main, originalMainPose);
 
   const alignRadarToBearingZero = () => {
-    teamA.radarPassive.epochAngle = ((Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS) * sim.elapsed;
-    teamA.radarPassive.angle = 0;
-    teamA.radarPassive.contacts.clear();
+    // 时间推进到出生朝向对应的下一整圈，让真实扫线从零方位扫过目标。
+    const phase = sim.serializeRadarForSeat("A").angle;
+    const speed = (Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS;
+    sim.elapsed += ((phase + Math.PI * 2) % (Math.PI * 2)) / speed + YUKI_RADAR_ROTATION_SECONDS;
+    teamA.updateRadarPassive(sim.teamB, 0);
     sim.elapsed += TICK_DT;
   };
 

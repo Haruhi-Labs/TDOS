@@ -230,10 +230,10 @@ export function buildObservation(match, seat) {
 
   // 雷达接触本身带位置误差；已击沉目标的残留接触在这里剔除，不向 AI 暴露敌舰实体。
   let radar = null;
-  if (team.hasYukiFlagship() && team.radarPassive?.contacts instanceof Map) {
+  if (team.hasYukiFlagship()) {
     const aliveIds = new Set(enemyShips.filter((ship) => ship.alive).map((ship) => ship.id));
     radar = {
-      contacts: [...team.radarPassive.contacts.values()]
+      contacts: (team.serializeRadarPassive()?.contacts || [])
         .filter((contact) => aliveIds.has(Number(contact?.targetId ?? contact?.id)))
         .map((contact) => primitiveFields(contact)),
     };

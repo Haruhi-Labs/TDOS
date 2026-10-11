@@ -1,3 +1,4 @@
+const impactStates = new WeakMap();
 const states = new WeakMap();
 
 import {
@@ -328,10 +329,10 @@ export function resolveKoizumiOrbContacts(match) {
         const direction = sweptCollisionDirection(source, target, startX, startY, probe, collisionRadius);
         const wave = createExpandingWave({
           worldSize: match.worldSize, now: match.elapsed,
-          source: { id: source.id, x: target.x, y: target.y }, id: ++team.koizumiImpactWaveSequence,
+          source: { id: source.id, x: target.x, y: target.y }, id: ++impactStates.get(team).sequence,
         });
         wave.hitShipIds = new Set();
-        team.koizumiImpactWaves.push(wave);
+        impactStates.get(team).waves.push(wave);
         applyCollisionKnockback(match, source, target, direction);
         if (!target.isControlImmune()) {
           target.silenceUntil(match.elapsed + ORB_SILENCE_DURATION);
@@ -345,9 +346,9 @@ export function resolveKoizumiOrbContacts(match) {
 
 export function updateKoizumiImpactWaves(match) {
   for (const team of [match.teamA, match.teamB]) {
-    team.koizumiImpactWaves = team.koizumiImpactWaves.filter((wave) => wave.expiresAt > match.elapsed);
+    impactStates.get(team).waves = impactStates.get(team).waves.filter((wave) => wave.expiresAt > match.elapsed);
     const enemyTeam = match.enemyTeamBySeat(team.seat);
-    for (const wave of team.koizumiImpactWaves) {
+    for (const wave of impactStates.get(team).waves) {
       for (const target of enemyTeam.getAllShips()) {
         if (!target.alive || wave.hitShipIds.has(target.id)) continue;
         if (!expandingWaveCoversEntity(wave, target, match.elapsed)) continue;
@@ -362,7 +363,7 @@ export function updateKoizumiImpactWaves(match) {
 }
 
 export function serializeKoizumiImpactWaves(team) {
-  return team.koizumiImpactWaves.map(({ hitShipIds, sourceShipId, edgeRadius, maxRadius, ...wave }) => ({ ...wave, kind: "koizumi" }));
+  return impactStates.get(team).waves.map(({ hitShipIds, sourceShipId, edgeRadius, maxRadius, ...wave }) => ({ ...wave, kind: "koizumi" }));
 }
 
 export function serializeKoizumiOrb(ship) {
@@ -383,4 +384,12 @@ export function sampleKoizumiOrbMotion(ship) {
   if (!state) return;
   state.previousX = ship.x;
   state.previousY = ship.y;
+}
+
+export function initializeKoizumiImpactWaves(team) {
+  if (impactStates.has(team)) return;
+  impactStates.set(team, { sequence: 0, waves: [] });
+  Object.defineProperty(team, "koizumiImpactWaves", { enumerable: true,
+    get: () => Object.freeze(impactStates.get(team).waves.map(({ hitShipIds, ...wave }) => Object.freeze(wave))),
+  });
 }

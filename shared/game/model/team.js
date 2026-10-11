@@ -17,11 +17,11 @@ import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../charact
 import { clamp, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
-import { computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
-import { cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSkillState, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
+import { initializeRadar, computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
+import { cancelVisionWaveSkill as cancelTeamVisionWaveSkill, initializeVisionWaves, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
 import { isFocusWorthy } from "../targeting-system.js";
 import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
-import { serializeKoizumiImpactWaves } from "../koizumi-orb.js";
+import { initializeKoizumiImpactWaves, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { initializeKoizumiBarrier, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { initializeShamisenHunt, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
@@ -119,15 +119,9 @@ export class Team {
     };
 
     this.extraShips = [];
-    this.radarPassive = {
-      epochAngle: normalizeAngle(facing),
-      angle: normalizeAngle(facing),
-      scanSequence: 0,
-      contacts: new Map(),
-    };
-    this.visionWaveSkill = createVisionWaveSkillState();
-    this.koizumiImpactWaves = [];
-    this.koizumiImpactWaveSequence = 0;
+    initializeRadar(this, facing);
+    initializeVisionWaves(this);
+    initializeKoizumiImpactWaves(this);
 
     this.#beamSystem = new BeamSystem(createTeamBeamPort(this), {
       range: BEAM_BASE_RANGE, chargeDuration: BEAM_CHARGE_DURATION,

@@ -1,3 +1,5 @@
+import { copyPlainData, freezePlainData } from "../data/plain-data.js";
+const states = new WeakMap();
 import { createExpandingWave as createWave, expandingWaveCoversEntity } from "./systems/expanding-wave.js";
 
 // 保留技能模块原有入口；通用几何只消费显式的时间、地图和来源数据。
@@ -8,7 +10,7 @@ export function createExpandingWave(team, source, id) {
 export { expandingWaveCoversEntity } from "./systems/expanding-wave.js";
 
 function emitVisionWave(team, source) {
-  const state = team.visionWaveSkill;
+  const state = states.get(team);
   state.sequence += 1;
   state.waves.push(createExpandingWave(team, source, state.sequence));
 }
@@ -32,7 +34,7 @@ export function activateVisionWaveSkill(team, options = {}) {
   const duration = Math.max(0.1, Number(options.duration) || 6);
   const interval = Math.max(0.1, Number(options.interval) || 1);
   const pulseCount = Math.max(1, Math.round(duration / interval));
-  const state = team.visionWaveSkill;
+  const state = states.get(team);
   state.activeUntil = team.match.elapsed + duration;
   state.nextPulseAt = team.match.elapsed + interval;
   state.pulsesRemaining = pulseCount - 1;
@@ -44,7 +46,7 @@ export function activateVisionWaveSkill(team, options = {}) {
 }
 
 export function cancelVisionWaveSkill(team, { preserveCurrentTick = true } = {}) {
-  const state = team.visionWaveSkill;
+  const state = states.get(team);
   if (!state) return false;
   if (preserveCurrentTick && state.startedTick === team.match.tick) return false;
   const cleared = state.activeUntil > team.match.elapsed || state.waves.length > 0;
@@ -57,7 +59,7 @@ export function cancelVisionWaveSkill(team, { preserveCurrentTick = true } = {})
 }
 
 export function updateVisionWaveSkill(team) {
-  const state = team.visionWaveSkill;
+  const state = states.get(team);
   if (!state) return;
   const now = team.match.elapsed;
   state.waves = state.waves.filter((wave) => wave.expiresAt > now);
@@ -83,7 +85,7 @@ export function updateVisionWaveSkill(team) {
 }
 
 export function visionWavesCoverEntity(team, entity) {
-  const state = team.visionWaveSkill;
+  const state = states.get(team);
   if (!state || !entity) return false;
   const now = team.match.elapsed;
   for (const wave of state.waves) {
@@ -93,7 +95,7 @@ export function visionWavesCoverEntity(team, entity) {
 }
 
 export function serializeVisionWaves(team) {
-  return team.visionWaveSkill.waves.map((wave) => ({
+  return states.get(team).waves.map((wave) => ({
     id: wave.id,
     x: wave.x,
     y: wave.y,
@@ -102,4 +104,12 @@ export function serializeVisionWaves(team) {
     width: wave.width,
     expiresAt: wave.expiresAt,
   }));
+}
+
+export function initializeVisionWaves(team) {
+  if (states.has(team)) return;
+  states.set(team, createVisionWaveSkillState());
+  Object.defineProperty(team, "visionWaveSkill", { enumerable: true,
+    get: () => freezePlainData(copyPlainData(states.get(team))),
+  });
 }

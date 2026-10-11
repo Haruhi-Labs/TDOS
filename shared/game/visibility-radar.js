@@ -1,3 +1,4 @@
+const radars = new WeakMap();
 import { collectVisibleEntityIds } from "./systems/visibility.js";
 import { YUKI_RADAR_ROTATION_SECONDS } from "./combat-rules.js";
 import { clamp, counterClockwiseSweepDistance, distance, lerp, normalizeAngle, stableRadarNoise } from "./math.js";
@@ -21,7 +22,7 @@ export function radarMaxDistanceFrom(team, source) {
 }
 
 export function createRadarContact(team, target, source) {
-  const radar = team.radarPassive;
+  const radar = radars.get(team);
   radar.scanSequence += 1;
   const targetDistance = distance(source.x, source.y, target.x, target.y);
   const distanceRatio = clamp(targetDistance / radarMaxDistanceFrom(team, source), 0, 1);
@@ -53,7 +54,7 @@ export function createRadarContact(team, target, source) {
 }
 
 export function updateRadarPassive(team, enemyTeam, dt) {
-  const radar = team.radarPassive;
+  const radar = radars.get(team);
   const source = team.ships.main;
   if (!radar || !team.hasYukiFlagship() || !source?.alive) {
     if (radar) radar.contacts.clear();
@@ -93,11 +94,11 @@ export function updateRadarPassive(team, enemyTeam, dt) {
 // 扫线是公开技能表现；回波仍只进入施放方的私有快照。
 export function serializeRadarSweep(team) {
   const source = team.ships.main;
-  if (!team.hasYukiFlagship() || !source?.alive || !team.radarPassive) return null;
+  if (!team.hasYukiFlagship() || !source?.alive || !radars.get(team)) return null;
   return {
     active: true,
     sourceShipId: source.id,
-    angle: team.radarPassive.angle,
+    angle: radars.get(team).angle,
     angularVelocity: -RADAR_ANGULAR_SPEED,
     rotationSeconds: YUKI_RADAR_ROTATION_SECONDS,
     sampledAt: team.match.elapsed,
@@ -109,7 +110,7 @@ export function serializeRadarPassive(team) {
   if (!sweep) return null;
   return {
     ...sweep,
-    contacts: [...team.radarPassive.contacts.values()].map((contact) => ({ ...contact })),
+    contacts: [...radars.get(team).contacts.values()].map((contact) => ({ ...contact })),
   };
 }
 
@@ -120,4 +121,9 @@ export function computeVisibility(team, enemyTeam) {
     coveredByWave: (entity) => visionWavesCoverEntity(team, entity),
     broadcast: team.match.rules.broadcastShips(enemyTeam),
   });
+}
+
+export function initializeRadar(team, facing) {
+  if (radars.has(team)) return;
+  radars.set(team, { epochAngle: normalizeAngle(facing), angle: normalizeAngle(facing), scanSequence: 0, contacts: new Map() });
 }

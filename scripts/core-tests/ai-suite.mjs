@@ -1,3 +1,4 @@
+import { cancelVisionWaveSkill } from "../../shared/game/vision-wave.js";
 import { disruptKoizumiBarrier } from "../../shared/game/koizumi-barrier.js";
 import { selectShamisenHuntTarget } from "../../shared/game/shamisen-hunt.js";
 import { aiFixture } from "./ai-fixture.mjs";
@@ -386,7 +387,10 @@ function aiYukiRadarIntelCheck() {
   enemyMain.command = { x: enemyMain.x, y: enemyMain.y };
   enemyMain.route = null;
   sim.elapsed = 1;
-  aiTeam.radarPassive.contacts.set(enemyMain.id, {
+  const observe = bot.port.observe;
+  bot.port.observe = () => {
+    const data = observe();
+    data.self.radar = { contacts: [{
     id: enemyMain.id,
     targetId: enemyMain.id,
     x: radarPoint.x,
@@ -398,7 +402,9 @@ function aiYukiRadarIntelCheck() {
     uncertainty: 150,
     detectedAt: 0.6,
     expiresAt: 3.8,
-  });
+  }] };
+    return data;
+  };
 
   bot.refreshIntel();
   const estimate = bot.primaryEnemyEstimate();
@@ -652,9 +658,7 @@ function aiVisionWaveBuffCounterplayCheck() {
   );
 
   const safe = createScenario("hard");
-  safe.sim.teamA.visionWaveSkill.activeUntil = 0;
-  safe.sim.teamA.visionWaveSkill.pulsesRemaining = 0;
-  safe.sim.teamA.visionWaveSkill.waves.length = 0;
+  cancelVisionWaveSkill(safe.sim.teamA, { preserveCurrentTick: false });
   assert(
     safe.bot.shouldCastFlagshipSkill(safe.context.focus, safe.context),
     "视野波结束后困难 AI 没有恢复旗舰增益施放",

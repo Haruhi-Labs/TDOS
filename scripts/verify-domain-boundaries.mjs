@@ -227,3 +227,5 @@ await import("./verify-ship-status.mjs");
 await import("./verify-aircraft-ownership.mjs");
 
 await import("./verify-role-state-ownership.mjs");
+
+await import("./verify-sensor-ownership.mjs");
