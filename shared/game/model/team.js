@@ -31,6 +31,7 @@ import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  get effects() { return Object.freeze({ haruhiBoostUntil: this.#haruhi.expiresAt, sponsorUntil: this.#sponsor.expiresAt }); }
   #extraShips = [];
   #ships;
   get extraShips() { return Object.freeze([...this.#extraShips]); }
@@ -86,13 +87,6 @@ export class Team {
 
     this.#sponsor = createTeamSponsor(this);
     this.#haruhi = createTeamHaruhiFlagship(this);
-    this.effects = {};
-    Object.defineProperty(this.effects, "haruhiBoostUntil", {
-      enumerable: true, get: () => this.#haruhi.expiresAt,
-    });
-    Object.defineProperty(this.effects, "sponsorUntil", {
-      enumerable: true, get: () => this.#sponsor.expiresAt,
-    });
     this.#futureForm = createTeamFutureForm(this);
     Object.defineProperty(this, "haruhiFlagship", {
       enumerable: true, value: ownSupportState(createHaruhiFlagshipState(facing)),

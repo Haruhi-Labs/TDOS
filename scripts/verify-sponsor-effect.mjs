@@ -31,6 +31,7 @@ const match = new MatchSimulation({ seed: 534, teamLoadouts: { A: { main: "tsuru
 const team = match.teamA;
 team.ships.main.hp -= 10;
 assert.equal(team.castFlagshipSkill(), true);
+assert.throws(() => { team.effects = {}; }, TypeError, "不能替换效果投影来绕过所有者");
 assert.throws(() => { team.effects.sponsorUntil = 0; }, TypeError, "外部不能绕过赞助净化保护");
 const hp = team.ships.main.hp;
 team.sponsorRegeneration(0.1);
