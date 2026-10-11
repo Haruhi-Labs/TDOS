@@ -24,13 +24,23 @@
                                                     └─ 15Hz 快照 ─────────────┴─→ 共享插值显示
 ```
 
-- 角色数值、技能、AI、视野、碰撞、推进和能量规则只定义在 `shared/game/` 与 `shared/game-core.js`。
+- 角色数值、技能、AI、视野、碰撞、推进和能量规则只定义在 `shared/game/`；`shared/game-core.js` 仅保留稳定兼容导出。
 - 两条执行链都调用 `shared/game/action-dispatcher.js`，动作名称与载荷来自 `shared/protocol/match-actions.js`。
 - 单人和服务端共用 `shared/game/fixed-step-clock.js`，以固定 30Hz 推进逻辑；联机客户端不自行推进权威战斗状态。
 - `src/battle/state-interpolation.js` 只在相邻权威状态之间生成显示副本；单人教程、技能、AI 与联机输入确认均不读取或写回这个显示副本。
 - `scripts/verify-authority-parity.mjs` 会把同一组动作分别经本地直连和服务端输入队列回放，并逐 tick 比较序列化状态。
 
 因此，规则或角色行为通常只修改一次；需要分别维护的是本地/远程传输和联机显示策略，而不是两套战斗权威。
+
+## 状态所有权与消费时机
+
+实体负责资源、位移、推进、控制及退场操作；角色组件负责自己的形态、支援和资格记录。跨域效果通过实体操作提交，伴随舰转移同时更新原舰队和目标舰队，弹体来源清理交给对局集合所有者。专属状态机不需要改造成统一配置引擎。
+
+`rules/character-rules.js` 解释角色状态并提供碰撞资格、承伤、控制、属性、目标偏好和广播能力；通用算法通过注入的契约读取能力，不枚举角色字段。`contact-geometry.js` 只提供共享几何，表现层不导入接触结算实现。
+
+查询与序列化不负责推进：例如抓痕过期在实体更新或下一次命中时提交，界面重复查询只得到已过期的读数。`serializeState()`、AI 观察、房间与结果输出不携带权威状态的可写引用；`shared/data/plain-data.js` 只复制/冻结纯数据，不能用于实体、Map 或循环对象图。
+
+“分层消费”不意味着统一延迟到帧末。输入校验后立即提交，AI 每次动作后刷新观测，属性变化即时影响后续计算；需要同时采样的双方舞台在固定阶段统一采样后提交。伤害分摊、死亡、支援、碰撞及广播仍保持原顺序。显示只消费快照，统计在完成状态已提交后消费结算。完整范围与验收见[架构重构记录](architecture-refactor.md)。
 
 ## 协议版本约定
 
@@ -88,9 +98,9 @@
 - `shared/game/throttle.js`：推进档位、档位归一化以及推进与能量收支的关系。
 - `shared/game/combat-rules.js`：火力方向、侦察消耗和雷达转速等独立规则。
 - `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
-- `shared/game/bunny-haruhi-config.js`、`bunny-haruhi.js`、`bunny-haruhi-companion.js`：独立配置与纯规则；`bunny-haruhi-runtime.js` 协调舞台、变身、资源与公开摘要，`bunny-companion-runtime.js` 通过注入的Ship工厂接入阿虚实体、独立编队、自动技能、临时策反与来源清理。阿虚排除胜负/玩家舰损/猎杀资格，旧额外舰船资格不变；跨队归还在两队更新前处理。仅显式内部模拟开关允许构造新角色，未加入公开目录/随机池。接口与阶段边界见[兔女郎春日规则](bunny-haruhi-rules.md)。
+- `shared/game/bunny-haruhi-config.js`、`bunny-haruhi.js`、`bunny-haruhi-companion.js`：独立配置与纯规则；`bunny-haruhi-runtime.js` 协调舞台、变身、资源与公开摘要，`bunny-companion-runtime.js` 通过舰队注入的 Ship 工厂接入阿虚实体、独立编队、自动技能、临时策反与来源清理。阿虚排除胜负/玩家舰损/猎杀资格，旧额外舰船资格不变；跨队归还在两队更新前处理。兔女郎春日已进入公开选角目录，旧随机 AI 阵容池仍排除该角色。接口与阶段边界见[兔女郎春日规则](bunny-haruhi-rules.md)。
 - `shared/game/haruhi-support.js`：支援状态、有限池抽取、节拍与来源几何；旧 `haruhi-flagship.js` 保持兼容包装。`bunny-haruhi-support.js` 提供显式副舰来源适配，新来源的调度、碰撞、破盾与吸弹只在包含新角色的模拟中执行，不改变旧旗舰身份与停用策略。
-- `shared/game/bunny-haruhi-view-params.js` 仅派生展示数值；`src/battle/bunny-haruhi-view.js`、`render/bunny-haruhi.js` 让单人、联机和观战共用权威舰况、技能展示元数据和基础图元。状态/锁档/施放资格采用当前权威帧，显示插值不产生规则事件。原皮占位在图片资源层映射，不注册实验角色或复制战斗规则。
+- `shared/game/bunny-haruhi-view-params.js` 仅派生展示数值；`src/battle/bunny-haruhi-view.js`、`render/bunny-haruhi.js` 让单人、联机和观战共用权威舰况、技能展示元数据和基础图元。状态/锁档/施放资格采用当前权威帧，显示插值不产生规则事件。原皮占位在图片资源层映射，展示层不注册角色或复制战斗规则。
 - `shared/game/math.js`：无业务状态的几何与数值工具。
 - `shared/game/rng.js`：对局级随机源。`MatchSimulation` 传入整数 `seed` 时规则与各席 AI 使用互不干扰的种子随机流，实体 ID 也改为对局内计数，整局可复现；未传时每次取值读取调用时刻的 `Math.random`，取值顺序不变。对局内规则与 AI 不直接调用 `Math.random`；种子不进入快照。
 - `shared/game/ai/bridge/observation.js`：规则层到 AI 的唯一读取出口。`buildObservation(match, seat)` 把实时对局翻译成该席位有权知道的纯数据（己方完整状态、视野内敌方实体及其公开技能状态、长门雷达接触、猫爪标记、可感知弹体与公开波纹）；现状中未经迷雾过滤的四项读取集中在 `privileged`。时间字段保留绝对时间戳，观测可 JSON 往返。
@@ -136,8 +146,8 @@
 
 ### 联机链路
 
-- `src/online/state-sync.js`：客户端快照时间轴采样、有限外推、本地航线覆盖和显示稳定；具体状态插值复用战斗界面的纯插值模块，不读 DOM，也不管理 WebSocket。
-- `src/online/snapshot-transport.js`：延迟与时钟估计、快照差量解码、确认、排序和历史队列。
+- `src/online/state-sync.js`：通过只读时间轴采样、有限外推、本地航线查询和显示稳定；平滑缓存与显示时间由自身持有，通过 `reset()` 清理。历史裁剪交给传输端口，具体插值复用战斗界面的纯模块，不读 DOM，也不管理 WebSocket。
+- `src/online/snapshot-transport.js`：独立持有延迟、时钟、差量基线、确认、排序和历史队列。页面只读 `state`；收包、规则冲突和重置通过明确方法提交，解码后的快照深冻结，插值不能修改差量基线。
 - `src/online/connection-target.js`：同源代理、直连和本地备用 WebSocket 地址策略。
 - `src/online/lobby-view.js`、`profile-controller.js`、`result-view.js`：大厅、玩家档案和结算界面职责。
 - `shared/network-patch.js`：服务端与客户端共用的快照差量格式。
@@ -147,10 +157,11 @@
 - `server/config.js`：环境变量、容量和拥塞阈值。
 - `server/protocol.js`：控制消息类型与错误码归类。
 - `server/snapshot-stream.js`：快照发送、关键帧/差量选择、缓冲保护和单连接流控。
-- `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。
+- `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。查询只过滤失效连接，不修改集合；生命周期显式整理。阵容及结算输出与内部记录断开可写引用。
 - `server/room-lifecycle.js`：创建、加入、离开、关闭房间及比赛就绪/主持开赛的生命周期与容量门禁。
 - `server/input-queue.js`：客户端输入顺序、连续操作合并、队列上限和逐帧消费。
-- `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算、结算后 10 秒强制回收房间和追帧保护。
+- `server/room-state.js`：统一提交开局、倒计时结束与结算转换，保证结果构建时房间已进入完成状态。
+- `server/match-runtime.js`：驱动房间阶段操作、权威逻辑帧、快照节拍、结算通知、结算后 10 秒强制回收房间和追帧保护。
 - `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
 - `server/statistics-records.js`：把服务端权威对局或客户端单人结算归一为同一份对局档案，负责匿名玩家字段与终局摘要组装。
 - `server/statistics-store.js`：按月追加 JSONL、对局 ID 去重、私有玩家聚合和按公开版本划分的阵容榜缓存。磁盘写入只在结算发生，服务端比赛循环不等待写盘。
@@ -186,16 +197,16 @@
 | --- | --- | --- |
 | 推进档位、速度与能量 | `shared/game/throttle.js` | `src/battle/throttle.js`、核心测试 |
 | 角色数值或技能描述元数据 | `shared/game/characters.js` | `src/i18n/character-text.js` |
-| 技能实际生效过程 | `shared/game-core.js` | 对应 `shared/game/*` 叶模块、核心测试 |
-| 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
-| 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game-core.js`、碰撞/射线规则、核心测试 |
+| 技能实际生效过程 | `shared/game/model/team.js`、对应角色运行时 | `shared/game/model/ship.js`、`shared/game/rules/character-rules.js`、核心测试 |
+| 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game/runtime/match-simulation.js`、核心测试 |
+| 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game/model/team.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/ai/policy/` 下对应阶段的模块 | `shared/game/ai/params/`、核心 AI 测试 |
 | 某个角色的 AI（技能时机、偏置） | `shared/game/ai/policy/characters/<角色>.js` | `shared/game/ai/params/default.js`、`test:core:ai-policy` |
 | AI 能读到什么、能做什么 | `shared/game/ai/bridge/observation.js`、`shared/game/ai/actions.js` | `test:core:ai-observation`、`test:core:ai-actions` |
 | AI 的权重、阈值、计时区间与难度 | `shared/game/ai/params/` | `shared/game/ai/policy/`、`test:core:ai-params`；改默认值属于规则变更 |
 | AI 角色识别与针对性反制 | `shared/game/ai/policy/tactics/character-counterplay.js` | `shared/game/ai/policy/context.js`、`shared/game/ai/bridge/observation.js`、核心 AI 测试 |
 | 三味线猎杀攻守编队 | `shared/game/ai/policy/tactics/shamisen-hunt.js` | `shared/game/ai/policy/movement.js`、`shared/game/shamisen-hunt.js`、核心 AI 测试 |
-| 侦察战区规划与长门僚机编组 | `shared/game/ai/policy/tactics/yuki-scout.js` | `shared/game/ai/policy/scout.js`、`shared/game-core.js` |
+| 侦察战区规划与长门僚机编组 | `shared/game/ai/policy/tactics/yuki-scout.js` | `shared/game/ai/policy/scout.js`、`shared/game/model/team.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | WebGL 图元、批处理与着色器 | `src/battle/webgl/*` | `src/battle/native-webgl-renderer.js`、`npm run test:ui:webgl` |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |

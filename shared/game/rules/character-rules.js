@@ -1,5 +1,5 @@
 // 角色能力适配层：集中解释角色状态，只返回规则结果，不写入实体。
-// 通用系统由对局注入此契约；不导入任何具体角色模块。
+// 对局将此契约注入通用系统，让通用系统无需导入具体角色模块。
 import { CHARACTER_DEFS } from "../characters.js";
 import { throttleForGear } from "../throttle.js";
 import { isKoizumiOrbActive } from "../koizumi-orb.js";
