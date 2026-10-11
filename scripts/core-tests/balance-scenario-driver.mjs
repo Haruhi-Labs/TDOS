@@ -60,7 +60,7 @@ export function installBalanceScenario(sim, seat, scenario, variant) {
 // 观察领域操作的真实到账差额；不遮蔽 hp getter，也不引入第二份机体生命值。
 export function observeHullTransactions(unit, consume) {
   let depth = 0;
-  for (const name of ['applyResourcePlan', 'scaleHullCapacity', 'configureTraining', 'resetHullCapacity', 'retireWithoutLoss', 'restoreHull', 'drainHull', 'applyHullDamage']) {
+  for (const name of ['grantResources', 'scaleHullCapacity', 'configureTraining', 'resetHullCapacity', 'retireWithoutLoss', 'restoreHull', 'drainHull', 'applyHullDamage']) {
     const operation = unit[name].bind(unit);
     unit[name] = (...args) => {
       const before = unit.hp;

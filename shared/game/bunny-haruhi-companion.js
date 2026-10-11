@@ -137,10 +137,6 @@ export function expireBunnyReliable(state, now, sourceValid = true) {
   return state && sourceValid && now < state.until ? state : null;
 }
 
-export function bunnyReliableRecovery({ hp, maxHp, energy, maxEnergy }) {
-  if (hp <= 0) return { hp, energy };
-  return {
-    hp: Math.min(maxHp, hp + maxHp * C.companion.healRatio),
-    energy: Math.min(maxEnergy, energy + maxEnergy * C.companion.energyRatio),
-  };
+export function bunnyReliableRecovery() {
+  return Object.freeze({ hullRestoreRatio: C.companion.healRatio, energyRestoreRatio: C.companion.energyRatio });
 }

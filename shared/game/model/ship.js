@@ -172,17 +172,28 @@ export class Ship {
     this.#navigation.clearRoute();
   }
 
-  applyResourcePlan({ hp = this.#hp, energy = this.#energy }) {
+  // 资源所有者按当前容量计算变化；角色只能提交比例意图，不能覆盖最终资源。
+  grantResources({ hullCostRatio = 0, hullRestoreRatio = 0, energyRestoreRatio = 0, energyFloorRatio = 0, ...unknown } = {}) {
+    const ratios = [hullCostRatio, hullRestoreRatio, energyRestoreRatio, energyFloorRatio];
+    if (Object.keys(unknown).length || !ratios.every((value) => Number.isFinite(value) && value >= 0 && value <= 1))
+      throw new RangeError("资源变化必须使用零到一之间的比例");
+    const cost = this.#maxHp * hullCostRatio;
+    if (!this.#alive || this.#hp <= cost) return false;
+    const hp = Math.min(this.#maxHp, this.#hp - cost + this.#maxHp * hullRestoreRatio);
+    const energy = Math.max(Math.min(this.#maxEnergy, this.#energy + this.#maxEnergy * energyRestoreRatio), this.#maxEnergy * energyFloorRatio);
     this.#hp = hp;
     this.#energy = energy;
+    return true;
   }
 
   scaleHullCapacity(ratio) {
+    if (!Number.isFinite(ratio) || ratio <= 0 || !Number.isFinite(this.#maxHp * ratio)) throw new RangeError("生命容量倍率必须为有效正数");
     this.#maxHp = Math.max(1, Math.round(this.#maxHp * ratio));
     this.#hp = Math.min(this.#maxHp, this.#hp * ratio);
   }
 
   configureTraining(stats, position) {
+    assertCapacity(stats.hp, stats.energy);
     this.#base = freezePlainData({ ...this.#base, ...copyPlainData(stats) });
     this.#maxHp = this.#hp = stats.hp;
     this.#maxEnergy = this.#energy = stats.energy;
@@ -212,6 +223,7 @@ export class Ship {
   advanceSpecialRoute(distance, minimumLength, captureRadius) { this.#navigation.advanceSpecialRoute(distance, minimumLength, captureRadius); }
 
   resetHullCapacity(maxHp) {
+    assertCapacity(maxHp, this.#maxEnergy);
     this.#maxHp = maxHp;
     this.#hp = maxHp;
   }
@@ -243,18 +255,22 @@ export class Ship {
   }
 
   restoreHull(amount) {
+    assertResourceAmount(amount);
     this.#hp = Math.min(this.#maxHp, this.#hp + amount);
   }
 
   drainHull(amount) {
-    this.#hp -= amount;
+    assertResourceAmount(amount);
+    this.#hp = Math.max(0, this.#hp - amount);
   }
 
   restoreEnergy(amount) {
+    if (!Number.isFinite(amount)) throw new RangeError("能量变化必须为有限值");
     this.#energy = clamp(this.#energy + amount, 0, this.#maxEnergy);
   }
 
   spendEnergy(amount) {
+    assertResourceAmount(amount);
     this.#energy = Math.max(0, this.#energy - amount);
   }
 
@@ -535,6 +551,8 @@ export class Ship {
   }
 
   applyHullDamage(amount, floor) {
+    assertResourceAmount(amount);
+    if (!Number.isFinite(floor) || floor < 0 || floor > this.#maxHp) throw new RangeError("承伤生命下限超出容量");
     const before = this.#hp;
     this.#hp = Math.max(floor, this.#hp - amount);
     return before - this.#hp;
@@ -549,4 +567,12 @@ export class Ship {
   serialize() {
     return this.#team.match.projectShip(this);
   }
+}
+
+function assertResourceAmount(amount) {
+  if (!Number.isFinite(amount) || amount < 0) throw new RangeError("资源数量必须为非负有限值");
+}
+
+function assertCapacity(hp, energy) {
+  if (!Number.isFinite(hp) || hp <= 0 || !Number.isFinite(energy) || energy < 0) throw new RangeError("资源容量必须为有效生命与能量值");
 }

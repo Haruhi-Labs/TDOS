@@ -22,7 +22,11 @@ export function setScenarioField(target, key, value) {
     if (value) target.beginForcedKnockback(value);
     else target.clearControlEffects();
   }
-  else if (key === "hp" || key === "energy") target.applyResourcePlan({ [key]: value });
+  else if (key === "hp") {
+    if (value >= target.hp) target.restoreHull(value - target.hp);
+    else target.drainHull(target.hp - value);
+  }
+  else if (key === "energy") target.restoreEnergy(value - target.energy);
   else if (key === "speed") target.setFlightSpeed(value);
   else if (key === "angle") target.setFlightHeading(value);
   else if (key === "throttle") target.followTarget(target.command, value);

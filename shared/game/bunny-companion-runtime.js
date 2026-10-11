@@ -173,7 +173,7 @@ export function prepareBunnyCompanions(match) {
     else commitCompanionState(ship, result.state);
     if (result.triggerReliable) {
       for (const receiver of [owner, ship]) {
-        receiver.applyResourcePlan(bunnyReliableRecovery(receiver));
+        receiver.grantResources(bunnyReliableRecovery());
         reliableSources.set(receiver, ship);
         commitReliableEffect(receiver, createBunnyReliableState(ship.id, match.elapsed, match.tick));
       }

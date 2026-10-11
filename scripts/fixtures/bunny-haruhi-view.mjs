@@ -18,7 +18,7 @@ export function createBunnyViewFixture(collect = () => {}) {
     });
   }
   const owner = sim.teamA.ships.sub1;
-  owner.applyResourcePlan({ energy: 0 });
+  owner.spendEnergy(owner.energy);
   const states = { neutral: sim.serializeState() };
   sim.teamA.configureFormation(0);
   states.attached = sim.serializeState();

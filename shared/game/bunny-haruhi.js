@@ -109,9 +109,11 @@ export function planBunnyTransform(state, resources, now, tick) {
     : form === "knows" ? C.knows.energyFloorRatio : 0;
   return {
     ok: true, reason: null, state: next,
-    hp: Math.min(resources.maxHp, resources.hp - cost
-      + (form === "encore" ? resources.maxHp * C.encore.healRatio : 0)),
-    energy: Math.max(resources.energy, resources.maxEnergy * energyFloor),
+    resources: Object.freeze({
+      hullCostRatio: form === "bless" ? C.bless.hpCostRatio : 0,
+      hullRestoreRatio: form === "encore" ? C.encore.healRatio : 0,
+      energyFloorRatio: energyFloor,
+    }),
     cooldownSeconds: C.form.cooldownSeconds,
     unlockSupport: firstVisit, spawnCompanion,
   };

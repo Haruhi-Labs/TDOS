@@ -131,7 +131,7 @@ export function commitBunnyTransform(ship) {
     ...bunnyHaruhiSupportSource(ship, true), owner: plannedSupport,
   }, match.elapsed, rngFor(match).next);
   commitForm(ship, { ...result.state, support: readSupportState(plannedSupport) });
-  ship.applyResourcePlan(result);
+  ship.grantResources(result.resources);
   ship.setThrottle(resolveBunnyThrottle(result.state, oldThrottle, true, match.elapsed));
   ship.rescaleCombatTiming(oldSpeed, oldRate);
   for (const old of companions) {
