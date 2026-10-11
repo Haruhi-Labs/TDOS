@@ -1,3 +1,4 @@
+import { Room } from "./room.js";
 import { copyPlainData } from "../shared/data/plain-data.js";
 import { cloneLoadout, DEFAULT_AI_LOADOUT, randomAiLoadout } from "../shared/game/characters.js";
 import { ROOM_CAPACITY } from "./config.js";
@@ -83,9 +84,7 @@ export function createRoomRegistry({
 
   function pruneRoomSpectators(room) {
     const activeIds = new Set(roomSpectators(room).map((player) => player.id));
-    for (const id of room.spectators || []) {
-      if (!activeIds.has(id)) room.spectators.delete(id);
-    }
+    room.retainSpectators(activeIds);
   }
 
   function spectatorCount(room) {
@@ -217,33 +216,32 @@ export function createRoomRegistry({
   }
 
   function assignPlayerToRoom(player, room, seat) {
+    if (!room.occupySeat(seat, player.id)) return false;
     player.roomId = room.id;
     player.seat = seat;
     player.spectating = false;
     resetPlayerInputs(player);
     player.selectedShipKey = "main";
     resetSnapshotStream(player);
-    room.seats[seat] = player.id;
+    return true;
   }
 
   function assignSpectatorToRoom(player, room) {
     pruneRoomSpectators(room);
+    if (!room.addSpectator(player.id)) return false;
     player.roomId = room.id;
     player.seat = null;
     player.spectating = true;
     resetPlayerInputs(player);
     player.selectedShipKey = "main";
     resetSnapshotStream(player);
-    if (!room.spectators) {
-      room.spectators = new Set();
-    }
-    room.spectators.add(player.id);
+    return true;
   }
 
   function createRoomRecord(visibility, mode, now = Date.now(), kind = "standard") {
     const safeVisibility = visibility === "private" ? "private" : "public";
     const safeMode = mode === "ai" ? "ai" : "pvp";
-    return {
+    return new Room({
       id: createRoomId(),
       mode: safeMode,
       kind: safeMode === "pvp" && kind === "tournament" ? "tournament" : "standard",
@@ -257,15 +255,13 @@ export function createRoomRegistry({
       createdAt: now,
       startedAt: null,
       match: null,
-      snapshotAccumulator: 0,
-      snapshotSeq: 0,
       finishedAt: null,
       closesAt: null,
       result: null,
       spectators: new Set(),
       // AI 房每房生成一次随机阵容，房间展示与开局共用同一份。
       aiLoadout: safeMode === "ai" ? randomAiLoadout() : null,
-    };
+    });
   }
 
   function validShipKey(shipKey) {

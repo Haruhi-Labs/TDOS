@@ -1,3 +1,4 @@
+import { Room } from "../server/room.js";
 import { beginRoomMatch, startRoomRunning, finishRoomMatch } from "../server/room-state.js";
 import assert from "node:assert/strict";
 import { createInputQueue } from "../server/input-queue.js";
@@ -11,7 +12,13 @@ function createPlayer(id) {
 function roomStateOwnershipCheck() {
   let clock = 100;
   let creations = 0;
-  const room = { mode: "pvp", status: "waiting", result: { old: true }, snapshotSeq: 50 };
+  const room = new Room({ mode: "pvp", status: "waiting", result: { old: true } });
+  for (const field of ["status", "match", "result", "ownerId", "snapshotSeq", "snapshotAccumulator", "seats", "ready", "spectators"]) {
+    assert.throws(() => { room[field] = null; }, TypeError, `${field} 只能由所有者提交`);
+  }
+  assert.throws(() => { room.seats.A = "外部席位"; }, TypeError);
+  assert.equal(room.spectators.add, undefined);
+  for (let sequence = 0; sequence < 50; sequence += 1) room.nextSnapshotSequence();
   const createMatch = () => {
     creations += 1;
     assert.equal(room.status, "countdown");
@@ -35,6 +42,29 @@ function roomStateOwnershipCheck() {
     return { winnerSeat: "A" };
   }), true);
   assert.equal(finishRoomMatch(room, 3300, 1000, () => assert.fail("不得重复结算")), false);
+  assert.throws(() => { room.result.winnerSeat = "B"; }, TypeError);
+  assert.equal(room.nextSnapshotSequence(), 1);
+  assert.equal(room.nextSnapshotSequence(), 2);
+}
+
+function memberOwnershipCheck() {
+  const room = new Room({ id: "members", mode: "pvp", kind: "tournament" });
+  assert.equal(room.assignHost("host"), true);
+  assert.equal(room.assignHost("other"), false);
+  assert.equal(room.occupySeat("A", "a"), true);
+  assert.equal(room.occupySeat("B", "a"), false);
+  assert.equal(room.occupySeat("A", "b"), false);
+  assert.equal(room.addSpectator("a"), false);
+  assert.equal(room.addSpectator("viewer"), true);
+  assert.equal(room.occupySeat("B", "viewer"), false);
+  assert.equal(room.setReady("A", "b", true), false);
+  const before = room.ready;
+  assert.equal(room.setReady("A", "a", true), true);
+  assert.equal(before.A, false, "历史就绪快照不可被后续提交改变");
+  const seats = room.seats;
+  room.releaseSeat("a");
+  assert.equal(seats.A, "a");
+  assert.deepEqual(room.ready, { A: false, B: false });
 }
 
 function inputQueueCheck() {
@@ -74,14 +104,14 @@ function inputQueueCheck() {
   for (let seq = 1; seq <= 35; seq += 1) {
     queue.queueInput(applyPlayer, { seq, action: { type: "test", seq } });
   }
-  const room = {
+  const room = new Room({
     seats: { A: applyPlayer.id, B: null },
     match: {
       applyActionForSeat(seat, action) {
         applied.push({ seat, action });
       },
     },
-  };
+  });
   queue.applyQueuedInputs(room, (id) => id === applyPlayer.id ? applyPlayer : null);
   assert.equal(applied.length, 30, "每个逻辑帧每位玩家最多处理 30 条输入");
   assert.equal(queue.inspect(applyPlayer).lastProcessedSeq, 30, "确认序号应跟随最后处理的输入");
@@ -108,11 +138,10 @@ function matchLifecycleCheck() {
   let closeReason = null;
   let updates = 0;
   let finishedCallbacks = 0;
-  const room = {
+  const room = new Room({
     id: "room",
     status: "countdown",
     countdownEndsAt: 1200,
-    snapshotAccumulator: 0,
     match: {
       phase: "running",
       update() {
@@ -122,7 +151,7 @@ function matchLifecycleCheck() {
         }
       },
     },
-  };
+  });
   const rooms = new Map([[room.id, room]]);
   const runtime = createMatchRuntime({
     rooms,
@@ -182,15 +211,14 @@ function matchLifecycleCheck() {
 
 function catchupLimitCheck() {
   let updates = 0;
-  const room = {
+  const room = new Room({
     id: "catchup",
     status: "running",
-    snapshotAccumulator: 0,
     match: {
       phase: "running",
       update() { updates += 1; },
     },
-  };
+  });
   const runtime = createMatchRuntime({
     rooms: new Map([[room.id, room]]),
     applyQueuedInputs() {},
@@ -211,6 +239,7 @@ function catchupLimitCheck() {
 }
 
 roomStateOwnershipCheck();
+memberOwnershipCheck();
 inputQueueCheck();
 matchLifecycleCheck();
 catchupLimitCheck();

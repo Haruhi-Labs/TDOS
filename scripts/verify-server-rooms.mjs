@@ -1,3 +1,8 @@
+import { Room } from "../server/room.js";
+function beginFixture(room) {
+  room.begin({ createMatch: () => ({ phase: "running", winnerSeat: null }), countdownMs: 3000, now: () => 0 });
+}
+function runFixture(room) { beginFixture(room); room.startRunning(3000); }
 import assert from "node:assert/strict";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../shared/game-core.js";
@@ -46,8 +51,8 @@ function createHarness(overrides = {}) {
     },
     startMatch(room) {
       matchStarts += 1;
-      room.status = "running";
-      room.match = { winnerSeat: null };
+      beginFixture(room);
+      if (room.kind !== "tournament") room.startRunning(3000);
     },
   });
   return {
@@ -79,9 +84,7 @@ function roomRegistryCheck() {
   harness.registry.assignPlayerToRoom(playerA, room, "A");
   harness.registry.assignPlayerToRoom(playerB, room, "B");
   harness.registry.assignSpectatorToRoom(spectator, room);
-  room.status = "running";
-  room.match = { winnerSeat: null };
-  room.closesAt = 9999;
+  runFixture(room);
 
   assert.equal(room.createdAt, 1234, "房间创建时间应由房间模型统一保存");
   assert.match(room.id, /^\d{6}$/, "房间编号应保持六位数字协议");
@@ -98,15 +101,17 @@ function roomRegistryCheck() {
   assert.equal(memberPayload.room.code, room.code, "房间成员应继续收到私有口令");
   assert.equal(outsiderPayload.room.code, null, "非成员不得从房间状态获取私有口令");
   assert.deepEqual(memberPayload.room.players.map((row) => row.seat), ["A", "B"], "房间状态席位顺序应稳定");
-  assert.equal(memberPayload.room.closesAt, 9999, "房间状态应下发服务端权威关闭截止时间");
+  assert.equal(memberPayload.room.closesAt, null, "运行中没有结算关闭截止时间");
 
   memberPayload.room.players[0].loadout.main = "其他角色";
   memberPayload.self.loadout.sub1 = "其他角色";
   assert.deepEqual(playerA.loadout, DEFAULT_TEAM_LOADOUT, "房间读模型不得反向修改玩家阵容");
-  room.result = harness.registry.buildMatchResult(room, 5000);
+  room.match.phase = "finished";
+  room.finish(5000, 4999, harness.registry.buildMatchResult);
+  assert.equal(harness.registry.buildRoomStatePayload(room, playerA.id).room.closesAt, 9999, "结束后下发权威关闭截止时间");
   harness.registry.buildRoomStatePayload(room, playerA.id).room.players[0].name = "其他名字";
   assert.equal(room.result.players[0].name, "玩家甲", "结算展示不得共享结果记录的可写引用");
-  room.spectators.add("失效连接");
+  room.addSpectator("失效连接");
   harness.registry.buildRoomStatePayload(room, playerA.id);
   harness.registry.buildLobbyPayload();
   assert.equal(room.spectators.has("失效连接"), true, "序列化和统计查询不得暗中修改房间集合");
@@ -114,7 +119,7 @@ function roomRegistryCheck() {
   harness.registry.pruneRoomSpectators(room);
   assert.equal(room.spectators.has("失效连接"), false, "显式生命周期操作负责整理失效连接");
 
-  room.visibility = "public";
+  harness.rooms.set(room.id, new Room({ ...room, visibility: "public", seats: room.seats, ready: room.ready, spectators: room.spectators }));
   const lobby = harness.registry.buildLobbyPayload(5678);
   assert.equal(lobby.now, 5678, "大厅时间戳应由统一序列化器生成");
   assert.deepEqual(lobby.rooms[0], {
@@ -122,7 +127,7 @@ function roomRegistryCheck() {
     mode: "pvp",
     kind: "standard",
     visibility: "public",
-    status: "running",
+    status: "finished",
     count: 2,
     capacity: 2,
     spectatorCount: 1,
@@ -170,8 +175,7 @@ function spectatorLifecycleCheck() {
   const room = harness.registry.createRoomRecord("public", "pvp", 100);
   harness.rooms.set(room.id, room);
   harness.registry.assignPlayerToRoom(host, room, "A");
-  room.status = "running";
-  room.match = { winnerSeat: null };
+  runFixture(room);
 
   const result = harness.lifecycle.spectateRoom(spectator, room);
   assert.equal(result.ok, true, "公开运行中房间应允许观战");
@@ -197,10 +201,9 @@ function finishedRoomForcedCloseCheck() {
   harness.registry.assignPlayerToRoom(playerA, room, "A");
   harness.registry.assignPlayerToRoom(playerB, room, "B");
   harness.registry.assignSpectatorToRoom(spectator, room);
-  room.status = "finished";
-  room.finishedAt = 200;
-  room.closesAt = 10_200;
-  room.result = harness.registry.buildMatchResult(room, room.finishedAt);
+  runFixture(room);
+  room.match.phase = "finished";
+  room.finish(200, 10000, harness.registry.buildMatchResult);
 
   harness.lifecycle.leaveRoom(playerB, "对手断开连接，房间已解散");
   assert.equal(harness.rooms.has(room.id), true, "结算后一名玩家关闭浏览器时房间应保留到倒计时结束");
@@ -217,14 +220,14 @@ function finishedRoomForcedCloseCheck() {
   );
 }
 
-function tournamentFixture(overrides = {}) {
+function tournamentFixture(overrides = {}, visibility = "public") {
   const harness = createHarness(overrides);
   const [host, a, b, viewer, outsider] = ["主持<人>", "选手甲", "选手乙", "观众", "旁观者"].map((name, i) => {
     const player = { ...createPlayer(String(i), name), supportsTournamentRooms: true };
     harness.players.set(player.id, player);
     return player;
   });
-  const result = harness.lifecycle.createRoom(host, "public", "pvp", "tournament");
+  const result = harness.lifecycle.createRoom(host, visibility, "pvp", "tournament");
   assert.equal(result.ok, true);
   return { ...harness, host, a, b, viewer, outsider, room: result.room };
 }
@@ -270,15 +273,15 @@ function tournamentLifecycleCheck() {
   assert.equal(life.setPlayerReady(b, true).ok, true);
   assert.equal(life.startTournament(host).ok, true);
   assert.equal(h.counters.matchStarts, 1, "主持启动既有对战入口一次");
+  assert.equal(life.spectateRoom(outsider, room).ok, true, "倒计时也可入场观战");
   for (const status of ["countdown", "running"]) {
-    room.status = status;
+    if (status === "running") room.startRunning(3000);
+    assert.equal(room.status, status);
     assert.equal(life.updateLoadout(a, DEFAULT_TEAM_LOADOUT).ok, false);
     assert.deepEqual(a.loadout, newLoadout, "开赛后阵容锁定");
     assert.equal(life.setPlayerReady(b, false).ok, false);
     assert.equal(life.startTournament(host).ok, false, "重复开始不能重置模拟");
   }
-  room.status = "countdown";
-  assert.equal(life.spectateRoom(outsider, room).ok, true, "倒计时也可入场观战");
   life.leaveRoom(viewer);
   assert.equal(h.rooms.has(room.id), true, "观众离开不影响主持或选手");
   life.leaveRoom(host);
@@ -299,10 +302,10 @@ function tournamentWaitingAndCapacityCheck() {
   assert.equal(h.rooms.has(h.room.id), true);
   assert.equal(h.lifecycle.joinRoom(h.outsider, h.room).ok, true);
   assert.equal(h.outsider.seat, "A");
-  h.room.visibility = "private";
-  assert.equal(h.registry.buildRoomStatePayload(h.room, h.host.id).room.code, h.room.code);
-  assert.equal(h.registry.buildRoomStatePayload(h.room, h.viewer.id).room.code, null);
-  assert.equal(h.lifecycle.spectateRoom(h.viewer, h.room).ok, false);
+  const privateFixture = tournamentFixture({}, "private");
+  assert.equal(privateFixture.registry.buildRoomStatePayload(privateFixture.room, privateFixture.host.id).room.code, privateFixture.room.code);
+  assert.equal(privateFixture.registry.buildRoomStatePayload(privateFixture.room, privateFixture.viewer.id).room.code, null);
+  assert.equal(privateFixture.lifecycle.spectateRoom(privateFixture.viewer, privateFixture.room).ok, false);
 
   for (const [overrides, expected] of [
     [{ activeRoomCount: () => MAX_ACTIVE_ROOMS }, "服务器活跃对局已满"],
@@ -321,7 +324,6 @@ function tournamentWaitingAndCapacityCheck() {
   const old = createPlayer("legacy");
   h.players.set(old.id, old);
   assert.equal(h.lifecycle.createRoom(old, "public", "pvp", "tournament").ok, false);
-  h.room.visibility = "public";
   assert.equal(h.lifecycle.joinRoom(old, h.room).ok, false);
   assert.equal(h.lifecycle.spectateRoom(old, h.room).ok, false);
   assert.equal(h.lifecycle.createRoom(old, "public", "pvp").ok, true, "旧客户端仍可加入普通房流程");

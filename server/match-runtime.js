@@ -60,11 +60,7 @@ export function createMatchRuntime({
         applyQueuedInputs(room);
         room.match.update(tickDt);
 
-        room.snapshotAccumulator += tickDt;
-        while (room.snapshotAccumulator >= snapshotInterval) {
-          room.snapshotAccumulator -= snapshotInterval;
-          sendSnapshot(room);
-        }
+        room.advanceSnapshots(tickDt, snapshotInterval, () => sendSnapshot(room));
 
         if (finishRoomMatch(room, currentTime, closeDelayMs, buildMatchResult)) {
           try {

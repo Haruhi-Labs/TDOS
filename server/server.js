@@ -243,7 +243,7 @@ function buildSnapshotFrame(room, advanceSeq = true) {
   }
 
   if (advanceSeq) {
-    room.snapshotSeq = (room.snapshotSeq || 0) + 1;
+    room.nextSnapshotSequence();
   }
   const serverTime = Date.now();
   const serializedState = room.match.serializeState();

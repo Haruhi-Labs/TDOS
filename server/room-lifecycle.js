@@ -90,7 +90,7 @@ export function createRoomLifecycle({
 
     if (player.spectating) {
       if (room.spectators) {
-        room.spectators.delete(player.id);
+        room.removeSpectator(player.id);
       }
       resetPlayerRoomState(player);
       if (room.status === "finished" && connectedCount(room) === 0 && spectatorCount(room) === 0) {
@@ -104,11 +104,10 @@ export function createRoomLifecycle({
     }
 
     resetPlayerRoomState(player);
-    if (room.seats.A === player.id) {
-      room.seats.A = null;
-    }
-    if (room.seats.B === player.id) {
-      room.seats.B = null;
+    const promotedPlayerId = room.releaseSeat(player.id);
+    if (promotedPlayerId) {
+      const moved = getPlayerById(promotedPlayerId);
+      if (moved) moved.seat = "A";
     }
 
     if (room.status === "countdown" || room.status === "running") {
@@ -127,20 +126,11 @@ export function createRoomLifecycle({
     }
 
     if (room.kind === "tournament") {
-      room.ready = { A: false, B: false };
       sendRoomStateToMembers(room);
       broadcastLobby();
       return;
     }
 
-    if (room.seats.A === null && room.seats.B) {
-      const moved = getPlayerById(room.seats.B);
-      room.seats.A = room.seats.B;
-      room.seats.B = null;
-      if (moved) {
-        moved.seat = "A";
-      }
-    }
     if (!room.seats.A && !room.seats.B) {
       rooms.delete(oldRoomId);
       broadcastLobby();
@@ -173,7 +163,7 @@ export function createRoomLifecycle({
     const room = createRoomRecord(visibility, safeMode, Date.now(), kind);
     rooms.set(room.id, room);
     if (room.kind === "tournament") {
-      room.ownerId = player.id;
+      room.assignHost(player.id);
       assignSpectatorToRoom(player, room);
     } else {
       assignPlayerToRoom(player, room, "A");
@@ -209,7 +199,6 @@ export function createRoomLifecycle({
       const seat = ["A", "B"].find((key) => !room.seats[key]);
       if (!seat) return { ok: false, message: "房间已满或不可加入" };
       assignPlayerToRoom(player, room, seat);
-      room.ready[seat] = false;
       sendRoomStateToMembers(room);
       broadcastLobby();
       return { ok: true };
@@ -274,7 +263,7 @@ export function createRoomLifecycle({
     const changed = JSON.stringify(player.loadout) !== JSON.stringify(next);
     player.loadout = next;
     if (room?.status === "waiting") {
-      if (changed && room.kind === "tournament" && player.seat) room.ready[player.seat] = false;
+      if (changed && room.kind === "tournament" && player.seat) room.setReady(player.seat, player.id, false);
       sendRoomStateToMembers(room);
     }
     broadcastLobby();
@@ -290,7 +279,7 @@ export function createRoomLifecycle({
     const compatibilityError = bunnyClientError(room, player, player.loadout, false);
     if (compatibilityError) return compatibilityError;
     if (typeof ready !== "boolean") return { ok: false, message: "就绪状态无效" };
-    room.ready[player.seat] = ready;
+    room.setReady(player.seat, player.id, ready);
     sendRoomStateToMembers(room);
     broadcastLobby();
     return { ok: true };
