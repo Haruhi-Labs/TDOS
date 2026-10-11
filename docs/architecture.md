@@ -56,7 +56,7 @@ AI 动作端口不暴露真实舰队，也没有接收实体后隐式补算战�
 
 查询与序列化不负责推进：例如抓痕过期在实体更新或下一次命中时提交，界面重复查询只得到已过期的读数。`serializeState()`、AI 观察、房间与结果输出不携带权威状态的可写引用；`shared/data/plain-data.js` 只复制/冻结纯数据，不能用于实体、Map 或循环对象图。
 
-`targeting-system.js` 仅消费候选 DTO 并返回目标 ID；`rules/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `rules/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；接触历史归对局所有。`rules/active-skills.js` 声明角色效果的操作顺序，舰队负责公共权限、资源池、冷却和统计，角色声明不持有舰队或对局对象。
+`targeting-system.js` 仅消费候选 DTO 并返回目标 ID；`rules/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `rules/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；接触历史归对局所有。`rules/active-skills.js` 声明角色效果的操作顺序，舰队装配公共权限和统计端口，编队组件管理资源分摊，施放组件管理冷却和成功事务，角色声明不持有舰队或对局对象。
 
 弹体创建由 `MatchSimulation.spawnProjectile` 发布，攻击者负责射击资格与冷却。`systems/projectile-system.js` 只规定拦截先于移动和活集合筛选，`rules/projectile-phase.js` 适配护盾与支援防御；清理死亡弹体并发布集合后才收尾修复护盾。勇者之力由 `rules/hero-power-runtime.js` 持有战斗事件生命周期；`rules/match-feedback.js` 只持有护盾/猎杀表现记录及限频，不能负责伤害、控制或目标重选。死亡规则在 `rules/ship-destruction.js` 同步完成，表现消费不回写规则。
 
@@ -116,7 +116,9 @@ AI 动作端口不暴露真实舰队，也没有接收实体后隐式补算战�
 
 - `shared/game-core.js`：仅提供稳定 API 的兼容导出，不持有或推进状态。
 - `shared/game/runtime/match-simulation.js`：权威对局装配、固定阶段推进与结算。
-- `shared/game/model/`：舰队、舰船、弹体、侦察机、僚机及短期表现实体的状态所有者；不得反向导入对局编排。
+- `shared/game/model/`：舰队和实体的装配、资源、位姿与生命周期入口；通过组件完成导航、编队、施放和航空作业，不得反向导入对局编排。
+- `shared/game/systems/`：通用算法及独立组件；只消费基础数据或受限能力端口，不导入实体、角色实现或对局。
+- `shared/game/rules/`：角色能力解释和权威适配；真实实体映射留在适配闭包，按权限向组件发布读数和提交操作。
 - `shared/game/constants.js`：世界尺寸、逻辑帧率和快照频率等跨端基础常量。
 - `shared/game/fixed-step-clock.js`：单人和服务端共用的固定逻辑步长、暂停与追帧上限。
 - `shared/game/throttle.js`：推进档位、档位归一化以及推进与能量收支的关系。

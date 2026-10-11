@@ -149,3 +149,18 @@ env -u NETWORK_WS_URL npm run test:network:load
 
 
 `verify-haruhi-flagship-runtime` 覆盖强化寿命私有化、同帧保护、解锁先于运动换算、续期不重乘及净化保留常驻支援。`verify-vision-wave-phase` 覆盖四组双边目标先采样、独立只读句柄、伪造句柄与错误所有者拒绝、净化顺序、有效反馈和可替换端口；同时用真实朝仓镜像对局防止先结算一席吞掉另一席命中。两项随 `test:architecture` 执行。
+
+舰船与舰队组件专项随 `test:architecture` 执行：
+
+| 专项 | 验证的所有权与消费顺序 |
+| --- | --- |
+| `verify-navigation-ownership` | 导航不接收舰队/对局；输入复制、航线历史只读、变更后视图失效 |
+| `verify-ship-combat` | 独立射击周期、瞄准随机数顺序、受限伤害投递与同步死亡 |
+| `verify-formation-ownership` | 分离层级私有、资源不足不扣费、按原成员顺序分摊 |
+| `verify-skill-cycle` | 冷却只读、失败不提交成功状态、效果完成后统计和显形 |
+| `verify-ship-status` | 效果值和生效帧同属一个组件，同帧净化保护、充能只消费一次 |
+| `verify-aircraft-ownership` | 主副舰槽位固定、集合不可增删、航空推进和回收阶段不变 |
+| `verify-role-state-ownership` | 护盾、猎杀、震慑和光球私有状态，命中历史不外泄 |
+| `verify-sensor-ownership` | 雷达回波副本、波纹深只读、取消操作与历史隔离 |
+
+AI 测试场景在测试侧投影实体；生产策略拒绝实体和能力回调。长局统计也消费雷达投影。`golden-trace` 不再支持旧的 `--action-mode` 旁路；行为对照使用固定旧提交，不能在生产端口重新开放旧路径。性能脚本对旧 Git 基线的字段装配兼容仅存在于离线夹具。
