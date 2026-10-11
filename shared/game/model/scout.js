@@ -2,7 +2,7 @@
 import { clamp, distance, normalizeAngle } from "../math.js";
 import { rngFor } from "../rng.js";
 import { Projectile } from "../model/projectile.js";
-import { TAU, YUKI_COMBAT_SCOUT_STATS, nextEntityId } from "../model/model-support.js";
+import { TAU, nextEntityId } from "../model/model-support.js";
 
 export class Scout {
   constructor(team, x, y, config = {}) {
@@ -20,14 +20,13 @@ export class Scout {
     this.radius = config.radius || (this.pattern === "burst" ? 3.2 : 3.8);
     this.hp = 1;
     this.maxHp = 1;
-    // 只在释放时根据旗舰判定；即使之后被鹤屋策反，也保留这架侦察机原本的机体能力。
-    this.combatCapable = config.combatCapable ?? team.hasYukiFlagship();
-    this.vision = this.combatCapable
-      ? YUKI_COMBAT_SCOUT_STATS.vision
-      : config.vision || (this.pattern === "burst" ? 86 : 95);
-    this.attackRange = this.combatCapable ? this.vision : 0;
-    this.damage = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.damage : 0;
-    this.fireRate = this.combatCapable ? YUKI_COMBAT_SCOUT_STATS.fireRate : 0;
+    // 出生时采样机体能力；后续转队只改变归属，不重新套用新旗舰的规则。
+    const profile = team.match.rules.scoutProfile(team, config, this.pattern);
+    this.combatCapable = profile.combatCapable;
+    this.vision = profile.vision;
+    this.attackRange = profile.attackRange;
+    this.damage = profile.damage;
+    this.fireRate = profile.fireRate;
     this.cooldown = this.combatCapable ? rngFor(this.team.match).range(0, 0.5) : 0;
     this.alive = true;
     this.life = Number.isFinite(config.life) ? config.life : this.pattern === "burst" ? 11 : 28;

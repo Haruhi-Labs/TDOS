@@ -159,7 +159,7 @@ for (const file of walk("shared/game/model")) {
 }
 
 // 舰船推进只消费装配时注入的能力、效果与投影，不再导入具体角色实现。
-for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projectile.js"]) {
+for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projectile.js", "shared/game/model/scout.js"]) {
   const allowed = new Set([
     "shared/game/throttle.js", "shared/game/combat-rules.js", "shared/game/characters.js",
     "shared/game/math.js", "shared/game/rng.js", "shared/game/damage.js", "shared/game/collision-system.js",

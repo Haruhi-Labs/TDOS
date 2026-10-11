@@ -1,12 +1,16 @@
 import { initializeKoizumiOrb, dispelKoizumiOrb, updateKoizumiOrb } from "../koizumi-orb.js";
 import { resetHaruhiHeroPowerShock } from "../haruhi-hero-power.js";
-import { initializeBunnyShip, cleanseBunnyShipControl, purgeBunnyShipForm } from "../bunny-haruhi-runtime.js";
+import { initializeBunnyShip, cleanseBunnyShipControl, purgeBunnyShipForm, commitBunnyTransform } from "../bunny-haruhi-runtime.js";
 import { purgeBunnyReliableEffect } from "../bunny-companion-runtime.js";
 import { initializeClawMarks, clearClawMarks, activeClawMarks, expireClawMarks, registerClawHit } from "../shamisen-claw.js";
 
 // 角色写入适配：在实体的确定阶段同步调用，不把伤害或控制推迟到帧尾。
 // 组件由各专属模块更新；基础血量、位移与定时效果仍通过实体操作提交。
 export const SHIP_EFFECTS = Object.freeze({
+  // null 表示使用公共能量施放路径；false 表示专属路径已处理但拒绝。
+  castExclusiveSubSkill(ship) {
+    return ship?.bunnyHaruhi ? commitBunnyTransform(ship) : null;
+  },
   initialize(ship) {
     initializeKoizumiOrb(ship);
     resetHaruhiHeroPowerShock(ship);

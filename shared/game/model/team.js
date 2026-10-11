@@ -9,19 +9,18 @@ import { computeVisibility as computeTeamVisibility, createRadarContact as creat
 import { activateVisionWaveSkill as activateTeamVisionWaveSkill, cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSkillState, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
 import { isFocusWorthy } from "../targeting-system.js";
 import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
-import { activateKoizumiOrb, isKoizumiOrbActive, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
+import { activateKoizumiOrb, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { createKoizumiBarrierState, consumeKoizumiBarrierHit, koizumiBarrierBeamImpact, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
 import { DAMAGE_KIND } from "../damage.js";
-import { isBunnyCompanion, countsForVictory, isFleetParticipant, bunnyOwnerDamageBlocked } from "../bunny-haruhi-companion.js";
+import { isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
 import { spawnBunnyCompanion, convertBunnyCompanion } from "../bunny-companion-runtime.js";
-import { canBunnyLaunchScout } from "../bunny-haruhi.js";
-import { commitBunnyTransform, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";
-import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, YUKI_COMBAT_SCOUT_LAUNCH_COUNT, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS, nextEntityId } from "../model/model-support.js";
+import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS, nextEntityId } from "../model/model-support.js";
 
 export class Team {
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
@@ -702,7 +701,7 @@ export class Team {
   }
 
   launchScout(zoneId, options = {}) {
-    if (isBunnyCompanion(this.shipByKey(options.fromShipKey))) return false;
+    if (!this.match.rules.scoutOrderAvailable(this.shipByKey(options.fromShipKey))) return false;
     const cost = SCOUT_LAUNCH_COST;
     const cooldownMultiplier = Number.isFinite(options.cooldownMultiplier) ? Math.max(1, options.cooldownMultiplier) : 1;
     if (this.areScoutsDisabled()) {
@@ -719,14 +718,14 @@ export class Team {
     }
     const source = (requested && requested.alive ? requested : null)
       || (this.ships.main.alive ? this.ships.main : this.getAllShips().find((ship) => ship.alive));
-    if (!source || source.isControlLocked() || !canBunnyLaunchScout(source.bunnyHaruhi)) {
+    if (!source || source.isControlLocked() || !this.match.rules.scoutLaunchAvailable(source)) {
       return false;
     }
     if (!this.spendEnergyForShip(source.key || "main", cost)) {
       return false;
     }
     const zone = this.match.zoneById(zoneId);
-    const launchCount = this.hasYukiFlagship() ? YUKI_COMBAT_SCOUT_LAUNCH_COUNT : 1;
+    const launchCount = this.match.rules.scoutLaunchCount(this);
     const lateralAngle = source.angle + Math.PI * 0.5;
     const lateralDistance = source.radius + 6;
     for (let index = 0; index < launchCount; index += 1) {
@@ -855,7 +854,7 @@ export class Team {
   }
 
   castFlagshipSkill(zoneId = 5) {
-    if (this.ships.main.bunnyHaruhi) return false;
+    if (!this.match.rules.flagshipSkillAvailable(this)) return false;
     const characterId = this.loadout.main;
     const meta = skillMetaForCharacter(characterId, "flagship");
     if (!meta || meta.type !== "active") {
@@ -898,7 +897,8 @@ export class Team {
 
   castSubSkill(shipKey, options = {}) {
     const ship = this.ships[shipKey];
-    if (ship?.bunnyHaruhi) return commitBunnyTransform(ship);
+    const exclusive = this.match.shipEffects.castExclusiveSubSkill(ship);
+    if (exclusive !== null) return exclusive;
     if (!ship || !ship.alive || ship.isAttached() || !ship.canControl()) {
       return false;
     }
@@ -924,10 +924,15 @@ export class Team {
     if (!ok) {
       return false;
     }
-    this.cooldowns[shipKey] = meta.cooldown || 0;
-    this.match.recordAction(this.seat, "sub_skill");
-    this.revealCasterIfSeen(ship); // 分舰技由该舰施放:若此刻正被敌方看见,永久暴露其名字
+    this.completeSubSkillCast(ship, meta.cooldown || 0);
     return true;
+  }
+
+  // 角色专属支付路径也由舰队提交冷却、统计和身份揭示，保持同一次施放的归属。
+  completeSubSkillCast(ship, cooldown) {
+    this.cooldowns[ship.key] = cooldown;
+    this.match.recordAction(this.seat, "sub_skill");
+    this.revealCasterIfSeen(ship);
   }
 
   castBeamFromShip(shipKey, directionX, directionY) {
@@ -1065,7 +1070,7 @@ export class Team {
       // 后续目标因存活数量变化而使用不同伤害档位。护盾已在上方截断射线，因此这里
       // 统计的就是屏障之后真正能被光线触及的舰船。
       const hitTargets = enemyTeam.getAllShips().filter((target) => {
-        if (!target.alive || !target.isTargetableByFire() || bunnyOwnerDamageBlocked(ship, target)) return false;
+        if (!target.alive || !target.isTargetableByFire() || !this.match.rules.canDamage(ship, target)) return false;
         const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
         return probe.dist <= target.radius + BEAM_HIT_RADIUS && probe.t >= 0 && probe.t <= 1;
       });

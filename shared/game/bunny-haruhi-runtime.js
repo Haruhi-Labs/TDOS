@@ -82,9 +82,7 @@ export function commitBunnyTransform(ship) {
     old.ship.rescaleCombatTiming(old.speed, old.rate);
   }
   if (result.spawnCompanion) team.spawnBunnyCompanion(ship);
-  team.cooldowns[ship.key] = result.cooldownSeconds;
-  match.recordAction(team.seat, "sub_skill");
-  team.revealCasterIfSeen(ship);
+  team.completeSubSkillCast(ship, result.cooldownSeconds);
   refreshBunnyVisibility(match);
   return true;
 }

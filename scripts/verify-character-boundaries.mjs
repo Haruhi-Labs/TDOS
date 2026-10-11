@@ -109,3 +109,35 @@ assert.deepEqual(phases, ["到期", "专属移动", "控制清理", "增益清�
 victim.serialize(); victim.serialize();
 assert.equal(phases.length, 4);
 console.log("角色生命周期边界校验通过：专属移动、清理与命中同步扩展，投影只读且不推进阶段。");
+
+// 侦察机只在生成时采样能力；转队不改机体，也不重复消费生成随机数。
+const { Scout } = await import("../shared/game/model/scout.js");
+const aircraft = new MatchSimulation({ seed: 872 });
+aircraft.rules = { ...aircraft.rules, scoutProfile: () => ({
+  combatCapable: true, vision: 111, attackRange: 222, damage: 33, fireRate: 4,
+}) };
+const scout = new Scout(aircraft.teamA, 100, 100);
+aircraft.teamA.addScout(scout);
+const capabilities = [scout.combatCapable, scout.vision, scout.attackRange, scout.damage, scout.fireRate];
+assert.deepEqual(capabilities, [true, 111, 222, 33, 4]);
+aircraft.rules = { ...aircraft.rules, scoutProfile: () => { throw new Error("转队不能重新装配机体"); } };
+scout.transferToTeam(aircraft.teamB, aircraft.zoneById(5));
+assert.deepEqual([scout.combatCapable, scout.vision, scout.attackRange, scout.damage, scout.fireRate], capabilities);
+
+// 专属变身与公共技能均提交到同一个舰队完成入口，拒绝时不应重复扣费或记录。
+const transformation = new MatchSimulation({ seed: 121, teamLoadouts: { A: { main: "yuki", sub1: "bunny_haruhi", sub2: "kyon" } } });
+const casters = transformation.teamA;
+casters.split(1); casters.split(2);
+const completions = [];
+const complete = casters.completeSubSkillCast.bind(casters);
+casters.completeSubSkillCast = (caster, cooldown) => {
+  completions.push([caster.key, cooldown]);
+  complete(caster, cooldown);
+};
+assert.equal(casters.castSubSkill("sub1"), true);
+assert.equal(casters.castSubSkill("sub1"), false);
+assert.equal(casters.castSubSkill("sub2", { zoneId: 5 }), true);
+assert.deepEqual(completions.map(([key]) => key), ["sub1", "sub2"]);
+assert.equal(casters.cooldowns.sub1, completions[0][1]);
+assert.equal(casters.cooldowns.sub2, completions[1][1]);
+console.log("角色创建与施放边界校验通过：机体能力在出生采样，技能成功统一由舰队提交且拒绝不重复消费。");
