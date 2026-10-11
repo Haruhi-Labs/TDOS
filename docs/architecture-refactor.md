@@ -107,3 +107,7 @@ AI 的策略/观测/执行桥已经由远端 dev 分层，本轮确认策略不�
 - 本地证据仍不覆盖物理设备、真实远程网络和人工对战感受。性能建议线的超出项如上记录，不包含在“功能门禁通过”的结论内。
 
 本轮原始日志位于本地忽略目录 `node_modules/.cache/architecture-second-all.log`、`architecture-second-build.log`、`architecture-second-final-selection.log`、`architecture-second-result.log`；性能原始样本在 `bench/architecture-acceptance/`。
+
+## 第三轮：按角色复查内部边界
+
+[角色边界复查](character-boundary-audit.md)逐个记录九角色的创建、技能、派生能力、交互、清理与输出。复查发现前两轮仍有实体内角色判断、净化多写入者、专属变身越界写冷却及护盾反向识别攻击角色，本轮继续完成四项独立重构。朝比奈1096的舰队内形态/光线、鹤屋赞助、兔女郎母舰与伴随关系事务仍是明确剩余项；前两轮验证结果不能作为这些边界已完成的证明。

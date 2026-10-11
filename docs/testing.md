@@ -119,3 +119,5 @@ env -u NETWORK_WS_URL npm run test:network:load
 - `node scripts/measure-solo-session.mjs`：按需离线对照原始 dev 基线和当前单人帧管线，独立进程交替五轮，各 1,800 个 60Hz 显示帧；逐帧比较权威及插值结果，计时包含模拟、序列化和插值，排除摘要计算、DOM、Canvas 与 GPU。结果保存在忽略目录 `bench/architecture-acceptance/solo-session-performance.json`。5% 是建议线，超过时保留结果并解释，不改阈值或重刷行为基线。
 
 `test:ui:result` 自建回环前端并夹具化 API/WebSocket，覆盖玩家/观战、桌面/触屏的胜者和双侧阵容、重复终局不重建视图、关闭倒计时与返回大厅清理。它已加入浏览器门禁；不会连接现有游戏、身份或统计服务。
+
+`test:architecture` 通过 `verify-character-boundaries.mjs` 追加角色内部边界检查：九角色轮换主副舰的重复只读查询、基础移动/属性/射击的能力替换、命中扩展与基础承伤顺序、投影不推进生命周期、侦察机出生采样与策反能力保持、专属变身与普通技能成功提交次数，以及破盾资格和消费失败。使用内存对局，不访问身份/统计存储或外部服务；它不证明全部角色状态已经私有，也不替代原基线回放及真实页面验收。
