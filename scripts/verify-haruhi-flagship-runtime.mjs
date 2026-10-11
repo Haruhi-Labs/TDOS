@@ -60,7 +60,7 @@ assert.equal(ship.speed, 11.5);
 assert.equal(ship.cooldown, 8 / 1.15);
 assert.throws(() => { team.effects.haruhiBoostUntil = 0; }, TypeError);
 assert.equal(team.clearActiveTeamSkillBuffs(), false);
-team.cooldowns.flagship = 0;
+team.startCooldown("flagship", 0);
 for (const member of team.getPlayerShips()) member.restoreEnergy(member.maxEnergy);
 assert.equal(team.castFlagshipSkill(), true);
 assert.equal(ship.speed, 11.5);

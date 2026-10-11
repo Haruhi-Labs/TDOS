@@ -126,7 +126,7 @@ function transformCheck() {
   assert.equal(ship.clearActiveSkillBuffs(), true);
   near(ship.statWithBuffs("damage", 10), 10);
   near(ship.damageTakenMultiplier(), 1.2);
-  sim.teamA.cooldowns.sub1 = 0;
+  sim.teamA.startCooldown("sub1", 0);
   assert.equal(cast(sim), true);
   assert.equal(ship.bunnyHaruhi.form, "knows");
   const protectedHp = ship.hp;
@@ -145,9 +145,9 @@ function transformCheck() {
   const expiredHp = ship.hp;
   advanceBunnyRules(sim);
   near(ship.hp, expiredHp);
-  sim.teamA.cooldowns.sub1 = 0;
+  sim.teamA.startCooldown("sub1", 0);
   assert.equal(cast(sim), true);
-  sim.teamA.cooldowns.sub1 = 0;
+  sim.teamA.startCooldown("sub1", 0);
   assert.equal(cast(sim), true);
   assert.equal(ship.bunnyHaruhi.form, "encore");
   assert.equal(ship.bunnyHaruhi.companionSpawnPending, undefined);
@@ -165,7 +165,7 @@ function transformCheck() {
   assert.equal(ship.throttle, 0.4);
   sim.teamA.forceCharacterSkillsDisabled = false;
   assert.equal(ship.throttle, 1.4);
-  sim.teamA.cooldowns.sub1 = 0;
+  sim.teamA.startCooldown("sub1", 0);
   assert.equal(cast(sim), true);
   assert.equal(ship.throttle, 1.4, "离开encore保留当前档位");
   ship.throttle = 0.4;
@@ -181,7 +181,7 @@ function encoreMovementCheck() {
   const ship = sim.teamA.ships.sub1;
   sim.elapsed = 90;
   for (let i = 0; i < 4; i += 1) {
-    sim.teamA.cooldowns.sub1 = 0;
+    sim.teamA.startCooldown("sub1", 0);
     assert.equal(cast(sim), true);
   }
   const sampleSpeed = (target, energy) => {
@@ -252,7 +252,7 @@ function publicationAndBroadcastCheck() {
   assert.equal(cast(sim), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.main.id), true);
-  sim.teamA.cooldowns.sub1 = 0;
+  sim.teamA.startCooldown("sub1", 0);
   assert.equal(cast(sim), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.sub1.id), true);
   assert.equal(sim.teamB.visibleEnemyIds.has(sim.teamA.ships.main.id), false, "knows仅广播自身");

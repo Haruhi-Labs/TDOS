@@ -445,7 +445,7 @@ function aiYukiScoutDoctrineCheck() {
     }),
     "长门AI前沿警戒测试未能释放首架战斗僚机",
   );
-  team.cooldowns.scout = 0;
+  team.startCooldown("scout", 0);
   const secondScreenPlan = bot.planScoutDeployment(searchContext);
   assert([2, 5, 8].includes(secondScreenPlan.zoneId), "长门AI第二个警戒点离开了前沿战区");
   assert(secondScreenPlan.zoneId !== firstScreenPlan.zoneId, "长门AI没有优先补齐尚未覆盖的前沿战区");
@@ -453,7 +453,7 @@ function aiYukiScoutDoctrineCheck() {
   team.scouts = [];
   for (const zoneId of [2, 5, 8]) {
     for (const ship of team.fleetMembersForShip("main")) ship.energy = ship.maxEnergy;
-    team.cooldowns.scout = 0;
+    team.startCooldown("scout", 0);
     assert(team.launchScout(zoneId), `长门AI战场调度测试未能在${zoneId}战区建立警戒点`);
   }
 
@@ -1104,7 +1104,7 @@ function aiHaruhiFlagshipAggressionCheck() {
   for (const ship of team.fleetMembersForShip("main")) {
     ship.energy = ship.maxEnergy;
   }
-  team.cooldowns.flagship = 0;
+  team.startCooldown("flagship", 0);
   bot.flagshipTimer = 0;
   bot.tryFlagshipSkill(bot.currentContext);
   assert(bot.lastFlagshipDecision.cast, "春日AI集齐常驻支援后仍会等待接敌条件才施放团队强化");
@@ -1115,7 +1115,7 @@ function aiHaruhiFlagshipAggressionCheck() {
     ship.energy = 0;
   }
   team.ships.main.energy = meta.cost + SCOUT_LAUNCH_COST - 1;
-  team.cooldowns.flagship = 2;
+  team.startCooldown("flagship", 2);
   bot.flagshipTimer = 2;
   assert(bot.shouldReserveEnergyForHaruhiFlagship(), "春日旗舰技能即将冷却完成时没有预留施放能量");
   assert(!bot.shouldLaunchScout(bot.currentContext), "侦察机仍会抢占春日即将施放旗舰技能所需的能量");
@@ -1581,7 +1581,7 @@ function aiFuture1096FormDecisionCheck() {
   for (const ship of aiTeam.getPlayerShips()) {
     ship.hp = ship.maxHp * 0.5;
   }
-  aiTeam.cooldowns.flagship = 0;
+  aiTeam.startCooldown("flagship", 0);
   bot.flagshipTimer = 0;
   bot.tryFlagshipSkill({
     focus: estimate,

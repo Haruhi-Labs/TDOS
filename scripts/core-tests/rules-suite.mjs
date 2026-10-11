@@ -551,7 +551,7 @@ function future1096FormSwitchCheck() {
     ship.cooldown = 0.25;
   }
 
-  teamA.cooldowns.flagship = 0;
+  teamA.startCooldown("flagship", 0);
   assert(teamA.castFlagshipSkill(), "1096 切换B形态失败");
   assert(teamA.future1096Form === "B", "1096 第二次使用未进入B形态");
   for (const ship of ships) {
@@ -569,7 +569,7 @@ function future1096FormSwitchCheck() {
   }
 
   assert(teamA.serialize().future1096Form === "B", "1096 当前形态未进入权威快照");
-  teamA.cooldowns.flagship = 0;
+  teamA.startCooldown("flagship", 0);
   assert(teamA.castFlagshipSkill() && teamA.future1096Form === "A", "1096 后续使用没有交替回到A形态");
   for (const ship of ships) {
     const base = baseline.get(ship.id);
@@ -1546,7 +1546,7 @@ function tsuruyaFlagshipActiveCheck() {
   const main = teamA.ships.main;
 
   main.hp = main.maxHp * 0.6;
-  teamA.cooldowns.sub1 = 10;
+  teamA.startCooldown("sub1", 10);
   const beforeHp = main.hp;
   const castOk = teamA.castFlagshipSkill();
   assert(castOk, "鹤屋旗舰技能释放失败");
@@ -1679,10 +1679,10 @@ function haruhiHeroPowerCheck() {
   park(enemyOutside, 1080, 720);
 
   assert(teamA.launchScout(5), "勇者之力测试未能生成己方长门战斗侦察机");
-  teamA.cooldowns.scout = 0;
+  teamA.startCooldown("scout", 0);
   assert(teamA.launchScout(5), "勇者之力测试未能生成己方远端对照侦察机");
   assert(teamB.launchScout(5), "勇者之力测试未能生成敌方长门战斗侦察机");
-  teamB.cooldowns.scout = 0;
+  teamB.startCooldown("scout", 0);
   assert(teamB.launchScout(5), "勇者之力测试未能生成敌方远端对照侦察机");
   assert(teamA.launchWingman(5), "勇者之力测试未能生成己方僚机");
   assert(teamB.launchWingman(5), "勇者之力测试未能生成敌方僚机");
@@ -1856,7 +1856,7 @@ function haruhiFlagshipReworkCheck() {
   );
 
   for (let cast = 1; cast < HARUHI_SUPPORTS.length; cast += 1) {
-    teamA.cooldowns.flagship = 0;
+    teamA.startCooldown("flagship", 0);
     for (const ship of teamA.getAllShips()) ship.energy = ship.maxEnergy;
     assert(teamA.castFlagshipSkill(), `春日旗舰技能第${cast + 1}次释放失败`);
   }

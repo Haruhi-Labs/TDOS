@@ -1,3 +1,5 @@
+import { SkillCycle } from "../systems/skill-cycle.js";
+import { createTeamSkillPort } from "../rules/team-skill-port.js";
 import { FleetFormation } from "../systems/fleet-formation.js";
 import { createFormationPort } from "../rules/formation-port.js";
 import { createTeamHaruhiFlagship } from "../rules/haruhi-flagship-port.js";
@@ -7,18 +9,17 @@ import { createTeamFutureForm } from "../rules/future-form-port.js";
 import { futureFormDefinition } from "../future-flagship-form.js";
 import { BeamSystem } from "../systems/beam-system.js";
 import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
-import { executeFlagshipEffect, executeSubEffect } from "../rules/active-skills.js";
 // 舰队状态所有者与领域操作。
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
-import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../characters.js";
+import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout } from "../characters.js";
 import { clamp, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
-import { activateVisionWaveSkill as activateTeamVisionWaveSkill, cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSkillState, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
+import { cancelVisionWaveSkill as cancelTeamVisionWaveSkill, createVisionWaveSkillState, serializeVisionWaves as serializeTeamVisionWaves, updateVisionWaveSkill as updateTeamVisionWaveSkill } from "../vision-wave.js";
 import { isFocusWorthy } from "../targeting-system.js";
 import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
-import { activateKoizumiOrb, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
+import { serializeKoizumiImpactWaves } from "../koizumi-orb.js";
 import { createKoizumiBarrierState, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
@@ -30,6 +31,9 @@ import { Wingman } from "../model/wingman.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
 export class Team {
+  #skills;
+  get cooldowns() { return this.#skills.cooldowns; }
+  startCooldown(key, duration) { this.#skills.startCooldown(key, duration); }
   #formation;
   get splitLevel() { return this.#formation.level; }
   #beamSystem;
@@ -64,12 +68,10 @@ export class Team {
     // 健康目标仍走取最近以保证射界/火力密度。0=从不集火(等同取最近),1=对任何目标都集火。
     this.focusHpFrac = 0.5;
     this.visibleEnemyIds = new Set();
-    this.cooldowns = {
-      scout: 0,
-      flagship: 0,
-      sub1: 0,
-      sub2: 0,
-    };
+    this.#skills = new SkillCycle(createTeamSkillPort(this, {
+      activateSupport: (duration) => this.#haruhi.cast(duration),
+      activateSponsor: (duration) => this.#sponsor.activate(duration),
+    }));
     this.autoScout = {
       enabled: false,
       zoneId: 5,
@@ -449,10 +451,7 @@ export class Team {
   update(dt) {
     this.resolvePostCasualtyState();
     const cooldownStep = this.cooldownStep(dt);
-    this.cooldowns.scout = Math.max(0, this.cooldowns.scout - cooldownStep);
-    this.cooldowns.flagship = Math.max(0, this.cooldowns.flagship - cooldownStep);
-    this.cooldowns.sub1 = Math.max(0, this.cooldowns.sub1 - cooldownStep);
-    this.cooldowns.sub2 = Math.max(0, this.cooldowns.sub2 - cooldownStep);
+    this.#skills.advance(cooldownStep);
 
     this.sponsorRegeneration(dt);
     this.updateEnergy(dt);
@@ -537,7 +536,7 @@ export class Team {
         patrolRadius: options.patrolRadius,
       }));
     }
-    this.cooldowns.scout = MANUAL_SCOUT_COOLDOWN * cooldownMultiplier;
+    this.startCooldown("scout", MANUAL_SCOUT_COOLDOWN * cooldownMultiplier);
     this.match.recordAction(this.seat, options.cooldownMultiplier ? "auto_scout" : "launch_scout");
     return true;
   }
@@ -603,115 +602,9 @@ export class Team {
     return this.queueBeamDirection(ship, Math.cos(angle), Math.sin(angle));
   }
 
-  flagshipSkillPort() {
-    return {
-      spendEnergy: (cost) => this.spendEnergyForShip("main", cost),
-      switchForm: () => this.switchFuture1096Form(),
-      activateSupport: (duration) => this.#haruhi.cast(duration),
-      activateSponsor: (duration) => this.#sponsor.activate(duration),
-      activateVisionWave: (options) => activateTeamVisionWaveSkill(this, options),
-    };
-  }
-
-  subSkillPort(ship, options) {
-    return {
-      emitHeroPower: (meta) => this.match.queueHeroPower(ship, meta),
-      activateOrb: (duration) => {
-        const ok = activateKoizumiOrb(ship, duration);
-        if (ok) ship.markActiveSkillEffectStarted("koizumiOrb");
-        return ok;
-      },
-      launchBurstScouts: () => this.launchBurstScouts(ship),
-      castBeam: () => this.castBeamFromShip(ship.key, options.targetX, options.targetY),
-      refundEnergy: (amount) => ship.restoreEnergy(amount),
-      activateEffect: (key, duration) => ship.activateTimedEffect(key, duration),
-      restoreHullFraction: (fraction) => ship.restoreHull(ship.maxHp * fraction),
-      bribeZone: () => this.bribeZone(ship, Number(options.zoneId) || 5),
-      ensureMinimumSpeed: () => ship.setFlightSpeed(Math.max(ship.speed, ship.minimumFlightSpeed())),
-    };
-  }
-
-  castFlagshipSkill(zoneId = 5) {
-    if (!this.match.rules.flagshipSkillAvailable(this)) return false;
-    const characterId = this.loadout.main;
-    const meta = skillMetaForCharacter(characterId, "flagship");
-    if (!meta || meta.type !== "active") {
-      return false;
-    }
-    if (!this.ships.main.alive || !this.ships.main.canControl()) {
-      return false;
-    }
-    if (this.ships.main.isSilenced()) {
-      return false;
-    }
-    if (this.areSkillsDisabled()) {
-      return false;
-    }
-    if (this.cooldowns.flagship > 0) {
-      return false;
-    }
-
-    const ok = executeFlagshipEffect(characterId, this.flagshipSkillPort(), meta);
-
-    if (!ok) {
-      return false;
-    }
-    this.cooldowns.flagship = meta.cooldown || 0;
-    this.match.recordAction(this.seat, "flagship_skill");
-    this.revealCasterIfSeen(this.ships.main); // 旗舰技由主舰施放:若此刻正被敌方看见,永久暴露其名字
-    return true;
-  }
-
-  // 施放技能的舰船若此刻正处于敌方视野内,则永久暴露它的名字(仅用于名牌显示)
-  revealCasterIfSeen(ship) {
-    if (!ship || ship.nameRevealed) {
-      return;
-    }
-    const enemyTeam = this.match.enemyTeamBySeat(this.seat);
-    if (enemyTeam && enemyTeam.visibleEnemyIds && enemyTeam.visibleEnemyIds.has(ship.id)) {
-      ship.revealName();
-    }
-  }
-
-  castSubSkill(shipKey, options = {}) {
-    const ship = this.ships[shipKey];
-    const exclusive = this.match.shipEffects.castExclusiveSubSkill(ship);
-    if (exclusive !== null) return exclusive;
-    if (!ship || !ship.alive || ship.isAttached() || !ship.canControl()) {
-      return false;
-    }
-    if (ship.isSilenced() || ship.isKoizumiOrbActive()) {
-      return false;
-    }
-    if (this.areSkillsDisabled()) {
-      return false;
-    }
-    const meta = skillMetaForCharacter(ship.characterId, "sub");
-    if (!meta || meta.type !== "active") {
-      return false;
-    }
-    if ((this.cooldowns[shipKey] || 0) > 0) {
-      return false;
-    }
-    if (!this.spendEnergyForShip(ship, meta.cost || 0)) {
-      return false;
-    }
-
-    const ok = executeSubEffect(ship.characterId, this.subSkillPort(ship, options), meta);
-
-    if (!ok) {
-      return false;
-    }
-    this.completeSubSkillCast(ship, meta.cooldown || 0);
-    return true;
-  }
-
-  // 角色专属支付路径也由舰队提交冷却、统计和身份揭示，保持同一次施放的归属。
-  completeSubSkillCast(ship, cooldown) {
-    this.cooldowns[ship.key] = cooldown;
-    this.match.recordAction(this.seat, "sub_skill");
-    this.revealCasterIfSeen(ship);
-  }
+  castFlagshipSkill() { return this.#skills.castFlagship(); }
+  castSubSkill(key, options = {}) { return this.#skills.castSub(key, options); }
+  completeSubSkillCast(ship, cooldown) { this.#skills.completeSub(ship.key, cooldown); }
 
   castBeamFromShip(shipKey, directionX, directionY) {
     const ship = this.ships[shipKey];

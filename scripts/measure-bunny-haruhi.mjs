@@ -37,7 +37,7 @@ async function measureWorker(moduleRoot, worst) {
       team.configureFormation(2);
       // 压力夹具从双方已解锁全部支援与伴随舰开始，不改变实战的施放规则。
       for (let i = 0; i < 4; i++) {
-        team.cooldowns.sub1 = 0;
+        team.startCooldown("sub1", 0);
         assert.equal(team.castSubSkill("sub1"), true);
       }
       // 用相同解锁操作构造已运行中的日程，保持原压力夹具首次发射在第 1 秒。

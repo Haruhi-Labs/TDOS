@@ -62,7 +62,7 @@ for (const characterId of ["tsuruya", "asakura", "future1096", "koizumi", "kyon"
   own.configureFormation(2);
   if (["tsuruya", "asakura", "future1096"].includes(characterId)) assert.equal(own.castFlagshipSkill(), true);
   collect(own.ships.main);
-  if (characterId === "future1096") { own.cooldowns.flagship = 0; own.castFlagshipSkill(); collect(own.ships.main); }
+  if (characterId === "future1096") { own.startCooldown("flagship", 0); own.castFlagshipSkill(); collect(own.ships.main); }
   own.castSubSkill("sub1");
   collect(own.ships.sub1);
   const orb = Object.values(own.ships).find((ship) => ship.key !== "main" && ship.characterId === "koizumi");

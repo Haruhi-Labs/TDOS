@@ -25,7 +25,7 @@ assert.equal(ordinary.throttle, 0.7, "非法档位仍回退当前值");
 sim.teamA.split(1);
 const bunny = sim.teamA.ships.sub1;
 for (let cast = 0; cast < 4; cast += 1) {
-  sim.teamA.cooldowns.sub1 = 0;
+  sim.teamA.startCooldown("sub1", 0);
   bunny.restoreHull(bunny.maxHp);
   assert.equal(sim.teamA.castSubSkill("sub1"), true);
 }

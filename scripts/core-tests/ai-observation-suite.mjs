@@ -153,7 +153,7 @@ function bunnyBroadcastCheck() {
   assert.equal(fleet.ships.sub1.bunnyHaruhi.form, "bless");
   assert.deepEqual(visibleKeys(), ["main", "sub1", "sub2"], "bless 向对手 AI 暴露己方全部玩家舰");
 
-  fleet.cooldowns.sub1 = 0;
+  fleet.startCooldown("sub1", 0);
   assert.equal(fleet.castSubSkill("sub1"), true);
   assert.equal(fleet.ships.sub1.bunnyHaruhi.form, "knows");
   assert.deepEqual(visibleKeys(), ["sub1"], "knows 只向对手 AI 暴露施放者自身");

@@ -219,3 +219,5 @@ await import("./verify-navigation-ownership.mjs");
 await import("./verify-ship-combat.mjs");
 
 await import("./verify-formation-ownership.mjs");
+
+await import("./verify-skill-cycle.mjs");

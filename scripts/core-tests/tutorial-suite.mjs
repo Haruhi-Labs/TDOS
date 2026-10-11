@@ -29,7 +29,7 @@ function tutorialBattleRulesCheck() {
   assert(!sim.teamB.castFlagshipSkill(), "教程敌方仍能发动旗舰技能");
   assert(sim.teamB.launchScout(5), "教程敌方角色技能禁用时侦察机也被错误禁用");
   sim.teamB.scouts = [];
-  sim.teamB.cooldowns.scout = 0;
+  sim.teamB.startCooldown("scout", 0);
 
   const enemyStart = { x: sim.teamB.ships.main.x, y: sim.teamB.ships.main.y };
   runSteps(sim, 0.8);

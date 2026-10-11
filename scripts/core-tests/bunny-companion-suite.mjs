@@ -31,7 +31,7 @@ function setup(mult = 1, dual = false) {
   const owner = team.ships.sub1;
   for (let i = 0; i < 4; i += 1) {
     owner.hp = owner.maxHp;
-    team.cooldowns.sub1 = 0;
+    team.startCooldown("sub1", 0);
     assert.equal(team.castSubSkill("sub1"), true);
   }
   return { sim, team, owner, companion: team.extraShips[0] };
@@ -180,7 +180,7 @@ function conversionCheck() {
   // 首次encore之后再进入bless，验证继承的倍率、速度和射击进度换算。
   companion.speed = 10;
   companion.cooldown = 2;
-  team.cooldowns.sub1 = 0;
+  team.startCooldown("sub1", 0);
   assert.equal(team.castSubSkill("sub1"), true);
   near(companion.speed, 11.5);
   near(companion.cooldown, 2 / 1.2);
@@ -307,7 +307,7 @@ function multipleAndImmunityCheck() {
   const enemy = sim.teamB;
   for (let i = 0; i < 4; i += 1) {
     enemy.ships.sub2.hp = enemy.ships.sub2.maxHp;
-    enemy.cooldowns.sub2 = 0;
+    enemy.startCooldown("sub2", 0);
     assert.equal(enemy.castSubSkill("sub2"), true);
   }
   const second = enemy.extraShips[0];
@@ -335,7 +335,7 @@ function multipleAndImmunityCheck() {
   assert.equal(enemy.bribeZone(enemy.ships.sub1, 5), true);
   sim.elapsed = 9;
   for (let i = 0; i < 2; i += 1) {
-    team.cooldowns.sub1 = 0;
+    team.startCooldown("sub1", 0);
     assert.equal(team.castSubSkill("sub1"), true);
   }
   assert.equal(owner.bunnyHaruhi.form, "knows");

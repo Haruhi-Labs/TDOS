@@ -40,7 +40,7 @@ export function runBunnyAiSuite() {
     assert.equal(shouldTransformBunny(ship, estimate), true);
     assert.equal(sim.teamA.castSubSkill("sub1"), true);
     assert.equal(shouldTransformBunny(ship, estimate), false, "领域冷却不可绕过");
-    sim.teamA.cooldowns.sub1 = 0;
+    sim.teamA.startCooldown("sub1", 0);
     assert.equal(shouldTransformBunny(ship, estimate, null), true, "战术上下文未形成时仍可使用已有接触情报");
     assert.equal(shouldTransformBunny(ship, estimate, { killWindow: true }), false, "有击杀机会时保留攻击形态");
     ship.hp = ship.maxHp * 0.4;
@@ -48,11 +48,11 @@ export function runBunnyAiSuite() {
     assert.equal(shouldTransformBunny(ship, { ...estimate, x: ship.x + 500 }), false, "远处威胁不提前耗尽短暂免伤，避免随后低速暴露");
     ship.hp = ship.maxHp;
     for (let i = 0; i < 3; i++) {
-      sim.teamA.cooldowns.sub1 = 0;
+      sim.teamA.startCooldown("sub1", 0);
       assert.equal(shouldTransformBunny(ship, estimate), true);
       assert.equal(sim.teamA.castSubSkill("sub1"), true);
     }
-    sim.teamA.cooldowns.sub1 = 0;
+    sim.teamA.startCooldown("sub1", 0);
     assert.equal(ship.bunnyHaruhi.form, "encore");
     assert.equal(shouldTransformBunny(ship, estimate), false, "健康且阿虚存活时保留激奏");
     sim.teamA.extraShips[0].alive = false;

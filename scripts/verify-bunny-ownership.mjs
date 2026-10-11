@@ -8,7 +8,7 @@ const team = sim.teamA;
 team.split(1);
 const owner = team.ships.sub1;
 for (let cast = 0; cast < 4; cast += 1) {
-  team.cooldowns.sub1 = 0;
+  team.startCooldown("sub1", 0);
   owner.restoreHull(owner.maxHp);
   assert.equal(team.castSubSkill("sub1"), true);
 }

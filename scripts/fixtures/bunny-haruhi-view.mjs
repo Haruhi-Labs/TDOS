@@ -25,7 +25,7 @@ export function createBunnyViewFixture(collect = () => {}) {
   states.attached = sim.serializeState();
   sim.teamA.configureFormation(2);
   for (let i = 0; i < 4; i += 1) {
-    sim.teamA.cooldowns.sub1 = 0;
+    sim.teamA.startCooldown("sub1", 0);
     assert.equal(sim.teamA.castSubSkill("sub1"), true);
     collect(owner);
     if (i < 2) states[owner.bunnyHaruhi.form] = sim.serializeState();
