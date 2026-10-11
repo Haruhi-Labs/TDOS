@@ -1,3 +1,6 @@
+import { ensureShamisenHuntTarget } from "../shamisen-hunt.js";
+import { updateRadarPassive } from "../visibility-radar.js";
+import { rngFor } from "../rng.js";
 import { createHeroPowerRuntime } from "./hero-power-runtime.js";
 import { resolveHaruhiOtherworlderContacts, resolveBunnyOtherworlderContacts, resolveBladeQueenContacts } from "../character-contacts.js";
 import { resolveKoizumiOrbContacts, updateKoizumiImpactWaves } from "../koizumi-orb.js";
@@ -22,8 +25,8 @@ export function createBattleCharacters(match) {
   const operations = Object.freeze({
     sustain: bunny(advanceBunnyRules), companions: bunny(prepareBunnyCompanions),
     hunts: () => {
-      match.teamA.ensureShamisenHuntTarget(match.teamB);
-      match.teamB.ensureShamisenHuntTarget(match.teamA);
+      ensureShamisenHuntTarget(match.teamA, match.teamB, rngFor(match).next);
+      ensureShamisenHuntTarget(match.teamB, match.teamA, rngFor(match).next);
     },
     heroPower: () => heroPowers.advance(),
     barrierRam: () => resolveKoizumiBarrierRamContacts(match),
@@ -36,8 +39,8 @@ export function createBattleCharacters(match) {
     purges: () => resolveVisionWavePurges(match.visionWavePurgePort),
     sourceCleanup: bunny(cleanupBunnySources),
     radar: (dt) => {
-      match.teamA.updateRadarPassive(match.teamB, dt);
-      match.teamB.updateRadarPassive(match.teamA, dt);
+      updateRadarPassive(match.teamA, match.teamB, dt);
+      updateRadarPassive(match.teamB, match.teamA, dt);
     },
     companionCleanup: bunny(cleanupBunnyCompanions),
     stageVisibility: bunny(refreshBunnyVisibility),

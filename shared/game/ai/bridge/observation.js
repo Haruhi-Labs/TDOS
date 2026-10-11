@@ -1,3 +1,4 @@
+import { hasShamisenFlagship } from "../../shamisen-hunt.js";
 // 规则层到 AI 的唯一读取出口：把实时对局对象翻译成某一席位有权知道的纯数据。
 // 这里可以接触 Team/Ship 实例；AI 决策代码只消费本模块产出的观测。
 import { nextBunnyForm } from "../../bunny-haruhi.js";
@@ -241,7 +242,7 @@ export function buildObservation(match, seat) {
 
   // 猫爪印记对猎杀方持续显示精确位置，但不暴露角色、席位、血量或朝向。
   let hunt = null;
-  if (team.hasShamisenFlagship?.()) {
+  if (hasShamisenFlagship(team)) {
     const targetId = team.shamisenHunt?.targetId;
     const target = enemyShips.find((ship) => ship?.alive && ship.id === targetId);
     if (target) {
@@ -249,7 +250,7 @@ export function buildObservation(match, seat) {
     }
   }
   let hunted = null;
-  if (enemy.hasShamisenFlagship?.()) {
+  if (hasShamisenFlagship(enemy)) {
     const targetId = enemy.shamisenHunt?.targetId;
     const ship = team.getAllShips().find((candidate) => candidate?.alive && candidate.id === targetId);
     if (ship) hunted = { shipId: ship.id, shipKey: ship.key };
@@ -275,7 +276,7 @@ export function buildObservation(match, seat) {
       flags: {
         yukiFlagship: team.hasYukiFlagship(),
         kyonFlagship: team.hasKyonFlagship(),
-        shamisenFlagship: Boolean(team.hasShamisenFlagship?.()),
+        shamisenFlagship: Boolean(hasShamisenFlagship(team)),
       },
       splitLevel: team.splitLevel,
       hullRatio: team.hullRatio(),

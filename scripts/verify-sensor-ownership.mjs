@@ -1,3 +1,4 @@
+import { updateRadarPassive } from "../shared/game/visibility-radar.js";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { activateVisionWaveSkill, cancelVisionWaveSkill } from "../shared/game/vision-wave.js";
@@ -8,7 +9,7 @@ assert.equal(team.radarPassive, undefined, "雷达内部回波 Map 不公开");
 const enemy = match.teamB.ships.main;
 enemy.displaceTo(team.ships.main.x + 500, team.ships.main.y);
 match.elapsed = 3;
-team.updateRadarPassive(match.teamB, 3);
+updateRadarPassive(team, match.teamB, 3);
 const radar = team.serializeRadarPassive();
 assert.ok(radar.contacts.length > 0);
 radar.contacts[0].x = -100;

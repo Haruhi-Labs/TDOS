@@ -1,3 +1,4 @@
+import { serializeVisionWaves } from "../vision-wave.js";
 import { cloneLoadout } from "../characters.js";
 import { serializeHaruhiFlagship } from "../haruhi-flagship.js";
 import { serializeKoizumiBarrier } from "../koizumi-barrier.js";
@@ -34,7 +35,7 @@ export function projectTeam(team) {
       },
       visibleEnemyIds: Array.from(team.visibleEnemyIds),
       radarSweep: serializeRadarSweep(team),
-      visionWaves: team.serializeVisionWaves(),
+      visionWaves: serializeVisionWaves(team),
       koizumiImpactWaves: serializeKoizumiImpactWaves(team),
       ships: {
         main: team.ships.main.serialize(),

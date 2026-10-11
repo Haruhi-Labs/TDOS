@@ -1,3 +1,4 @@
+import { updateRadarPassive } from "../../shared/game/visibility-radar.js";
 import { setScenarioField, assignScenario } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import { unlockSupport } from "../../shared/game/haruhi-support.js";
@@ -642,7 +643,7 @@ function yukiPassiveCheck() {
   setScenarioField(main, 'y', main.y - (110));
   setScenarioField(main, 'angle', main.angle + (1.7));
   sim.elapsed += 1;
-  teamA.updateRadarPassive(sim.teamB, 1);
+  updateRadarPassive(teamA, sim.teamB, 1);
   const angleAfterMovement = sim.serializeRadarForSeat("A").angle;
   const sweptAfterMovement = (angleBeforeMovement - angleAfterMovement + Math.PI * 2) % (Math.PI * 2);
   assert(
@@ -656,7 +657,7 @@ function yukiPassiveCheck() {
     const phase = sim.serializeRadarForSeat("A").angle;
     const speed = (Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS;
     sim.elapsed += ((phase + Math.PI * 2) % (Math.PI * 2)) / speed + YUKI_RADAR_ROTATION_SECONDS;
-    teamA.updateRadarPassive(sim.teamB, 0);
+    updateRadarPassive(teamA, sim.teamB, 0);
     sim.elapsed += TICK_DT;
   };
 
@@ -668,7 +669,7 @@ function yukiPassiveCheck() {
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   assert(!teamA.visibleEnemyIds.has(enemyMain.id), "长门雷达测试前置敌舰应在常规视野外");
-  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  updateRadarPassive(teamA, sim.teamB, TICK_DT);
   const mediumRadar = sim.serializeRadarForSeat("A");
   const mediumContact = mediumRadar.contacts.find((contact) => contact.targetId === enemyMain.id);
   assert(mediumContact, "长门雷达波扫过视野外敌舰时未生成回波");
@@ -682,7 +683,7 @@ function yukiPassiveCheck() {
   setScenarioField(enemyMain, 'y', main.y);
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
-  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  updateRadarPassive(teamA, sim.teamB, TICK_DT);
   const outsideIdentifyContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
   assert(outsideIdentifyContact?.kind === "disturbance", "超过一个战区宽度后仍显示可辨识的舰队残影");
   assert(outsideIdentifyContact.characterId === null, "超过一个战区宽度后仍泄露角色身份");
@@ -691,7 +692,7 @@ function yukiPassiveCheck() {
   setScenarioField(enemyMain, 'y', main.y);
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
-  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  updateRadarPassive(teamA, sim.teamB, TICK_DT);
   const farContact = sim.serializeRadarForSeat("A").contacts.find((contact) => contact.targetId === enemyMain.id);
   assert(farContact?.kind === "disturbance", "远距离雷达回波未降级为水面扰动");
   assert(farContact.characterId === null, "远距离雷达扰动错误泄露了角色身份");
@@ -707,7 +708,7 @@ function yukiPassiveCheck() {
   alignRadarToBearingZero();
   teamA.computeVisibility(sim.teamB);
   assert(teamA.visibleEnemyIds.has(enemyMain.id), "近距离敌舰未进入任意常规视野");
-  teamA.updateRadarPassive(sim.teamB, TICK_DT);
+  updateRadarPassive(teamA, sim.teamB, TICK_DT);
   assert(
     !sim.serializeRadarForSeat("A").contacts.some((contact) => contact.targetId === enemyMain.id),
     "已在常规视野内的敌舰仍显示雷达扫描效果",

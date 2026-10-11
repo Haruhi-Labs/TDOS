@@ -15,11 +15,9 @@ import { DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../characters.js";
 import { rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
-import { visibilityInputs, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
-import { serializeVisionWaves as serializeTeamVisionWaves } from "../vision-wave.js";
+import { visibilityInputs, serializeRadarPassive as serializeTeamRadarPassive } from "../visibility-radar.js";
 import { FleetFireControl } from "../targeting-system.js";
 import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../rules/fire-control.js";
-import { ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget } from "../shamisen-hunt.js";
 import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
@@ -148,18 +146,6 @@ export class Team {
 
   hasTsuruyaFlagship() {
     return this.mainCharacterId() === "tsuruya";
-  }
-
-  hasShamisenFlagship() {
-    return hasShamisenFlagship(this);
-  }
-
-  ensureShamisenHuntTarget(enemyTeam) {
-    return ensureShamisenHuntTarget(this, enemyTeam, rngFor(this.match).next);
-  }
-
-  isShamisenHuntTarget(target) {
-    return isShamisenHuntTarget(this, target);
   }
 
   get future1096Form() {
@@ -461,24 +447,8 @@ export class Team {
     this.#beamSystem.resolve(enemyTeam);
   }
 
-  radarMaxDistanceFrom(source) {
-    return teamRadarMaxDistanceFrom(this, source);
-  }
-
-  createRadarContact(target, source) {
-    return createTeamRadarContact(this, target, source);
-  }
-
-  updateRadarPassive(enemyTeam, dt) {
-    updateTeamRadarPassive(this, enemyTeam, dt);
-  }
-
   serializeRadarPassive() {
     return serializeTeamRadarPassive(this);
-  }
-
-  serializeVisionWaves() {
-    return serializeTeamVisionWaves(this);
   }
 
   computeVisibility(enemyTeam) {
