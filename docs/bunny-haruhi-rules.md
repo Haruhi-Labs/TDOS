@@ -188,7 +188,7 @@ bless要求 `hp > maxHp*0.15`，直接扣除最大生命15%，能量补至至少
 
 ## 阿虚运行时接入合同
 
-`spawnBunnyCompanion(owner,createShip)` 仅接受真实副舰的encore状态，已存在稳定ID则拒绝重复生成。`Team.spawnBunnyCompanion` 注入原Ship构造器，提供冻结 `baseStats` 和 `entityRole="bunny_kyon"`；显示身份仍是 `characterId="kyon"`，不会获得普通阿虚主动技。实体放入当前阵营 `extraShips`，key固定为 `bunny_kyon_<ownerShipId>`，且 `isAuxiliary=true`、`attachToMain=false`。
+`spawnBunnyCompanion(owner)` 仅接受真实副舰的encore状态，已存在稳定ID则拒绝重复生成。Ship 装配角色能力时注入工厂，由角色运行时私有保存并调用，不再经 Team 回调；提供冻结 `baseStats` 和 `entityRole="bunny_kyon"`；显示身份仍是 `characterId="kyon"`，不会获得普通阿虚主动技。实体放入当前阵营 `extraShips`，key固定为 `bunny_kyon_<ownerShipId>`，且 `isAuxiliary=true`、`attachToMain=false`。
 
 `isBunnyCompanion`、`countsForVictory`、`isFleetParticipant` 只区分该实体类型。独立fleet key只返回阿虚自身，用于能源、航速和分摊查询；不进入主舰共享池，不参与胜负、主编队生命比例、玩家舰损或猎杀候选。仍可正常挡弹、受伤、碰撞和提供当前阵营真实视野。附着状态的母舰与阿虚之间也保留碰撞体积。玩家动作不能操控阿虚，侦察入口显式拒绝其key，不能退回主舰代发。
 

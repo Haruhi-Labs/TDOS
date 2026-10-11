@@ -167,3 +167,14 @@ AI 测试场景在测试侧投影实体；生产策略拒绝实体和能力回�
 
 
 内部残留边界检查随 `test:architecture` 执行：`verify-ai-memory-ownership` 验证情报入队复制、反应延迟、不可变接触、过期淘汰、概率输出隔离，以及侦察计划缓存和重编组时钟；`verify-targeting-ownership` 验证感知样本只读、历史隔离、集火预算、目标死亡后的重新选择和猎杀优先级。导航专项额外拒绝端口属性写入，施放专项验证专属结果的冷却→统计→显形→视野刷新顺序。场景所需可见性由测试侧隔离传感器输入并运行真实采样生成，不恢复生产可见集写入口；情报老化使用时间推进，不篡改记忆时间戳。
+
+本轮角色复查专项继续随既有门禁执行：
+
+- `test:core:ai-policy` 拒绝角色事实中夹带执行端口或策略计时器，检查嵌套输入与档案注册表不可变，并保留无穷距离的判断语义。
+- `verify-support-ownership` 拒绝将读快照或普通对象作为写入来源；验证解锁、封印恢复、变身和同帧追帧回调不会污染历史快照，也不会遗留过时缓存。
+- `verify-bunny-ownership` 确认 Team 不再承载伴随舰生成及战区策反事务；既有核心场景继续覆盖临时策反、归还、反策反和成员集合。
+- `verify-ai-skill-ownership` 验证技能时钟私有、决策嵌套别名隔离、施放后读取新冷却，以及只返回破盾重规划结果；真实 AI 破盾场景继续验证同帧路线行为。`verify-ai-debug-projection` 通过真实技能推进验证历史输出，不再覆写私有决策构造夹具。
+
+以上使用内存对局，无外部读写；与原始逐帧基线、AI 长局及浏览器验收互补。
+
+兔女郎离线采样器可用 `--output-dir=<目录>` 将局部复测写入隔离目录，默认仍使用 `bench/bunny-haruhi-acceptance`；例如 `node scripts/measure-bunny-haruhi.mjs --balance --scenarios=hold-encore,conversion-ready --output-dir=node_modules/.cache/role-balance`。观察伴随舰使用成员发布入口，不覆盖角色生成事务。场景成功运行不等于其中每种事件都已发生，应核对伴随舰存活秒数、策反次数等实际指标。
