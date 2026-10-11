@@ -40,7 +40,20 @@ for (const team of [sim.teamA, sim.teamB]) {
   // 非本帧效果才能被净化，保持原有保护约定。
   team.ships.main.effects.silencedUntil = 10;
 }
+const sampled = sim.visionWavePurgePort.targets("A", "A");
+assert.equal(sampled[0].id, sim.teamA.ships.main.id);
+assert.notEqual(sampled[0], sim.teamA.ships.main, "阶段不得获得真实舰船作为目标句柄");
+assert.equal(sampled[0].team, undefined);
+assert.throws(() => { sampled[0].hp = 0; }, TypeError);
+assert.equal(sim.visionWavePurgePort.targets("A", "A")[0], sampled[0], "复用独立只读句柄，避免每帧分配");
+assert.throws(() => sim.visionWavePurgePort.clearNegative({ id: sampled[0].id }), /无效的波带目标句柄/);
 sim.tick += 1;
+const beforeInvalidOwner = JSON.stringify(sim.serializeState());
+assert.equal(sim.teamA.clearActiveSkillBuffsForShip(sim.teamB.ships.main), false);
+assert.equal(sim.teamA.clearActiveSkillBuffsForShip(null), false);
+const enemyHandle = sim.visionWavePurgePort.targets("A", "B")[0];
+assert.equal(sim.visionWavePurgePort.clearPositive("A", enemyHandle), false);
+assert.equal(JSON.stringify(sim.serializeState()), beforeInvalidOwner, "错误所有者不得先清理自身或他人的增益");
 sim.resolveVisionWavePurges();
 assert.equal(sim.teamA.ships.main.isSilenced(), false);
 assert.equal(sim.teamB.ships.main.isSilenced(), false);
@@ -51,8 +64,8 @@ assert.deepEqual(sim.floatingTexts.filter((label) => label.textKey === "净化")
 
 const original = sim.visionWavePurgePort;
 assert.throws(() => { original.targets = () => []; }, TypeError);
-let sampled = 0;
-sim.visionWavePurgePort = { targets: () => { sampled += 1; return []; } };
+let sampleCount = 0;
+sim.visionWavePurgePort = { targets: () => { sampleCount += 1; return []; } };
 sim.resolveVisionWavePurges();
-assert.equal(sampled, 4, "对局编排必须使用装配的阶段端口");
+assert.equal(sampleCount, 4, "对局编排必须使用装配的阶段端口");
 console.log("波带净化阶段校验通过：双边四组先采样、先负面后正面、仅有效净化反馈及可替换端口。");

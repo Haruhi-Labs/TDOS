@@ -474,8 +474,9 @@ export class Team {
   }
 
   clearActiveSkillBuffsForShip(ship, { preserveCurrentTick = true } = {}) {
+    if (!ship || ship.team !== this) return false;
     const teamCleared = this.clearActiveTeamSkillBuffs({ preserveCurrentTick });
-    const shipCleared = ship?.clearActiveSkillBuffs({ preserveCurrentTick }) || false;
+    const shipCleared = ship.clearActiveSkillBuffs({ preserveCurrentTick });
     return teamCleared || shipCleared;
   }
 
