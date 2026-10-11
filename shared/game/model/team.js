@@ -1,8 +1,10 @@
+import { BeamSystem } from "../systems/beam-system.js";
+import { createTeamBeamPort, beamCasterState } from "../rules/beam-port.js";
 import { executeFlagshipEffect, executeSubEffect } from "../rules/active-skills.js";
 // 舰队状态所有者与领域操作。
 import { AUTO_SCOUT_COOLDOWN_MULTIPLIER, MANUAL_SCOUT_COOLDOWN, SCOUT_LAUNCH_COST } from "../combat-rules.js";
 import { DEFAULT_TEAM_LOADOUT, cloneLoadout, normalizeLoadout, skillMetaForCharacter } from "../characters.js";
-import { clamp, linePointDistance, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
+import { clamp, normalizeAngle, rotateOffset, zoneContains } from "../math.js";
 import { rngFor } from "../rng.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../status-effects.js";
 import { computeVisibility as computeTeamVisibility, createRadarContact as createTeamRadarContact, radarMaxDistanceFrom as teamRadarMaxDistanceFrom, serializeRadarPassive as serializeTeamRadarPassive, serializeRadarSweep as serializeTeamRadarSweep, updateRadarPassive as updateTeamRadarPassive } from "../visibility-radar.js";
@@ -10,19 +12,19 @@ import { activateVisionWaveSkill as activateTeamVisionWaveSkill, cancelVisionWav
 import { isFocusWorthy } from "../targeting-system.js";
 import { assignTeamFocusTargets, fireCandidates as teamFireCandidates, focusDamageBudget as attackerFocusDamageBudget, pickTeamTarget } from "../rules/fire-control.js";
 import { activateKoizumiOrb, serializeKoizumiImpactWaves } from "../koizumi-orb.js";
-import { createKoizumiBarrierState, consumeKoizumiBarrierHit, koizumiBarrierBeamImpact, serializeKoizumiBarrier } from "../koizumi-barrier.js";
+import { createKoizumiBarrierState, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { activateHaruhiFlagship, createHaruhiFlagshipState, haruhiBoostActive, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { createShamisenHuntState, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
-import { DAMAGE_KIND } from "../damage.js";
 import { isBunnyCompanion, countsForVictory, isFleetParticipant } from "../bunny-haruhi-companion.js";
 import { spawnBunnyCompanion, convertBunnyCompanion } from "../bunny-companion-runtime.js";
 import { updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
 import { Scout } from "../model/scout.js";
 import { Wingman } from "../model/wingman.js";
-import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS, nextEntityId } from "../model/model-support.js";
+import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, FUTURE_1096_FORMS, FUTURE_1096_BASE_FORM, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS, HARUHI_SUPPORT_ANNOUNCEMENT_KEYS } from "../model/model-support.js";
 
 export class Team {
+  #beamSystem;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
     this.match = match;
     this.seat = seat;
@@ -104,7 +106,11 @@ export class Team {
 
     this.scouts = [];
     this.wingmen = [];
-    this.beams = [];
+    this.#beamSystem = new BeamSystem(createTeamBeamPort(this), {
+      range: BEAM_BASE_RANGE, chargeDuration: BEAM_CHARGE_DURATION,
+      visualDuration: BEAM_VISUAL_DURATION, hitRadius: BEAM_HIT_RADIUS,
+      damageRatio: beamDamageRatioForHitCount,
+    });
   }
 
   mainCharacterId() {
@@ -656,30 +662,10 @@ export class Team {
     for (const wingman of this.wingmen) {
       wingman.update(dt);
     }
-    for (const beam of this.beams) {
-      if (beam.phase === "charge") {
-        const ship = this.shipByKey(beam.shipKey);
-        if (!ship || !ship.alive || ship.isAttached()) {
-          beam.fired = true;
-          beam.phase = "cancel";
-          beam.life = 0;
-          continue;
-        }
-        beam.x1 = ship.x;
-        beam.y1 = ship.y;
-        beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
-        beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
-        beam.progress = clamp(1 - beam.life / Math.max(beam.maxLife, 0.001), 0, 1);
-        if (ship.isControlLocked()) {
-          continue;
-        }
-      }
-      beam.life -= dt;
-    }
+    this.advanceBeams(dt);
 
     this.scouts = this.scouts.filter((scout) => scout.alive);
     this.wingmen = this.wingmen.filter((wingman) => wingman.alive);
-    this.beams = this.beams.filter((beam) => beam.life > 0 || (beam.phase === "charge" && !beam.fired));
   }
 
   maybeAutoLaunchScout() {
@@ -951,36 +937,16 @@ export class Team {
     return this.queueBeamDirection(ship, dirX, dirY);
   }
 
+  get beams() {
+    return this.#beamSystem.inspect();
+  }
+
+  advanceBeams(dt) {
+    this.#beamSystem.advance(dt);
+  }
+
   queueBeamDirection(ship, dirX, dirY) {
-    if (!ship || !ship.alive || ship.isAttached()) {
-      return false;
-    }
-    const dirLen = Math.hypot(dirX, dirY);
-    if (!Number.isFinite(dirLen) || dirLen < 1e-4) {
-      return false;
-    }
-    const unitX = dirX / dirLen;
-    const unitY = dirY / dirLen;
-    const range = BEAM_BASE_RANGE;
-    const beam = {
-      id: nextEntityId(this.match),
-      shipKey: ship.key,
-      phase: "charge",
-      x1: ship.x,
-      y1: ship.y,
-      x2: this.match.clampX(ship.x + unitX * range, 0),
-      y2: this.match.clampY(ship.y + unitY * range, 0),
-      dirX: unitX,
-      dirY: unitY,
-      range,
-      color: "#8ef8ff",
-      life: BEAM_CHARGE_DURATION,
-      maxLife: BEAM_CHARGE_DURATION,
-      progress: 0,
-      fired: false,
-    };
-    this.beams.push(beam);
-    return true;
+    return this.#beamSystem.enqueue(beamCasterState(ship), dirX, dirY);
   }
 
   bribeZone(ship, zoneId) {
@@ -1017,82 +983,8 @@ export class Team {
     return converted > 0;
   }
 
-  spawnBeamHitParticles(x, y) {
-    this.match.spawnBurst(x, y, "#8ef8ff", 11);
-    for (let i = 0; i < 7; i += 1) {
-      const angle = rngFor(this.match).range(0, TAU);
-      const offset = rngFor(this.match).range(4, 28);
-      const px = this.match.clampX(x + Math.cos(angle) * offset, 0);
-      const py = this.match.clampY(y + Math.sin(angle) * offset, 0);
-      this.match.spawnBurst(px, py, i % 2 === 0 ? "#bdf7ff" : "#9ef2ff", rngFor(this.match).range(3.5, 7.5));
-    }
-  }
-
   resolveChargedBeams(enemyTeam) {
-    for (const beam of this.beams) {
-      if (beam.phase !== "charge" || beam.life > 0 || beam.fired) {
-        continue;
-      }
-      const ship = this.shipByKey(beam.shipKey);
-      if (!ship || !ship.alive || ship.isAttached()) {
-        beam.fired = true;
-        beam.phase = "cancel";
-        beam.life = 0;
-        continue;
-      }
-
-      beam.fired = true;
-      beam.phase = "fire";
-      beam.life = BEAM_VISUAL_DURATION;
-      beam.maxLife = BEAM_VISUAL_DURATION;
-      beam.progress = 1;
-      beam.x1 = ship.x;
-      beam.y1 = ship.y;
-      beam.x2 = this.match.clampX(ship.x + beam.dirX * beam.range, 0);
-      beam.y2 = this.match.clampY(ship.y + beam.dirY * beam.range, 0);
-
-      const barrierImpact = koizumiBarrierBeamImpact(beam, enemyTeam);
-      if (barrierImpact) {
-        consumeKoizumiBarrierHit(enemyTeam, barrierImpact, this.seat);
-        beam.x2 = barrierImpact.x;
-        beam.y2 = barrierImpact.y;
-        beam.blockedByBarrier = true;
-        beam.barrierTeamSeat = enemyTeam.seat;
-        this.match.spawnKoizumiBarrierImpact({
-          ...barrierImpact,
-          teamSeat: enemyTeam.seat,
-          sourceSeat: this.seat,
-          kind: "beam",
-        });
-      }
-
-      // 先固定本次光线的完整命中集合，再按数量选择统一倍率，避免边结算边击毁目标时
-      // 后续目标因存活数量变化而使用不同伤害档位。护盾已在上方截断射线，因此这里
-      // 统计的就是屏障之后真正能被光线触及的舰船。
-      const hitTargets = enemyTeam.getAllShips().filter((target) => {
-        if (!target.alive || !target.isTargetableByFire() || !this.match.rules.canDamage(ship, target)) return false;
-        const probe = linePointDistance(beam.x1, beam.y1, beam.x2, beam.y2, target.x, target.y);
-        return probe.dist <= target.radius + BEAM_HIT_RADIUS && probe.t >= 0 && probe.t <= 1;
-      });
-      const damageRatio = beamDamageRatioForHitCount(hitTargets.length);
-      this.match.recordAttack(this.seat, "beam", hitTargets.length);
-      for (const target of hitTargets) {
-        const damage = target.maxHp * damageRatio;
-        const displayedDamage = damage;
-        const damageImmune = target.isDamageImmune();
-        target.takeDamage(damage, ship, this.match, { kind: DAMAGE_KIND.SKILL });
-        if (damageImmune) {
-          this.match.spawnFloatingTextKey(target.x + 8, target.y - 10, "免疫", {}, "#ffc5cf");
-        } else {
-          this.match.spawnFloatingText(target.x + 8, target.y - 10, `-${Math.round(displayedDamage)}`, "#ffb7a8");
-        }
-        this.spawnBeamHitParticles(target.x, target.y);
-      }
-
-      if (hitTargets.length === 0) {
-        this.match.spawnBurst(beam.x2, beam.y2, "#78dfff", 9);
-      }
-    }
+    this.#beamSystem.resolve(enemyTeam);
   }
 
   radarMaxDistanceFrom(source) {
@@ -1187,21 +1079,7 @@ export class Team {
       extraShips: this.extraShips.map((ship) => ship.serialize()),
       scouts: this.scouts.filter((item) => item.alive).map((item) => item.serialize()),
       wingmen: this.wingmen.filter((item) => item.alive).map((item) => item.serialize()),
-      beams: this.beams.map((beam) => ({
-        id: beam.id,
-        shipKey: beam.shipKey,
-        phase: beam.phase || "fire",
-        x1: beam.x1,
-        y1: beam.y1,
-        x2: beam.x2,
-        y2: beam.y2,
-        progress: Number.isFinite(beam.progress) ? beam.progress : 1,
-        color: beam.color,
-        life: beam.life,
-        maxLife: beam.maxLife || beam.life,
-        blockedByBarrier: Boolean(beam.blockedByBarrier),
-        barrierTeamSeat: beam.barrierTeamSeat || null,
-      })),
+      beams: this.#beamSystem.serialize(),
     };
   }
 }

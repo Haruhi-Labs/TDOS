@@ -825,9 +825,9 @@ function koizumiFlagshipBarrierCheck() {
 
   const hullBeforeBeam = teamA.getAllShips().reduce((sum, ship) => sum + ship.hp, 0);
   assert(teamB.queueBeamDirection(attacker, -1, 0), "古泉能量圈测试未生成圈外射线");
-  const beam = teamB.beams.at(-1);
-  beam.life = 0;
+  teamB.advanceBeams(teamB.beams.at(-1).maxLife);
   teamB.resolveChargedBeams(teamA);
+  const beam = teamB.beams.at(-1);
   assert(beam.blockedByBarrier, "古泉能量圈没有截断圈外射线");
   assert(
     Math.abs(beam.x2 - (main.x + initialBarrier.radius)) < 1,
@@ -1066,9 +1066,9 @@ function koizumiBarrierChargesCheck() {
   const beams = createScenario();
   for (let hit = 0; hit < 16; hit += 1) {
     assert(beams.sim.teamB.queueBeamDirection(beams.attacker, -1, 0), "次数盾测试未生成射线");
-    const beam = beams.sim.teamB.beams.at(-1);
-    beam.life = 0;
+    beams.sim.teamB.advanceBeams(beams.sim.teamB.beams.at(-1).maxLife);
     beams.sim.teamB.resolveChargedBeams(beams.sim.teamA);
+    const beam = beams.sim.teamB.beams.at(-1);
     assert(Boolean(beam.blockedByBarrier) === (hit < 15), "光线没有遵循15次盾的拦截边界");
     assert(beams.barrier().remainingHits === Math.max(0, 14 - hit), "一次独立光线没有只消耗一次盾");
     beams.sim.teamB.resolveChargedBeams(beams.sim.teamA);
@@ -1494,7 +1494,7 @@ function beamHitCountDamageCheck() {
 
     const before = new Map(targetTeam.getAllShips().map((ship) => [ship.id, ship.hp]));
     assert(sourceTeam.queueBeamDirection(source, 1, 0), "命中数量测试未能创建1096光线");
-    sourceTeam.beams.at(-1).life = 0;
+    sourceTeam.advanceBeams(sourceTeam.beams.at(-1).maxLife);
     sourceTeam.resolveChargedBeams(targetTeam);
     return {
       targetTeam,

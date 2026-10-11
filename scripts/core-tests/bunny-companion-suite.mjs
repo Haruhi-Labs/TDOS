@@ -264,12 +264,12 @@ function conversionCheck() {
   enemy.ships.sub1.y = owner.y + 300;
   enemy.ships.sub2.y = owner.y + 400;
   team.queueBeamDirection(owner, 1, 0);
-  team.beams[0].life = 0;
+  team.advanceBeams(team.beams[0].maxLife);
   const beamHits = sim.telemetry.teams.A.attacks.beamHits;
   team.resolveChargedBeams(enemy);
   assert.equal(sim.telemetry.teams.A.attacks.beamHits - beamHits, 1);
   assert.equal(companion.hp, oldHp);
-  team.beams.length = 0;
+  team.advanceBeams(team.beams[0].maxLife);
   sim.elapsed = 24.99;
   prepareBunnyCompanions(sim);
   assert.equal(companion.team, enemy);
