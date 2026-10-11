@@ -53,7 +53,7 @@ function followPoint(owner, offset) {
   };
 }
 
-/** Ship 工厂由舰队注入，角色规则不反向导入实体实现。 */
+/** Ship 工厂由实体装配时注入，角色规则不反向导入实体实现。 */
 export function createBunnyCompanion(owner, createShip) {
   const { team } = owner;
   const point = followPoint(owner, C.companion.followOffset);

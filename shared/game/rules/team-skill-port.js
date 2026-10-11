@@ -1,3 +1,4 @@
+import { convertZoneSupport } from "./support-conversion.js";
 import { skillMetaForCharacter } from "../characters.js";
 import { activateKoizumiOrb } from "../koizumi-orb.js";
 import { activateVisionWaveSkill } from "../vision-wave.js";
@@ -17,7 +18,7 @@ export function createTeamSkillPort(team, flagship) {
       refundEnergy: (amount) => ship.restoreEnergy(amount),
       activateEffect: (key, duration) => ship.activateTimedEffect(key, duration),
       restoreHullFraction: (fraction) => ship.restoreHull(ship.maxHp * fraction),
-      bribeZone: () => team.bribeZone(ship, Number(options.zoneId) || 5),
+      bribeZone: () => convertZoneSupport(ship, Number(options.zoneId) || 5),
       ensureMinimumSpeed: () => ship.setFlightSpeed(Math.max(ship.speed, ship.minimumFlightSpeed())),
     };
   }

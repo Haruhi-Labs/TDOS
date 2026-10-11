@@ -21,12 +21,12 @@ export const SHIP_EFFECTS = Object.freeze({
   castExclusiveSubSkill(ship) {
     return ship?.bunnyHaruhi ? commitBunnyTransform(ship) : null;
   },
-  initialize(ship) {
+  initialize(ship, capabilities) {
     initializeKoizumiOrb(ship);
     resetHaruhiHeroPowerShock(ship);
     initializeClawMarks(ship);
     initializeBunnyReliableReceiver(ship);
-    initializeBunnyShip(ship);
+    initializeBunnyShip(ship, capabilities?.createShip);
   },
   clearControl(ship) {
     resetHaruhiHeroPowerShock(ship);

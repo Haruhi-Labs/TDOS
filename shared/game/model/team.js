@@ -26,8 +26,7 @@ import { initializeKoizumiImpactWaves, serializeKoizumiImpactWaves } from "../ko
 import { initializeKoizumiBarrier, serializeKoizumiBarrier } from "../koizumi-barrier.js";
 import { createHaruhiFlagshipState, serializeHaruhiFlagship, updateHaruhiFlagship } from "../haruhi-flagship.js";
 import { initializeShamisenHunt, ensureShamisenHuntTarget, hasShamisenFlagship, isShamisenHuntTarget, serializeShamisenHunt } from "../shamisen-hunt.js";
-import { convertBunnyCompanion } from "../bunny-companion-runtime.js";
-import { spawnBunnyCompanion, updateBunnyTeamSupports, refreshBunnyVisibility } from "../bunny-haruhi-runtime.js";
+import { updateBunnyTeamSupports } from "../bunny-haruhi-runtime.js";
 import { Ship } from "../model/ship.js";
 import { TAU, BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
 
@@ -220,10 +219,6 @@ export class Team {
     return [...this.getPlayerShips(), ...this.extraShips];
   }
 
-  spawnBunnyCompanion(owner) {
-    return spawnBunnyCompanion(owner, (...args) => new Ship(...args));
-  }
-
   configureAiHandicap({ focusLowHp, statMult }) {
     this.aiFocusLowHp = focusLowHp;
     this.applyAiStatMult(statMult);
@@ -361,10 +356,6 @@ export class Team {
     return this.#sponsor.cooldownStep(dt);
   }
 
-  setShipEffect(ship, key, duration) {
-    ship.activateTimedEffect(key, duration);
-  }
-
   clearActiveTeamSkillBuffs({ preserveCurrentTick = true } = {}) {
     let cleared = this.#sponsor.clear({ preserveCurrentTick });
     if (this.#haruhi.clear({ preserveCurrentTick })) cleared = true;
@@ -392,29 +383,6 @@ export class Team {
   }
 
   configureAutoScout(enabled, zoneId = 5) { return this.#aircraft.configureAutoScout(enabled, zoneId); }
-
-  blinkShip(ship, targetX, targetY, maxRange = 240) {
-    if (!ship || !ship.alive) {
-      return false;
-    }
-    const fromX = ship.x;
-    const fromY = ship.y;
-    const aimX = Number.isFinite(targetX) ? targetX : ship.x;
-    const aimY = Number.isFinite(targetY) ? targetY : ship.y;
-    const dx = aimX - ship.x;
-    const dy = aimY - ship.y;
-    const len = Math.hypot(dx, dy);
-    const step = len > 1e-4 ? Math.min(len, maxRange) : 0;
-    const dirX = len > 1e-4 ? dx / len : Math.cos(ship.angle);
-    const dirY = len > 1e-4 ? dy / len : Math.sin(ship.angle);
-    const padding = Math.max(this.match.mapPadding, ship.radius + 4);
-    ship.displaceTo(ship.x + dirX * step, ship.y + dirY * step, padding);
-    ship.navigateTo({ x: ship.x, y: ship.y });
-    this.match.spawnBurst(fromX, fromY, "#d8f7ff", 8);
-    this.match.spawnBurst(ship.x, ship.y, "#9be0ff", 9);
-    this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 12, "闪现", {}, "#9be0ff");
-    return true;
-  }
 
   sponsorRegeneration(dt) {
     this.#sponsor.regenerate(dt);
@@ -499,40 +467,6 @@ export class Team {
 
   queueBeamDirection(ship, dirX, dirY) {
     return this.#beamSystem.enqueue(beamCasterState(ship), dirX, dirY);
-  }
-
-  bribeZone(ship, zoneId) {
-    const zone = this.match.zoneById(zoneId);
-    const enemyTeam = this.match.enemyTeamBySeat(this.seat);
-    let converted = 0;
-
-    for (const scout of [...enemyTeam.scouts]) {
-      if (!scout.alive || !zoneContains(zone, scout.x, scout.y)) {
-        continue;
-      }
-      scout.transferToTeam(this, zone);
-      converted += 1;
-    }
-
-    for (const wingman of [...enemyTeam.wingmen]) {
-      if (!wingman.alive || !zoneContains(zone, wingman.x, wingman.y)) {
-        continue;
-      }
-      wingman.transferToTeam(this, zone);
-      converted += 1;
-    }
-
-    // 使用固定集合，避免原地转移遗漏实体；普通飞行器保留原永久策反语义。
-    for (const companion of [...enemyTeam.extraShips]) {
-      if (companion.alive && zoneContains(zone, companion.x, companion.y)
-        && convertBunnyCompanion(companion, this, zone)) converted += 1;
-    }
-    if (this.match.bunnyHaruhiActive && converted > 0) refreshBunnyVisibility(this.match);
-
-    if (converted > 0) {
-      this.match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "钞能力 x{count}", { count: converted }, "#ffd27e", `钞能力 x${converted}`);
-    }
-    return converted > 0;
   }
 
   resolveChargedBeams(enemyTeam) {

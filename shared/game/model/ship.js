@@ -75,7 +75,7 @@ export class Ship {
     // 名字确认:敌方舰船默认隐藏名字；在视野中施放技能或被长门雷达扫中后永久确认。
     this.nameRevealed = false;
 
-    this.team.match.shipEffects.initialize(this);
+    this.team.match.shipEffects.initialize(this, { createShip: (...args) => new Ship(...args) });
   }
 
   isAttached() {

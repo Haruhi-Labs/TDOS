@@ -1,3 +1,4 @@
+import { convertZoneSupport } from "../../shared/game/rules/support-conversion.js";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../../shared/game-core.js";
 import { resolveBunnyStages } from "../../shared/game/bunny-haruhi-runtime.js";
@@ -58,7 +59,7 @@ export function createBunnyViewFixture(collect = () => {}) {
   collect(target);
   states.encoreExpired = sim.serializeState();
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
-  assert.equal(sim.teamB.bribeZone(sim.teamB.ships.sub1, zone.id), true);
+  assert.equal(convertZoneSupport(sim.teamB.ships.sub1, zone.id), true);
   collect(companion);
   states.converted = sim.serializeState();
   companion.takeDamage(companion.maxHp * 10, sim.teamA.ships.main, sim);

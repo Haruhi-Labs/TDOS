@@ -1,3 +1,4 @@
+import { convertZoneSupport } from "../shared/game/rules/support-conversion.js";
 import { sampleVisibility } from "./core-tests/visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
@@ -118,7 +119,7 @@ assert.equal(scout.command.x, 701, "任务输入不能保留调用方的可写�
 assert.equal(scout.patrolCenter.x, 701);
 const wingman = new Wingman(sourceTeam, 700, 700, sourceZone);
 sourceTeam.addWingman(wingman);
-assert.equal(destinationTeam.bribeZone(destinationTeam.ships.main, 5), true);
+assert.equal(convertZoneSupport(destinationTeam.ships.main, 5), true);
 assert.equal(sourceTeam.scouts.includes(scout), false);
 assert.equal(sourceTeam.wingmen.includes(wingman), false);
 assert.equal(destinationTeam.scouts.filter((entity) => entity === scout).length, 1);

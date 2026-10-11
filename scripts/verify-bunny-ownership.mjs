@@ -1,3 +1,4 @@
+import { spawnBunnyCompanion } from "../shared/game/bunny-haruhi-runtime.js";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { prepareBunnyCompanions, convertBunnyCompanion, cleanupBunnyCompanions } from "../shared/game/bunny-companion-runtime.js";
@@ -6,6 +7,8 @@ import { initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBu
 const sim = new MatchSimulation({ seed: 188, teamLoadouts: { A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" } } });
 const team = sim.teamA;
 team.split(1);
+assert.equal(team.spawnBunnyCompanion, undefined, "伴随舰事务不能经舰队回调角色运行时");
+assert.equal(team.bribeZone, undefined, "角色策反事务不能留在舰队中");
 const owner = team.ships.sub1;
 for (let cast = 0; cast < 4; cast += 1) {
   team.startCooldown("sub1", 0);
@@ -22,7 +25,7 @@ assert.throws(() => { companion.bunnyCompanion.followOffset.forward = 999; }, Ty
 assert.throws(() => { companion.bunnyCompanion = {}; }, TypeError);
 const beforeDuplicate = JSON.stringify(sim.serializeState());
 const nextId = sim.entityIds.value;
-assert.equal(team.spawnBunnyCompanion(owner), null);
+assert.equal(spawnBunnyCompanion(owner), null);
 assert.equal(sim.entityIds.value, nextId, "重复生成不得再消费实体编号");
 assert.equal(JSON.stringify(sim.serializeState()), beforeDuplicate);
 

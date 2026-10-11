@@ -15,6 +15,7 @@ import { supportOrbGeometry, supportOtherworlderReady, clearSupportQueue, initia
 
 export const BUNNY_HARUHI_CHARACTER = CHARACTER_DEFS.bunny_haruhi;
 
+const companionFactories = new WeakMap();
 const forms = new WeakMap();
 const formViews = new WeakMap();
 const exposures = new WeakMap();
@@ -47,16 +48,16 @@ function commitExposure(ship, state) {
 }
 
 // 母舰关系与舰队发布在一个同步事务内提交；伴随舰工厂不反向修改母舰状态。
-export function spawnBunnyCompanion(owner, createShip) {
+export function spawnBunnyCompanion(owner) {
   if (!owner.alive || owner.bunnyHaruhi?.form !== "encore" || owner.bunnyHaruhi.companionId !== null
     || !["sub1", "sub2"].includes(owner.key) || owner.team.ships[owner.key] !== owner) return null;
-  const ship = createBunnyCompanion(owner, createShip);
+  const ship = createBunnyCompanion(owner, companionFactories.get(owner));
   owner.team.addAuxiliaryShip(ship);
   commitForm(owner, { ...owner.bunnyHaruhi, companionId: ship.id, companionSpawned: true });
   return ship;
 }
 
-export function initializeBunnyShip(ship) {
+export function initializeBunnyShip(ship, createShip) {
   Object.defineProperty(ship, "bunnyStageExposure", { enumerable: true, get: () => exposures.get(ship) });
   if (ship.character !== BUNNY_HARUHI_CHARACTER) return;
   Object.defineProperty(ship, "bunnyHaruhi", { enumerable: true, get: () => {
@@ -68,6 +69,7 @@ export function initializeBunnyShip(ship) {
     }
     return view;
   } });
+  companionFactories.set(ship, createShip);
   commitForm(ship, createBunnyHaruhiState());
   // 保留锁档的实时读取与最终落值语义，覆盖已有动作、航线和兼容调用。
   ship.configureThrottleConstraint((value) => resolveBunnyThrottle(
@@ -132,7 +134,7 @@ export function commitBunnyTransform(ship) {
   for (const old of companions) {
     old.ship.rescaleCombatTiming(old.speed, old.rate);
   }
-  if (result.spawnCompanion) team.spawnBunnyCompanion(ship);
+  if (result.spawnCompanion) spawnBunnyCompanion(ship);
   // 角色只提交效果，成功冷却、统计、显形及随后视野刷新交还施放事务。
   return { cooldown: result.cooldownSeconds, refreshVisibility: true };
 }

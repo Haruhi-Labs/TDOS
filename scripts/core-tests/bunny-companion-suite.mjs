@@ -1,3 +1,5 @@
+import { spawnBunnyCompanion } from "../../shared/game/bunny-haruhi-runtime.js";
+import { convertZoneSupport } from "../../shared/game/rules/support-conversion.js";
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT, __resetEntityIds } from "../../shared/game-core.js";
@@ -67,7 +69,7 @@ function entityCheck() {
   companion.hp = 1;
   assert.equal(team.hullRatio(), ratio);
   assert.ok(team.getVisionSources().some((source) => source.id === companion.id));
-  assert.equal(team.spawnBunnyCompanion(owner), null, "生成历史必须防止重复实体");
+  assert.equal(spawnBunnyCompanion(owner), null, "生成历史必须防止重复实体");
   for (const type of ["set_throttle", "set_route", "cast_sub_skill", "launch_scout"]) {
     assert.equal(sim.applyActionForSeat("A", { type, shipKey: companion.key, throttle: 1, endX: 500, endY: 500 }), false);
   }
@@ -192,7 +194,7 @@ function conversionCheck() {
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
   sim.spawnProjectile({ team, source: companion });
   sim.spawnProjectile({ team, source: owner });
-  assert.equal(enemy.bribeZone(enemy.ships.sub1, zone.id), true);
+  assert.equal(convertZoneSupport(enemy.ships.sub1, zone.id), true);
   assert.equal(companion.team, enemy);
   assert.ok(!team.extraShips.includes(companion) && enemy.extraShips.includes(companion));
   assert.equal(companion.id, id);
@@ -291,7 +293,7 @@ function conversionCheck() {
   // 母舰死亡优先于策反归还，不能复活或再次记舰损。
   companion.x = zone.x + zone.width / 2;
   companion.y = zone.y + zone.height / 2;
-  assert.equal(enemy.bribeZone(enemy.ships.sub1, zone.id), true);
+  assert.equal(convertZoneSupport(enemy.ships.sub1, zone.id), true);
   owner.takeDamage(10000, enemy.ships.main, sim);
   assert.equal(companion.alive, false);
   assert.equal(sim.telemetry.teams.A.shipsLost, 1);
@@ -316,7 +318,7 @@ function multipleAndImmunityCheck() {
   companion.y = zone.y + 60;
   second.x = zone.x + 180;
   second.y = zone.y + 180;
-  assert.equal(enemy.bribeZone(enemy.ships.sub1, 5), true);
+  assert.equal(convertZoneSupport(enemy.ships.sub1, 5), true);
   assert.equal(enemy.extraShips.length, 2);
   let firstUpdates = 0;
   let secondUpdates = 0;
@@ -332,7 +334,7 @@ function multipleAndImmunityCheck() {
   assert.equal(companion.team, team);
   assert.equal(enemy.extraShips.length, 1);
   // 母舰在策反末尾进入knows：归还只继承剩余免伤，不重建4秒窗口。
-  assert.equal(enemy.bribeZone(enemy.ships.sub1, 5), true);
+  assert.equal(convertZoneSupport(enemy.ships.sub1, 5), true);
   sim.elapsed = 9;
   for (let i = 0; i < 2; i += 1) {
     team.startCooldown("sub1", 0);
@@ -347,8 +349,8 @@ function multipleAndImmunityCheck() {
   sim.elapsed = 13;
   assert.equal(companion.isDamageImmune(), false);
   assert.equal(owner.bunnyHaruhi.immunityUntil, 13);
-  assert.equal(enemy.bribeZone(enemy.ships.sub1, 5), true);
-  assert.equal(team.bribeZone(owner, 5), true, "原阵营反策反可提前归还");
+  assert.equal(convertZoneSupport(enemy.ships.sub1, 5), true);
+  assert.equal(convertZoneSupport(owner, 5), true, "原阵营反策反可提前归还");
   assert.equal(companion.team, team);
   assert.equal(companion.bunnyCompanion.convertedUntil, 0);
   assert.equal(companion.bunnyCompanion.nextReliableAt, 33);
@@ -393,7 +395,7 @@ function replayAndDisplayCheck() {
   const before = sim.serializeState();
   companion.x += 20;
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
-  sim.teamB.bribeZone(sim.teamB.ships.sub1, zone.id);
+  convertZoneSupport(sim.teamB.ships.sub1, zone.id);
   const after = sim.serializeState();
   const app = { routeOverrides: new Map(), smoothEntities: new Map(), lastRenderMs: 0, seat: "A", serverTickRate: 30, interpDelayMs: 0 };
   let now = 1000;
