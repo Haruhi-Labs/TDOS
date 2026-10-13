@@ -15,7 +15,7 @@ import { aiHandicapFor } from "../ai/params/index.js";
 import { applyMatchAction } from "./action-dispatcher.js";
 import { resolveScoutClashes as resolveMatchScoutClashes, resolveShipCollisions as resolveMatchShipCollisions } from "../systems/collision-system.js";
 import { createVisionWavePurgePort } from "../characters/asakura/vision-wave-port.js";
-import { createMatchTelemetry, recordTelemetryAction, recordTelemetryAttack, recordTelemetryDamage, recordTelemetryShipLoss, serializeMatchTelemetry } from "./match-telemetry.js";
+import { MatchTelemetry } from "./match-telemetry.js";
 import { FloatingText } from "../model/floating-text.js";
 import { Burst } from "../model/burst.js";
 import { Team } from "../model/team.js";
@@ -24,6 +24,7 @@ import { normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 export class MatchSimulation {
   #characters;
   #feedback;
+  #telemetry = new MatchTelemetry();
   #combatEnabled = Object.freeze({ A: true, B: true });
   #aiEnabled = Object.freeze({ A: true, B: true });
 
@@ -87,7 +88,6 @@ export class MatchSimulation {
     this.bursts = [];
     this.#feedback = createMatchFeedback({ now: () => this.elapsed, nextId: () => nextEntityId(this) });
     this.floatingTexts = [];
-    this.telemetry = createMatchTelemetry();
     this.#characters = CHARACTER_ASSEMBLY.createBattle(this);
     this.bots = {};
     this.aiRunners = {};
@@ -209,19 +209,19 @@ export class MatchSimulation {
   }
 
   recordAction(seat, action) {
-    recordTelemetryAction(this.telemetry, seat, action);
+    this.#telemetry.recordAction(seat, action);
   }
 
   recordAttack(seat, kind, hitCount = 0) {
-    recordTelemetryAttack(this.telemetry, seat, kind, hitCount);
+    this.#telemetry.recordAttack(seat, kind, hitCount);
   }
 
   recordDamage(source, target, amount, kind) {
-    recordTelemetryDamage(this.telemetry, source?.team?.seat, target?.team?.seat, amount, kind);
+    this.#telemetry.recordDamage(source?.team?.seat, target?.team?.seat, amount, kind);
   }
 
   recordShipLoss(seat) {
-    recordTelemetryShipLoss(this.telemetry, seat);
+    this.#telemetry.recordShipLoss(seat);
   }
 
   statisticsSummary() {
@@ -252,7 +252,7 @@ export class MatchSimulation {
         A: summarizeTeam(this.teamA),
         B: summarizeTeam(this.teamB),
       },
-      telemetry: serializeMatchTelemetry(this.telemetry),
+      telemetry: this.#telemetry.serialize(),
     };
   }
 

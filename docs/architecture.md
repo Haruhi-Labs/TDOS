@@ -68,6 +68,8 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 
 `FleetPerception` 独占可见集合并发布只读采样，历史样本不跟随新帧改变。`systems/targeting-system.js` 的 `FleetFireControl` 持有本轮集火分配，仅消费候选 DTO 并返回目标 ID；`adapters/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `adapters/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；接触历史归对局所有。`characters/<角色>/extension.js` 声明角色效果的操作顺序，`characters/assembly/active-skills.js` 编译并消费这些声明，舰队装配公共权限和统计端口，编队组件管理资源分摊，施放组件管理冷却和成功事务，角色声明不持有舰队或对局对象。公共和专属副舰技能的成功提交都在 `SkillCycle` 内部完成，角色不能调用 Team 伪造完成；兔女郎返回冷却及视野刷新需求，组件先提交冷却、统计和显形，再刷新视野。
 
+`MatchTelemetry` 独占统计计数表，Match 只提交动作、攻击、伤害和舰损事件；`statisticsSummary()` 读取独立数据副本，统计存储和公开榜单不取得权威计数引用。
+
 弹体创建由 `MatchSimulation.spawnProjectile` 发布，攻击者负责射击资格与冷却。`systems/projectile-system.js` 只规定拦截先于移动和活集合筛选，`characters/interactions/projectile-phase.js` 适配护盾与支援防御；清理死亡弹体并发布集合后才收尾修复护盾。勇者之力由 `characters/haruhi/hero-power-runtime.js` 持有战斗事件生命周期；`runtime/match-feedback.js` 只持有护盾/猎杀表现记录及限频，不能负责伤害、控制或目标重选。死亡规则在 `characters/interactions/ship-destruction.js` 同步完成，表现消费不回写规则。
 
 `src/solo/session.js` 独立持有本地模拟、固定步时钟与前后权威帧。单人页面通过标准动作写入、通过冻结快照和即时控制投影读取；每次推进、输入尝试和教程阶段转换使投影失效，未变化的显示帧复用快照。不能只按动作返回成功与否失效，因为失败施放也可能经过扣费与退款。插值输出仍只供显示消费。

@@ -4,7 +4,7 @@
 
 这是一张分成九个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。目录选择与任务定位见 [战斗代码导航](../shared/game/README.md)，静态模块全量索引见 [模块索引](architecture-module-index.md)。
 
-核心写权限已由对应所有者收回：实体和组件发布只读状态，AI 只消费冻结观测与候选，角色求值消费事实，角色装配与固定阶段归角色层，房间聚合独占成员和生命周期。图中仍保留必要的跨所有者命令与适配关系；它们必须通过领域操作同步完成，不能退回共享字段赋值。
+已经收回的写权限包括实体资源、组件状态、AI 记忆、角色运行时、对局开关和统计计数：AI 只消费冻结观测与候选，角色求值消费事实，角色装配与固定阶段归角色层，房间聚合独占成员和生命周期。对局本身的剩余公开状态另列在末尾复查清单中。图中仍保留必要的跨所有者命令与适配关系；它们必须通过领域操作同步完成，不能退回共享字段赋值。
 
 ## 图一：权威、输入、传输与表现
 
@@ -402,6 +402,7 @@ flowchart LR
   INPUT["input-queue.js<br/>连接私有输入队列与确认"]
   STREAM["snapshot-stream.js<br/>连接私有差量/拥塞/确认状态"]
   MATCH["MatchSimulation"]
+  TELEMETRY["runtime/match-telemetry.js<br/>MatchTelemetry 私有计数<br/>动作、攻击、伤害、舰损事件"]
   RECORD["statistics-records.js<br/>结果到统计记录"]
   STORE["statistics-store.js<br/>持久化、聚合、公开榜单投影"]
   SERVER --> PROTOCOL & ID & REG & LIFE & RUNTIME & INPUT & STREAM
@@ -416,6 +417,9 @@ flowchart LR
   MATCH -->|序列化| SERVER
   SERVER -->|冻结帧与每席私有雷达| STREAM
   RUNTIME -->|完成回调| SERVER
+  MATCH ==>|独占统计实例| TELEMETRY
+  MATCH -->|即时事件| TELEMETRY
+  TELEMETRY -.->|结算副本经 statisticsSummary 读取| RECORD
   SERVER --> RECORD --> STORE
 ```
 
@@ -488,3 +492,11 @@ flowchart TB
 资源校验失败不会部分扣费或发放同次资源奖励；角色事务仍在既有同步调用栈中完成。需要同步观察双方的舞台只统一采样区域；伤害、死亡、分离和后续 AI 观察仍按图六的顺序即时消费。协议字段顺序由 `projection-order.js` 保留，角色自行贡献投影字段，投影不能推进状态。
 
 四项工作的源码入口分别为 `model/ship.js`、`characters/bunny-haruhi/form-runtime.js` 与 `characters/bunny-haruhi/stage-runtime.js`、`characters/<角色>/extension.js` 与 `characters/assembly/extension-contract.js`、`ai/policy/fact-calculations.js` 与 `policy-inputs.js`。剩余实体引用集中在需要同步领域操作的适配器；纯状态机与数值算法不取得世界对象。该边界约束合作代码的职责，不宣称 JavaScript 模块是对恶意代码的安全沙箱。
+
+## 2026-10-13 复查：已落实与下一层边界
+
+本次沿实际读写入口发现并处理了三处残留：长门雷达的算法/状态与实体适配混合、AI/开火开关的对象直写入口、统计模块只拆函数而仍由 Match 公开计数表。对应实现和验收见 [重构记录](architecture-refactor.md)。
+
+尚不能称整个对局聚合已经封闭：`MatchSimulation` 的 `tick`、`elapsed`、`phase`、`winnerSeat` 仍公开可写，`projectiles`、表现集合和 `_contactPairs` 也没有私有发布边界。当前生产代码搜索到的这些写点集中在 Match 内部，测试中则仍有直接设置时钟/终局与弹体集合的夹具；这说明缺少强制所有权约束，不能据此声称生产模块正在互相改写。后续应先定义场景构造、推进与终局操作，再关闭写入口。弹体集合特别需要保留遍历期间追加仍在同帧推进、筛选完成后才收尾防御的语义，不能直接换成每帧冻结副本或延迟队列。
+
+此外，一些角色端口仍需要完整领域对象完成生成、转移、承伤和立即查询；这是下一步收窄能力面的候选，但不能把必要的同步事务全部换成延迟事件。此次没有发现 AI 恢复实体兼容输入，通用组件仍由角色适配器提供规则能力；这只是本次检查范围的结论，不是全仓穷尽证明。

@@ -90,15 +90,15 @@ function entityCheck() {
   assert.equal(selectShamisenHuntTarget(sim.teamB, team), null);
   prepareBunnyCompanions(sim);
   assert.equal(companion.alive, false);
-  assert.equal(sim.telemetry.teams.A.shipsLost, 0, "退场不重复记舰损");
+  assert.equal(sim.statisticsSummary().telemetry.teams.A.shipsLost, 0, "退场不重复记舰损");
 
   const second = setup();
   second.companion.takeDamage(10000, second.sim.teamB.ships.main, second.sim);
   assert.equal(second.companion.alive, false);
-  assert.equal(second.sim.telemetry.teams.A.shipsLost, 0);
+  assert.equal(second.sim.statisticsSummary().telemetry.teams.A.shipsLost, 0);
   assert.equal(second.owner.bunnyHaruhi.companionSpawned, true);
   second.owner.takeDamage(10000, second.sim.teamB.ships.main, second.sim);
-  assert.equal(second.sim.telemetry.teams.A.shipsLost, 1);
+  assert.equal(second.sim.statisticsSummary().telemetry.teams.A.shipsLost, 1);
 
   const legacy = new companion.constructor(team, "legacy_extra", 700, 700, 0, { characterId: "kyon", isAuxiliary: true });
   team.addAuxiliaryShip(legacy);
@@ -106,7 +106,7 @@ function entityCheck() {
   assert.equal(team.hasLivingShips(), true);
   assert.equal(selectShamisenHuntTarget(sim.teamB, team), legacy, "不扩大新阿虚的猎杀排除范围");
   legacy.takeDamage(10000, sim.teamB.ships.main, sim);
-  assert.equal(sim.telemetry.teams.A.shipsLost, 1, "旧额外舰船仍计入舰损");
+  assert.equal(sim.statisticsSummary().telemetry.teams.A.shipsLost, 1, "旧额外舰船仍计入舰损");
 }
 
 function reliableCheck() {
@@ -213,14 +213,14 @@ function conversionCheck() {
   sampleVisibility(team, [...team.visibleEnemyIds, id]);
   assert.equal(team.fireCandidates(owner, enemy).some((entry) => entry.target === companion), false);
   const health = companion.hp;
-  const telemetry = JSON.stringify(sim.telemetry);
+  const telemetry = JSON.stringify(sim.statisticsSummary().telemetry);
   for (const kind of ["projectile", "attack_effect", "skill", "collision", "status_effect"]) {
     assert.equal(companion.takeDamage(50, owner, sim, { kind }), false);
   }
   assert.equal(companion.registerClawHit({ triggerHits: 1, burstDamage: 100, sourceSeat: "A" }, sim, owner), false);
   assert.equal(companion.hp, health);
   assert.equal(companion.clawMarks.stacks, 0);
-  assert.equal(JSON.stringify(sim.telemetry), telemetry);
+  assert.equal(JSON.stringify(sim.statisticsSummary().telemetry), telemetry);
   companion.takeDamage(10, team.ships.sub2, sim);
   near(companion.hp, health - 10, "其他原友舰可以正常伤害阿虚");
   assert.ok(owner.bunnyHaruhi.support.supporters.has("otherworlder"), "四次真实变身已领取全部支援");
@@ -243,18 +243,18 @@ function conversionCheck() {
   const oldOwnerHp = owner.hp;
   projectile.resolveImpact(sim);
   assert.ok(owner.hp < oldOwnerHp);
-  assert.ok(sim.telemetry.teams.B.damageDealt.projectile > 0, "命中归当前攻击阵营");
+  assert.ok(sim.statisticsSummary().telemetry.teams.B.damageDealt.projectile > 0, "命中归当前攻击阵营");
   projectile.team = team;
   projectile.source = owner;
   projectile.sourceId = owner.id;
   setScenarioField(projectile, 'x', companion.x);
   setScenarioField(projectile, 'y', companion.y);
   projectile.claw = { triggerHits: 1, burstDamage: 100 };
-  const hits = sim.telemetry.teams.A.attacks.projectileHits;
+  const hits = sim.statisticsSummary().telemetry.teams.A.attacks.projectileHits;
   const oldHp = companion.hp;
   projectile.resolveImpact(sim);
   assert.equal(companion.hp, oldHp);
-  assert.equal(sim.telemetry.teams.A.attacks.projectileHits, hits);
+  assert.equal(sim.statisticsSummary().telemetry.teams.A.attacks.projectileHits, hits);
   assert.equal(companion.clawMarks.stacks, 0);
   sim.projectiles.length = 0;
 
@@ -266,9 +266,9 @@ function conversionCheck() {
   setScenarioField(enemy.ships.sub2, 'y', owner.y + 400);
   team.queueBeamDirection(owner, 1, 0);
   team.advanceBeams(team.beams[0].maxLife);
-  const beamHits = sim.telemetry.teams.A.attacks.beamHits;
+  const beamHits = sim.statisticsSummary().telemetry.teams.A.attacks.beamHits;
   team.resolveChargedBeams(enemy);
-  assert.equal(sim.telemetry.teams.A.attacks.beamHits - beamHits, 1);
+  assert.equal(sim.statisticsSummary().telemetry.teams.A.attacks.beamHits - beamHits, 1);
   assert.equal(companion.hp, oldHp);
   team.advanceBeams(team.beams[0].maxLife);
   sim.elapsed = 24.99;
@@ -297,8 +297,8 @@ function conversionCheck() {
   assert.equal(convertZoneSupport(enemy.ships.sub1, zone.id), true);
   owner.takeDamage(10000, enemy.ships.main, sim);
   assert.equal(companion.alive, false);
-  assert.equal(sim.telemetry.teams.A.shipsLost, 1);
-  assert.equal(sim.telemetry.teams.B.shipsLost, 0);
+  assert.equal(sim.statisticsSummary().telemetry.teams.A.shipsLost, 1);
+  assert.equal(sim.statisticsSummary().telemetry.teams.B.shipsLost, 0);
   sim.elapsed += 6;
   prepareBunnyCompanions(sim);
   assert.equal(companion.alive, false);
