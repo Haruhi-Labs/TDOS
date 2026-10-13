@@ -1,7 +1,8 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import assert from "node:assert/strict";
-import { MatchSimulation } from "../shared/game-core.js";
 
-const sim = new MatchSimulation({ seed: 228 });
+
+const sim = new ScenarioSimulation({ seed: 228 });
 const target = sim.teamA.ships.main;
 const claw = { sourceSeat: "B", triggerHits: 3, markDuration: 4, burstDamage: 20, color: "#fff" };
 const initial = target.clawMarks;
@@ -30,7 +31,7 @@ target.registerClawHit({ ...claw, sourceSeat: "A" }, sim);
 assert.equal(target.clawMarks.stacks, 1, "来源切换不得累加另一来源的层数");
 assert.equal(target.clawMarks.sourceSeat, "A");
 const pending = target.clawMarks;
-sim.elapsed = 4;
+sampleScenarioTime(sim, { elapsed: 4 });
 assert.equal(target.activeClawMarks().stacks, 0);
 assert.throws(() => { target.activeClawMarks().stacks = 2; }, TypeError);
 target.serialize();

@@ -1,3 +1,4 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import "./verify-attribute-facts.mjs";
 import "./verify-ship-state-ownership.mjs";
 import { setScenarioField, assignScenario } from './core-tests/ship-fixture.mjs';
@@ -8,7 +9,7 @@ import { sampleVisibility } from "./core-tests/visibility-fixture.mjs";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 
-const match = new MatchSimulation({ mode: "pvp", seed: 741 });
+const match = new ScenarioSimulation({ mode: "pvp", seed: 741 });
 const left = match.teamA.ships.main;
 const right = match.teamB.ships.main;
 const originalRules = match.rules;
@@ -74,9 +75,9 @@ assert.equal(isolated.zones[0].x, zoneX, "AI 观察不得引用权威地图对�
 console.log("输出隔离校验通过：外部修改快照及观察不能回写对局。");
 
 // 过期状态的读取不负责结算；重复序列化也不能触发清理。
-match.elapsed = 0;
+sampleScenarioTime(match, { elapsed: 0 });
 for (let hit = 0; hit < 2; hit += 1) left.registerClawHit({ sourceSeat: "B", triggerHits: 4, markDuration: 1, color: "#fff" }, match);
-match.elapsed = 2;
+sampleScenarioTime(match, { elapsed: 2 });
 const expired = { ...left.clawMarks };
 for (let repeat = 0; repeat < 3; repeat += 1) {
   assert.equal(left.activeClawMarks().stacks, 0);
@@ -263,3 +264,5 @@ await import("./verify-ai-explicit-facts.mjs");
 await import("./verify-collision-history.mjs");
 
 await import("./verify-match-outcome.mjs");
+
+await import("./verify-simulation-time.mjs");

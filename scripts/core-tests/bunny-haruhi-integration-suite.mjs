@@ -1,3 +1,4 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./scenario-simulation.mjs";
 import { setScenarioField } from './ship-fixture.mjs';
 import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 import assert from "node:assert/strict";
@@ -10,8 +11,8 @@ import { refreshBunnyVisibility } from "../../shared/game/characters/bunny-haruh
 import { resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "../../shared/game/characters/bunny-haruhi/stage-port.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} 应接近 ${b}`);
-function simulation(stage = false, enabled = true, opponentMain = "kyon") {
-  const sim = new MatchSimulation({
+function simulation(stage = false, enabled = true, opponentMain = "kyon", Simulation = ScenarioSimulation) {
+  const sim = new Simulation({
     mode: "pvp", aiSeats: [], allowExperimentalBunnyHaruhi: enabled,
     teamLoadouts: {
       A: { main: stage ? "bunny_haruhi" : "haruhi", sub1: stage ? "kyon" : "bunny_haruhi", sub2: "yuki" },
@@ -63,8 +64,8 @@ function exposureCheck() {
   assert.equal(target.isSilenced(), true, "驱散控制不删除被动光环");
   resolveBunnyStages(sim);
   assert.equal(target.isControlLocked(), false, "同次成员采样不重施控制");
-  sim.elapsed = 10;
-  sim.tick = 300;
+  sampleScenarioTime(sim, { elapsed: 10 });
+  sampleScenarioTime(sim, { tick: 300 });
   advanceBunnyRules(sim);
   assert.equal(target.bunnyStageExposure.phase, "entranced");
   assert.equal(target.isSilenced(), false);
@@ -73,7 +74,7 @@ function exposureCheck() {
   advanceBunnyRules(sim);
   resolveBunnyStages(sim);
   near(target.hp, hp);
-  sim.elapsed = 11;
+  sampleScenarioTime(sim, { elapsed: 11 });
   advanceBunnyRules(sim);
   near(target.hp, hp + hpMax * 0.004);
   sim.teamB.setRestrictions({ characters: true });
@@ -85,7 +86,7 @@ function exposureCheck() {
   setScenarioField(target, 'x', target.x - (1));
   resolveBunnyStages(sim);
   assert.equal(target.isControlLocked(), false, "15秒内重入不触发锁定");
-  sim.elapsed = 22;
+  sampleScenarioTime(sim, { elapsed: 22 });
   advanceBunnyRules(sim);
   assert.equal(target.bunnyStageExposure.firstEntranceHealConsumed, true);
   setScenarioField(source, 'alive', false);
@@ -122,7 +123,7 @@ function transformCheck() {
   }
   assert.equal(sim.applyActionForSeat("A", { ...action, shipKey: "main" }), false);
   assert.equal(ship.clearActiveSkillBuffs(), false, "同tick新施放保留");
-  sim.tick += 1;
+  sampleScenarioTime(sim, { tick: sim.tick + (1) });
   assert.equal(ship.clearActiveSkillBuffs(), true);
   near(ship.statWithBuffs("damage", 10), 10);
   near(ship.damageTakenMultiplier(), 1.2);
@@ -137,8 +138,8 @@ function transformCheck() {
   near(ship.hp, protectedHp);
   near(partner.hp, partnerHp, "免伤在分摊之前判断");
   sim.teamA.configureFormation(2);
-  sim.elapsed = 16;
-  sim.tick = 480;
+  sampleScenarioTime(sim, { elapsed: 16 });
+  sampleScenarioTime(sim, { tick: 480 });
   advanceBunnyRules(sim);
   near(ship.hp, 748 - 70.4);
   assert.equal(ship.isDamageImmune(), false);
@@ -179,7 +180,7 @@ function transformCheck() {
 function encoreMovementCheck() {
   const sim = simulation();
   const ship = sim.teamA.ships.sub1;
-  sim.elapsed = 90;
+  sampleScenarioTime(sim, { elapsed: 90 });
   for (let i = 0; i < 4; i += 1) {
     sim.teamA.startCooldown("sub1", 0);
     assert.equal(cast(sim), true);
@@ -217,14 +218,14 @@ function encoreMovementCheck() {
   sim.teamA.setRestrictions({ characters: true });
   near(sampleSpeed(ship, 0), fullSpeed * 0.15);
   sim.teamA.setRestrictions({ characters: false });
-  sim.elapsed = 100 - TICK_DT;
+  sampleScenarioTime(sim, { elapsed: 100 - TICK_DT });
   near(sampleSpeed(ship, 0), fullSpeed);
   const locked = ship.serialize();
   assert.equal(locked.bunnyHaruhi.lockedGear, 4);
   const effect = locked.statusEffects.find(({ id }) => id === "bunny_encore");
   assert.equal(effect.duration, 10);
   near(effect.remaining, TICK_DT);
-  sim.elapsed = 100;
+  sampleScenarioTime(sim, { elapsed: 100 });
   near(sampleSpeed(ship, 0), fullSpeed * 0.15);
   assert.equal(ship.throttle, 1.4, "到期保留当前档位");
   assert.equal(ship.bunnyHaruhi.form, "encore", "到期不切形态或重置序列");
@@ -234,7 +235,7 @@ function encoreMovementCheck() {
   sim.applyActionForSeat("A", { type: "set_throttle", shipKey: "sub1", throttle: 0.4 });
   assert.equal(ship.throttle, 0.4);
   sim.teamA.setRestrictions({ characters: true });
-  sim.elapsed += TICK_DT;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (TICK_DT) });
   sim.teamA.setRestrictions({ characters: false });
   assert.equal(ship.throttle, 0.4, "封印解除不能补发已到期锁档");
 }
@@ -309,8 +310,8 @@ function tickOrderingCheck() {
   setScenarioField(b, 'x', a.x + 100);
   setScenarioField(b, 'y', a.y);
   resolveBunnyStages(both);
-  both.elapsed = 10;
-  both.tick = 300;
+  sampleScenarioTime(both, { elapsed: 10 });
+  sampleScenarioTime(both, { tick: 300 });
   advanceBunnyRules(both);
   near(both.teamA.bunnyStage.radius, 172);
   near(both.teamB.bunnyStage.radius, 172);
@@ -325,7 +326,7 @@ function supportIntegrationCheck() {
   const sim = simulation();
   const ship = sim.teamA.ships.sub1;
   unlockSupport(ship, ["time_traveler"], 0, () => 0);
-  sim.elapsed = 10 - TICK_DT;
+  sampleScenarioTime(sim, { elapsed: 10 - TICK_DT });
   sim.update(TICK_DT);
   assert.equal(sim.teamA.beams.length, 1);
   assert.equal(sim.teamA.beams[0].shipKey, "sub1");
@@ -358,7 +359,7 @@ function authorityCheck() {
     let seed = 48151;
     Math.random = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 4294967296; };
     __resetEntityIds();
-    const sim = simulation(false, true, "bunny_haruhi");
+    const sim = simulation(false, true, "bunny_haruhi", MatchSimulation);
     const queue = createInputQueue();
     const player = { id: "a" };
     const room = { seats: { A: "a", B: "b" }, match: sim };

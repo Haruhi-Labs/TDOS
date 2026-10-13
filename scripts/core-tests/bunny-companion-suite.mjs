@@ -1,3 +1,4 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./scenario-simulation.mjs";
 import { discardScenarioProjectiles } from "./projectile-fixture.mjs";
 import { setScenarioField } from './ship-fixture.mjs';
 import { spawnBunnyCompanion } from "../../shared/game/characters/bunny-haruhi/form-port.js";
@@ -13,8 +14,8 @@ import { applyStatePatch, createStatePatch, quantizeNetworkState } from "../../s
 import { createOnlineStateSync } from "../../src/online/state-sync.js";
 
 const near = (a, b) => assert.ok(Math.abs(a - b) < 1e-7, `${a} 应接近 ${b}`);
-function setup(mult = 1, dual = false) {
-  const sim = new MatchSimulation({
+function setup(mult = 1, dual = false, Simulation = ScenarioSimulation) {
+  const sim = new Simulation({
     mode: "pvp", aiSeats: [], allowExperimentalBunnyHaruhi: true,
     teamLoadouts: {
       A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" },
@@ -116,11 +117,11 @@ function reliableCheck() {
   setScenarioField(owner, 'energy', 5);
   setScenarioField(companion, 'hp', 100);
   setScenarioField(companion, 'energy', 0);
-  sim.elapsed = 19.99;
+  sampleScenarioTime(sim, { elapsed: 19.99 });
   prepareBunnyCompanions(sim);
   assert.equal(owner.bunnyReliable, undefined);
-  sim.elapsed = 20;
-  sim.tick = 600;
+  sampleScenarioTime(sim, { elapsed: 20 });
+  sampleScenarioTime(sim, { tick: 600 });
   prepareBunnyCompanions(sim);
   near(owner.hp, 400 + 880 * 0.06);
   near(owner.energy, 5 + 130 * 0.15);
@@ -132,7 +133,7 @@ function reliableCheck() {
   assert.notEqual(owner.bunnyReliable, companion.bunnyReliable);
   owner.clearActiveSkillBuffs();
   assert.equal(owner.bunnyReliable.suppressed, false, "同tick保护");
-  sim.tick += 1;
+  sampleScenarioTime(sim, { tick: sim.tick + (1) });
   owner.clearActiveSkillBuffs();
   assert.equal(owner.bunnyReliable.suppressed, true);
   assert.equal(companion.bunnyReliable.suppressed, false, "接收者独立驱散");
@@ -142,16 +143,16 @@ function reliableCheck() {
   team.setRestrictions({ characters: true });
   near(companion.effectiveDamage(), 11.6);
   team.setRestrictions({ characters: false });
-  sim.elapsed = 26;
+  sampleScenarioTime(sim, { elapsed: 26 });
   prepareBunnyCompanions(sim);
   assert.equal(owner.bunnyReliable, undefined);
   assert.equal(companion.bunnyReliable, undefined);
   companion.silenceUntil(41);
-  sim.elapsed = 40;
+  sampleScenarioTime(sim, { elapsed: 40 });
   prepareBunnyCompanions(sim);
   assert.equal(companion.bunnyCompanion.nextReliableAt, 60);
   assert.equal(companion.bunnyReliable, undefined, "沉默跳过整个周期");
-  sim.elapsed = 60;
+  sampleScenarioTime(sim, { elapsed: 60 });
   prepareBunnyCompanions(sim);
   assert.ok(owner.bunnyReliable);
   companion.takeDamage(10000, sim.teamB.ships.main, sim);
@@ -160,7 +161,7 @@ function reliableCheck() {
 
   for (const blocker of ["seal", "stun", "knockback"]) {
     const other = setup();
-    other.sim.elapsed = 20;
+    sampleScenarioTime(other.sim, { elapsed: 20 });
     if (blocker === "seal") other.team.setRestrictions({ characters: true });
     if (blocker === "stun") other.companion.stunUntil(21);
     if (blocker === "knockback") other.companion.beginForcedKnockback({ endsAt: 21 });
@@ -168,7 +169,7 @@ function reliableCheck() {
     assert.equal(other.owner.bunnyReliable, undefined, `${blocker}应阻止触发`);
     assert.equal(other.companion.bunnyCompanion.nextReliableAt, 40);
     other.team.setRestrictions({ characters: false });
-    other.sim.elapsed = 40;
+    sampleScenarioTime(other.sim, { elapsed: 40 });
     prepareBunnyCompanions(other.sim);
     assert.ok(other.owner.bunnyReliable, "阻止结束后仅在新周期触发，过期击退不阻止触发");
   }
@@ -177,8 +178,8 @@ function reliableCheck() {
 function conversionCheck() {
   const { sim, team, owner, companion } = setup();
   const enemy = sim.teamB;
-  sim.elapsed = 20;
-  sim.tick = 600;
+  sampleScenarioTime(sim, { elapsed: 20 });
+  sampleScenarioTime(sim, { tick: 600 });
   prepareBunnyCompanions(sim);
   assert.ok(owner.bunnyReliable);
   // 首次encore之后再进入bless，验证继承的倍率、速度和射击进度换算。
@@ -272,11 +273,11 @@ function conversionCheck() {
   assert.equal(sim.statisticsSummary().telemetry.teams.A.attacks.beamHits - beamHits, 1);
   assert.equal(companion.hp, oldHp);
   team.advanceBeams(team.beams[0].maxLife);
-  sim.elapsed = 24.99;
+  sampleScenarioTime(sim, { elapsed: 24.99 });
   prepareBunnyCompanions(sim);
   assert.equal(companion.team, enemy);
   sim.spawnProjectile({ team, source: companion });
-  sim.elapsed = 25;
+  sampleScenarioTime(sim, { elapsed: 25 });
   const oldRate = companion.effectiveFireRate();
   companion.resetAttackCycle(1);
   let updates = 0;
@@ -300,7 +301,7 @@ function conversionCheck() {
   assert.equal(companion.alive, false);
   assert.equal(sim.statisticsSummary().telemetry.teams.A.shipsLost, 1);
   assert.equal(sim.statisticsSummary().telemetry.teams.B.shipsLost, 0);
-  sim.elapsed += 6;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (6) });
   prepareBunnyCompanions(sim);
   assert.equal(companion.alive, false);
   assert.equal(companion.team, enemy);
@@ -331,24 +332,24 @@ function multipleAndImmunityCheck() {
   assert.equal(secondUpdates, 1);
   assert.deepEqual(enemy.fleetMembersForShip(companion), [companion]);
   assert.deepEqual(enemy.fleetMembersForShip(second), [second]);
-  sim.elapsed = 5;
+  sampleScenarioTime(sim, { elapsed: 5 });
   prepareBunnyCompanions(sim);
   assert.equal(companion.team, team);
   assert.equal(enemy.extraShips.length, 1);
   // 母舰在策反末尾进入knows：归还只继承剩余免伤，不重建4秒窗口。
   assert.equal(convertZoneSupport(enemy.ships.sub1, 5), true);
-  sim.elapsed = 9;
+  sampleScenarioTime(sim, { elapsed: 9 });
   for (let i = 0; i < 2; i += 1) {
     team.startCooldown("sub1", 0);
     assert.equal(team.castSubSkill("sub1"), true);
   }
   assert.equal(owner.bunnyHaruhi.form, "knows");
   assert.equal(companion.isDamageImmune(), false);
-  sim.elapsed = 10;
+  sampleScenarioTime(sim, { elapsed: 10 });
   prepareBunnyCompanions(sim);
   assert.equal(companion.isDamageImmune(), true);
   near(companion.effectiveDamage(), 11.6 * 0.7);
-  sim.elapsed = 13;
+  sampleScenarioTime(sim, { elapsed: 13 });
   assert.equal(companion.isDamageImmune(), false);
   assert.equal(owner.bunnyHaruhi.immunityUntil, 13);
   assert.equal(convertZoneSupport(enemy.ships.sub1, 5), true);
@@ -364,7 +365,7 @@ function replayAndDisplayCheck() {
     let seed = 603;
     Math.random = () => ((seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0) / 4294967296);
     __resetEntityIds();
-    const { sim, owner, companion } = setup();
+    const { sim, owner, companion } = setup(1, false, MatchSimulation);
     const queue = createInputQueue();
     const player = {};
     const states = [];
@@ -393,7 +394,7 @@ function replayAndDisplayCheck() {
   try { assert.deepEqual(replay(false), replay(true), "实体/技能/策反/死亡的服务端输入回放必须一致"); }
   finally { Math.random = original; }
 
-  const { sim, companion } = setup();
+  const { sim, companion } = setup(1, false, MatchSimulation);
   const before = sim.serializeState();
   setScenarioField(companion, 'x', companion.x + (20));
   const zone = sim.zones.find((z) => companion.x >= z.x && companion.x <= z.x + z.width && companion.y >= z.y && companion.y <= z.y + z.height);
@@ -426,7 +427,7 @@ export function runBunnyCompanionSuite() {
 // 转移预检必须先于可靠效果、弹体和角色状态的任何提交。
 {
   const { sim, owner, companion } = setup();
-  sim.elapsed = 20;
+  sampleScenarioTime(sim, { elapsed: 20 });
   prepareBunnyCompanions(sim);
   const occupied = new companion.constructor(sim.teamB, companion.key, 700, 700, 0, { characterId: "kyon", isAuxiliary: true });
   sim.teamB.addAuxiliaryShip(occupied);

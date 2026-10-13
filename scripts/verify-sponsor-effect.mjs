@@ -1,7 +1,8 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { SponsorEffect } from "../shared/game/characters/tsuruya/sponsor-effect.js";
-import { MatchSimulation } from "../shared/game-core.js";
+
 
 let now = 10;
 let tick = 30;
@@ -28,7 +29,7 @@ assert.equal(effect.clear({ preserveCurrentTick: false }), false);
 assert.equal(effect.expiresAt, 0);
 assert.throws(() => { effect.expiresAt = Infinity; }, TypeError);
 
-const match = new MatchSimulation({ seed: 534, teamLoadouts: { A: { main: "tsuruya", sub1: "kyon", sub2: "yuki" } } });
+const match = new ScenarioSimulation({ seed: 534, teamLoadouts: { A: { main: "tsuruya", sub1: "kyon", sub2: "yuki" } } });
 const team = match.teamA;
 setScenarioField(team.ships.main, 'hp', team.ships.main.hp - (10));
 assert.equal(team.castFlagshipSkill(), true);
@@ -38,7 +39,7 @@ const hp = team.ships.main.hp;
 team.sponsorRegeneration(0.1);
 assert.equal(team.ships.main.hp, hp + team.ships.main.maxHp * 0.01 * 0.1);
 assert.equal(team.clearActiveTeamSkillBuffs(), false);
-match.tick += 1;
+sampleScenarioTime(match, { tick: match.tick + (1) });
 assert.equal(team.clearActiveTeamSkillBuffs(), true);
 assert.equal(team.effects.sponsorUntil, 0);
 console.log("赞助生命周期校验通过：寿命、回血、冷却与同帧净化保护由同一私有状态驱动。");

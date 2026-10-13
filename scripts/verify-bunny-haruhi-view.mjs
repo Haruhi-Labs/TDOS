@@ -186,7 +186,9 @@ try {
       for (const source of await page.locator("#resultVersus img").evaluateAll((images) => images.map((image) => image.src))) {
         assert.ok(!source.includes("bunny_haruhi"), "单人、联机与观战终局都必须复用原皮素材");
       }
-      assert.ok((await page.locator("#resultVersus").innerText()).includes(locale === "zh-CN" ? "兔女郎春日" : locale === "en-US" ? "Bunny Haruhi" : "バニーハルヒ"));
+      const resultText = await page.locator("#resultVersus").innerText();
+      const expectedName = locale === "zh-CN" ? "兔女郎春日" : locale === "en-US" ? "Bunny Haruhi" : "バニーハルヒ";
+      assert.ok(resultText.includes(expectedName), `${mode}/${locale}/${mobile ? "移动端" : "桌面"}结算缺少${expectedName}：${JSON.stringify(resultText)}`);
       if (screenshots && locale === "zh-CN") await page.screenshot({ path: join(screenshots, `result-${mode}-${mobile ? "mobile" : "desktop"}.png`) });
     }
     assert.deepEqual(missingAssets, [], "占位美术不得产生404");

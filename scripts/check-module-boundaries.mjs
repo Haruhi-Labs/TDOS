@@ -225,6 +225,13 @@ for (const specifier of importSpecifiers(resolve(ROOT, "shared/game/characters/y
 }
 
 // 页面装配可创建对局，表现与联机消费模块只使用静态定义、纯算法及读模型。
+for (const [file, targets] of graph) {
+  if (targets.some((target) => display(target) === "shared/game/runtime/battle-runtime.js")
+    && display(file) !== "shared/game/runtime/match-simulation.js") {
+    failures.push(`${display(file)} 不得绕过权威模拟直接装配带外部时间源的战斗世界`);
+  }
+}
+
 const simulationEntrypoints = new Set(["src/solo/session.js", "src/debug.js", "src/battle/native-webgl-visual-fixture.js"]);
 for (const file of walk("src")) {
   for (const specifier of importSpecifiers(file)) {
@@ -237,15 +244,17 @@ for (const file of walk("src")) {
 }
 
 const requiredLinks = [
+  ["shared/game/runtime/match-simulation.js", "./battle-runtime.js"],
+  ["shared/game/runtime/match-simulation.js", "./simulation-time.js"],
   ["shared/game-core.js", "./game/ai/bot-controller.js"],
   ["shared/game-core.js", "./game/characters/catalog.js"],
   ["shared/game-core.js", "./game/rules/combat-rules.js"],
   ["shared/game-core.js", "./game/foundation/math.js"],
   ["shared/game-core.js", "./game/rules/throttle.js"],
   ["shared/game-core.js", "./game/runtime/match-simulation.js"],
-  ["shared/game/runtime/match-simulation.js", "../model/team.js"],
-  ["shared/game/runtime/match-simulation.js", "../ai/bridge/runner.js"],
-  ["shared/game/runtime/match-simulation.js", "./action-dispatcher.js"],
+  ["shared/game/runtime/battle-runtime.js", "../model/team.js"],
+  ["shared/game/runtime/battle-runtime.js", "../ai/bridge/runner.js"],
+  ["shared/game/runtime/battle-runtime.js", "./action-dispatcher.js"],
   ["shared/game/model/team.js", "../model/ship.js"],
   ["shared/game/model/team.js", "../systems/targeting-system.js"],
   ["shared/game/model/team.js", "../adapters/visibility-port.js"],

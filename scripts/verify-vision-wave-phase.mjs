@@ -1,6 +1,7 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import assert from "node:assert/strict";
 import { resolveVisionWavePurges } from "../shared/game/systems/vision-wave-purge.js";
-import { MatchSimulation } from "../shared/game-core.js";
+
 
 // 编号是阶段中的不透明目标，阶段无需取得真实舰船或其组件。
 const trace = [];
@@ -30,7 +31,7 @@ assert.deepEqual(trace, [
   "清正面B敌军B", "反馈敌军Bfalse", "清正面A敌军A",
 ]);
 
-const sim = new MatchSimulation({ seed: 365, teamLoadouts: {
+const sim = new ScenarioSimulation({ seed: 365, teamLoadouts: {
   A: { main: "asakura", sub1: "haruhi", sub2: "yuki" },
   B: { main: "asakura", sub1: "koizumi", sub2: "tsuruya" },
 } });
@@ -47,7 +48,7 @@ assert.equal(sampled[0].team, undefined);
 assert.throws(() => { sampled[0].hp = 0; }, TypeError);
 assert.equal(sim.visionWavePurgePort.targets("A", "A")[0], sampled[0], "复用独立只读句柄，避免每帧分配");
 assert.throws(() => sim.visionWavePurgePort.clearNegative({ id: sampled[0].id }), /无效的波带目标句柄/);
-sim.tick += 1;
+sampleScenarioTime(sim, { tick: sim.tick + (1) });
 const beforeInvalidOwner = JSON.stringify(sim.serializeState());
 assert.equal(sim.teamA.clearActiveSkillBuffsForShip(sim.teamB.ships.main), false);
 assert.equal(sim.teamA.clearActiveSkillBuffsForShip(null), false);

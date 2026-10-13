@@ -1,6 +1,6 @@
 # 架构模块索引
 
-源码基线 `0bd3091`（生成时工作树）。共 251 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
+源码基线 `3729ea9`（生成时工作树）。共 253 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
 
 运行 `node scripts/generate-architecture-index.mjs` 更新。本表按相对静态 import/export 引用生成；出边为不同本地 JS 模块，入边仅统计本表范围。行数与引用数量不衡量架构质量，状态持有和实际消费见 [架构地图](architecture-map.md)。
 
@@ -266,8 +266,8 @@
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
-| [constants.js](../shared/game/foundation/constants.js) | 9 | 0 | 21 |
-| [math.js](../shared/game/foundation/math.js) | 139 | 1 | 59 |
+| [constants.js](../shared/game/foundation/constants.js) | 9 | 0 | 23 |
+| [math.js](../shared/game/foundation/math.js) | 139 | 1 | 60 |
 | [rng.js](../shared/game/foundation/rng.js) | 55 | 0 | 12 |
 
 ## `shared/game/model`
@@ -307,10 +307,12 @@
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
 | [action-dispatcher.js](../shared/game/runtime/action-dispatcher.js) | 90 | 1 | 2 |
+| [battle-runtime.js](../shared/game/runtime/battle-runtime.js) | 453 | 21 | 1 |
 | [fixed-step-clock.js](../shared/game/runtime/fixed-step-clock.js) | 49 | 1 | 2 |
 | [match-feedback.js](../shared/game/runtime/match-feedback.js) | 55 | 2 | 1 |
-| [match-simulation.js](../shared/game/runtime/match-simulation.js) | 457 | 21 | 2 |
+| [match-simulation.js](../shared/game/runtime/match-simulation.js) | 20 | 3 | 2 |
 | [match-telemetry.js](../shared/game/runtime/match-telemetry.js) | 93 | 1 | 1 |
+| [simulation-time.js](../shared/game/runtime/simulation-time.js) | 15 | 2 | 1 |
 
 ## `shared/game/systems`
 
@@ -318,12 +320,12 @@
 | --- | ---: | ---: | ---: |
 | [aircraft-operations.js](../shared/game/systems/aircraft-operations.js) | 139 | 1 | 1 |
 | [beam-system.js](../shared/game/systems/beam-system.js) | 121 | 1 | 1 |
-| [collision-system.js](../shared/game/systems/collision-system.js) | 52 | 1 | 3 |
+| [collision-system.js](../shared/game/systems/collision-system.js) | 58 | 1 | 3 |
 | [expanding-wave.js](../shared/game/systems/expanding-wave.js) | 50 | 1 | 2 |
 | [fleet-formation.js](../shared/game/systems/fleet-formation.js) | 181 | 0 | 1 |
 | [fleet-roster.js](../shared/game/systems/fleet-roster.js) | 33 | 0 | 1 |
 | [hull-damage.js](../shared/game/systems/hull-damage.js) | 25 | 1 | 1 |
-| [projectile-system.js](../shared/game/systems/projectile-system.js) | 7 | 0 | 1 |
+| [projectile-system.js](../shared/game/systems/projectile-system.js) | 39 | 0 | 1 |
 | [ship-navigation.js](../shared/game/systems/ship-navigation.js) | 362 | 3 | 1 |
 | [ship-status.js](../shared/game/systems/ship-status.js) | 30 | 0 | 1 |
 | [skill-cycle.js](../shared/game/systems/skill-cycle.js) | 54 | 0 | 1 |
@@ -385,7 +387,7 @@
 | [hud.js](../src/battle/hud.js) | 313 | 8 | 2 |
 | [input.js](../src/battle/input.js) | 23 | 2 | 2 |
 | [native-webgl-renderer.js](../src/battle/native-webgl-renderer.js) | 203 | 3 | 3 |
-| [native-webgl-visual-fixture.js](../src/battle/native-webgl-visual-fixture.js) | 290 | 3 | 1 |
+| [native-webgl-visual-fixture.js](../src/battle/native-webgl-visual-fixture.js) | 293 | 3 | 1 |
 | [render.js](../src/battle/render.js) | 1286 | 14 | 4 |
 | [scout-joystick.js](../src/battle/scout-joystick.js) | 290 | 0 | 2 |
 | [ship-selection.js](../src/battle/ship-selection.js) | 14 | 0 | 4 |

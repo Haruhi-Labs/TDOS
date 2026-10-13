@@ -1,9 +1,9 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import assert from "node:assert/strict";
-import { MatchSimulation } from "../shared/game-core.js";
 import { ShipNavigation } from "../shared/game/systems/ship-navigation.js";
 import { createShipNavigationPort } from "../shared/game/adapters/navigation-port.js";
 
-const match = new MatchSimulation({ seed: 61 });
+const match = new ScenarioSimulation({ seed: 61 });
 const ship = match.teamA.ships.main;
 const port = createShipNavigationPort(ship);
 for (const key of ["ship", "team", "match", "hp", "effects"]) assert.equal(key in port, false);
@@ -59,7 +59,7 @@ assert.equal(ship.speed, 0, '击退提交必须同步停止普通推进');
 // 击退期间可接收后续航线，但完成击退必须统一失效其读视图。
 ship.setBezierRoute(undefined, undefined, 900, 900, 1, false);
 const duringKnockback = ship.route;
-match.elapsed = 1;
+sampleScenarioTime(match, { elapsed: 1 });
 ship.updateForcedKnockback();
 assert.equal(ship.route, null);
 assert.ok(duringKnockback.p2, '结束击退不能修改历史航线样本');

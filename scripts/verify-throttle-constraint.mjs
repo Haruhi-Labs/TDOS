@@ -1,8 +1,9 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import assert from "node:assert/strict";
-import { MatchSimulation } from "../shared/game-core.js";
 
-const sim = new MatchSimulation({ seed: 197, teamLoadouts: { A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" } } });
+
+const sim = new ScenarioSimulation({ seed: 197, teamLoadouts: { A: { main: "kyon", sub1: "bunny_haruhi", sub2: "yuki" } } });
 const ordinary = sim.teamA.ships.main;
 assert.throws(() => { ordinary.throttle = 0.7; }, TypeError,
   "基础档位只能通过领域操作修改");
@@ -38,7 +39,7 @@ bunny.setThrottle(0.4);
 assert.equal(bunny.throttle, 0.4);
 sim.teamA.setRestrictions({ skills: false });
 assert.equal(bunny.throttle, 1.4, "封印解除后锁档无需额外推进便重新生效");
-sim.elapsed = bunny.bunnyHaruhi.formStartedAt + 10;
+sampleScenarioTime(sim, { elapsed: bunny.bunnyHaruhi.formStartedAt + 10 });
 assert.equal(bunny.throttle, 0.4, "到期恢复未被读取改写的封印期间档位");
 bunny.navigateTo({ x: 600, y: 600 }, 0.7);
 assert.equal(bunny.throttle, 0.7);

@@ -1,7 +1,8 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import assert from "node:assert/strict";
 import { HaruhiFlagshipRuntime } from "../shared/game/characters/haruhi/flagship-runtime.js";
 import { HARUHI_SUPPORTS, createSupportState, initializeSupport, readSupportState, unlockSupport } from "../shared/game/characters/haruhi/support.js";
-import { MatchSimulation } from "../shared/game-core.js";
+
 
 let now = 0, tick = 1, enabled = true, rolls = 0;
 const support = {};
@@ -52,7 +53,7 @@ assert.equal(runtime.cast(16), false);
 assert.equal(runtime.activate(16), null);
 assert.equal(events.length, count);
 
-const sim = new MatchSimulation({ seed: 205, teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "yuki" } } });
+const sim = new ScenarioSimulation({ seed: 205, teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "yuki" } } });
 const team = sim.teamA;
 const ship = team.ships.sub1;
 ship.setFlightSpeed(10); ship.resetAttackCycle(8);
@@ -66,7 +67,7 @@ for (const member of team.getPlayerShips()) member.restoreEnergy(member.maxEnerg
 assert.equal(team.castFlagshipSkill(), true);
 assert.equal(ship.speed, 11.5);
 assert.equal(ship.cooldown, 8 / 1.15);
-sim.tick += 1;
+sampleScenarioTime(sim, { tick: sim.tick + (1) });
 assert.equal(team.clearActiveTeamSkillBuffs(), true);
 assert.equal(team.effects.haruhiBoostUntil, 0);
 assert.equal(team.haruhiFlagship.supporters.size, 2);

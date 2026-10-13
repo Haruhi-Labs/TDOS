@@ -1,3 +1,4 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./scenario-simulation.mjs";
 import { discardScenarioProjectiles } from "./projectile-fixture.mjs";
 import { updateRadarPassive } from "../../shared/game/characters/yuki/radar-port.js";
 import { setScenarioField, assignScenario } from './ship-fixture.mjs';
@@ -6,9 +7,9 @@ import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 import {
   AUTO_SCOUT_COOLDOWN_MULTIPLIER,
   CHARACTER_DEFS,
+  MatchSimulation,
   ENERGY_GEAR_PROFILES,
   MANUAL_SCOUT_COOLDOWN,
-  MatchSimulation,
   THROTTLE_GEAR_VALUES,
   TICK_DT,
   YUKI_RADAR_ROTATION_SECONDS,
@@ -611,7 +612,7 @@ function skippedSplitLevelCheck() {
 }
 
 function yukiPassiveCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -643,7 +644,7 @@ function yukiPassiveCheck() {
   setScenarioField(main, 'x', main.x + (180));
   setScenarioField(main, 'y', main.y - (110));
   setScenarioField(main, 'angle', main.angle + (1.7));
-  sim.elapsed += 1;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (1) });
   updateRadarPassive(teamA, sim.teamB, 1);
   const angleAfterMovement = sim.serializeRadarForSeat("A").angle;
   const sweptAfterMovement = (angleBeforeMovement - angleAfterMovement + Math.PI * 2) % (Math.PI * 2);
@@ -657,9 +658,9 @@ function yukiPassiveCheck() {
     // 时间推进到出生朝向对应的下一整圈，让真实扫线从零方位扫过目标。
     const phase = sim.serializeRadarForSeat("A").angle;
     const speed = (Math.PI * 2) / YUKI_RADAR_ROTATION_SECONDS;
-    sim.elapsed += ((phase + Math.PI * 2) % (Math.PI * 2)) / speed + YUKI_RADAR_ROTATION_SECONDS;
+    sampleScenarioTime(sim, { elapsed: sim.elapsed + (((phase + Math.PI * 2) % (Math.PI * 2)) / speed + YUKI_RADAR_ROTATION_SECONDS) });
     updateRadarPassive(teamA, sim.teamB, 0);
-    sim.elapsed += TICK_DT;
+    sampleScenarioTime(sim, { elapsed: sim.elapsed + (TICK_DT) });
   };
 
   // 出生点间距属于对局平衡参数；雷达分档测试显式摆到「一个战区内」的适中距离，
@@ -730,7 +731,7 @@ function yukiPassiveCheck() {
 }
 
 function koizumiFlagshipBarrierCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -793,7 +794,7 @@ function koizumiFlagshipBarrierCheck() {
 
   // 密集火力仍逐颗结算拦截，但表现层状态必须有稳定上限；否则单人会堆积绘制，
   // 多人还会把每个受击火花加入快照差量与插值列表。
-  const visualSim = new MatchSimulation({
+  const visualSim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -823,7 +824,7 @@ function koizumiFlagshipBarrierCheck() {
       visualSim.koizumiBarrierImpacts.length,
     );
     visualSim.updateVisualEffects(1 / 30);
-    visualSim.elapsed += 1 / 30;
+    sampleScenarioTime(visualSim, { elapsed: visualSim.elapsed + (1 / 30) });
   }
   assert(
     peakProjectileImpacts <= 10,
@@ -867,7 +868,7 @@ function koizumiFlagshipBarrierCheck() {
   const createRamScenario = (ramKind) => {
     const haruhiRam = ramKind === "haruhi_otherworlder";
     const subCharacter = ramKind === "blade_queen" ? "asakura" : "koizumi";
-    const ramSim = new MatchSimulation({
+    const ramSim = new ScenarioSimulation({
       mode: "pvp",
       worldSize: 1440,
       teamLoadouts: {
@@ -931,7 +932,7 @@ function koizumiFlagshipBarrierCheck() {
     if (haruhiRam) {
       assert(!haruhiOtherworlderReady(attackingTeam), "异世界人撞破能量圈后没有进入原有8秒碰撞冷却");
     }
-    ramSim.elapsed += KOIZUMI_BARRIER_DISABLE_SECONDS + 0.01;
+    sampleScenarioTime(ramSim, { elapsed: ramSim.elapsed + (KOIZUMI_BARRIER_DISABLE_SECONDS + 0.01) });
     ramSim.updateProjectiles(0);
     assert(defendingTeam.serialize().koizumiBarrier.active, `${ramKind}破盾5秒后能量圈没有自动恢复`);
   };
@@ -940,7 +941,7 @@ function koizumiFlagshipBarrierCheck() {
     createRamScenario(ramKind);
   }
 
-  const normalSim = new MatchSimulation({
+  const normalSim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -965,7 +966,7 @@ function koizumiFlagshipBarrierCheck() {
 
 function koizumiBarrierChargesCheck() {
   const createScenario = () => {
-    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: {
+    const sim = new ScenarioSimulation({ mode: "pvp", teamLoadouts: {
       A: { main: "koizumi", sub1: "yuki", sub2: "tsuruya" },
       B: { main: "kyon", sub1: "haruhi", sub2: "future1096" },
     } });
@@ -1012,46 +1013,46 @@ function koizumiBarrierChargesCheck() {
   assert(main.hp < hullBefore, "破盾后第16颗子弹没有伤害圈内舰船");
   assert(sim.koizumiBarrierImpacts.some((impact) => impact.kind === "break"), "次数耗尽未生成破盾反馈");
 
-  sim.elapsed = 4.9;
+  sampleScenarioTime(sim, { elapsed: 4.9 });
   shot();
   sim.updateProjectiles(0.1);
   assert(Math.abs(barrier().disabledRemaining - 5) < 1e-9, "敌弹入圈没有重新开始完整5秒静默计时");
-  sim.elapsed = 5;
+  sampleScenarioTime(sim, { elapsed: 5 });
   sim.updateProjectiles(0);
   assert(!barrier().active, "原破盾5秒截止时忽略了后续敌弹穿越");
   discardScenarioProjectiles(sim);
-  sim.elapsed = 8;
+  sampleScenarioTime(sim, { elapsed: 8 });
   shot(main.effectiveVision() - 30, main.effectiveVision() + 30);
   sim.updateProjectiles(0.1);
   assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "敌弹从圈内向外穿越没有重置修复计时");
-  sim.elapsed = 12.9;
+  sampleScenarioTime(sim, { elapsed: 12.9 });
   shot(main.effectiveVision() - 30, main.effectiveVision() + 30, sim.teamA);
   sim.updateProjectiles(0.1);
   assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "己方子弹穿越错误阻止修复");
-  sim.elapsed = 12.95;
+  sampleScenarioTime(sim, { elapsed: 12.95 });
   shot(60, 70);
   shot(main.effectiveVision() + 30, main.effectiveVision() + 30, sim.teamB, 200);
   sim.updateProjectiles(0.01);
   assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "圈内飞行或圈外未相交子弹错误重置静默计时");
   discardScenarioProjectiles(sim);
-  sim.elapsed = 13;
+  sampleScenarioTime(sim, { elapsed: 13 });
   assert(!barrier().active && sim.teamA.koizumiBarrier.remainingHits === 0, "几何查询或序列化提前写回护盾修复状态");
   sim.updateProjectiles(0);
   assert(barrier().active && barrier().remainingHits === 15, "连续5秒无敌弹穿越后未恢复完整15次");
 
   const crossing = createScenario();
   disruptKoizumiBarrier(crossing.sim.teamA, { x: crossing.main.x, y: crossing.main.y, normalX: 1, normalY: 0 });
-  crossing.sim.elapsed = 4.99;
+  sampleScenarioTime(crossing.sim, { elapsed: 4.99 });
   crossing.shot(crossing.main.effectiveVision() + 30, -crossing.main.effectiveVision() - 30);
   crossing.sim.updateProjectiles(1);
   assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "单帧贯穿整个护盾圆的高速敌弹没有阻止修复");
   discardScenarioProjectiles(crossing.sim);
-  crossing.sim.elapsed = crossing.sim.teamA.koizumiBarrier.disabledUntil;
+  sampleScenarioTime(crossing.sim, { elapsed: crossing.sim.teamA.koizumiBarrier.disabledUntil });
   crossing.shot();
   crossing.sim.updateProjectiles(0.1);
   assert(!crossing.barrier().active, "修复截止帧仍有敌弹穿越时提前恢复了护盾");
   discardScenarioProjectiles(crossing.sim);
-  crossing.sim.elapsed += 1;
+  sampleScenarioTime(crossing.sim, { elapsed: crossing.sim.elapsed + (1) });
   setScenarioField(crossing.main, 'previousX', crossing.main.x);
   setScenarioField(crossing.main, 'x', crossing.main.x + (60));
   const movingShot = crossing.shot(130, 130);
@@ -1060,7 +1061,7 @@ function koizumiBarrierChargesCheck() {
   assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "移动护盾边界扫过敌弹没有重置计时");
   discardScenarioProjectiles(crossing.sim);
   setScenarioField(crossing.main, 'previousX', crossing.main.x);
-  crossing.sim.elapsed += 1;
+  sampleScenarioTime(crossing.sim, { elapsed: crossing.sim.elapsed + (1) });
   const smallCrossing = crossing.shot();
   const contactRadius = crossing.main.effectiveVision() + smallCrossing.radius;
   setScenarioField(smallCrossing, 'x', crossing.main.x + contactRadius + 0.1);
@@ -1086,7 +1087,7 @@ function koizumiBarrierChargesCheck() {
 
 function koizumiImpactWaveCheck() {
   for (const seat of ["A", "B"]) {
-    const sim = new MatchSimulation({
+    const sim = new ScenarioSimulation({
       mode: "pvp",
       worldSize: 1440,
       teamLoadouts: {
@@ -1122,11 +1123,11 @@ function koizumiImpactWaveCheck() {
     assert(wave.x === 400 && wave.y === 720 && wave.speed === 480, "撞击波的原点或传播速度错误");
     updateKoizumiImpactWaves(sim);
     assert(target.effects.stunnedUntil === 1 && !near.isControlLocked(), "撞击波没有从碰撞位置开始传播");
-    sim.elapsed = 0.5;
+    sampleScenarioTime(sim, { elapsed: 0.5 });
     updateKoizumiImpactWaves(sim);
     assert(near.effects.stunnedUntil === 1.5 && !far.isControlLocked(), "撞击波提前眩晕远处敌舰或漏掉波带内敌舰");
     const stunUntil = near.effects.stunnedUntil;
-    sim.elapsed = 0.6;
+    sampleScenarioTime(sim, { elapsed: 0.6 });
     updateKoizumiImpactWaves(sim);
     assert(near.effects.stunnedUntil === stunUntil, "同一圈宽波带每帧续期了眩晕");
     assert(!orb.hasEffect("stunnedUntil"), "撞击波误伤了友军");
@@ -1147,20 +1148,20 @@ function koizumiImpactWaveCheck() {
     assert(Math.abs(snapshot.teams[enemySeat].ships.sub1.stunRemaining - 0.9) < 1e-9, "眩晕剩余时间未同步至快照");
     assert(team.visionWaveSkill.waves.length === 0, "古泉撞击波错误获得了朝仓的视野和涤除效果");
     assert(enemy.getAllShips().every((ship, index) => ship.hp === hpBefore[index]), "古泉撞击波错误造成了伤害");
-    sim.elapsed = 1.5;
+    sampleScenarioTime(sim, { elapsed: 1.5 });
     assert(near.canControl() && !near.hasEffect("stunnedUntil"), "敌舰没有在1秒眩晕后恢复控制");
-    sim.elapsed = 1.7;
+    sampleScenarioTime(sim, { elapsed: 1.7 });
     updateKoizumiImpactWaves(sim);
     assert(far.hasEffect("stunnedUntil"), "扩散到远处的撞击波未令敌舰眩晕");
     assert(far.clearNegativeEffects() && !far.isControlLocked(), "朝仓友军净化不能驱散新增的古泉眩晕");
-    sim.elapsed = wave.expiresAt;
+    sampleScenarioTime(sim, { elapsed: wave.expiresAt });
     updateKoizumiImpactWaves(sim);
     assert(team.koizumiImpactWaves.length === 0, "过期撞击波未被回收");
   }
 }
 
 function koizumiOrbRamCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -1229,7 +1230,7 @@ function koizumiOrbRamCheck() {
   runSteps(sim, 1.2);
   assert(Math.abs(sub1.koizumiOrb.angularVelocity) > 0.75, "古泉光球转向机动性没有提高50%");
   sub1.clearRoute();
-  sim.elapsed += 1; // 等待命中保护自然结束，再验证下一次扫掠。
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (1) }); // 等待命中保护自然结束，再验证下一次扫掠。
   setScenarioField(enemyMain, 'x', 790);
   setScenarioField(enemyMain, 'y', 720);
   enemyMain.clearControlEffects();
@@ -1254,7 +1255,7 @@ function koizumiOrbRamCheck() {
   assert(!sim.teamB.castFlagshipSkill(), "被古泉撞击沉默的旗舰仍能释放技能");
 
   const firstSilenceUntil = enemyMain.effects.silencedUntil;
-  sim.elapsed += 1;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (1) });
   sampleOrbSweep(sub1, enemyMain.x - 50, enemyMain.y);
   setScenarioField(sub1, 'x', enemyMain.x + 50);
   setScenarioField(sub1, 'y', enemyMain.y);
@@ -1262,7 +1263,7 @@ function koizumiOrbRamCheck() {
   assert(enemyMain.effects.silencedUntil > firstSilenceUntil + 0.9, "重复撞击没有刷新5秒沉默时间");
   assert(enemyMain.forcedKnockback.startedAt === sim.elapsed, "正面追击没有在命中冷却后再次触发击退");
 
-  sim.elapsed += 1;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (1) });
   setScenarioField(enemyMain, 'x', 790);
   setScenarioField(enemyMain, 'y', 738);
   enemyMain.clearControlEffects();
@@ -1277,7 +1278,7 @@ function koizumiOrbRamCheck() {
     "古泉斜向擦碰没有按实际碰撞角产生斜向击退",
   );
 
-  const returnSim = new MatchSimulation({
+  const returnSim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -1316,13 +1317,13 @@ function koizumiControlImmunityCheck() {
       B: { main: "asakura", sub1: "koizumi", sub2: "yuki" },
     };
     loadouts[seat === "A" ? "B" : "A"].main = enemyMain;
-    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: loadouts });
+    const sim = new ScenarioSimulation({ mode: "pvp", teamLoadouts: loadouts });
     const team = sim.teamBySeat(seat);
     const enemy = sim.enemyTeamBySeat(seat);
     team.configureFormation(2); enemy.configureFormation(2);
     const ship = team.ships.sub1;
     applyHaruhiHeroPowerShock(ship, 0);
-    sim.elapsed = 2.1;
+    sampleScenarioTime(sim, { elapsed: 2.1 });
     setScenarioField(ship, 'collisionSlowUntil', 5);
     ship.beginForcedKnockback({ startedAt: 2, endsAt: 3, fromX: 400, fromY: 500, toX: 600, toY: 500 });
     ship.registerClawHit({ sourceSeat: enemy.seat, triggerHits: 4, markDuration: 10 - sim.elapsed }, sim);
@@ -1359,7 +1360,7 @@ function koizumiControlImmunityCheck() {
     setScenarioField(purger, 'y', ship.y);
     assert(enemy.castFlagshipSkill(), "光球免控测试未能施放净化波");
     // 进入下一逻辑帧后，实际视野波扫到目标应直接解除形态。
-    sim.tick += 1;
+    sampleScenarioTime(sim, { tick: sim.tick + (1) });
     sim.resolveVisionWavePurges();
     assert(!ship.koizumiOrb && !ship.isControlImmune() && !ship.isDamageImmune(), "净化没有直接驱散光球形态");
     assert(ship.x !== sim.worldSize / 2 || ship.y !== sim.worldSize / 2, "净化光球错误瞬移到战场中央");
@@ -1789,7 +1790,7 @@ function haruhiHeroPowerCheck() {
 }
 
 function haruhiFlagshipReworkCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -1994,7 +1995,7 @@ function haruhiFlagshipReworkCheck() {
   assert(!target.forcedKnockback, "异世界人击退完成后仍在锁定敌方控制");
   assert(target.speed < 2, "异世界人击退完成后敌舰没有从接近零速重新加速");
 
-  sim.elapsed = Math.max(sim.elapsed, teamA.effects.haruhiBoostUntil);
+  sampleScenarioTime(sim, { elapsed: Math.max(sim.elapsed, teamA.effects.haruhiBoostUntil) });
   for (const ship of teamA.getAllShips()) {
     setScenarioField(ship, 'x', 120);
     setScenarioField(ship, 'y', 120);
@@ -2094,7 +2095,7 @@ function asakuraFlagshipCheck() {
 
 function asakuraAllyCleanseCheck() {
   for (const seat of ["A", "B"]) {
-    const sim = new MatchSimulation({
+    const sim = new ScenarioSimulation({
       mode: "pvp",
       teamLoadouts: {
         A: { main: "asakura", sub1: "kyon", sub2: "yuki" },
@@ -2124,7 +2125,7 @@ function asakuraAllyCleanseCheck() {
     source.clearTimedEffect("silencedUntil", false);
     resetHaruhiHeroPowerShock(source);
     assert(team.castFlagshipSkill(), "朝仓友军驱散测试未能发射视野波");
-    sim.elapsed = 0.5;
+    sampleScenarioTime(sim, { elapsed: 0.5 });
     sim.resolveVisionWavePurges();
     assert(!ally.isSilenced() && ally.heroPowerShock.recoveryUntil === 0, "波带没有驱散友军沉默、震慑、减速与易伤");
     assert(ally.collisionSlowUntil === 0 && ally.clawMarks.stacks === 0, "波带没有驱散碰撞减速与猫爪印记");
@@ -2207,7 +2208,7 @@ function asakuraSimultaneousSkillPurgeCheck() {
 }
 
 function asakuraBladeQueenCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -2273,7 +2274,7 @@ function asakuraBladeQueenCheck() {
     { speed: fullSpeed * throttleForGear(4), label: "四档" },
   ];
   for (const [index, scenario] of damageScenarios.entries()) {
-    if (index > 0) sim.elapsed += 0.02;
+    if (index > 0) sampleScenarioTime(sim, { elapsed: sim.elapsed + (0.02) });
     setScenarioField(sub1, 'speed', scenario.speed);
     setScenarioField(enemyMain, 'hp', enemyMain.maxHp);
     sim.resolveBladeQueenContacts();
@@ -2284,12 +2285,12 @@ function asakuraBladeQueenCheck() {
     const afterHit = enemyMain.hp;
     sim.resolveBladeQueenContacts();
     assert(enemyMain.hp === afterHit, "刀锋同一秒内重复结算接触伤害");
-    sim.elapsed += 0.99;
+    sampleScenarioTime(sim, { elapsed: sim.elapsed + (0.99) });
     sim.resolveBladeQueenContacts();
     assert(enemyMain.hp === afterHit, "刀锋不足一秒便重复结算伤害");
   }
 
-  sim.elapsed += 1.01;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (1.01) });
   setScenarioField(enemyMain, 'x', sub1.x + expandedHitRadius + 0.01);
   const hpBeforeMiss = enemyMain.hp;
   sim.resolveBladeQueenContacts();
@@ -2298,7 +2299,7 @@ function asakuraBladeQueenCheck() {
 
 function asakuraBladeQueenFlightCheck() {
   const setup = () => {
-    const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: {
+    const sim = new ScenarioSimulation({ mode: "pvp", teamLoadouts: {
       A: { main: "future1096", sub1: "asakura", sub2: "yuki" },
       B: { main: "haruhi", sub1: "koizumi", sub2: "kyon" },
     } });
@@ -2319,7 +2320,7 @@ function asakuraBladeQueenFlightCheck() {
     if (scenario.startsWith("震慑")) {
       applyHaruhiHeroPowerShock(ship, 0);
       assert(ship.speed >= minimum, "震慑施加瞬间把刀锋航速归零");
-      if (scenario === "震慑恢复减速") sim.elapsed = 2.1;
+      if (scenario === "震慑恢复减速") sampleScenarioTime(sim, { elapsed: 2.1 });
     }
     if (scenario === "防御形态减速") {
       sim.teamA.switchFuture1096Form();
@@ -2344,14 +2345,14 @@ function asakuraBladeQueenFlightCheck() {
       assert(ship.speed >= minimum - 1e-9, `刀锋${scenario}未保持航速下限`);
       assert(Math.hypot(ship.x - previous.x, ship.y - previous.y) >= minimum * TICK_DT - 1e-9, `刀锋${scenario}没有持续前飞`);
       if (ship.isControlLocked()) assert(ship.angle === previous.angle && ship.x > previous.x, "刀锋受控时改变了朝向或没有前飞");
-      sim.elapsed += TICK_DT;
+      sampleScenarioTime(sim, { elapsed: sim.elapsed + (TICK_DT) });
     }
     assert(!ship.forcedKnockback, "刀锋未清除旧击退，存在坐标回跳风险");
   }
   for (const end of ["到期", "涤除"]) {
     const { sim, ship } = setup();
     ship.stunUntil(20);
-    if (end === "到期") sim.elapsed = 10;
+    if (end === "到期") sampleScenarioTime(sim, { elapsed: 10 });
     else ship.clearActiveSkillBuffs({ preserveCurrentTick: false });
     const previousX = ship.x;
     ship.update(TICK_DT);
@@ -2392,7 +2393,7 @@ function asakuraBladeQueenFlightCheck() {
 }
 
 function shamisenCatPawCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     teamLoadouts: {
@@ -2472,10 +2473,10 @@ function shamisenCatPawCheck() {
   setScenarioField(expiringProjectile, 'y', target.y);
   expiringProjectile.resolveImpact(sim);
   assert(target.clawMarks.stacks === 1, "三味线爆发后的新抓痕无法重新计数");
-  sim.elapsed += CHARACTER_DEFS.shamisen.subSkill.markDuration + 0.01;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (CHARACTER_DEFS.shamisen.subSkill.markDuration + 0.01) });
   assert(target.activeClawMarks().stacks === 0, "三味线抓痕超过持续时间后没有消退");
 
-  sim.tick += 1;
+  sampleScenarioTime(sim, { tick: sim.tick + (1) });
   teamA.clearActiveSkillBuffsForShip(shamisen);
   assert(!shamisen.hasEffect("catPawUntil"), "朝仓净化逻辑无法移除三味线猫爪弹增益");
   assert(Math.abs(shamisen.effectiveFireRate() - baseFireRate) < 1e-9, "三味线技能结束后射速增益没有移除");

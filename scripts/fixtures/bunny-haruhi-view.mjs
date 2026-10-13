@@ -1,12 +1,12 @@
+import { ScenarioSimulation, sampleScenarioTime } from "../core-tests/scenario-simulation.mjs";
 import { convertZoneSupport } from "../../shared/game/characters/interactions/support-conversion.js";
 import assert from "node:assert/strict";
-import { MatchSimulation } from "../../shared/game-core.js";
 import { resolveBunnyStages } from "../../shared/game/characters/bunny-haruhi/stage-port.js";
 import { prepareBunnyCompanions } from "../../shared/game/characters/bunny-haruhi/companion-runtime.js";
 
-// 只供本地验收使用；通过领域调用构造完整生命周期的权威快照。
+// 只供本地验收使用；通过真实战斗世界和场景时间样本构造角色生命周期快照。
 export function createBunnyViewFixture(collect = () => {}) {
-  const sim = new MatchSimulation({ mode: "pvp", aiSeats: [],
+  const sim = new ScenarioSimulation({ mode: "pvp", aiSeats: [],
     teamLoadouts: { A: { main: "haruhi", sub1: "bunny_haruhi", sub2: "yuki" },
       B: { main: "bunny_haruhi", sub1: "tsuruya", sub2: "kyon" } } });
   for (const team of [sim.teamA, sim.teamB]) {
@@ -29,16 +29,16 @@ export function createBunnyViewFixture(collect = () => {}) {
     collect(owner);
     if (i < 2) states[owner.bunnyHaruhi.form] = sim.serializeState();
     if (i === 1) {
-      sim.elapsed = 4;
-      sim.tick = 120;
+      sampleScenarioTime(sim, { elapsed: 4 });
+      sampleScenarioTime(sim, { tick: 120 });
       states.knowsExpired = sim.serializeState();
     }
   }
   const companion = sim.teamA.extraShips[0];
   resolveBunnyStages(sim);
   states.encore = sim.serializeState();
-  sim.elapsed = 24;
-  sim.tick = 720;
+  sampleScenarioTime(sim, { elapsed: 24 });
+  sampleScenarioTime(sim, { tick: 720 });
   prepareBunnyCompanions(sim);
   collect(owner);
   collect(companion);
@@ -47,11 +47,11 @@ export function createBunnyViewFixture(collect = () => {}) {
   resolveBunnyStages(sim);
   collect(target);
   states.lock = sim.serializeState();
-  sim.elapsed += 0.6;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (0.6) });
   resolveBunnyStages(sim);
   collect(target);
   states.recovery = sim.serializeState();
-  sim.elapsed = 34;
+  sampleScenarioTime(sim, { elapsed: 34 });
   resolveBunnyStages(sim);
   collect(target);
   states.encoreExpired = sim.serializeState();

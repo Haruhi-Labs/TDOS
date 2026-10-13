@@ -11,8 +11,8 @@
 | [`systems/`](systems/) | 导航、武器、编队、感知等通用算法及私有状态组件 | 角色装配、具体角色判断 |
 | [`model/`](model/) | `Ship`、`Team`、弹体、飞行器等实体，资源与归属操作 | 专属角色状态存储 |
 | [`characters/`](characters/) | 按角色聚合技能、状态机、适配器与扩展声明；跨角色能力和事务另分目录 | 通用组件实现、AI 决策 |
-| [`adapters/`](adapters/) | 实体到通用组件的事实与命令端口；目标及雷达输入适配 | 第二份权威状态、纯规则公式 |
-| [`runtime/`](runtime/) | `match-simulation.js`、固定步、动作分发、计数与表现事件生命周期 | 具体角色公式、客户端绘制 |
+| [`adapters/`](adapters/) | 实体到通用组件的事实与命令端口；选敌及视野输入适配 | 第二份权威状态、纯规则公式 |
+| [`runtime/`](runtime/) | `match-simulation.js` 独占逻辑时钟；`battle-runtime.js` 消费时间并推进世界，另含追帧、动作、计数与反馈 | 具体角色公式、客户端绘制 |
 | [`projection/`](projection/) | 舰船、舰队、状态效果的只读输出 | 推进、扣费或伤害结算 |
 | [`ai/`](ai/) | 观测桥、动作端口、参数与策略 | 权威角色状态的所有权 |
 
@@ -22,7 +22,7 @@
 
 - **新增角色**：先看 [`characters/README.md`](characters/README.md)，从相近角色的 `extension.js` 及实现开始；数值目录为 `characters/catalog.js`。
 - **修改移动、开火、编队或伤害**：先找 `systems/` 对应能力，再沿 `adapters/` 看事实来源和提交出口；资源落值在 `model/ship.js`。
-- **修改同帧顺序**：从 `runtime/match-simulation.js` 看通用阶段，再看 `characters/assembly/extension-contract.js` 与各角色声明；跨角色事务在 `characters/interactions/`。
+- **修改同帧顺序**：从 `runtime/match-simulation.js` 看取时入口、`runtime/battle-runtime.js` 看通用阶段，再看 `characters/assembly/extension-contract.js` 与各角色声明；跨角色事务在 `characters/interactions/`。
 - **修改 AI**：先看 [AI 代码导航](ai/README.md)，从 `ai/bridge/observation.js` 看输入，从 `ai/policy/rule-policy.js` 看调度，从 `ai/bridge/action-port.js` 看命令消费。
 - **修改快照或状态栏**：从 `projection/` 进入；显示层在 `src/battle/`，不得回写权威状态。
 

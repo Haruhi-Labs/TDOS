@@ -1,7 +1,8 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import assert from "node:assert/strict";
-import { MatchSimulation } from "../shared/game-core.js";
 
-const match = new MatchSimulation({ seed: 572, aiSeats: [], teamLoadouts: {
+
+const match = new ScenarioSimulation({ seed: 572, aiSeats: [], teamLoadouts: {
   A: { main: "kyon", sub1: "haruhi", sub2: "yuki" },
 } });
 const team = match.teamA;
@@ -16,7 +17,7 @@ assert.throws(() => { charging.phase = "shock"; }, TypeError);
 assert.throws(() => charging.hitShipIds.push(target.id), TypeError);
 assert.throws(() => match.haruhiHeroPowerEffects.push({}), TypeError);
 assert.throws(() => { match.haruhiHeroPowerEffects = []; }, TypeError);
-match.elapsed = charging.releaseAt;
+sampleScenarioTime(match, { elapsed: charging.releaseAt });
 match.updateHaruhiHeroPowers();
 const released = match.haruhiHeroPowerEffects[0];
 assert.equal(released.phase, "shock");
@@ -30,7 +31,7 @@ const snapshot = match.serializeState();
 snapshot.haruhiHeroPowerEffects[0].hitShipIds.length = 0;
 snapshot.haruhiHeroPowerEffects.length = 0;
 assert.ok(match.haruhiHeroPowerEffects[0].hitShipIds.includes(target.id));
-match.elapsed = released.expiresAt;
+sampleScenarioTime(match, { elapsed: released.expiresAt });
 match.updateHaruhiHeroPowers();
 assert.deepEqual(match.haruhiHeroPowerEffects, []);
 match.queueHeroPower(caster, {});

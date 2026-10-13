@@ -189,3 +189,11 @@ AI 测试场景在测试侧投影实体；生产策略拒绝实体和能力回�
 `verify-match-controls` 随架构专项执行，验证 AI/战斗开关禁止直接写入、历史视图隔离、非法席位不生效、教程初始开关，以及前一席切换后一席开关的同帧即时性。
 
 `verify-telemetry-ownership` 随架构专项执行，验证统计事件记录、输出取整、无原始计数表、历史投影与嵌套计数隔离；核心伴随舰统计断言改为读取正式结算投影，不再探查 Match 内部表。
+
+## 对局时间、终局与集合边界
+
+`verify-simulation-time` 使用真实 MatchSimulation 验证禁止时间赋值、先提交样本再推进双方、步长夹限、零时长仍计 tick、终局停步，并与场景运行时逐帧比较状态及统计。`verify-match-outcome` 验证胜/负/平局、帧尾资格判定、一次提交和外部写入拒绝；`verify-collision-history` 验证持续接触不重复减速、释放余量、离场和实例隔离；`verify-projectile-phase` 验证不可写成员视图、历史成员隔离、遍历时追加、来源清理与发布后收尾。均随架构专项执行。
+
+需要精确跳过时间、单独触发角色阶段的旧测试使用 `scripts/core-tests/scenario-simulation.mjs` 的 ScenarioSimulation：它另行装配同一 BattleRuntime，假时间源只存在 scripts 中，`sampleScenarioTime` 拒绝真实 MatchSimulation。这里验证角色/系统在指定时刻的行为，不把跳时场景等同于完整对局推进；原始 32,400 帧回放、权威一致性、随机源、AI 观测/动作与服务器执行链继续使用真实 MatchSimulation。生产无跳时、重置或伪造胜者接口，静态守卫拒绝其他生产模块直接装配 BattleRuntime。
+
+统计存储夹具构造结算读模型，不再修改对局时间/胜者；显示夹具修改序列化副本的显示时间和扫线采样时间。角色视图及原生战场夹具在迁移前后用固定随机源比较序列化数据，完全一致。弹体场景清理使用已有来源退场操作，不能替换集合或修改长度。

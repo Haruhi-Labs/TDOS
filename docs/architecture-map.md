@@ -2,7 +2,7 @@
 
 行为基线：`9139545`；边界与路径更新于 2026-10-13，与本文件同提交的源码对应。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
 
-这是一张分成九个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。目录选择与任务定位见 [战斗代码导航](../shared/game/README.md)，静态模块全量索引见 [模块索引](architecture-module-index.md)。
+这是一张分成十个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。目录选择与任务定位见 [战斗代码导航](../shared/game/README.md)，静态模块全量索引见 [模块索引](architecture-module-index.md)。
 
 已经收回的写权限包括实体资源、组件状态、AI 记忆、角色运行时、对局开关和统计计数：AI 只消费冻结观测与候选，角色求值消费事实，角色装配与固定阶段归角色层，房间聚合独占成员和生命周期。对局本身的剩余公开状态另列在末尾复查清单中。图中仍保留必要的跨所有者命令与适配关系；它们必须通过领域操作同步完成，不能退回共享字段赋值。
 
@@ -160,7 +160,7 @@ flowchart LR
     SH["characters/shamisen/hunt.js<br/>猎杀目标与后继选择"]
     BH["characters/bunny-haruhi/form-port.js<br/>队伍支援阶段"]
   end
-  M["runtime/match-simulation.js"]
+  M["runtime/battle-runtime.js<br/>由 MatchSimulation 推进"]
   S["Ship / Scout / Wingman<br/>各自提交实体状态"]
   T ==>|成员关系| MEM
   T ==>|私有实例| F & SK & AC & BM & V & FC
@@ -337,12 +337,12 @@ AI 没有实体兼容通道，也不再通过 `port/rng` getter 或配置操作�
 
 ## 图六：实际单帧顺序
 
-此图来自 `MatchSimulation.update()`，保持代码顺序。箭头是先后顺序，不是模块 import。A、B 的顺序是当前行为的一部分。AI 与常规开火开关由对局私有持有，外部只能调用设置方法；每席轮到执行时读取当前开关，因此前一席的变更立即影响后一席。
+此图来自 `MatchSimulation.update()` 的取时步骤与 `BattleRuntime.update()` 的战斗阶段，保持代码顺序。箭头是先后顺序，不是模块 import。A、B 的顺序是当前行为的一部分。AI 与常规开火开关由对局私有持有，外部只能调用设置方法；每席轮到执行时读取当前开关，因此前一席的变更立即影响后一席。
 
 ```mermaid
 flowchart TB
   I["服务端 applyQueuedInputs<br/>或单人即时动作提交"]
-  T["tick + 1 / elapsed + safeDt"]
+  T["MatchSimulation → SimulationTime<br/>原子发布 tick + 1 / elapsed + safeDt"]
   B0["兔女郎持续资源与舞台推进<br/>伴随清理、归还、可靠效果与导航准备"]
   H["刷新双方三味线猎杀目标"]
   AI["逐席 AI：观察、决策、立即提交动作"]
@@ -353,10 +353,10 @@ flowchart TB
   VIS["A/B 可见性采样 → A/B 雷达推进"]
   BEAM["A/B 蓄力光线结算"]
   FIRE["A/B 普通战斗<br/>各舰船 → 僚机 → 侦察机"]
-  BULLET["弹体拦截 → 移动/命中 → 活集合发布<br/>护盾阶段收尾"]
+  BULLET["ProjectileSystem 私有活集合<br/>拦截 → 移动/命中 → 存活集合发布 → 阶段收尾"]
   FX["爆发、飘字、反馈寿命推进"]
   CLEAN["伴随/来源清理 → 兔女郎视野刷新"]
-  WIN["胜负检查"]
+  WIN["胜负检查 → 私有终局一次提交"]
   OUT["按消费者节拍投影<br/>权威快照、雷达、统计、显示"]
   I --> T --> B0 --> H --> AI --> TEAM --> HERO --> CONTACT --> PURGE
   PURGE --> VIS --> BEAM --> FIRE --> BULLET --> FX --> CLEAN --> WIN --> OUT
@@ -497,6 +497,42 @@ flowchart TB
 
 本次沿实际读写入口发现并处理了三处残留：长门雷达的算法/状态与实体适配混合、AI/开火开关的对象直写入口、统计模块只拆函数而仍由 Match 公开计数表。对应实现和验收见 [重构记录](architecture-refactor.md)。
 
-尚不能称整个对局聚合已经封闭：`MatchSimulation` 的 `tick`、`elapsed`、`phase`、`winnerSeat` 仍公开可写，`projectiles`、表现集合和 `_contactPairs` 也没有私有发布边界。当前生产代码搜索到的这些写点集中在 Match 内部，测试中则仍有直接设置时钟/终局与弹体集合的夹具；这说明缺少强制所有权约束，不能据此声称生产模块正在互相改写。后续应先定义场景构造、推进与终局操作，再关闭写入口。弹体集合特别需要保留遍历期间追加仍在同帧推进、筛选完成后才收尾防御的语义，不能直接换成每帧冻结副本或延迟队列。
+本次继续收紧后，时钟、终局、弹体集合和碰撞历史的开放入口均已关闭，见图十。还没有因此宣称整个对局聚合完全封闭：表现集合、实体编号源及部分装配引用仍可进一步收权，弹体实体本身也仍有公开字段；本次收回的是集合的创建、成员发布、来源清理与阶段消费权限。复查未发现生产模块绕过新的四类所有者写入；这不等于对其他状态作穷尽证明。
 
 此外，一些角色端口仍需要完整领域对象完成生成、转移、承伤和立即查询；这是下一步收窄能力面的候选，但不能把必要的同步事务全部换成延迟事件。此次没有发现 AI 恢复实体兼容输入，通用组件仍由角色适配器提供规则能力；这只是本次检查范围的结论，不是全仓穷尽证明。
+
+## 图十：逻辑时间、终局、弹体与接触历史
+
+```mermaid
+flowchart LR
+  subgraph production[生产权威入口与战斗能力]
+    MATCH["runtime/match-simulation.js<br/>MatchSimulation.update"]
+    TIME["runtime/simulation-time.js<br/>SimulationTime 私有时间<br/>只能逐步 advance，无跳时/重置"]
+    WORLD["runtime/battle-runtime.js<br/>BattleRuntime 基类<br/>只读取时间，按固定阶段消费"]
+    OUTCOME["私有 outcome<br/>phase + winnerSeat 原子提交<br/>checkVictory 只提交一次"]
+    COLLISION["systems/collision-system.js<br/>HullCollisionSystem<br/>私有接触 Set + 迟滞判定"]
+    SHOTS["systems/projectile-system.js<br/>ProjectileSystem 私有活数组<br/>创建、来源清理、遍历与存活发布"]
+    PHASE["characters/interactions/projectile-phase.js<br/>拦截、推进/命中、护盾恢复"]
+    READ["成员只读视图 / 序列化副本<br/>AI、角色与表现消费者"]
+    MATCH ==>|私有实例及唯一推进入口| TIME
+    TIME -.->|冻结时间样本，只读能力| WORLD
+    MATCH -->|先取时，再调用继承的战斗阶段| WORLD
+    WORLD ==>|结果所有权| OUTCOME
+    OUTCOME -.->|已终局则不推进| MATCH
+    WORLD ==>|私有系统| COLLISION & SHOTS
+    WORLD -->|即时船体端口与当前时间| COLLISION
+    WORLD -->|当轮角色阶段能力| SHOTS
+    SHOTS -->|逐弹拦截再推进，发布后收尾| PHASE
+    SHOTS -.->|成员不可增删/替换| READ
+    OUTCOME -.->|只读胜者及阶段| READ
+  end
+  subgraph tests[仅测试目录的独立场景]
+    SAMPLE["scripts/core-tests/scenario-simulation.mjs<br/>ScenarioSimulation + 假时间源"]
+    SCENARIO["独立的 BattleRuntime 场景实例<br/>消费指定时刻，单独触发角色阶段"]
+    SAMPLE -->|指定时间样本；禁止传入真实 MatchSimulation| SCENARIO
+  end
+```
+
+生产 MatchSimulation 不接受外部时钟；场景测试没有访问或覆写它的私有字段。世界依然使用同一套角色、实体、阶段和胜负规则，假时间源不复制战斗算法。真正的对局推进由时间专项、原始回放和权威一致性验证，不能以跳时场景替代。
+
+弹体遍历捕获当轮的活数组，普通追加立即进入同轮；如果来源清理发布了另一个集合，本轮仍按原数组遍历和最终筛选，保持旧调用语义。存活集合发布后才执行收尾，收尾新增保留到下一帧。成员视图冻结的是成员关系，不把其中实体伪装成纯快照。碰撞系统逐对读取前一次位移后的实时几何，只在新接触时施加减速，释放余量和成员离场由系统自己更新历史。

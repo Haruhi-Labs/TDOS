@@ -1,3 +1,4 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./scenario-simulation.mjs";
 import { setScenarioField } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import { SearchBelief } from "../../shared/game/ai/policy/state/belief.js";
@@ -174,11 +175,11 @@ function aiFocusSelectionCheck() {
 }
 
 function aiSplitDisciplineCheck() {
-  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const sim = new ScenarioSimulation({ mode: "ai", worldSize: 1440 });
   const bot = aiFixture(sim);
   const aiMain = sim.teamB.ships.main;
 
-  sim.elapsed = 26;
+  sampleScenarioTime(sim, { elapsed: 26 });
   setScenarioField(aiMain, 'hp', aiMain.maxHp * 0.28);
   setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.12);
 
@@ -371,7 +372,7 @@ function aiYukiRadarIntelCheck() {
     Math.random = originalRandom;
   }
 
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     aiSeats: ["B"],
@@ -389,7 +390,7 @@ function aiYukiRadarIntelCheck() {
   setScenarioField(enemyMain, 'y', 160);
   enemyMain.followTarget({ x: enemyMain.x, y: enemyMain.y });
   enemyMain.clearRoute();
-  sim.elapsed = 1;
+  sampleScenarioTime(sim, { elapsed: 1 });
   const observe = sim.aiRunners.B.port.observe;
   sim.aiRunners.B.port.observe = () => {
     const data = structuredClone(observe());
@@ -433,7 +434,7 @@ function aiYukiRadarIntelCheck() {
 }
 
 function aiYukiScoutDoctrineCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     aiSeats: ["B"],
@@ -489,13 +490,13 @@ function aiYukiScoutDoctrineCheck() {
     battlePlan.primaryZoneId === 3 || battlePlan.coverageZoneIds.includes(3),
     "长门AI的战场部署没有覆盖敌方预计进入的战区",
   );
-  sim.elapsed = Math.max(sim.elapsed, bot.scoutDoctrine.nextRetaskAt);
+  sampleScenarioTime(sim, { elapsed: Math.max(sim.elapsed, bot.scoutDoctrine.nextRetaskAt) });
   const retasked = bot.retaskYukiCombatScouts(battlePlan);
   const primaryCount = team.scouts.filter((scout) => scout.zone?.id === battlePlan.primaryZoneId).length;
   assert(retasked >= 1, "长门AI由警戒转入接敌时没有重新编组既有战斗僚机");
   assert(primaryCount >= 2, "长门AI没有把足够僚机集中到主战场");
 
-  sim.elapsed += 6;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (6) });
   const stored = bot.rememberedContacts.find((contact) => contact.id === enemyMain.id);
   const memoryFocus = bot.projectContact(stored, 1.8);
   const harassContext = bot.buildTacticalContext(team.ships.main, memoryFocus);
@@ -732,7 +733,7 @@ function aiWoundedDetachedRetreatCheck() {
 }
 
 function aiSectorEncirclementCheck() {
-  const sim = new MatchSimulation({ mode: "ai", worldSize: 1440 });
+  const sim = new ScenarioSimulation({ mode: "ai", worldSize: 1440 });
   const bot = aiFixture(sim);
   const aiTeam = sim.teamB;
   const enemyMain = sim.teamA.ships.main;
@@ -749,7 +750,7 @@ function aiSectorEncirclementCheck() {
 
   bot.rememberContact(enemyMain, "visible");
   // 时间推进自然老化情报，不能直接篡改已确认记录。
-  sim.elapsed += 6.4;
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (6.4) });
 
   setScenarioField(enemyMain, 'x', 180);
   setScenarioField(enemyMain, 'y', 200);
@@ -1743,7 +1744,7 @@ function aiShamisenHuntIntelCheck() {
 }
 
 function aiShamisenHuntAttackFormationCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     aiSeats: ["A"],
@@ -1799,7 +1800,7 @@ function aiShamisenHuntAttackFormationCheck() {
     ship.followTarget({ x: ship.x, y: ship.y });
   }
   sampleVisibility(team, []);
-  sim.elapsed += 19; // 离开视野后由情报组件自然淘汰陈旧记录。
+  sampleScenarioTime(sim, { elapsed: sim.elapsed + (19) }); // 离开视野后由情报组件自然淘汰陈旧记录。
   bot.refreshIntel();
   const stretchedFocus = bot.selectEnemyFocus(team.ships.main);
   const stretchedContext = bot.buildTacticalContext(team.ships.main, stretchedFocus);
@@ -1810,7 +1811,7 @@ function aiShamisenHuntAttackFormationCheck() {
 }
 
 function aiShamisenHuntDefenseFormationCheck() {
-  const sim = new MatchSimulation({
+  const sim = new ScenarioSimulation({
     mode: "pvp",
     worldSize: 1440,
     aiSeats: ["B"],
@@ -1824,8 +1825,8 @@ function aiShamisenHuntDefenseFormationCheck() {
   const enemyMain = sim.teamA.ships.main;
   const hunted = team.ships.sub2;
   selectShamisenHuntTarget(sim.teamA, team, () => 0.99);
-  sim.elapsed = 8.2;
-  team.match.elapsed = sim.elapsed;
+  sampleScenarioTime(sim, { elapsed: 8.2 });
+  sampleScenarioTime(team.match, { elapsed: sim.elapsed });
 
   setScenarioField(enemyMain, 'x', 470);
   setScenarioField(enemyMain, 'y', 720);

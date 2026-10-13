@@ -1,3 +1,4 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import { selectShamisenHuntTarget } from "../shared/game/characters/shamisen/hunt.js";
 import { unlockSupport } from "../shared/game/characters/haruhi/support.js";
@@ -6,7 +7,6 @@ import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
-import { MatchSimulation } from "../shared/game-core.js";
 import { STATUS_EFFECT_DEFS } from "../shared/game/projection/status-effect-definitions.js";
 import { serializeShipStatusEffects } from "../shared/game/projection/status-effects.js";
 import { activateKoizumiOrb, beginKoizumiOrbReturn } from "../shared/game/characters/koizumi/orb.js";
@@ -18,16 +18,16 @@ import { createBunnyViewFixture } from "./fixtures/bunny-haruhi-view.mjs";
 
 const examples = new Map();
 const collect = (ship) => { const effects = serializeShipStatusEffects(ship); for (const effect of effects) examples.set(effect.id, effect); return effects; };
-const simulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "asakura" }, B: { main: "shamisen", sub1: "koizumi", sub2: "yuki" } } });
+const simulation = new ScenarioSimulation({ mode: "pvp", teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "asakura" }, B: { main: "shamisen", sub1: "koizumi", sub2: "yuki" } } });
 const team = simulation.teamA;
 team.configureFormation(2);
-simulation.elapsed = 10;
+sampleScenarioTime(simulation, { elapsed: 10 });
 assert.equal(team.castFlagshipSkill(), true);
 assert.equal(team.castSubSkill("sub1"), true);
 assert.equal(team.castSubSkill("sub2"), true);
 collect(team.ships.sub2);
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 14);
-simulation.elapsed = 11;
+sampleScenarioTime(simulation, { elapsed: 11 });
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 13);
 for (const support of ["alien", "time_traveler", "otherworlder", "esper"]) {
   unlockSupport(team, [support], simulation.elapsed, () => 0);
@@ -59,7 +59,7 @@ setScenarioField(main, 'alive', false);
 assert.deepEqual(collect(main), [], "击沉后必须清空状态卡");
 
 for (const characterId of ["tsuruya", "asakura", "future1096", "koizumi", "kyon"]) {
-  const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: { main: characterId, sub1: "shamisen", sub2: "koizumi" } } });
+  const sim = new ScenarioSimulation({ mode: "pvp", teamLoadouts: { A: { main: characterId, sub1: "shamisen", sub2: "koizumi" } } });
   const own = sim.teamA;
   own.configureFormation(2);
   if (["tsuruya", "asakura", "future1096"].includes(characterId)) assert.equal(own.castFlagshipSkill(), true);

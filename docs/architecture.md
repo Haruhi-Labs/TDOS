@@ -36,6 +36,8 @@
 
 ## 状态所有权与消费时机
 
+`MatchSimulation` 独占 `SimulationTime`，每个运行步先提交不可变的 `{tick, elapsed}` 样本，再调用 `BattleRuntime` 的战斗阶段。`BattleRuntime` 只持有读取时间的能力，没有跳时或重置时钟方法；生产模块只能经 MatchSimulation 装配它。组件测试可另外装配带假时间源的场景，但不能改生产模拟的时间。`fixed-step-clock.js` 负责客户端/服务端追帧累加，不拥有战斗逻辑时间。
+
 终局阶段与胜者作为一份私有结果原子提交，只有胜负资格判定能把运行态变为终局；后续判定不覆盖结果，已结束对局不再推进。统计/房间测试使用结算读模型或明确的假对局，不设置权威对象的胜者字段。
 
 对局的 AI 和常规开火开关由 `MatchSimulation` 私有持有，只能通过 `setAiEnabled` / `setCombatEnabled` 写入；读取返回冻结的历史值。每席执行前即时读取，前一席的设置在同帧内影响后一席，不把开关批量缓存到帧首。关闭常规开火不等于暂停移动、时钟或已存在技能效果。
@@ -141,7 +143,8 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 古泉主舰的次数盾在 `shared/game/characters/koizumi/barrier.js` 统一结算：15次拦截（每颗圈外敌弹、每次独立射线各扣1次，第15次仍阻挡），原有特殊冲撞可直接破盾。破盾后只监测敌方子弹穿越原边界，内外双向、高速贯穿和边界随旗舰移动都重新开始5秒计时；己方子弹和未穿越的圈内飞行不延迟修复。权威帧在本帧穿越结算后修复为15次，几何查询与序列化不写回规则状态。剩余次数与修复倒计时进入共享快照，次数采用最新权威值而不做小数插值。
 
 - `shared/game-core.js`：仅提供稳定 API 的兼容导出，不持有或推进状态。
-- `shared/game/runtime/match-simulation.js`：权威对局装配、固定阶段推进与结算。
+- `shared/game/runtime/match-simulation.js`：权威模拟入口，私有持有并推进 `simulation-time.js` 的逻辑时钟。
+- `shared/game/runtime/battle-runtime.js`：装配战斗世界、消费只读时间、编排固定阶段与私有终局；弹体集合和接触历史归对应系统。
 - `shared/game/model/`：舰队和实体的装配、资源、位姿与生命周期入口；通过组件完成导航、编队、施放和航空作业，不得反向导入对局编排。
 - `shared/game/systems/`：通用算法及独立组件；只消费基础数据或受限能力端口，不导入实体、角色实现或对局。
 - `shared/game/rules/`：通用纯规则；`characters/`：角色定义、能力与生命周期；`adapters/`：真实实体映射和受限组件端口；`projection/`：只读快照输出。目录细分与新增代码归属见[战斗代码导航](../shared/game/README.md)。
@@ -177,7 +180,7 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 - `shared/game/systems/visibility.js`：不依赖角色的纯视野集合计算；舰队负责提交结果。
 - `shared/game/runtime/match-telemetry.js`：对局内常数级动作、攻击、伤害和损失计数；只由结算摘要读取，不进入显示状态或网络快照。
 
-需要协调多种规则的对局逻辑位于 `runtime/match-simulation.js`；实体内部状态修改由 `model/` 负责。新增纯数据、纯计算或 AI 策略时，应直接放入对应叶模块，再由兼容入口按需导出。
+需要协调多种规则的战斗阶段位于 `runtime/battle-runtime.js`，生产入口 `runtime/match-simulation.js` 负责先推进逻辑时间再调用阶段；实体内部状态修改由 `model/` 负责。新增纯数据、纯计算或 AI 策略时，应直接放入对应叶模块，再由兼容入口按需导出。
 
 ### 战斗界面
 
@@ -251,7 +254,7 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 | 推进档位、速度与能量 | `shared/game/rules/throttle.js` | `src/battle/throttle.js`、核心测试 |
 | 角色数值或技能描述元数据 | `shared/game/characters/catalog.js` | `src/i18n/character-text.js` |
 | 技能实际生效过程 | `shared/game/model/team.js`、对应角色运行时 | `shared/game/model/ship.js`、`shared/game/characters/abilities/character-rules.js`、核心测试 |
-| 朝仓主舰视野波规则 | `shared/game/characters/asakura/vision-wave.js` | `shared/game/adapters/visibility-port.js`、`shared/game/runtime/match-simulation.js`、核心测试 |
+| 朝仓主舰视野波规则 | `shared/game/characters/asakura/vision-wave.js` | `shared/game/adapters/visibility-port.js`、`shared/game/runtime/battle-runtime.js`、核心测试 |
 | 古泉主舰能量圈规则 | `shared/game/characters/koizumi/barrier.js` | `shared/game/model/team.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/ai/policy/` 下对应阶段的模块 | `shared/game/ai/params/`、核心 AI 测试 |
 | 某个角色的 AI（技能时机、偏置） | `shared/game/ai/policy/characters/<角色>.js` | `shared/game/ai/params/default.js`、`test:core:ai-policy` |

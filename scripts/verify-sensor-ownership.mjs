@@ -1,14 +1,14 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
 import { updateRadarPassive } from "../shared/game/characters/yuki/radar-port.js";
 import assert from "node:assert/strict";
-import { MatchSimulation } from "../shared/game-core.js";
 import { activateVisionWaveSkill, cancelVisionWaveSkill } from "../shared/game/characters/asakura/vision-wave.js";
 
-const match = new MatchSimulation({ seed: 76, teamLoadouts: { A: { main: "yuki", sub1: "koizumi", sub2: "kyon" } } });
+const match = new ScenarioSimulation({ seed: 76, teamLoadouts: { A: { main: "yuki", sub1: "koizumi", sub2: "kyon" } } });
 const team = match.teamA;
 assert.equal(team.radarPassive, undefined, "雷达内部回波 Map 不公开");
 const enemy = match.teamB.ships.main;
 enemy.displaceTo(team.ships.main.x + 500, team.ships.main.y);
-match.elapsed = 3;
+sampleScenarioTime(match, { elapsed: 3 });
 updateRadarPassive(team, match.teamB, 3);
 const radar = team.serializeRadarPassive();
 assert.ok(radar.contacts.length > 0);
