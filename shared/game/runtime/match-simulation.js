@@ -2,7 +2,7 @@ import { CHARACTER_ASSEMBLY } from "../characters/assembly/character-assembly.js
 import { createMatchFeedback } from "./match-feedback.js";
 import { resolveShipDestruction } from "../characters/interactions/ship-destruction.js";
 import { createProjectilePhase } from "../characters/interactions/projectile-phase.js";
-import { advanceProjectiles } from "../systems/projectile-system.js";
+import { ProjectileSystem } from "../systems/projectile-system.js";
 import { Projectile } from "../model/projectile.js";
 import { createHullCollisionPort } from "../adapters/collision-port.js";
 // 权威对局的装配与阶段编排。
@@ -24,11 +24,13 @@ import { normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 export class MatchSimulation {
   #characters;
   #feedback;
+  #projectiles = new ProjectileSystem((profile) => new Projectile(profile));
   #hullCollisions = new HullCollisionSystem();
   #telemetry = new MatchTelemetry();
   #combatEnabled = Object.freeze({ A: true, B: true });
   #aiEnabled = Object.freeze({ A: true, B: true });
 
+  get projectiles() { return this.#projectiles.items; }
   get combatEnabled() { return this.#combatEnabled; }
   get aiEnabled() { return this.#aiEnabled; }
   constructor(options = {}) {
@@ -85,7 +87,6 @@ export class MatchSimulation {
       loadout: teamLoadouts.B || (mode === "ai" ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
     });
 
-    this.projectiles = [];
     this.bursts = [];
     this.#feedback = createMatchFeedback({ now: () => this.elapsed, nextId: () => nextEntityId(this) });
     this.floatingTexts = [];
@@ -130,10 +131,7 @@ export class MatchSimulation {
   }
 
   discardProjectilesFrom(sourceId) {
-    for (const projectile of this.projectiles) {
-      if (projectile.sourceId === sourceId) projectile.discard();
-    }
-    this.projectiles = this.projectiles.filter((projectile) => projectile.alive);
+    this.#projectiles.discardFrom(sourceId);
   }
 
   configureTutorialBattle() {
@@ -353,15 +351,12 @@ export class MatchSimulation {
   }
 
   spawnProjectile(profile) {
-    const projectile = new Projectile(profile);
-    this.projectiles.push(projectile);
-    return projectile;
+    return this.#projectiles.spawn(profile);
   }
 
   updateProjectiles(dt) {
     const phase = this.createProjectilePhase(this);
-    this.projectiles = advanceProjectiles(this.projectiles, dt, phase);
-    phase.finish();
+    this.#projectiles.advance(dt, phase);
   }
 
   updateVisualEffects(dt) {

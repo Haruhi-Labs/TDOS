@@ -1,3 +1,4 @@
+import { discardScenarioProjectiles } from "./projectile-fixture.mjs";
 import { updateRadarPassive } from "../../shared/game/characters/yuki/radar-port.js";
 import { setScenarioField, assignScenario } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
@@ -342,7 +343,7 @@ function yukiFlagshipCombatScoutCheck() {
   setScenarioField(enemyMain, 'y', 720);
   for (const ship of yukiTeam.getAllShips()) ship.resetAttackCycle(999);
   sampleVisibility(yukiTeam, [...yukiTeam.visibleEnemyIds, enemyMain.id]);
-  yukiSim.projectiles = [];
+  discardScenarioProjectiles(yukiSim);
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(yukiSim.projectiles.length === 1, "长门战斗僚机未通过权威战斗循环开火");
   assert(
@@ -362,7 +363,7 @@ function yukiFlagshipCombatScoutCheck() {
   for (const scout of yukiTeam.scouts) scout.resetAttackCycle(0);
   setScenarioField(enemyMain, 'x', combatScout.x + combatScout.vision + 10);
   setScenarioField(enemyMain, 'y', combatScout.y);
-  yukiSim.projectiles = [];
+  discardScenarioProjectiles(yukiSim);
   yukiTeam.stepCombat(yukiSim.teamB);
   assert(
     yukiSim.projectiles.length === 0,
@@ -383,7 +384,7 @@ function yukiFlagshipCombatScoutCheck() {
   setScenarioField(normalEnemy, 'y', 720);
   for (const ship of normalTeam.getAllShips()) ship.resetAttackCycle(999);
   sampleVisibility(normalTeam, [...normalTeam.visibleEnemyIds, normalEnemy.id]);
-  normalSim.projectiles = [];
+  discardScenarioProjectiles(normalSim);
   normalTeam.stepCombat(normalSim.teamB);
   assert(normalSim.projectiles.length === 0, "非长门旗舰的普通侦察机错误开火");
 }
@@ -849,7 +850,7 @@ function koizumiFlagshipBarrierCheck() {
   );
 
   // 已经进入圈内的攻击不应被反向吞掉，保证能量圈是边界防护而非全域无敌。
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   setScenarioField(attacker, 'x', main.x + initialBarrier.radius * 0.5);
   setScenarioField(attacker, 'y', main.y);
   setScenarioField(attacker, 'angle', Math.PI / 2);
@@ -1018,7 +1019,7 @@ function koizumiBarrierChargesCheck() {
   sim.elapsed = 5;
   sim.updateProjectiles(0);
   assert(!barrier().active, "原破盾5秒截止时忽略了后续敌弹穿越");
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   sim.elapsed = 8;
   shot(main.effectiveVision() - 30, main.effectiveVision() + 30);
   sim.updateProjectiles(0.1);
@@ -1032,7 +1033,7 @@ function koizumiBarrierChargesCheck() {
   shot(main.effectiveVision() + 30, main.effectiveVision() + 30, sim.teamB, 200);
   sim.updateProjectiles(0.01);
   assert(sim.teamA.koizumiBarrier.disabledUntil === 13, "圈内飞行或圈外未相交子弹错误重置静默计时");
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   sim.elapsed = 13;
   assert(!barrier().active && sim.teamA.koizumiBarrier.remainingHits === 0, "几何查询或序列化提前写回护盾修复状态");
   sim.updateProjectiles(0);
@@ -1044,12 +1045,12 @@ function koizumiBarrierChargesCheck() {
   crossing.shot(crossing.main.effectiveVision() + 30, -crossing.main.effectiveVision() - 30);
   crossing.sim.updateProjectiles(1);
   assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "单帧贯穿整个护盾圆的高速敌弹没有阻止修复");
-  crossing.sim.projectiles = [];
+  discardScenarioProjectiles(crossing.sim);
   crossing.sim.elapsed = crossing.sim.teamA.koizumiBarrier.disabledUntil;
   crossing.shot();
   crossing.sim.updateProjectiles(0.1);
   assert(!crossing.barrier().active, "修复截止帧仍有敌弹穿越时提前恢复了护盾");
-  crossing.sim.projectiles = [];
+  discardScenarioProjectiles(crossing.sim);
   crossing.sim.elapsed += 1;
   setScenarioField(crossing.main, 'previousX', crossing.main.x);
   setScenarioField(crossing.main, 'x', crossing.main.x + (60));
@@ -1057,7 +1058,7 @@ function koizumiBarrierChargesCheck() {
   setScenarioField(movingShot, 'speed', 0);
   crossing.sim.updateProjectiles(0.1);
   assert(Math.abs(crossing.barrier().disabledRemaining - 5) < 1e-9, "移动护盾边界扫过敌弹没有重置计时");
-  crossing.sim.projectiles = [];
+  discardScenarioProjectiles(crossing.sim);
   setScenarioField(crossing.main, 'previousX', crossing.main.x);
   crossing.sim.elapsed += 1;
   const smallCrossing = crossing.shot();
@@ -1211,7 +1212,7 @@ function koizumiOrbRamCheck() {
 
   sampleVisibility(teamA, [...teamA.visibleEnemyIds, enemyMain.id]);
   sub1.resetAttackCycle(0);
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   sub1.tryAttack(sim, sim.teamB);
   assert(sim.projectiles.length === 0, "古泉处于光球形态时仍能正常射击");
 
@@ -1565,7 +1566,7 @@ function fireArcDensityCheck() {
   const frontDamage = sim.projectiles[0].damage;
   const frontCooldown = ship.cooldown;
 
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   ship.resetAttackCycle(0);
   setScenarioField(target, 'x', 720);
   setScenarioField(target, 'y', 860);
@@ -1575,7 +1576,7 @@ function fireArcDensityCheck() {
   const broadsideDamage = sim.projectiles[0].damage;
   const broadsideCooldown = ship.cooldown;
 
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   ship.resetAttackCycle(0);
   setScenarioField(target, 'x', 600);
   setScenarioField(target, 'y', 720);
@@ -1613,7 +1614,7 @@ function kyonUniformFireRateCheck() {
     setScenarioField(target, 'y', direction.y);
     assert(Math.abs(ship.broadsideMultiplier(target) - 1.5) < 1e-6, `阿虚旗舰${direction.label}方向射速不是1.5×`);
     ship.resetAttackCycle(0);
-    sim.projectiles = [];
+    discardScenarioProjectiles(sim);
     sim.teamA.computeVisibility(sim.teamB);
     ship.tryAttack(sim, sim.teamB);
     assert(sim.projectiles.length === 1, `阿虚旗舰${direction.label}方向未能开火`);
@@ -1726,7 +1727,7 @@ function haruhiHeroPowerCheck() {
   );
   enemyMain.resetAttackCycle(0);
   sampleVisibility(teamB, [...teamB.visibleEnemyIds, haruhi.id]);
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   enemyMain.tryAttack(sim, teamA);
   assert(sim.projectiles.length === 0, "勇者之力硬控期间敌舰仍可射击");
   assert(
@@ -1882,7 +1883,7 @@ function haruhiFlagshipReworkCheck() {
   target.resetAttackCycle(0);
   sampleVisibility(teamB, [haruhi.id]);
   const haruhiHpBeforeOrb = haruhi.hp;
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   target.tryAttack(sim, teamA);
   assert(sim.projectiles.length === 1, "超能力者光球测试未生成敌方子弹");
   for (let step = 0; step < 120 && sim.projectiles.length > 0; step += 1) {
@@ -2441,7 +2442,7 @@ function shamisenCatPawCheck() {
   assert(triggerHits === 4, "三味线抓痕引爆次数不是4次");
   for (let hit = 1; hit <= triggerHits; hit += 1) {
     shamisen.resetAttackCycle(0);
-    sim.projectiles = [];
+    discardScenarioProjectiles(sim);
     shamisen.tryAttack(sim, teamB);
     assert(sim.projectiles.length === 1, `三味线第${hit}发猫爪弹未生成`);
     const projectile = sim.projectiles[0];
@@ -2464,7 +2465,7 @@ function shamisenCatPawCheck() {
   assert(target.clawMarks.stacks === 0, "三味线四层爆发后没有清空抓痕计数");
 
   shamisen.resetAttackCycle(0);
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   shamisen.tryAttack(sim, teamB);
   const expiringProjectile = sim.projectiles[0];
   setScenarioField(expiringProjectile, 'x', target.x);

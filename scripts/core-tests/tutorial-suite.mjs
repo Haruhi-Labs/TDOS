@@ -1,3 +1,4 @@
+import { discardScenarioProjectiles } from "./projectile-fixture.mjs";
 import { setScenarioField } from './ship-fixture.mjs';
 import { MatchSimulation } from "../../shared/game-core.js";
 import {
@@ -50,7 +51,7 @@ function tutorialBattleRulesCheck() {
   setScenarioField(enemyMain, 'y', 720);
   enemyMain.followTarget({ x: 840, y: 720 });
   sim.teamA.computeVisibility(sim.teamB);
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   runSteps(sim, 0.2);
   assert(sim.projectiles.length === 0, "教程交火解锁前友军仍会自动开火");
   sim.setCombatEnabled("A", true);

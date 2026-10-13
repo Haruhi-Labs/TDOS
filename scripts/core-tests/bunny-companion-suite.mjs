@@ -1,3 +1,4 @@
+import { discardScenarioProjectiles } from "./projectile-fixture.mjs";
 import { setScenarioField } from './ship-fixture.mjs';
 import { spawnBunnyCompanion } from "../../shared/game/characters/bunny-haruhi/form-port.js";
 import { convertZoneSupport } from "../../shared/game/characters/interactions/support-conversion.js";
@@ -209,7 +210,7 @@ function conversionCheck() {
   near(companion.damageTakenMultiplier(), 1);
   assert.equal(sim.projectiles.some((p) => p.sourceId === id), false);
   assert.equal(sim.projectiles.some((p) => p.sourceId === owner.id), true);
-  sim.projectiles.length = 0;
+  discardScenarioProjectiles(sim);
   sampleVisibility(team, [...team.visibleEnemyIds, id]);
   assert.equal(team.fireCandidates(owner, enemy).some((entry) => entry.target === companion), false);
   const health = companion.hp;
@@ -256,7 +257,7 @@ function conversionCheck() {
   assert.equal(companion.hp, oldHp);
   assert.equal(sim.statisticsSummary().telemetry.teams.A.attacks.projectileHits, hits);
   assert.equal(companion.clawMarks.stacks, 0);
-  sim.projectiles.length = 0;
+  discardScenarioProjectiles(sim);
 
   // 光线先排除受保护目标，再计算命中数伤害档位。
   setScenarioField(companion, 'x', owner.x + 30);
