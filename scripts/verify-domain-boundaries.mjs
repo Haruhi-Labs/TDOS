@@ -261,3 +261,5 @@ await import("./verify-character-extensions.mjs");
 await import("./verify-ai-explicit-facts.mjs");
 
 await import("./verify-collision-history.mjs");
+
+await import("./verify-match-outcome.mjs");

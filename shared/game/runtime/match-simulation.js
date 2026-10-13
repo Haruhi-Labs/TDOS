@@ -23,6 +23,7 @@ import { normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 
 export class MatchSimulation {
   #characters;
+  #outcome = Object.freeze({ phase: "running", winnerSeat: null });
   #feedback;
   #projectiles = new ProjectileSystem((profile) => new Projectile(profile));
   #hullCollisions = new HullCollisionSystem();
@@ -30,6 +31,8 @@ export class MatchSimulation {
   #combatEnabled = Object.freeze({ A: true, B: true });
   #aiEnabled = Object.freeze({ A: true, B: true });
 
+  get phase() { return this.#outcome.phase; }
+  get winnerSeat() { return this.#outcome.winnerSeat; }
   get projectiles() { return this.#projectiles.items; }
   get combatEnabled() { return this.#combatEnabled; }
   get aiEnabled() { return this.#aiEnabled; }
@@ -70,8 +73,6 @@ export class MatchSimulation {
 
     this.tick = 0;
     this.elapsed = 0;
-    this.phase = "running";
-    this.winnerSeat = null;
 
     const centerY = worldSize * 0.5;
     const zoneWidth = worldSize / 3;
@@ -317,8 +318,7 @@ export class MatchSimulation {
     if (aAlive && bAlive) {
       return;
     }
-    this.phase = "finished";
-    this.winnerSeat = aAlive ? "A" : bAlive ? "B" : null;
+    this.#outcome = Object.freeze({ phase: "finished", winnerSeat: aAlive ? "A" : bAlive ? "B" : null });
   }
 
   spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {

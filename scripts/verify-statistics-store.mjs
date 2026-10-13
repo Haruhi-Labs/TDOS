@@ -180,11 +180,10 @@ try {
       sim.teamA.startCooldown("sub1", 0);
       assert.equal(sim.teamA.castSubSkill("sub1"), true);
     }
-    sim.elapsed = 120;
-    sim.tick = 3600;
-    sim.winnerSeat = "A";
+    // 存储测试消费结算读模型，不伪造权威对局的时间或胜者。
+    const summary = { ...sim.statisticsSummary(), durationSeconds: 120, tick: 3600, winnerSeat: "A" };
     const entry = buildServerMatchStatisticsRecord({
-      room: { id, mode: "pvp", seats: { A: "a", B: "b" }, startedAt: time - 120000, match: sim },
+      room: { id, mode: "pvp", seats: { A: "a", B: "b" }, startedAt: time - 120000, match: { statisticsSummary: () => summary } },
       getPlayerById: (key) => ({ id: key }), now: time,
     });
     assert.deepEqual(Object.keys(entry.participants[0].loadout), ["main", "sub1", "sub2"], "伴随舰不能进入阵容 key");
