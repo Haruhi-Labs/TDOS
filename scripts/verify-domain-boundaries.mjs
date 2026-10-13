@@ -136,19 +136,16 @@ assert.deepEqual(wingman.zone, targetZone);
 assert.equal(sourceTeam.assignScoutMission(scout, { zoneId: 2 }), false, "原所有者不得继续指挥已转移实体");
 console.log("实体所有权校验通过：任务输入隔离，策反同时移交实体与集合归属。");
 
-const { resolveShipCollisions } = await import("../shared/game/systems/collision-system.js");
+const { HullCollisionSystem } = await import("../shared/game/systems/collision-system.js");
 const hulls = [100, 101, 102].map((x, index) => ({
   id: index + 1, x, y: 100, radius: 2, seat: index, participates: true, attached: false, collidesWithAttachedAllies: false,
   displaceTo(nextX, nextY) { setScenarioField(this, 'x', nextX); setScenarioField(this, 'y', nextY); },
   applyCollisionSlow(until) { this.slowUntil = until; },
 }));
-const oldContacts = new Set();
-const nextContacts = resolveShipCollisions({
-  ships: hulls, previousContacts: oldContacts, elapsed: 10,
-});
+const collisionSystem = new HullCollisionSystem();
+collisionSystem.resolve({ ships: hulls, elapsed: 10 });
 assert.deepEqual(hulls.map((ship) => ship.x), [98.25, 104.375, 100.375], "后续碰撞应消费前一次位移后的几何");
-assert.equal(oldContacts.size, 0, "碰撞查询不得修改所有者上一帧的接触集合");
-assert.equal(nextContacts.size, 3);
+assert.equal(collisionSystem.contacts, undefined, "接触集合不向调用方发布");
 assert.ok(hulls.every((ship) => ship.slowUntil === 13));
 console.log("碰撞端口校验通过：无需对局对象，位移顺序与接触历史所有权保持不变。");
 
@@ -262,3 +259,5 @@ await import("./verify-bunny-stage-runtime.mjs");
 await import("./verify-character-extensions.mjs");
 
 await import("./verify-ai-explicit-facts.mjs");
+
+await import("./verify-collision-history.mjs");

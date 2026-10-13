@@ -66,7 +66,7 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 
 查询与序列化不负责推进：例如抓痕过期在实体更新或下一次命中时提交，界面重复查询只得到已过期的读数。`serializeState()`、AI 观察、房间与结果输出不携带权威状态的可写引用；`shared/data/plain-data.js` 只复制/冻结纯数据，不能用于实体、Map 或循环对象图。
 
-`FleetPerception` 独占可见集合并发布只读采样，历史样本不跟随新帧改变。`systems/targeting-system.js` 的 `FleetFireControl` 持有本轮集火分配，仅消费候选 DTO 并返回目标 ID；`adapters/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `adapters/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；接触历史归对局所有。`characters/<角色>/extension.js` 声明角色效果的操作顺序，`characters/assembly/active-skills.js` 编译并消费这些声明，舰队装配公共权限和统计端口，编队组件管理资源分摊，施放组件管理冷却和成功事务，角色声明不持有舰队或对局对象。公共和专属副舰技能的成功提交都在 `SkillCycle` 内部完成，角色不能调用 Team 伪造完成；兔女郎返回冷却及视野刷新需求，组件先提交冷却、统计和显形，再刷新视野。
+`FleetPerception` 独占可见集合并发布只读采样，历史样本不跟随新帧改变。`systems/targeting-system.js` 的 `FleetFireControl` 持有本轮集火分配，仅消费候选 DTO 并返回目标 ID；`adapters/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `adapters/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；`HullCollisionSystem` 私有持有接触历史并执行迟滞判定，不再由对局传入、接收或替换 Set。`characters/<角色>/extension.js` 声明角色效果的操作顺序，`characters/assembly/active-skills.js` 编译并消费这些声明，舰队装配公共权限和统计端口，编队组件管理资源分摊，施放组件管理冷却和成功事务，角色声明不持有舰队或对局对象。公共和专属副舰技能的成功提交都在 `SkillCycle` 内部完成，角色不能调用 Team 伪造完成；兔女郎返回冷却及视野刷新需求，组件先提交冷却、统计和显形，再刷新视野。
 
 `MatchTelemetry` 独占统计计数表，Match 只提交动作、攻击、伤害和舰损事件；`statisticsSummary()` 读取独立数据副本，统计存储和公开榜单不取得权威计数引用。
 
