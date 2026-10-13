@@ -158,7 +158,8 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 - `shared/game/ai/policy/characters/`：每个角色一个 AI 档案，声明分离与前探偏置、默认分离角色、技能增益是否怕净化，以及技能的施放条件与瞄准。新增角色的 AI 在这里加档案并在 `index.js` 注册。
 - `shared/game/ai/policy/tactics/`：跨多个决策阶段的战术。`character-counterplay.js` 负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判，不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色；`shamisen-hunt.js` 负责“猫爪印记”的攻守编队，猎杀标记不会在此被提升为真实视野；`yuki-scout.js` 是纯计算的侦察条令；`bunny-stage.js` 负责兔女郎春日的变身时机与舞台走位。
 - `shared/game/ai/bot-controller.js`：`RulePolicy` 的对外门面，供对局循环、调试页和测试使用：外部方法入口拒绝实体、循环对象与能力回调，刷新观测后只消费数据。入口守卫缓存保留在闭包中，不公开可绕过校验的执行函数。
-- `shared/game/adapters/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
+- `shared/game/adapters/visibility-port.js`：采样常规探测、视野波覆盖与广播，交给通用可见集合组件消费。
+- `shared/game/characters/yuki/radar-runtime.js`：独占长门扫描相位、噪声序号和回波，消费纯数据并输出待识别编号；同目录 `radar-port.js` 负责实体采样、同步识别与公私投影读取。Team 通过角色装配能力消费私有回波。
 - `shared/game/characters/asakura/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。
 - `shared/game/characters/koizumi/orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。
 - `shared/game/characters/koizumi/barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
@@ -244,7 +245,7 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 | 推进档位、速度与能量 | `shared/game/rules/throttle.js` | `src/battle/throttle.js`、核心测试 |
 | 角色数值或技能描述元数据 | `shared/game/characters/catalog.js` | `src/i18n/character-text.js` |
 | 技能实际生效过程 | `shared/game/model/team.js`、对应角色运行时 | `shared/game/model/ship.js`、`shared/game/characters/abilities/character-rules.js`、核心测试 |
-| 朝仓主舰视野波规则 | `shared/game/characters/asakura/vision-wave.js` | `shared/game/adapters/visibility-radar.js`、`shared/game/runtime/match-simulation.js`、核心测试 |
+| 朝仓主舰视野波规则 | `shared/game/characters/asakura/vision-wave.js` | `shared/game/adapters/visibility-port.js`、`shared/game/runtime/match-simulation.js`、核心测试 |
 | 古泉主舰能量圈规则 | `shared/game/characters/koizumi/barrier.js` | `shared/game/model/team.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/ai/policy/` 下对应阶段的模块 | `shared/game/ai/params/`、核心 AI 测试 |
 | 某个角色的 AI（技能时机、偏置） | `shared/game/ai/policy/characters/<角色>.js` | `shared/game/ai/params/default.js`、`test:core:ai-policy` |
@@ -297,7 +298,7 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 
 护盾耐久与恢复、猎杀目标与轮次、震慑时间、光球运动与命中历史由各角色模块私有持有；实体只提供只读历史投影。测试通过命中、破盾、目标选择、震慑、运动采样和净化布置场景，不能直接覆写组件字段。光球命中历史不进入查询视图。
 
-雷达回波 Map 与扫描游标只归雷达模块所有，AI 桥接消费雷达投影；波纹模块独占发射游标和波列表，光球撞击波的命中去重集合也不外泄。权威实体上的波纹查询深只读，显示快照仍是可独立消费的数据副本。
+雷达回波 Map 与扫描游标只归 `RadarRuntime` 所有，AI 桥接消费雷达投影；波纹模块独占发射游标和波列表，光球撞击波的命中去重集合也不外泄。权威实体上的波纹查询深只读，显示快照仍是可独立消费的数据副本。
 
 舰队主副舰槽位在创建后固定；额外舰船集合由 Team 私有持有，通过增加、移除和实体换队事务维护。查询数组不能增删成员，实体的生命、能量与位姿仍由实体操作提交；只读集合并不把实体本身变成显示快照。
 

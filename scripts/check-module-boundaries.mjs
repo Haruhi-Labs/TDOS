@@ -216,6 +216,14 @@ for (const fileName of walk("shared/game/systems").map(display)) {
   }
 }
 
+// 雷达状态机消费值样本；实体映射和识别提交只能留在角色端口。
+for (const specifier of importSpecifiers(resolve(ROOT, "shared/game/characters/yuki/radar-runtime.js"))) {
+  const target = display(resolveImport(resolve(ROOT, "shared/game/characters/yuki/radar-runtime.js"), specifier));
+  if (!["shared/game/foundation/math.js", "shared/game/rules/combat-rules.js"].includes(target)) {
+    failures.push(`长门雷达运行时不得导入实体、装配器或角色端口 ${target}`);
+  }
+}
+
 // 页面装配可创建对局，表现与联机消费模块只使用静态定义、纯算法及读模型。
 const simulationEntrypoints = new Set(["src/solo/session.js", "src/debug.js", "src/battle/native-webgl-visual-fixture.js"]);
 for (const file of walk("src")) {
@@ -240,7 +248,7 @@ const requiredLinks = [
   ["shared/game/runtime/match-simulation.js", "./action-dispatcher.js"],
   ["shared/game/model/team.js", "../model/ship.js"],
   ["shared/game/model/team.js", "../systems/targeting-system.js"],
-  ["shared/game/model/team.js", "../adapters/visibility-radar.js"],
+  ["shared/game/model/team.js", "../adapters/visibility-port.js"],
   ["shared/game/ai/bot-controller.js", "./policy/rule-policy.js"],
   ["shared/game/ai/bridge/runner.js", "./action-port.js"],
   ["shared/game/ai/bridge/action-port.js", "../../runtime/action-dispatcher.js"],

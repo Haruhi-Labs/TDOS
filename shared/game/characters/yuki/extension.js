@@ -1,5 +1,5 @@
 import { YUKI_COMBAT_SCOUT_STATS, YUKI_COMBAT_SCOUT_LAUNCH_COUNT } from "../../model/model-support.js";
-import { initializeRadar, updateRadarPassive, serializeRadarSweep } from "../../adapters/visibility-radar.js";
+import { initializeRadar, updateRadarPassive, serializeRadarSweep, serializeRadarPassive } from "./radar-port.js";
 export default {
   activeSkills: {
     sub: (port) => { port.launchBurstScouts(); return true; },
@@ -24,7 +24,10 @@ export default {
     },
   },
   id: "yuki",
-  createTeam: (team, facing) => ({ hooks: { initializeMembers: [[10, () => initializeRadar(team, facing)]] } }),
+  createTeam: (team, facing) => ({
+    hooks: { initializeMembers: [[10, () => initializeRadar(team, facing)]] },
+    capabilities: { serializeRadarPassive: () => serializeRadarPassive(team) },
+  }),
   createBattle: (match) => ({ operations: { radar: { phases: { beforeBeams: 10 }, run: (dt) => { updateRadarPassive(match.teamA, match.teamB, dt); updateRadarPassive(match.teamB, match.teamA, dt); } } } }),
   projectTeam: (team) => ({ radarSweep: serializeRadarSweep(team) }),
 };

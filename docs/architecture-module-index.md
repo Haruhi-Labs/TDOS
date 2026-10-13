@@ -1,6 +1,6 @@
 # 架构模块索引
 
-源码基线 `a4dd462`（生成时工作树）。共 249 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
+源码基线 `d086abd`（生成时工作树）。共 251 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
 
 运行 `node scripts/generate-architecture-index.mjs` 更新。本表按相对静态 import/export 引用生成；出边为不同本地 JS 模块，入边仅统计本表范围。行数与引用数量不衡量架构质量，状态持有和实际消费见 [架构地图](architecture-map.md)。
 
@@ -48,7 +48,7 @@
 | [navigation-port.js](../shared/game/adapters/navigation-port.js) | 42 | 0 | 1 |
 | [ship-combat-port.js](../shared/game/adapters/ship-combat-port.js) | 50 | 4 | 1 |
 | [team-skill-port.js](../shared/game/adapters/team-skill-port.js) | 60 | 6 | 1 |
-| [visibility-radar.js](../shared/game/adapters/visibility-radar.js) | 128 | 3 | 2 |
+| [visibility-port.js](../shared/game/adapters/visibility-port.js) | 10 | 1 | 1 |
 
 ## `shared/game/ai`
 
@@ -258,7 +258,9 @@
 
 | 模块 | 行数 | 静态出边 | 范围内入边 |
 | --- | ---: | ---: | ---: |
-| [extension.js](../shared/game/characters/yuki/extension.js) | 30 | 2 | 1 |
+| [extension.js](../shared/game/characters/yuki/extension.js) | 33 | 2 | 1 |
+| [radar-port.js](../shared/game/characters/yuki/radar-port.js) | 40 | 1 | 1 |
+| [radar-runtime.js](../shared/game/characters/yuki/radar-runtime.js) | 114 | 2 | 1 |
 
 ## `shared/game/foundation`
 

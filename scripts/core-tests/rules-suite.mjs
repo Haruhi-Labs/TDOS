@@ -1,4 +1,4 @@
-import { updateRadarPassive } from "../../shared/game/adapters/visibility-radar.js";
+import { updateRadarPassive } from "../../shared/game/characters/yuki/radar-port.js";
 import { setScenarioField, assignScenario } from './ship-fixture.mjs';
 import { sampleVisibility } from "./visibility-fixture.mjs";
 import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";

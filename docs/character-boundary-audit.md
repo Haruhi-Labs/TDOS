@@ -99,7 +99,7 @@
 | 猫爪与猎杀 | `characters/shamisen/claw.js` / `characters/shamisen/hunt.js` | 查询不清理、不重选；死亡适配调用所有者，表现模块不改目标 |
 | 震慑接收者状态 | `characters/haruhi/hero-power.js` | 命中与净化通过同一所有者；事件队列已私有，不代表接收者组件也物理私有 |
 | 朝仓波带 | `characters/asakura/vision-wave.js`，构造时由舰队装配 | 双边净化仍先采集全部命中，再统一提交；不能改成逐座位边采集边清理 |
-| 长门雷达 | `adapters/visibility-radar.js`，构造时由舰队装配 | 私有回波复制输出；公开扫线不包含回波，AI 桥只读取允许字段 |
+| 长门雷达 | `characters/yuki/radar-runtime.js` 持有状态，`radar-port.js` 映射实体，由角色声明装配 | 私有回波复制输出；公开扫线不包含回波，AI 桥只读取允许字段 |
 | 兔女郎舞台与持续时钟 | `characters/bunny-haruhi/form-port.js`，对局初始化起点 | 双方先采样圆，持续效果按权威时间区间只结算一次；不因重复投影推进 |
 
 这些旧组件的实时对象仍在可信规则层可见，不能说成全部不可写；但读写边界的判断须看实际所有者和调用方向，不应仅为消除实体参数而添加一层空包装。继续审查曾确认两处具体基础能力问题，现已在第六轮处理：

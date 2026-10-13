@@ -1,6 +1,6 @@
 # 游戏模块架构图与状态所有权
 
-行为基线：`9139545`；目录与路径更新于 2026-10-12，与本文件同提交的源码对应。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
+行为基线：`9139545`；边界与路径更新于 2026-10-13，与本文件同提交的源码对应。原始问题及探针保留在 Git 提交 `c30d1a2`；本图展示落实后的结构，实施和验收见 [重构记录](architecture-refactor.md)。
 
 这是一张分成九个视图的架构地图。图中的箭头按标签表示调用、数据流或状态持有，不等同于 import；模块名省略共同目录时在图前注明。`F1`～`F6` 对应后面的完成对照。目录选择与任务定位见 [战斗代码导航](../shared/game/README.md)，静态模块全量索引见 [模块索引](architecture-module-index.md)。
 
@@ -146,7 +146,7 @@ flowchart LR
     SP["adapters/team-skill-port.js<br/>characters/assembly/active-skills.js"]
     AP["adapters/aircraft-port.js"]
     BP["adapters/beam-port.js"]
-    VP["adapters/visibility-radar.js<br/>visibilityInputs / 雷达状态"]
+    VP["adapters/visibility-port.js<br/>常规探测、波纹覆盖与广播采样"]
     FCP["adapters/fire-control.js<br/>候选 DTO 与实体映射"]
   end
   subgraph specific[队级角色组件与运行时]
@@ -155,6 +155,8 @@ flowchart LR
     FF["characters/future1096/form-port.js<br/>characters/future1096/flagship-form.js"]
     VW["characters/asakura/vision-wave.js<br/>波纹持有与发波周期"]
     KB["characters/koizumi/barrier.js / characters/koizumi/orb.js<br/>护盾与冲击波队级状态"]
+    RP["characters/yuki/radar-port.js<br/>实体采样与识别编号消费"]
+    RR["characters/yuki/radar-runtime.js<br/>私有相位、序号与回波"]
     SH["characters/shamisen/hunt.js<br/>猎杀目标与后继选择"]
     BH["characters/bunny-haruhi/form-port.js<br/>队伍支援阶段"]
   end
@@ -175,7 +177,12 @@ flowchart LR
   EXT --> CONTRACT --> ASSEMBLY
   T -->|装配与领域操作| ASSEMBLY
   ASSEMBLY ==>|角色组件| HF & SF & FF
-  ASSEMBLY -->|消费声明中的有序钩子| VW & KB & SH & BH
+  ASSEMBLY -->|消费声明中的有序钩子| VW & KB & SH & BH & RP
+  RP -->|值样本| RR
+  RR -->|待识别编号| RP
+  RP -->|本方阶段内同步识别| S
+  T -->|装配能力读取私有雷达投影| ASSEMBLY
+  TP -.->|仅公开扫线| RP
   LAUNCH["characters/interactions/character-launch.js<br/>技能机群、随机支援与光线规则"]
   ASSEMBLY & SP & BH --> LAUNCH
   LAUNCH -->|统一接收成员及入队光线| T
@@ -185,6 +192,8 @@ flowchart LR
   T -->|只读序列化| TP
   TP -.->|消费状态| VW & KB & SH & HF
 ```
+
+长门雷达状态只归 `RadarRuntime` 所有；它不持有 Team、Ship、Match 或端口回调，仅接受位置、可见性、时间等值样本，返回待识别编号。`radar-port` 同步提交识别，随后才处理另一方；该标志不参与同轮其他目标的扫描计算。Team 通过角色装配能力读取私有回波，公开投影只读扫线。通用视野适配器不再保存长门状态。
 
 角色效果要生成实体或转移阵营时，会调用集合所有者的领域操作；这种跨所有者命令本身是合理的。集合所有者现在统一验证唯一性和归属，实体转移先验证后修改双方成员。伴随转换先预检，再同步清理可靠效果和弹体、提交角色状态；失败不产生部分副作用。
 
@@ -217,7 +226,7 @@ flowchart LR
   end
   subgraph other[其他角色]
     K["阿虚：characters/kyon/extension.js<br/>ShipStatus / FleetFormation<br/>被动编队倍率、可靠增益"]
-    Y["长门：adapters/visibility-radar.js<br/>AircraftOperations + Scout<br/>雷达、战斗侦察与爆发侦察"]
+    Y["长门：characters/yuki/radar-port.js<br/>characters/yuki/radar-runtime.js<br/>雷达；AircraftOperations + Scout 负责侦察"]
     KO["古泉：characters/koizumi/barrier.js<br/>characters/koizumi/orb.js<br/>护盾、光球、接触与冲击波"]
     FU["未来1096：characters/future1096/flagship-form.js<br/>BeamSystem<br/>队级形态与副舰蓄力光线"]
     TS["鹤屋：characters/tsuruya/sponsor-effect.js<br/>characters/interactions/support-conversion.js<br/>赞助与战区策反事务"]

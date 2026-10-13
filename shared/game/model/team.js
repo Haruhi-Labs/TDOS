@@ -14,7 +14,7 @@ import { createTeamBeamPort, beamCasterState } from "../adapters/beam-port.js";
 import { DEFAULT_TEAM_LOADOUT, normalizeLoadout } from "../characters/catalog.js";
 import { rotateOffset } from "../foundation/math.js";
 import { serializeShipStatusEffects, statusEffectNames } from "../projection/status-effects.js";
-import { visibilityInputs, serializeRadarPassive as serializeTeamRadarPassive } from "../adapters/visibility-radar.js";
+import { visibilityInputs } from "../adapters/visibility-port.js";
 import { FleetFireControl } from "../systems/targeting-system.js";
 import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../adapters/fire-control.js";
 import { Ship } from "../model/ship.js";
@@ -438,7 +438,7 @@ export class Team {
   }
 
   serializeRadarPassive() {
-    return serializeTeamRadarPassive(this);
+    return this.#characters.serializeRadarPassive();
   }
 
   computeVisibility(enemyTeam) {

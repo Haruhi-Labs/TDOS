@@ -241,6 +241,8 @@ await import("./verify-role-state-ownership.mjs");
 
 await import("./verify-sensor-ownership.mjs");
 
+await import("./verify-radar-runtime.mjs");
+
 await import("./verify-ai-memory-ownership.mjs");
 
 await import("./verify-targeting-ownership.mjs");

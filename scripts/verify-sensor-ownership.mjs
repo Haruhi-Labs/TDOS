@@ -1,4 +1,4 @@
-import { updateRadarPassive } from "../shared/game/adapters/visibility-radar.js";
+import { updateRadarPassive } from "../shared/game/characters/yuki/radar-port.js";
 import assert from "node:assert/strict";
 import { MatchSimulation } from "../shared/game-core.js";
 import { activateVisionWaveSkill, cancelVisionWaveSkill } from "../shared/game/characters/asakura/vision-wave.js";

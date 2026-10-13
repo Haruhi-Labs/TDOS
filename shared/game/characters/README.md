@@ -15,7 +15,8 @@
 | [`asakura/`](asakura/) | 视野波、净化阶段适配及扩展声明 |
 | [`future1096/`](future1096/) | 形态状态机、实体端口及扩展声明 |
 | [`tsuruya/`](tsuruya/) | 赞助状态机、实体端口及扩展声明；战区策反事务在 `interactions/` |
-| [`yuki/`](yuki/)、[`kyon/`](kyon/) | 现有能力的角色声明；没有独立实现时不增加空壳模块 |
+| [`yuki/`](yuki/) | `radar-runtime.js` 持有雷达状态并消费值样本；`radar-port.js` 映射实体与识别结果，`extension.js` 接入生命周期和公私投影 |
+| [`kyon/`](kyon/) | 现有能力的角色声明；没有独立实现时不增加空壳模块 |
 
 新增角色通常增加角色目录并登记 `assembly/registry.js`，同时补齐角色数值、表现、AI 档案和行为测试。需要已有通用能力时消费现有端口；确实增加通用机制才扩展 `systems/` 和对应适配器，不能在 `Ship` 或 `Team` 增加角色专属字段与分支。
 
