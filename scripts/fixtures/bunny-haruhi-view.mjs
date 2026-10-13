@@ -11,7 +11,7 @@ export function createBunnyViewFixture(collect = () => {}) {
       B: { main: "bunny_haruhi", sub1: "tsuruya", sub2: "kyon" } } });
   for (const team of [sim.teamA, sim.teamB]) {
     team.configureFormation(2);
-    sim.combatEnabled[team.seat] = false;
+    sim.setCombatEnabled(team.seat, false);
     team.getPlayerShips().forEach((ship, index) => {
       ship.displaceTo(team.seat === "A" ? 350 : 950, 400 + index * 140);
       ship.followTarget({ x: ship.x, y: ship.y }, 0);

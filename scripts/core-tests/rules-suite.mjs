@@ -268,8 +268,8 @@ function yukiBurstScoutStabilityCheck() {
       B: { main: "kyon", sub1: "haruhi", sub2: "tsuruya" },
     },
   });
-  sim.combatEnabled.A = false;
-  sim.combatEnabled.B = false;
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
   sim.teamA.split(1);
   assert(sim.teamA.castSubSkill("sub1"), "长门副舰侦察机技能释放失败");
   assert(sim.teamA.scouts.length === 16, "长门副舰技能未生成完整侦察机群");
@@ -2031,8 +2031,8 @@ function asakuraFlagshipCheck() {
   const ownMain = teamA.ships.main;
   const enemyMain = teamB.ships.main;
   const enemySub1 = teamB.ships.sub1;
-  sim.combatEnabled.A = false;
-  sim.combatEnabled.B = false;
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
 
   const enemyFlagOk = teamB.castFlagshipSkill();
   teamB.split(1);
@@ -2231,8 +2231,8 @@ function asakuraBladeQueenCheck() {
   teamA.split(1);
   teamB.split(1);
   teamB.split(2);
-  sim.combatEnabled.A = false;
-  sim.combatEnabled.B = false;
+  sim.setCombatEnabled("A", false);
+  sim.setCombatEnabled("B", false);
   setScenarioField(sub1, 'energy', sub1.maxEnergy);
   setScenarioField(sub1, 'x', 720);
   setScenarioField(sub1, 'y', 720);

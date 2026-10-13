@@ -23,7 +23,7 @@ function setup(mult = 1, dual = false) {
   const team = sim.teamA;
   for (const side of [team, sim.teamB]) {
     side.configureFormation(2);
-    sim.combatEnabled[side.seat] = false;
+    sim.setCombatEnabled(side.seat, false);
     side.getPlayerShips().forEach((ship, i) => {
       setScenarioField(ship, 'x', side.seat === "A" ? 300 : 1300);
       setScenarioField(ship, 'y', 250 + i * 250);

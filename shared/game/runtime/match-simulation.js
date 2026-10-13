@@ -24,6 +24,11 @@ import { normalizeAiSeats, nextEntityId } from "../model/model-support.js";
 export class MatchSimulation {
   #characters;
   #feedback;
+  #combatEnabled = Object.freeze({ A: true, B: true });
+  #aiEnabled = Object.freeze({ A: true, B: true });
+
+  get combatEnabled() { return this.#combatEnabled; }
+  get aiEnabled() { return this.#aiEnabled; }
   constructor(options = {}) {
     const mode = options.mode || "pvp";
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
@@ -50,8 +55,6 @@ export class MatchSimulation {
     this.aiAutoBeam = aiAutoBeam;
     this.aiSeats = aiSeats;
     this.tutorialMode = Boolean(options.tutorialMode);
-    this.combatEnabled = { A: true, B: true };
-    this.aiEnabled = { A: true, B: true };
     this.zones = buildZones(worldSize);
 
     // 显式传入整数种子时整局可复现，规则与各席 AI 使用互不干扰的随机流；
@@ -134,9 +137,9 @@ export class MatchSimulation {
 
   configureTutorialBattle() {
     this.teamA.setTrainingDamageFloor(0.25);
-    this.combatEnabled.A = false;
-    this.combatEnabled.B = false;
-    this.aiEnabled.B = false;
+    this.setCombatEnabled("A", false);
+    this.setCombatEnabled("B", false);
+    this.setAiEnabled("B", false);
 
     const trainingStats = {
       hp: 400,
@@ -160,11 +163,15 @@ export class MatchSimulation {
   }
 
   setCombatEnabled(seat, enabled) {
-    if (seat === "A" || seat === "B") this.combatEnabled[seat] = Boolean(enabled);
+    if (seat !== "A" && seat !== "B") return;
+    const next = Boolean(enabled);
+    if (this.#combatEnabled[seat] !== next) this.#combatEnabled = Object.freeze({ ...this.#combatEnabled, [seat]: next });
   }
 
   setAiEnabled(seat, enabled) {
-    if (seat === "A" || seat === "B") this.aiEnabled[seat] = Boolean(enabled);
+    if (seat !== "A" && seat !== "B") return;
+    const next = Boolean(enabled);
+    if (this.#aiEnabled[seat] !== next) this.#aiEnabled = Object.freeze({ ...this.#aiEnabled, [seat]: next });
   }
 
   clampX(x, padding = 0) {
@@ -390,7 +397,7 @@ export class MatchSimulation {
     this.#characters.advance("beforeAi", safeDt);
 
     for (const [seat, runner] of Object.entries(this.aiRunners)) {
-      if (this.aiEnabled[seat] !== false) runner.update(safeDt, this.elapsed);
+      if (this.#aiEnabled[seat] !== false) runner.update(safeDt, this.elapsed);
     }
 
     this.teamA.update(safeDt);
@@ -406,8 +413,8 @@ export class MatchSimulation {
     this.teamA.resolveChargedBeams(this.teamB);
     this.teamB.resolveChargedBeams(this.teamA);
 
-    if (this.combatEnabled.A) this.teamA.stepCombat(this.teamB);
-    if (this.combatEnabled.B) this.teamB.stepCombat(this.teamA);
+    if (this.#combatEnabled.A) this.teamA.stepCombat(this.teamB);
+    if (this.#combatEnabled.B) this.teamB.stepCombat(this.teamA);
     this.updateProjectiles(safeDt);
     this.updateVisualEffects(safeDt);
 

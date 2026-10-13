@@ -20,7 +20,7 @@ function simulation(stage = false, enabled = true, opponentMain = "kyon") {
   });
   for (const team of [sim.teamA, sim.teamB]) {
     team.configureFormation(2);
-    sim.combatEnabled[team.seat] = false;
+    sim.setCombatEnabled(team.seat, false);
     team.getPlayerShips().forEach((ship, i) => {
       setScenarioField(ship, 'x', team.seat === "A" ? 200 : 1200);
       setScenarioField(ship, 'y', 300 + i * 300);
@@ -289,7 +289,7 @@ function tickOrderingCheck() {
   setScenarioField(target, 'throttle', 1);
   setScenarioField(target, 'speed', 33);
   target.resetAttackCycle(0);
-  sim.combatEnabled.B = true;
+  sim.setCombatEnabled("B", true);
   resolveBunnyStages(sim);
   assert.equal(target.bunnyStageExposure, undefined);
   sim.update(TICK_DT);

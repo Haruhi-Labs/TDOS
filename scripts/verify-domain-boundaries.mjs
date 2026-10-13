@@ -243,6 +243,8 @@ await import("./verify-sensor-ownership.mjs");
 
 await import("./verify-radar-runtime.mjs");
 
+await import("./verify-match-controls.mjs");
+
 await import("./verify-ai-memory-ownership.mjs");
 
 await import("./verify-targeting-ownership.mjs");

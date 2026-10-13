@@ -1,6 +1,6 @@
 # 架构模块索引
 
-源码基线 `d086abd`（生成时工作树）。共 251 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
+源码基线 `2395727`（生成时工作树）。共 251 个 JavaScript 模块，范围为 `shared/game`、`shared/protocol`、`shared/data`、`server`、`src`，另含稳定导出和快照差量。样式、素材、测试、发布脚本不在此索引中。
 
 运行 `node scripts/generate-architecture-index.mjs` 更新。本表按相对静态 import/export 引用生成；出边为不同本地 JS 模块，入边仅统计本表范围。行数与引用数量不衡量架构质量，状态持有和实际消费见 [架构地图](architecture-map.md)。
 
@@ -309,7 +309,7 @@
 | [action-dispatcher.js](../shared/game/runtime/action-dispatcher.js) | 90 | 1 | 2 |
 | [fixed-step-clock.js](../shared/game/runtime/fixed-step-clock.js) | 49 | 1 | 2 |
 | [match-feedback.js](../shared/game/runtime/match-feedback.js) | 55 | 2 | 1 |
-| [match-simulation.js](../shared/game/runtime/match-simulation.js) | 450 | 21 | 2 |
+| [match-simulation.js](../shared/game/runtime/match-simulation.js) | 457 | 21 | 2 |
 | [match-telemetry.js](../shared/game/runtime/match-telemetry.js) | 97 | 1 | 1 |
 
 ## `shared/game/systems`

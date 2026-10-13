@@ -337,7 +337,7 @@ AI 没有实体兼容通道，也不再通过 `port/rng` getter 或配置操作�
 
 ## 图六：实际单帧顺序
 
-此图来自 `MatchSimulation.update()`，保持代码顺序。箭头是先后顺序，不是模块 import。A、B 的顺序是当前行为的一部分。
+此图来自 `MatchSimulation.update()`，保持代码顺序。箭头是先后顺序，不是模块 import。A、B 的顺序是当前行为的一部分。AI 与常规开火开关由对局私有持有，外部只能调用设置方法；每席轮到执行时读取当前开关，因此前一席的变更立即影响后一席。
 
 ```mermaid
 flowchart TB

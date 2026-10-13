@@ -140,7 +140,7 @@ if (process.argv[2] === "--worker") {
             // 对局经 aiRunners 驱动 AI；准备期用对局自带的开关暂停双方 AI。
             for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, false);
             for (const team of [sim.teamA, sim.teamB]) {
-              sim.combatEnabled[team.seat] = false;
+              sim.setCombatEnabled(team.seat, false);
               team.configureFormation(2);
               for (const unit of team.getAllShips()) {
                 originals.push([unit, unit.takeDamage]);
@@ -158,7 +158,7 @@ if (process.argv[2] === "--worker") {
             for (const [unit, method] of originals) unit.takeDamage = method;
             for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, true);
             for (const team of [sim.teamA, sim.teamB]) {
-              sim.combatEnabled[team.seat] = true;
+              sim.setCombatEnabled(team.seat, true);
               if (scenario.bribe) team.getAllShips().forEach((unit, index) => {
                 setScenarioField(unit, 'x', team === own ? 650 : 780);
                 setScenarioField(unit, 'y', 620 + index * 30);
