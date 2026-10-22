@@ -203,9 +203,9 @@ flowchart LR
 flowchart LR
   DEF["characters/catalog.js<br/>冻结角色定义、技能元数据"]
   AS["characters/assembly/active-skills.js<br/>消费角色声明中的主动技能"]
-  SE["characters/assembly/ship-effects.js<br/>专属技能、净化和命中挂接"]
+  SE["characters/assembly/ship-effects.js<br/>专属技能、净化广播和命中挂接"]
   CR["characters/abilities/character-rules.js<br/>跨角色属性及资格组合"]
-  PROJ["projection/ship-projection.js / projection/status-effects.js<br/>AI bridge/observation.js<br/>分别生成表现与策略读模型"]
+  PROJ["projection/ship-projection.js / projection/status-effects.js<br/>AI bridge/observation.js<br/>消费角色状态投影声明<br/>分别生成表现与策略读模型"]
   PH["F5 · characters/assembly/character-assembly.js<br/>characters/assembly/registry.js / extension-contract.js<br/>统一声明、冲突校验、固定阶段装配"]
   subgraph haruhi[普通春日]
     H["characters/haruhi/flagship-runtime.js<br/>强化到期与同帧保护"]

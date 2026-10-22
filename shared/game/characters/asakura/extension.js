@@ -1,7 +1,18 @@
+import { CHARACTER_DEFS } from "../catalog.js";
 import { initializeVisionWaves, cancelVisionWaveSkill, updateVisionWaveSkill, serializeVisionWaves } from "./vision-wave.js";
 import { resolveVisionWavePurges } from "../../systems/vision-wave-purge.js";
 import { resolveBladeQueenContacts } from "../interactions/character-contacts.js";
 export default {
+  positiveTimedEffects: ["bladeQueenUntil"],
+  statusEffects: [
+    [20, (ship, { timed }) => {
+    timed("blade_queen", ship.effects.bladeQueenUntil, CHARACTER_DEFS.asakura.subSkill.duration);
+    }],
+    [110, (ship, { timed }) => {
+    const team = ship.team;
+    timed("vision_wave", team.visionWaveSkill.activeUntil, CHARACTER_DEFS.asakura.flagshipSkill.duration);
+    }]
+  ],
   activeSkills: {
     flagship: (port, meta) => {
       if (!port.spendEnergy(meta.cost || 0)) return false;

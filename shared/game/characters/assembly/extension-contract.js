@@ -1,3 +1,11 @@
+/**
+ * 声明是普通对象，不持有可写世界状态；仅填写实际需要的扩展点。
+ * statusEffects: [[顺序, (ship, {add, timed}) => void]]，只读投影。
+ * ship.hooks / createTeam().hooks: [[顺序, 函数]]，消费语义见 ship-effects.js。
+ * createBattle().operations: {名称: {phases: {阶段: 顺序}, run(dt)}}。
+ * activeSkills / rules / queries / projectShip / projectTeam 见角色导航。
+ * 顺序只用于同一钩子或阶段内排序，冲突立即拒绝；不依赖注册数组次序。
+ */
 // 阶段语义固定；角色只声明阶段内的确定顺序，不拥有调度器或其他角色实例。
 export const BATTLE_PHASES = Object.freeze(["beforeAi", "afterTeams", "afterHull", "beforeVisibility", "beforeBeams", "afterVisuals"]);
 export const SHIP_HOOKS = Object.freeze(["initialize", "clearControl", "clearPositive", "hasNegative", "clearNegative", "expireMarks", "registerClawHit", "advanceMovement", "prepareShotDamage", "onProjectileHit", "castExclusiveSubSkill", "consumeBarrierRam"]);

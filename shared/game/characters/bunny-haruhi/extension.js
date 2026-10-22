@@ -7,8 +7,11 @@ import { initializeBunnyShip, purgeBunnyShipForm, commitBunnyTransform, updateBu
 import { initializeBunnyStageReceiver, cleanseBunnyShipControl, initializeBunnyBattle, resolveBunnyStages, advanceBunnyRules, cleanupBunnySources } from "./stage-port.js";
 import { initializeBunnyReliableReceiver, purgeBunnyReliableEffect, prepareBunnyCompanions, cleanupBunnyCompanions, serializeBunnyCompanion } from "./companion-runtime.js";
 import { resolveBunnyOtherworlderContacts } from "../interactions/character-contacts.js";
-import { serializeBunnyShip } from "./projection.js";
+import { serializeBunnyShip, projectBunnyStatuses } from "./projection.js";
 export default {
+  statusEffects: [
+    [160, projectBunnyStatuses]
+  ],
   queries: {
     broadcast: [[20, (team) => team.match.bunnyHaruhiActive ? team.getPlayerShips().filter((ship) => bunnyBroadcastsShip(team, ship)) : []]],
   },

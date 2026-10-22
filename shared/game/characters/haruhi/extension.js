@@ -1,3 +1,5 @@
+import { HARUHI_SUPPORT_LABELS } from "./flagship.js";
+import { CHARACTER_DEFS } from "../catalog.js";
 import { haruhiBoostActive } from "./flagship.js";
 import { supportOtherworlderReady } from "./support.js";
 import { haruhiOtherworlderAuraForwardReach, haruhiRamApproachEligible } from "../../rules/contact-geometry.js";
@@ -11,6 +13,25 @@ import { resolveHaruhiOtherworlderContacts } from "../interactions/character-con
 import { launchHaruhiAlienWingmen, launchHaruhiRandomBeam } from "../interactions/character-launch.js";
 
 export default {
+  statusEffects: [
+    [70, (ship, { timed }) => {
+    const shock = ship.heroPowerShock;
+    timed("hero_lock", shock.lockUntil, Math.max(0, shock.lockUntil - shock.hitAt));
+    timed("hero_shock", shock.recoveryUntil, Math.max(0, shock.recoveryUntil - shock.hitAt));
+    }],
+    [130, (ship, { timed, add }) => {
+    const team = ship.team;
+    if (team.mainCharacterId() === "haruhi") {
+      timed("haruhi_boost", team.effects.haruhiBoostUntil, CHARACTER_DEFS.haruhi.flagshipSkill.duration);
+      timed("broadcast", team.effects.haruhiBoostUntil, CHARACTER_DEFS.haruhi.flagshipSkill.duration);
+      if (ship.key === "main") {
+        for (const support of Object.keys(HARUHI_SUPPORT_LABELS)) {
+          if (team.haruhiFlagship.supporters.has(support)) add(`support_${support}`);
+        }
+      }
+    }
+    }]
+  ],
   activeSkills: {
     flagship: (port, meta) => {
       if (!port.spendEnergy(meta.cost || 0)) return false;

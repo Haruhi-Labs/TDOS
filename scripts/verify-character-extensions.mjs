@@ -48,3 +48,43 @@ assert.deepEqual(effectCalls, [7]);
 assert.equal(skills.execute("flagship", "未注册角色", {}, {}), false);
 assert.throws(() => compileActiveSkills([{ id: "重复" }, { id: "重复" }]), /编号重复/);
 assert.throws(() => compileActiveSkills([{ id: "非法", activeSkills: { arbitrary() {} } }]), /未声明/);
+
+// 清理是广播：第一个角色报告成功，也不能跳过后续接收者。
+const { createShipEffects } = await import("../shared/game/characters/assembly/ship-effects.js");
+const cleansed = [];
+const receivers = [20, 10].map((order) => ({ ship: { hooks: {
+  clearNegative: [[order, () => { cleansed.push(order); return true; }]],
+} } }));
+createShipEffects(receivers).clearNegative({});
+assert.deepEqual(cleansed, [10, 20], "多个角色负面效果应依次净化，不因首个成功而短路");
+
+const { createStatusProjector } = await import("../shared/game/projection/status-effects.js");
+const sample = { alive: true, team: { match: { elapsed: 4 } } };
+const project = createStatusProjector([
+  { statusEffects: [[20, (_ship, { add }) => add("persistent")]] },
+  { statusEffects: [[10, (_ship, { timed }) => timed("custom", 10, 3)]] },
+], { custom: {}, persistent: {} });
+const beforeSample = JSON.stringify(sample);
+const projected = project(sample);
+assert.deepEqual(projected, [
+  { id: "custom", expiresAt: 10, duration: 6, remaining: 6 },
+  { id: "persistent", expiresAt: null, duration: null, remaining: null },
+], "新效果只登记角色声明与展示元数据即可输出，不修改中央投影分支");
+projected[0].remaining = 100;
+assert.equal(project(sample)[0].remaining, 6, "投影不能保留前次输出别名");
+assert.equal(JSON.stringify(sample), beforeSample, "投影不能消费时间或修改输入");
+assert.deepEqual(project({ ...sample, alive: false }), []);
+assert.deepEqual(project({ ...sample, team: { match: { elapsed: 10 } } }), [projected[1]], "到期边界不再输出定时图标");
+assert.throws(() => createStatusProjector([{ statusEffects: [[1, (_ship, { add }) => add("missing")]] }])(sample), /未声明/);
+assert.throws(() => createStatusProjector([{ statusEffects: [[1, () => {}], [1, () => {}]] }]), /冲突/);
+
+const { ShipStatus } = await import("../shared/game/systems/ship-status.js");
+const status = new ShipStatus();
+status.activate("newEffectUntil", 9, 1);
+const effectOwner = { clearTimedEffect: (key, preserve) => status.clear(key, preserve, 1, 2) };
+const effectExtension = createShipEffects([{ positiveTimedEffects: ["newEffectUntil"] }]);
+assert.equal(effectExtension.clearPositive(effectOwner, true), false, "新效果自动沿用同帧保护");
+assert.equal(status.effects.newEffectUntil, 9);
+assert.equal(effectExtension.clearPositive(effectOwner, false), true);
+assert.equal(status.effects.newEffectUntil, 0, "新效果无需修改通用净化列表");
+assert.throws(() => createShipEffects([{ positiveTimedEffects: ["same", "same"] }]), /重复/);

@@ -1,4 +1,15 @@
+import { CHARACTER_DEFS } from "../catalog.js";
 export default {
+  positiveTimedEffects: ["reliableUntil"],
+  statusEffects: [
+    [10, (ship, { timed }) => {
+    timed("reliable", ship.effects.reliableUntil, CHARACTER_DEFS.kyon.subSkill.duration);
+    }],
+    [120, (ship, { add }) => {
+    const team = ship.team;
+    if (team.hasKyonFlagship()) add("kyon_maneuver");
+    }]
+  ],
   activeSkills: {
     sub: (port, meta) => {
       port.activateEffect("reliableUntil", meta.duration || 14);

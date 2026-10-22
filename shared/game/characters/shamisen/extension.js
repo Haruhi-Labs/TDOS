@@ -1,8 +1,23 @@
+import { CHARACTER_DEFS } from "../catalog.js";
 import { shamisenHuntDamageMultiplier } from "./hunt.js";
 import { initializeClawMarks, clearClawMarks, activeClawMarks, expireClawMarks, registerClawHit } from "./claw.js";
 import { initializeShamisenHunt, ensureShamisenHuntTarget, serializeShamisenHunt } from "./hunt.js";
 import { rngFor } from "../../foundation/rng.js";
 export default {
+  positiveTimedEffects: ["catPawUntil"],
+  statusEffects: [
+    [30, (ship, { timed }) => {
+    timed("cat_paw", ship.effects.catPawUntil, CHARACTER_DEFS.shamisen.subSkill.duration);
+    }],
+    [90, (ship, { add }) => {
+    const team = ship.team;
+    if (ship.clawMarks.stacks > 0) add("claw_marks", ship.clawMarks.expiresAt, CHARACTER_DEFS.shamisen.subSkill.markDuration, {
+      stacks: ship.clawMarks.stacks, required: ship.clawMarks.required,
+    });
+    const enemy = team.match.enemyTeamBySeat(team.seat);
+    if (enemy?.mainCharacterId() === "shamisen" && enemy.shamisenHunt.targetId === ship.id) add("hunt", null, null, { multiplier: CHARACTER_DEFS.shamisen.flagshipSkill.damageMultiplier });
+    }]
+  ],
   activeSkills: {
     sub: (port, meta) => { port.activateEffect("catPawUntil", meta.duration || 12); return true; },
   },

@@ -86,7 +86,7 @@ AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队�
 
 `Ship` 私有持有资源、运动与归属，`Scout/Wingman` 私有持有任务、武器、寿命和机体状态。只读成员数组里的元素仍是领域实体，允许明确领域操作，但不允许直接赋值。`FleetRoster` 和 `AircraftOperations` 负责成员唯一性及归属检查；转移预检先于成员移除和角色副作用，失败不留下部分提交。
 
-`CHARACTER_ASSEMBLY` 统一提供规则、实体扩展、投影、队级与对局角色工厂。`character-team.js` 持有队级角色组件；`character-battle.js` 持有对局角色组件并消费扩展契约编译的固定阶段表；`team-projection.js` 独立投影角色摘要。`character-launch.js` 独占长门技能机群和春日随机发射规则，生成仍经 Team 的通用成员接收与光线入队；航空组件不再决定角色参数或随机发射几何。支援冷却消费由私有所有者复核当前资格，查询快照不充当写许可。新增角色在角色层登记能力、阶段和投影，不向 Match、Team、Ship 增加专属存储或新的更新分支。
+`CHARACTER_ASSEMBLY` 统一提供规则、实体扩展、投影、队级与对局角色工厂。`character-team.js` 持有队级角色组件；`character-battle.js` 持有对局角色组件并消费扩展契约编译的固定阶段表；`team-projection.js` 独立投影角色摘要。`character-launch.js` 独占长门技能机群和春日随机发射规则，生成仍经 Team 的通用成员接收与光线入队；航空组件不再决定角色参数或随机发射几何。支援冷却消费由私有所有者复核当前资格，查询快照不充当写许可。新增角色在角色层登记能力、阶段和投影，不向 Match、Team、Ship 增加专属存储或新的更新分支。状态卡的资格与参数由 `extension.statusEffects` 提供，公共投影器只汇总寿命与顺序；定时增益的净化键由 `positiveTimedEffects` 登记。净化钩子广播给所有处理者，不使用独占处理的短路语义。
 
 `attribute-facts.js` 按属性、控制、免伤、承伤的需求采样当前事实，`attribute-evaluation.js` 只消费普通数据。编队组件只提供成员关系，不回调成员基础速度；伴随母舰、可靠效果和舞台来源在关系建立时登记，查询不扫描整个对局。事实不跨角色状态变更缓存，同帧资格保持即时。
 

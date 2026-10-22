@@ -1,7 +1,7 @@
 const positive = (name, icon, description, persistent = "持续至对局结束") => ({ name, icon, description, persistent, tone: "positive" });
 const negative = (name, icon, description, persistent = "持续至被驱散或目标击沉") => ({ name, icon, description, persistent, tone: "negative" });
 
-// 展示目录不决定战斗结果。新增状态在这里定义身份与说明，在 status-effects.js 提供权威寿命。
+// 展示目录不决定战斗结果。新增状态在这里定义身份与说明，在角色 extension.js 的 statusEffects 声明提供权威寿命。
 export const STATUS_EFFECT_DEFS = Object.freeze({
   bunny_bless: positive("攻击形态强化", "star", "航速+{assaultSpeed}%，转向与加速+{assaultManeuver}%，射程与视野+{assaultRange}%，伤害+{assaultDamage}%，射速+{assaultRate}%。", "切换形态后结束"),
   bunny_vulnerable: negative("攻击形态易伤", "broken_shield", "受到伤害增加{vulnerable}%。", "切换形态后结束"),
