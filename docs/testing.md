@@ -197,3 +197,7 @@ AI 测试场景在测试侧投影实体；生产策略拒绝实体和能力回�
 需要精确跳过时间、单独触发角色阶段的旧测试使用 `scripts/core-tests/scenario-simulation.mjs` 的 ScenarioSimulation：它另行装配同一 BattleRuntime，假时间源只存在 scripts 中，`sampleScenarioTime` 拒绝真实 MatchSimulation。这里验证角色/系统在指定时刻的行为，不把跳时场景等同于完整对局推进；原始 32,400 帧回放、权威一致性、随机源、AI 观测/动作与服务器执行链继续使用真实 MatchSimulation。生产无跳时、重置或伪造胜者接口，静态守卫拒绝其他生产模块直接装配 BattleRuntime。
 
 统计存储夹具构造结算读模型，不再修改对局时间/胜者；显示夹具修改序列化副本的显示时间和扫线采样时间。角色视图及原生战场夹具在迁移前后用固定随机源比较序列化数据，完全一致。弹体场景清理使用已有来源退场操作，不能替换集合或修改长度。
+
+## 扩展契约验收
+
+`test:architecture` 包含角色声明与模式专项：`verify-character-extensions` 用独立声明接入新增状态和定时效果，验证完整净化广播、同帧保护、状态寿命、输出隔离和顺序冲突；`verify-battle-mode` 使用普通事实和窄初始化命令验证默认配置、教程顺序与胜负候选。它们不等于一个完整新角色或玩法的上线验收；新增功能仍按[扩展指南](extending-game.md)检查规则、表现、AI 和传输的实际落点。

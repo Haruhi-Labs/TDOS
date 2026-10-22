@@ -18,6 +18,8 @@
 
 目录表示职责分区，不表示所有调用都沿一条继承式层级。`Team` 负责装配组件和协调领域操作，角色端口可以持实体引用；通用组件通过注入端口消费。`check:modules` 约束基础工具、通用规则、组件及 AI 的依赖边界，并拒绝把新模块散放回战斗根目录。
 
+具体接入步骤、最小声明示例与验证落点见[扩展游戏指南](../../docs/extending-game.md)。
+
 ## 按任务找入口
 
 - **新增角色**：先看 [`characters/README.md`](characters/README.md)，从相近角色的 `extension.js` 及实现开始；数值目录为 `characters/catalog.js`。
