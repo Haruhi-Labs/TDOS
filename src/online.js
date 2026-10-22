@@ -430,7 +430,10 @@ function lobbyContext() {
 }
 
 function resultContext() {
-  return freezePlainData(copyPlainData({ room: app.room, seat: app.seat, spectating: app.spectating, playerLoadout: app.playerLoadout }));
+  return freezePlainData(copyPlainData({
+    room: app.room, seat: app.seat, spectating: app.spectating, playerLoadout: app.playerLoadout,
+    endReason: snapshotTransport.state.latestSnapshot?.state?.endReason || app.room?.endReason,
+  }));
 }
 
 function clearMatchRuntime() {

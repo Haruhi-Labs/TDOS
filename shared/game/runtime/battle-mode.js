@@ -40,13 +40,17 @@ const tutorial = Object.freeze({
   },
 });
 
+const modes = Object.freeze({ standard, tutorial });
+
 // 保留现有 options 协议；AI 席位、战斗规则、房间类型是不同维度。
 export function resolveBattleMode(options = {}) {
   const mode = options.mode || "pvp";
   const aiSeats = normalizeAiSeats(mode, options.aiSeats);
+  const battleMode = options.battleMode ?? (options.tutorialMode ? "tutorial" : "standard");
+  if (!Object.hasOwn(modes, battleMode)) throw new Error(`未知战斗模式：${battleMode}`);
   return {
-    mode, aiSeats, tutorialMode: Boolean(options.tutorialMode),
-    rules: options.tutorialMode ? tutorial : standard,
+    mode, aiSeats, tutorialMode: battleMode === "tutorial",
+    rules: modes[battleMode],
     teamNames: {
       A: options.teamNames?.A || (aiSeats.includes("A") ? "观察方AI舰队A" : "玩家A舰队"),
       B: options.teamNames?.B || (aiSeats.includes("B") ? "统合思念体AI舰队" : "玩家B舰队"),

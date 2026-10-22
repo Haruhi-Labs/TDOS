@@ -107,7 +107,10 @@ function roomRegistryCheck() {
   memberPayload.self.loadout.sub1 = "其他角色";
   assert.deepEqual(playerA.loadout, DEFAULT_TEAM_LOADOUT, "房间读模型不得反向修改玩家阵容");
   room.match.phase = "finished";
+  room.match.endReason = "objective";
   room.finish(5000, 4999, harness.registry.buildMatchResult);
+  assert.equal(room.result.endReason, "objective", "房间持久结算读模型保留终局原因");
+  assert.equal(harness.registry.buildRoomStatePayload(room, playerA.id).room.endReason, "objective", "只收到房间状态的客户端仍能正确解释终局");
   assert.equal(harness.registry.buildRoomStatePayload(room, playerA.id).room.closesAt, 9999, "结束后下发权威关闭截止时间");
   harness.registry.buildRoomStatePayload(room, playerA.id).room.players[0].name = "其他名字";
   assert.equal(room.result.players[0].name, "玩家甲", "结算展示不得共享结果记录的可写引用");

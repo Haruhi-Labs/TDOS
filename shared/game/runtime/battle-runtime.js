@@ -39,6 +39,7 @@ export class BattleRuntime {
 
   get phase() { return this.#outcome.phase; }
   get winnerSeat() { return this.#outcome.winnerSeat; }
+  get endReason() { return this.#outcome.endReason; }
   get projectiles() { return this.#projectiles.items; }
   get combatEnabled() { return this.#combatEnabled; }
   get aiEnabled() { return this.#aiEnabled; }
@@ -288,9 +289,17 @@ export class BattleRuntime {
       return;
     }
     const result = this.#modeRules.evaluateOutcome({
+      elapsed: this.elapsed,
       aAlive: this.teamA.hasLivingShips(), bAlive: this.teamB.hasLivingShips(),
     });
-    if (result) this.#outcome = Object.freeze({ phase: "finished", winnerSeat: result.winnerSeat });
+    if (!result) return;
+    if (result.reason !== undefined && (typeof result.reason !== "string" || !result.reason)) {
+      throw new TypeError("终局原因必须是非空字符串");
+    }
+    this.#outcome = Object.freeze({
+      phase: "finished", winnerSeat: result.winnerSeat,
+      ...(result.reason ? { endReason: result.reason } : {}),
+    });
   }
 
   spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {
@@ -402,6 +411,7 @@ export class BattleRuntime {
       zones: this.zones.map((zone) => ({ ...zone })),
       phase: this.phase,
       winnerSeat: this.winnerSeat,
+      ...(this.endReason ? { endReason: this.endReason } : {}),
       elapsed: this.elapsed,
       projectiles: this.projectiles.map((projectile) => projectile.serialize()),
       bursts: this.bursts.map((burst) => burst.serialize()),

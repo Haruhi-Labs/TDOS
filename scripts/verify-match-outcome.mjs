@@ -6,6 +6,7 @@ for (const winner of ["A", "B", null]) {
   const match = new MatchSimulation({ seed: 30 });
   assert.throws(() => { match.phase = "finished"; }, TypeError);
   assert.throws(() => { match.winnerSeat = winner; }, TypeError);
+  assert.throws(() => { match.endReason = "arbitrary"; }, TypeError);
   match.checkVictory();
   assert.equal(match.phase, "running", "双方存活时不能提前结束");
   if (winner !== "A") retire(match.teamA);
@@ -17,6 +18,7 @@ for (const winner of ["A", "B", null]) {
   const state = match.serializeState();
   const summary = match.statisticsSummary();
   assert.equal(state.winnerSeat, winner);
+  assert.equal(Object.hasOwn(state, "endReason"), false, "既有歼灭终局保持原协议字段");
   assert.equal(summary.winnerSeat, winner);
   retire(match.teamA);
   retire(match.teamB);

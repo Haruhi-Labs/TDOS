@@ -20,6 +20,11 @@ for (const [aAlive, bAlive, expected] of [[true, true, null], [true, false, { wi
   assert.deepEqual(standard.rules.evaluateOutcome(facts), expected);
 }
 const training = resolveBattleMode({ mode: "ai", tutorialMode: true });
+assert.equal(resolveBattleMode({ mode: "ai", battleMode: "standard" }).rules, standard.rules, "控制席位不决定战斗规则");
+assert.equal(resolveBattleMode({ battleMode: "tutorial" }).rules, training.rules);
+assert.equal(resolveBattleMode({ tutorialMode: true, battleMode: "standard" }).tutorialMode, false, "显式规则覆盖旧教程选项");
+assert.throws(() => resolveBattleMode({ battleMode: "missing" }), /未知战斗模式/);
+assert.throws(() => resolveBattleMode({ battleMode: "__proto__" }), /未知战斗模式/);
 assert.equal(training.rules.evaluateOutcome, standard.rules.evaluateOutcome, "教程沿用原胜负条件");
 const trace = [];
 training.rules.initialize({
@@ -39,4 +44,7 @@ assert.equal(simulation.combatEnabled.A, false);
 assert.equal(simulation.aiEnabled.B, false);
 assert.equal(simulation.phase, "running");
 assert.equal(simulation.tick, 0, "模式初始化不提前推进时间或判定终局");
+const selectedTraining = new MatchSimulation({ battleMode: "tutorial", seed: 3 });
+assert.equal(selectedTraining.teamB.ships.main.maxHp, 400, "显式模式经过真实装配初始化");
+assert.equal(selectedTraining.tutorialMode, true);
 console.log("战斗模式校验通过：选项默认值、初始化能力及顺序、纯胜负求值与权威提交隔离。");

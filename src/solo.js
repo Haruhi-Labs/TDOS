@@ -647,7 +647,7 @@ function updateUi() {
 
   if (app.state.phase === "finished") {
     if (!app.gameOverLogged) {
-      showResultScreen(app.state.winnerSeat);
+      showResultScreen(app.state);
       if (app.state.winnerSeat === "A") {
         log(t("战斗结束：SOS先遣舰队获胜"));
       } else if (app.state.winnerSeat === "B") {
@@ -701,7 +701,7 @@ function resultSideHTML(loadout, faction, sideLabel, sideClass) {
 }
 
 // 结算画面:只在进入 finished 时渲染一次(避免每帧重置动画)
-function showResultScreen(winnerSeat) {
+function showResultScreen({ winnerSeat, endReason }) {
   const card = document.getElementById("resultCard");
   if (!card) return;
   const eyebrowEl = document.getElementById("resultEyebrow");
@@ -717,6 +717,7 @@ function showResultScreen(winnerSeat) {
   } else {
     cls = "result-draw"; eyebrow = "STALEMATE"; title = t("战斗结束"); sub = t("双方同归于尽");
   }
+  if (endReason) sub = t("已按本局规则完成结算");
   card.classList.remove("result-win", "result-lose", "result-draw");
   card.classList.add(cls);
   eyebrowEl.textContent = eyebrow;

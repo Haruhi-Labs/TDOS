@@ -17,7 +17,7 @@ await vite.listen();
 const browser = await chromium.launch({ headless: true });
 const errors = [];
 try {
-  for (const spectating of [false, true]) for (const mobile of [false, true]) {
+  for (const reasonSource of ["elimination", "snapshot", "room"]) for (const spectating of [false, true]) for (const mobile of [false, true]) {
     const context = await browser.newContext({ viewport: mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 }, isMobile: mobile, hasTouch: mobile, locale: "zh-CN" });
     await context.route("**/api/**", (route) => route.fulfill({ contentType: "application/json", body: '{"authenticated":false,"items":[]}' }));
     const page = await context.newPage();
@@ -29,15 +29,19 @@ try {
     await page.goto(`${vite.resolvedUrls.local[0]}online?ws=${encodeURIComponent(wsUrl)}`, { waitUntil: "networkidle" });
     socket.send(JSON.stringify({ type: "connected", playerId: "result-test", rulesetVersion: RULESET_VERSION, tickRate: 30, snapshotRate: 15, protocolVersion: 2 }));
     const room = { roomId: "result-room", status: "running", mode: "pvp", players: ["A", "B"].map((seat) => ({ seat, name: `结算${seat}`, playerId: `player-${seat}`, loadout: DEFAULT_TEAM_LOADOUT })) };
+    if (reasonSource === "room") room.endReason = "objective";
     const publishRoom = () => socket.send(JSON.stringify({ type: "room_state", room, self: { seat: spectating ? null : "A", spectating, loadout: DEFAULT_TEAM_LOADOUT } }));
     publishRoom();
     const state = new MatchSimulation({ mode: "pvp", seed: 17 }).serializeState();
     state.phase = "finished";
     state.winnerSeat = "A";
+    if (reasonSource === "snapshot") state.endReason = "objective";
     const publish = (snapshotSeq) => socket.send(JSON.stringify({ type: "snapshot", roomId: room.roomId, snapshotSeq, tick: snapshotSeq, state }));
     publish(1);
     await page.locator("#overlay:not(.hidden)").waitFor({ state: "visible" });
     assert.equal(await page.locator("#resultEyebrow").textContent(), spectating ? "SPECTATE" : "VICTORY");
+    assert.equal(await page.locator("#resultSub").textContent(), spectating ? "观战结束"
+      : reasonSource === "elimination" ? "敌方舰队已被击溃" : "已按本局规则完成结算", "终局说明消费权威原因，不能把非歼灭结果解释为全灭");
     assert.equal(await page.locator("#resultVersus .result-side").count(), 2);
     assert.match(await page.locator("#resultVersus").textContent(), /结算A/);
     await page.evaluate(() => { window.firstResultSide = document.querySelector("#resultVersus").firstElementChild; });

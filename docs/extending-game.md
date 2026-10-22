@@ -69,9 +69,9 @@ export default {
 
 比赛房仍使用 pvp 战斗；观战不是另一套规则。不要让模式名称同时承担这三个维度。
 
-新开局配置或胜负规则在 `battle-mode.js` 明确选择普通对象中的 `initialize` 与 `evaluateOutcome`。初始化只取得训练/开关等所需命令；求值只接收事实，返回 `null` 表示继续，返回 `{ winnerSeat }` 表示候选结果（`winnerSeat: null` 是平局）。BattleRuntime 在原阶段提交终局，MatchSimulation 决定下一步是否继续推进时间。
+新开局配置或胜负规则在 `battle-mode.js` 的 `modes` 登记普通规则对象，通过开局选项 `battleMode` 选择；它与控制席位用的 `mode` 分开。未知规则编号立即拒绝，旧 `tutorialMode` 仍作为默认选择。规则对象提供 `initialize` 与 `evaluateOutcome`。初始化只取得训练/开关等所需命令；求值只接收 `{ elapsed, aAlive, bAlive }` 事实，返回 `null` 表示继续，返回 `{ winnerSeat }` 表示候选结果（`winnerSeat: null` 是平局）。非歼灭终局附带非空字符串 `reason`，由运行时原子提交并投影为 `endReason`，房间与结算界面统一消费，不能让页面猜测结束原因。BattleRuntime 在原阶段提交终局，MatchSimulation 决定下一步是否继续推进时间。
 
-如果新玩法需要时间、比分或占领进度，显式扩展事实样本及对应所有者；不要把完整 Match 传给纯求值器。只有新增持续模式状态时才引入其状态组件。多队伍、不同地图拓扑或新协议动作需要单独评估相关契约，不能假装填一张模式表就能支持。
+如果新玩法需要比分或占领进度，显式扩展事实样本及对应所有者；不要把完整 Match 传给纯求值器。只有新增持续模式状态时才引入其状态组件。多队伍、不同地图拓扑或新协议动作需要单独评估相关契约，不能假装填一张模式表就能支持。
 
 ## 开发完成前检查实际链路
 

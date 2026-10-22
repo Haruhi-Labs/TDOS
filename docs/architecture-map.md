@@ -15,14 +15,14 @@ flowchart TB
   ENTRY["页面 / Room / 输入队列<br/>入口与生命周期"]
   MODE["runtime/battle-mode.js<br/>默认配置、初始化、纯胜负求值"]
   RUNTIME["MatchSimulation / BattleRuntime<br/>权威时间、固定帧序、终局提交"]
-  CHARACTER["characters/角色/extension.js<br/>主动技能、生命周期、效果投影声明"]
+  CHARACTER["characters/角色/extension.js<br/>主动技能、生命周期、定时倍率与投影声明"]
   OWNER["Ship / Team / systems / 角色运行时<br/>各自持有状态，只通过领域操作提交"]
   FACTS["characters/abilities / rules<br/>明确事实、纯求值、固定计算顺序"]
   VIEW["projection / AI observation<br/>只读数据与可见性边界"]
   CLIENT["共享战场 / HUD / AI policy<br/>显示消费或生成标准动作"]
   ENTRY -->|标准动作与推进| RUNTIME
   RUNTIME -->|初始化命令、胜负事实| MODE
-  MODE -->|配置和结果候选| RUNTIME
+  MODE -->|配置和终局候选| RUNTIME
   RUNTIME -->|装配与固定阶段| CHARACTER
   CHARACTER -->|领域操作| OWNER
   OWNER -->|采样事实| FACTS
@@ -547,7 +547,7 @@ flowchart LR
     TIME["runtime/simulation-time.js<br/>SimulationTime 私有时间<br/>只能逐步 advance，无跳时/重置"]
     WORLD["runtime/battle-runtime.js<br/>BattleRuntime 基类<br/>只读取时间，按固定阶段消费"]
     MODE["runtime/battle-mode.js<br/>模式配置与初始化<br/>纯胜负求值"]
-    OUTCOME["私有 outcome<br/>phase + winnerSeat 原子提交<br/>checkVictory 只提交一次"]
+    OUTCOME["私有 outcome<br/>phase + winnerSeat + 可选原因 原子提交<br/>checkVictory 只提交一次"]
     COLLISION["systems/collision-system.js<br/>HullCollisionSystem<br/>私有接触 Set + 迟滞判定"]
     SHOTS["systems/projectile-system.js<br/>ProjectileSystem 私有活数组<br/>创建、来源清理、遍历与存活发布"]
     PHASE["characters/interactions/projectile-phase.js<br/>拦截、推进/命中、护盾恢复"]

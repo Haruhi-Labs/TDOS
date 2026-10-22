@@ -128,6 +128,7 @@ export function createRoomRegistry({
     return {
       roomId: room.id,
       winnerSeat: room.match ? room.match.winnerSeat : null,
+      ...(room.match?.endReason ? { endReason: room.match.endReason } : {}),
       finishedAt: now,
       players: seatPlayerRows(room).map((row) => ({
         ...row,
@@ -162,6 +163,7 @@ export function createRoomRegistry({
         players: displayPlayerRows(room),
         spectatorCount: spectatorCount(room),
         winnerSeat: result ? result.winnerSeat : room.match ? room.match.winnerSeat : null,
+        ...((result?.endReason || room.match?.endReason) ? { endReason: result?.endReason || room.match.endReason } : {}),
         finishedAt: result ? result.finishedAt : room.finishedAt,
         closesAt: room.closesAt || null,
         createdAt: room.createdAt,

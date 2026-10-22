@@ -149,6 +149,7 @@ export function createOnlineResultView({ getContext, ui, log, onWinner = () => {
       logLine = t("战斗结束：平局");
     }
 
+    if (!context.spectating && context.endReason) subtitle = t("已按本局规则完成结算");
     if (card) {
       card.classList.remove("result-win", "result-lose", "result-draw");
       card.classList.add(className);
