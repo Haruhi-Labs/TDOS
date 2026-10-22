@@ -1,3 +1,4 @@
+import { resolveBattleMode } from "./battle-mode.js";
 import { CHARACTER_ASSEMBLY } from "../characters/assembly/character-assembly.js";
 import { createMatchFeedback } from "./match-feedback.js";
 import { resolveShipDestruction } from "../characters/interactions/ship-destruction.js";
@@ -7,7 +8,7 @@ import { Projectile } from "../model/projectile.js";
 import { createHullCollisionPort } from "../adapters/collision-port.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../foundation/constants.js";
-import { DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT, cloneLoadout } from "../characters/catalog.js";
+import { cloneLoadout } from "../characters/catalog.js";
 import { buildZones, clamp } from "../foundation/math.js";
 import { createAmbientRng, createSeededRng } from "../foundation/rng.js";
 import { createAiRunner } from "../ai/bridge/runner.js";
@@ -27,6 +28,7 @@ export class BattleRuntime {
   get elapsed() { return this.#readTime().elapsed; }
   get tick() { return this.#readTime().tick; }
   #characters;
+  #modeRules;
   #outcome = Object.freeze({ phase: "running", winnerSeat: null });
   #feedback;
   #projectiles = new ProjectileSystem((profile) => new Projectile(profile));
@@ -42,19 +44,11 @@ export class BattleRuntime {
   get aiEnabled() { return this.#aiEnabled; }
   constructor(options, readTime) {
     this.#readTime = readTime;
-    const mode = options.mode || "pvp";
+    const { mode, aiSeats, teamNames, teamLoadouts, tutorialMode, rules } = resolveBattleMode(options);
+    this.#modeRules = rules;
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
     const mapPadding = Number.isFinite(options.mapPadding) ? options.mapPadding : DEFAULT_MAP_PADDING;
     const aiAutoBeam = Boolean(options.aiAutoBeam);
-    const aiSeats = normalizeAiSeats(mode, options.aiSeats);
-    const teamNames = {
-      A: options.teamNames?.A || (aiSeats.includes("A") ? "观察方AI舰队A" : "玩家A舰队"),
-      B: options.teamNames?.B || (aiSeats.includes("B") ? "统合思念体AI舰队" : "玩家B舰队"),
-    };
-    const teamLoadouts = {
-      A: options.teamLoadouts?.A || DEFAULT_TEAM_LOADOUT,
-      B: options.teamLoadouts?.B || (aiSeats.includes("B") ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
-    };
 
     this.rules = CHARACTER_ASSEMBLY.rules;
     this.shipEffects = CHARACTER_ASSEMBLY.shipEffects;
@@ -66,7 +60,7 @@ export class BattleRuntime {
     this.mapPadding = mapPadding;
     this.aiAutoBeam = aiAutoBeam;
     this.aiSeats = aiSeats;
-    this.tutorialMode = Boolean(options.tutorialMode);
+    this.tutorialMode = tutorialMode;
     this.zones = buildZones(worldSize);
 
     // 显式传入整数种子时整局可复现，规则与各席 AI 使用互不干扰的随机流；
@@ -83,11 +77,11 @@ export class BattleRuntime {
     const leftX = worldSize * 0.35 - spawnRetreat;
     const rightX = worldSize * 0.65 + spawnRetreat;
 
-    this.teamA = new Team(this, "A", teamNames.A || "玩家A舰队", leftX, centerY, 0, {
-      loadout: teamLoadouts.A || DEFAULT_TEAM_LOADOUT,
+    this.teamA = new Team(this, "A", teamNames.A, leftX, centerY, 0, {
+      loadout: teamLoadouts.A,
     });
-    this.teamB = new Team(this, "B", teamNames.B || (mode === "ai" ? "统合思念体AI舰队" : "玩家B舰队"), rightX, centerY, Math.PI, {
-      loadout: teamLoadouts.B || (mode === "ai" ? DEFAULT_AI_LOADOUT : DEFAULT_TEAM_LOADOUT),
+    this.teamB = new Team(this, "B", teamNames.B, rightX, centerY, Math.PI, {
+      loadout: teamLoadouts.B,
     });
 
     this.bursts = [];
@@ -120,9 +114,14 @@ export class BattleRuntime {
     }
     this.botA = this.bots.A || null;
     this.bot = this.bots.B || null;
-    if (this.tutorialMode) {
-      this.configureTutorialBattle();
-    }
+    // 模式只取得初始化需要的领域操作；不持有世界、时钟或终局写权限。
+    this.#modeRules.initialize({
+      worldSize,
+      setTrainingDamageFloor: (seat, fraction) => this.teamBySeat(seat).setTrainingDamageFloor(fraction),
+      configureTrainingFleet: (seat, stats, positions) => this.teamBySeat(seat).configureTrainingFleet(stats, positions),
+      setCombatEnabled: (seat, enabled) => this.setCombatEnabled(seat, enabled),
+      setAiEnabled: (seat, enabled) => this.setAiEnabled(seat, enabled),
+    });
   }
 
   queueHeroPower(ship, meta) {
@@ -135,33 +134,6 @@ export class BattleRuntime {
 
   discardProjectilesFrom(sourceId) {
     this.#projectiles.discardFrom(sourceId);
-  }
-
-  configureTutorialBattle() {
-    this.teamA.setTrainingDamageFloor(0.25);
-    this.setCombatEnabled("A", false);
-    this.setCombatEnabled("B", false);
-    this.setAiEnabled("B", false);
-
-    const trainingStats = {
-      hp: 400,
-      energy: 80,
-      speed: 20,
-      turnRate: 0.4,
-      accel: 0.8,
-      energyRegen: 4,
-      moveDrain: 3,
-      vision: 50,
-      range: 100,
-      damage: 5,
-      fireRate: 0.08,
-    };
-    const positions = {
-      main: { x: this.worldSize * 0.67, y: this.worldSize * 0.28 },
-      sub1: { x: this.worldSize * 0.69, y: this.worldSize * 0.3 },
-      sub2: { x: this.worldSize * 0.69, y: this.worldSize * 0.26 },
-    };
-    this.teamB.configureTrainingFleet(trainingStats, positions);
   }
 
   setCombatEnabled(seat, enabled) {
@@ -315,12 +287,10 @@ export class BattleRuntime {
     if (this.phase !== "running") {
       return;
     }
-    const aAlive = this.teamA.hasLivingShips();
-    const bAlive = this.teamB.hasLivingShips();
-    if (aAlive && bAlive) {
-      return;
-    }
-    this.#outcome = Object.freeze({ phase: "finished", winnerSeat: aAlive ? "A" : bAlive ? "B" : null });
+    const result = this.#modeRules.evaluateOutcome({
+      aAlive: this.teamA.hasLivingShips(), bAlive: this.teamB.hasLivingShips(),
+    });
+    if (result) this.#outcome = Object.freeze({ phase: "finished", winnerSeat: result.winnerSeat });
   }
 
   spawnFloatingText(x, y, text, color = "#ffd178", meta = {}) {

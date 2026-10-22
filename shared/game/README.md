@@ -12,7 +12,7 @@
 | [`model/`](model/) | `Ship`、`Team`、弹体、飞行器等实体，资源与归属操作 | 专属角色状态存储 |
 | [`characters/`](characters/) | 按角色聚合技能、状态机、适配器与扩展声明；跨角色能力和事务另分目录 | 通用组件实现、AI 决策 |
 | [`adapters/`](adapters/) | 实体到通用组件的事实与命令端口；选敌及视野输入适配 | 第二份权威状态、纯规则公式 |
-| [`runtime/`](runtime/) | `match-simulation.js` 独占逻辑时钟；`battle-runtime.js` 消费时间并推进世界，另含追帧、动作、计数与反馈 | 具体角色公式、客户端绘制 |
+| [`runtime/`](runtime/) | `match-simulation.js` 独占逻辑时钟；`battle-runtime.js` 消费时间并推进世界，`battle-mode.js` 选择配置与胜负规则，另含追帧、动作、计数与反馈 | 具体角色公式、客户端绘制 |
 | [`projection/`](projection/) | 舰船、舰队、状态效果的只读输出 | 推进、扣费或伤害结算 |
 | [`ai/`](ai/) | 观测桥、动作端口、参数与策略 | 权威角色状态的所有权 |
 

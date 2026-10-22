@@ -509,6 +509,7 @@ flowchart LR
     MATCH["runtime/match-simulation.js<br/>MatchSimulation.update"]
     TIME["runtime/simulation-time.js<br/>SimulationTime 私有时间<br/>只能逐步 advance，无跳时/重置"]
     WORLD["runtime/battle-runtime.js<br/>BattleRuntime 基类<br/>只读取时间，按固定阶段消费"]
+    MODE["runtime/battle-mode.js<br/>模式配置与初始化<br/>纯胜负求值"]
     OUTCOME["私有 outcome<br/>phase + winnerSeat 原子提交<br/>checkVictory 只提交一次"]
     COLLISION["systems/collision-system.js<br/>HullCollisionSystem<br/>私有接触 Set + 迟滞判定"]
     SHOTS["systems/projectile-system.js<br/>ProjectileSystem 私有活数组<br/>创建、来源清理、遍历与存活发布"]
@@ -517,6 +518,8 @@ flowchart LR
     MATCH ==>|私有实例及唯一推进入口| TIME
     TIME -.->|冻结时间样本，只读能力| WORLD
     MATCH -->|先取时，再调用继承的战斗阶段| WORLD
+    WORLD -->|初始化命令与胜负事实| MODE
+    MODE -->|配置与结果候选| WORLD
     WORLD ==>|结果所有权| OUTCOME
     OUTCOME -.->|已终局则不推进| MATCH
     WORLD ==>|私有系统| COLLISION & SHOTS
