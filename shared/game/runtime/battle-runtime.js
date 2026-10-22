@@ -29,6 +29,7 @@ export class BattleRuntime {
   get tick() { return this.#readTime().tick; }
   #characters;
   #modeRules;
+  #battleMode;
   #outcome = Object.freeze({ phase: "running", winnerSeat: null });
   #feedback;
   #projectiles = new ProjectileSystem((profile) => new Projectile(profile));
@@ -45,8 +46,9 @@ export class BattleRuntime {
   get aiEnabled() { return this.#aiEnabled; }
   constructor(options, readTime) {
     this.#readTime = readTime;
-    const { mode, aiSeats, teamNames, teamLoadouts, tutorialMode, rules } = resolveBattleMode(options);
+    const { mode, battleMode, aiSeats, teamNames, teamLoadouts, tutorialMode, rules } = resolveBattleMode(options);
     this.#modeRules = rules;
+    this.#battleMode = battleMode;
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
     const mapPadding = Number.isFinite(options.mapPadding) ? options.mapPadding : DEFAULT_MAP_PADDING;
     const aiAutoBeam = Boolean(options.aiAutoBeam);
@@ -222,6 +224,7 @@ export class BattleRuntime {
       tick: this.tick,
       durationSeconds: Math.round(this.elapsed * 1000) / 1000,
       winnerSeat: this.winnerSeat,
+      ...(this.#battleMode !== "standard" ? { battleMode: this.#battleMode } : {}),
       worldSize: this.worldSize,
       teams: {
         A: summarizeTeam(this.teamA),

@@ -26,6 +26,8 @@ function simulationParticipant(simulationSummary, seat, player, loadout, isBot, 
 export function buildServerMatchStatisticsRecord({ room, getPlayerById, hashSalt = "", now = Date.now() }) {
   if (!room?.match) return null;
   const summary = room.match.statisticsSummary();
+  // 当前榜单只比较标准战斗规则；控制席位相同不代表规则口径相同。
+  if (summary.battleMode && summary.battleMode !== "standard") return null;
   const playerA = getPlayerById(room.seats.A);
   const playerB = getPlayerById(room.seats.B);
   const mode = room.mode === "pvp" ? "multiplayer" : "online_ai";
@@ -56,6 +58,7 @@ export function buildServerMatchStatisticsRecord({ room, getPlayerById, hashSalt
 
 export function buildSoloStatisticsRecord(payload, player, { hashSalt = "", now = Date.now() } = {}) {
   const summary = payload?.summary && typeof payload.summary === "object" ? payload.summary : {};
+  if (summary.battleMode && summary.battleMode !== "standard") return null;
   const profile = payload?.profile && typeof payload.profile === "object" ? payload.profile : {};
   const eventId = String(payload?.eventId || "").trim().slice(0, 80);
   return {

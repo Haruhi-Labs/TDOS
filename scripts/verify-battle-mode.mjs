@@ -47,4 +47,6 @@ assert.equal(simulation.tick, 0, "模式初始化不提前推进时间或判定�
 const selectedTraining = new MatchSimulation({ battleMode: "tutorial", seed: 3 });
 assert.equal(selectedTraining.teamB.ships.main.maxHp, 400, "显式模式经过真实装配初始化");
 assert.equal(selectedTraining.tutorialMode, true);
+assert.equal(selectedTraining.statisticsSummary().battleMode, "tutorial", "结算摘要保留实际规则身份，避免被控制席位覆盖");
+assert.equal(Object.hasOwn(new MatchSimulation({ seed: 3 }).statisticsSummary(), "battleMode"), false, "标准规则摘要保持旧字段");
 console.log("战斗模式校验通过：选项默认值、初始化能力及顺序、纯胜负求值与权威提交隔离。");

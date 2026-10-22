@@ -129,6 +129,11 @@ try {
     getPlayerById: () => ({ gameVersion: "v99.0" }),
   });
   assert.equal(authoritative.gameVersion, GAME_VERSION, "多人版本必须来自服务端");
+  const alternateSummary = { ...simulation.statisticsSummary(), battleMode: "objective" };
+  assert.equal(buildServerMatchStatisticsRecord({
+    room: { match: { statisticsSummary: () => alternateSummary } }, getPlayerById: () => null,
+  }), null, "其他规则不能因为使用PVP席位而进入标准胜率");
+  assert.equal(buildSoloStatisticsRecord({ summary: alternateSummary }, {}), null, "单人上报采用相同规则口径");
   assert.equal(buildSoloStatisticsRecord({ gameVersion: "v0.2" }, {}).gameVersion, "v0.2", "单人不得被重标为服务端版本");
   assert.equal(buildSoloStatisticsRecord({}, {}).gameVersion, undefined, "旧端缺失版本不得被猜测填充");
   const oldClient = { ...spoofed, id: "solo:old-client", gameVersion: "v0.2" };

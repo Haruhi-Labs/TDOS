@@ -49,7 +49,7 @@ export function resolveBattleMode(options = {}) {
   const battleMode = options.battleMode ?? (options.tutorialMode ? "tutorial" : "standard");
   if (!Object.hasOwn(modes, battleMode)) throw new Error(`未知战斗模式：${battleMode}`);
   return {
-    mode, aiSeats, tutorialMode: battleMode === "tutorial",
+    mode, battleMode, aiSeats, tutorialMode: battleMode === "tutorial",
     rules: modes[battleMode],
     teamNames: {
       A: options.teamNames?.A || (aiSeats.includes("A") ? "观察方AI舰队A" : "玩家A舰队"),
