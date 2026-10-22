@@ -6,11 +6,11 @@ export default {
   positiveTimedEffects: ["bladeQueenUntil"],
   statusEffects: [
     [20, (ship, { timed }) => {
-    timed("blade_queen", ship.effects.bladeQueenUntil, CHARACTER_DEFS.asakura.subSkill.duration);
+      timed("blade_queen", ship.effects.bladeQueenUntil, CHARACTER_DEFS.asakura.subSkill.duration);
     }],
     [110, (ship, { timed }) => {
-    const team = ship.team;
-    timed("vision_wave", team.visionWaveSkill.activeUntil, CHARACTER_DEFS.asakura.flagshipSkill.duration);
+      const team = ship.team;
+      timed("vision_wave", team.visionWaveSkill.activeUntil, CHARACTER_DEFS.asakura.flagshipSkill.duration);
     }]
   ],
   activeSkills: {

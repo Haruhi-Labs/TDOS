@@ -5,17 +5,17 @@ import { initializeKoizumiBarrier, resolveKoizumiBarrierRamContacts, serializeKo
 export default {
   statusEffects: [
     [50, (ship, { timed, add }) => {
-    if (ship.koizumiOrb) {
-      if (ship.koizumiOrb.phase === "active") timed("esper_orb", ship.koizumiOrb.activeUntil, CHARACTER_DEFS.koizumi.subSkill.duration);
-      else add("esper_return");
-    }
+      if (ship.koizumiOrb) {
+        if (ship.koizumiOrb.phase === "active") timed("esper_orb", ship.koizumiOrb.activeUntil, CHARACTER_DEFS.koizumi.subSkill.duration);
+        else add("esper_return");
+      }
     }],
     [150, (ship, { add }) => {
-    const team = ship.team;
-    if (ship.key === "main" && team.mainCharacterId() === "koizumi") {
-      const barrier = serializeKoizumiBarrier(team);
-      if (barrier.active) add("barrier", null, null, { stacks: barrier.remainingHits, required: barrier.maxHits });
-    }
+      const team = ship.team;
+      if (ship.key === "main" && team.mainCharacterId() === "koizumi") {
+        const barrier = serializeKoizumiBarrier(team);
+        if (barrier.active) add("barrier", null, null, { stacks: barrier.remainingHits, required: barrier.maxHits });
+      }
     }]
   ],
   activeSkills: {

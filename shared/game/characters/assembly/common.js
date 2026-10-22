@@ -6,18 +6,18 @@ import { isBunnyCompanion } from "../bunny-haruhi/companion-rules.js";
 export default {
   statusEffects: [
     [40, (ship, { add }) => {
-    if (ship.effects.nextShotDamageMultiplier > 1) add("next_shot", null, null, { multiplier: ship.effects.nextShotDamageMultiplier });
+      if (ship.effects.nextShotDamageMultiplier > 1) add("next_shot", null, null, { multiplier: ship.effects.nextShotDamageMultiplier });
     }],
     [60, (ship, { timed }) => {
-    timed("stun", ship.effects.stunnedUntil, CHARACTER_DEFS.koizumi.subSkill.stunDuration);
-    timed("silence", ship.effects.silencedUntil, CHARACTER_DEFS.koizumi.subSkill.silenceDuration);
+      timed("stun", ship.effects.stunnedUntil, CHARACTER_DEFS.koizumi.subSkill.stunDuration);
+      timed("silence", ship.effects.silencedUntil, CHARACTER_DEFS.koizumi.subSkill.silenceDuration);
     }],
     [80, (ship, { timed }) => {
-    timed("collision_slow", ship.collisionSlowUntil, COLLISION_SLOW_DURATION);
-    if (ship.forcedKnockback) {
-      const { startedAt, endsAt } = ship.forcedKnockback;
-      timed("knockback", endsAt, endsAt - startedAt);
-    }
+      timed("collision_slow", ship.collisionSlowUntil, COLLISION_SLOW_DURATION);
+      if (ship.forcedKnockback) {
+        const { startedAt, endsAt } = ship.forcedKnockback;
+        timed("knockback", endsAt, endsAt - startedAt);
+      }
     }]
   ],
   queries: {

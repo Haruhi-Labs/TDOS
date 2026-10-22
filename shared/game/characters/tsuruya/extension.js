@@ -3,8 +3,8 @@ import { createTeamSponsor } from "./sponsor-port.js";
 export default {
   statusEffects: [
     [100, (ship, { timed }) => {
-    const team = ship.team;
-    timed("sponsor", team.effects.sponsorUntil, CHARACTER_DEFS.tsuruya.flagshipSkill.duration);
+      const team = ship.team;
+      timed("sponsor", team.effects.sponsorUntil, CHARACTER_DEFS.tsuruya.flagshipSkill.duration);
     }]
   ],
   activeSkills: {

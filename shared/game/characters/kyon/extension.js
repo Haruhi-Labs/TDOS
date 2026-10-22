@@ -3,11 +3,11 @@ export default {
   positiveTimedEffects: ["reliableUntil"],
   statusEffects: [
     [10, (ship, { timed }) => {
-    timed("reliable", ship.effects.reliableUntil, CHARACTER_DEFS.kyon.subSkill.duration);
+      timed("reliable", ship.effects.reliableUntil, CHARACTER_DEFS.kyon.subSkill.duration);
     }],
     [120, (ship, { add }) => {
-    const team = ship.team;
-    if (team.hasKyonFlagship()) add("kyon_maneuver");
+      const team = ship.team;
+      if (team.hasKyonFlagship()) add("kyon_maneuver");
     }]
   ],
   activeSkills: {
