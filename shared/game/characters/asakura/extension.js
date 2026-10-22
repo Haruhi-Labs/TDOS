@@ -4,6 +4,11 @@ import { resolveVisionWavePurges } from "../../systems/vision-wave-purge.js";
 import { resolveBladeQueenContacts } from "../interactions/character-contacts.js";
 export default {
   positiveTimedEffects: ["bladeQueenUntil"],
+  timedAttributes: [[20, { until: "bladeQueenUntil", multipliers: {
+    speed: CHARACTER_DEFS.asakura.subSkill.speedMultiplier,
+    accel: CHARACTER_DEFS.asakura.subSkill.accelerationMultiplier,
+    turnRate: CHARACTER_DEFS.asakura.subSkill.turnMultiplier,
+  } }]],
   statusEffects: [
     [20, (ship, { timed }) => {
       timed("blade_queen", ship.effects.bladeQueenUntil, CHARACTER_DEFS.asakura.subSkill.duration);

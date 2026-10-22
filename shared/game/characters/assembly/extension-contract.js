@@ -1,5 +1,6 @@
 /**
  * 声明是普通对象，不持有可写世界状态；仅填写实际需要的扩展点。
+ * timedAttributes: [[顺序, {until: 截止字段, multipliers: 属性倍率表}]]，仅数据。
  * statusEffects: [[顺序, (ship, {add, timed}) => void]]，只读投影。
  * ship.hooks / createTeam().hooks: [[顺序, 函数]]，消费语义见 ship-effects.js。
  * createBattle().operations: {名称: {phases: {阶段: 顺序}, run(dt)}}。
@@ -30,6 +31,22 @@ export function compileHooks(parts, allowed) {
     },
     reduce(name, value, ...args) { for (const { run } of hooks[name]) value = run(value, ...args); return value; },
   });
+}
+
+// 普通定时属性只声明数据；在既有定时增益阶段按明确顺序相乘，不执行角色回调。
+export function compileTimedAttributes(extensions) {
+  const entries = extensions.flatMap((extension) => extension.timedAttributes || []);
+  const orders = new Set();
+  const keys = new Set(["speed", "turnRate", "accel", "range", "vision", "damage", "fireRate"]);
+  return Object.freeze(entries.map(([order, { until, multipliers }]) => {
+    if (!Number.isFinite(order) || orders.has(order)) throw new Error("定时属性顺序冲突");
+    orders.add(order);
+    if (typeof until !== "string" || !until || !multipliers || typeof multipliers !== "object") throw new Error("定时属性需要截止字段与倍率表");
+    for (const [key, value] of Object.entries(multipliers)) {
+      if (!keys.has(key) || !Number.isFinite(value) || value <= 0) throw new Error(`无效的定时属性倍率：${key}`);
+    }
+    return Object.freeze({ order, until, multipliers: Object.freeze({ ...multipliers }) });
+  }).sort((a, b) => a.order - b.order));
 }
 
 export function composeCapabilities(parts) {

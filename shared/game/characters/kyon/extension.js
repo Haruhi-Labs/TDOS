@@ -1,6 +1,7 @@
 import { CHARACTER_DEFS } from "../catalog.js";
 export default {
   positiveTimedEffects: ["reliableUntil"],
+  timedAttributes: [[10, { until: "reliableUntil", multipliers: { turnRate: 1.28, speed: 1.08, damage: 1.08, accel: 1.12 } }]],
   statusEffects: [
     [10, (ship, { timed }) => {
       timed("reliable", ship.effects.reliableUntil, CHARACTER_DEFS.kyon.subSkill.duration);

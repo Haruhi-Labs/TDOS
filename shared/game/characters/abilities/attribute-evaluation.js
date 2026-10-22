@@ -8,13 +8,9 @@ import { bunnyStatMultiplier, bunnyDamageTakenMultiplier, isBunnyDamageImmune, i
 const active = (facts, key) => Number(facts.effects[key] || 0) > facts.now;
 
 // 乘法顺序属于行为契约；每个求值只消费事实，不回调 Ship、Team 或世界查询。
-export function evaluateAttribute(facts, key, base) {
+export function evaluateAttribute(facts, key, base, timedAttributes) {
   let value = base;
-  if (active(facts, "reliableUntil")) value *= ({ turnRate: 1.28, speed: 1.08, damage: 1.08, accel: 1.12 })[key] || 1;
-  if (active(facts, "bladeQueenUntil")) {
-    const meta = CHARACTER_DEFS.asakura.subSkill;
-    value *= ({ speed: meta.speedMultiplier, accel: meta.accelerationMultiplier, turnRate: meta.turnMultiplier })[key] || 1;
-  }
+  for (const modifier of timedAttributes) if (active(facts, modifier.until)) value *= modifier.multipliers[key] || 1;
   value *= facts.futureEnabled && ["speed", "fireRate"].includes(key) ? facts.futureForm[key] : 1;
   value *= facts.haruhiBoost && ["speed", "turnRate", "accel", "range", "vision", "damage", "fireRate"].includes(key) ? HARUHI_BOOST_MULTIPLIER : 1;
   if (facts.form) value *= bunnyStatMultiplier({ form: facts.form, enabled: facts.enabled }, key, facts.now);
@@ -58,8 +54,8 @@ export function evaluateFlightSpeed(facts, memberSpeeds, immune = facts.orbActiv
   return facts.stage && !immune ? speed * bunnyStageSpeedFactor(facts.stage, facts.now, facts.stageEnabled) : speed;
 }
 
-export function evaluateMinimumSpeed(facts) {
+export function evaluateMinimumSpeed(facts, timedAttributes) {
   if (!active(facts, "bladeQueenUntil")) return 0;
   const meta = CHARACTER_DEFS.asakura.subSkill;
-  return Math.max(facts.base.speed * meta.speedMultiplier, evaluateAttribute(facts, "speed", facts.base.speed)) * throttleForGear(meta.minimumGear);
+  return Math.max(facts.base.speed * meta.speedMultiplier, evaluateAttribute(facts, "speed", facts.base.speed, timedAttributes)) * throttleForGear(meta.minimumGear);
 }

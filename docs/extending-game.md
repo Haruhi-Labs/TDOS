@@ -8,7 +8,7 @@
 | --- | --- | --- |
 | 调整已有角色数值 | `shared/game/characters/catalog.js` 或角色配置 | 新状态机、动作或端口 |
 | 新角色使用已有技能能力 | `characters/<角色>/extension.js`、`assembly/registry.js` 与数值目录 | Ship/Team 专属字段、中央角色分支 |
-| 新的普通定时增益 | 角色声明、现有 ShipStatus 操作、属性求值与展示元数据 | 单独计时器、帧末事件队列 |
+| 新的普通定时增益 | 角色声明、现有 ShipStatus 操作与展示元数据 | 单独计时器、帧末事件队列 |
 | 形态、叠层、来源归属、持续行为 | 角色目录内明确的状态所有者；需要实体交互时加适配 | 空的 runtime/port/projection 三件套 |
 | 新 AI 技能判断 | `ai/policy/characters/`；缺事实时扩展观测桥 | 向策略提供 Ship/Team 或写入模拟的后门 |
 | 新开局配置或胜负条件 | `runtime/battle-mode.js` | 新版 MatchSimulation、复制帧推进循环 |
@@ -31,12 +31,13 @@
 
 ## 新增效果：时间、规则与展示分别接入
 
-普通定时效果可以复用 `ShipStatus` 的截止时刻和生效帧。例如下面仅说明“可净化定时标记”的接入，不会自动产生属性加成：
+普通定时效果可以复用 `ShipStatus` 的截止时刻和生效帧。例如下面声明一种可净化的定时增益，同时提供属性倍率与状态卡：
 
 ```js
 export default {
   id: "new_character",
   positiveTimedEffects: ["newSignalUntil"],
+  timedAttributes: [[30, { until: "newSignalUntil", multipliers: { damage: 1.25 } }]],
   activeSkills: {
     sub(port, meta) {
       port.activateEffect("newSignalUntil", meta.duration);
@@ -52,7 +53,7 @@ export default {
 角色数值、状态元数据和翻译必须与示例同时补齐；实际代码中的持续时间读取角色数值定义，不重复维护 `8`。顺序 `170` 只是当前已有状态组之后的示意位置，接入时检查现有声明并选择语义正确的位置。编译器会拒绝重复顺序，不能靠注册先后来“碰巧正确”。
 
 - **生命周期**：激活、延长、同帧保护与净化交给所有者。读取状态栏不得顺便清理到期效果。
-- **规则作用**：如果效果改变属性，在 `characters/abilities/attribute-facts.js` 采样所需事实，在 `attribute-evaluation.js` 明确加入计算。该组合点有意集中保留乘法顺序；求值器只拿普通数据，不回调实体或读取世界。定时字段本身不会自动改变伤害或速度。
+- **规则作用**：普通定时倍率使用 `timedAttributes` 的截止字段与数值表，编译时拒绝未知属性、非法倍率和重复顺序。定时倍率阶段按显式顺序计算，再进入形态、队级强化等既有阶段；上例 `30` 必须与已有声明核对。仅新增普通倍率不改中央求值器。需要新的计算类型或事实时，再扩展 `attribute-facts.js` / `attribute-evaluation.js`；求值器仍只消费普通数据，不调用角色函数或读取世界。
 - **展示**：在 `projection/status-effect-definitions.js` 声明图标、文案与类别，通过角色 `statusEffects` 提供资格、截止时刻和参数。公共投影器无需增加角色分支；复杂投影放到角色已有的 `projection.js`。
 - **AI**：需要策略感知时，经 `ai/bridge/observation.js` 提供允许获知的事实；不能从显示快照、隐藏敌情或实体指针绕过观测边界。
 

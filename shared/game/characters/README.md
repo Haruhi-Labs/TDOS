@@ -26,6 +26,8 @@
 
 普通定时增益在声明中填写 `positiveTimedEffects: ["效果截止时间字段"]`，施放时调用现有 `activateEffect`；通用净化组会调用 ShipStatus 的清理操作，并保留同帧保护。复合形态、叠层、来源关系和跨实体事务仍使用专属状态所有者，不强行塞入定时键值表。新字段可以按首次激活创建；ShipStatus 的旧默认键用于保留既有初始读模型，不需要为新效果扩充该默认表。
 
+普通定时属性用 `timedAttributes: [[顺序, { until: "截止字段", multipliers: { damage: 1.25 } }]]` 声明。装配只编译数值表，纯求值器在原定时增益阶段依序消费，再计算形态及队级强化；不加入任意回调链。时间状态仍由 ShipStatus 持有，净化使用 `positiveTimedEffects`，不复制截止时刻。新计算类型仍需明确扩展纯求值契约。
+
 `statusEffects: [[顺序, (ship, { add, timed }) => { … }]]` 只读取权威状态：`add` 描述常驻或明确截止的状态，`timed` 保留既有持续时间算法。元数据在 `projection/status-effect-definitions.js`，翻译与图标属于表现接入。公共投影器不再增加角色判断；复杂投影放在角色已有的 `projection.js`，简单的直接写在声明中。顺序沿用原状态卡排列，新声明不能占用相同顺序。
 
 | 钩子语义 | 消费方式 | 示例 |

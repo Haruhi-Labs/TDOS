@@ -1,7 +1,9 @@
 import { sampleAttributeFacts, sampleControlFacts, sampleImmunityFacts, sampleDamageFacts } from "./attribute-facts.js";
 import { evaluateAttribute, evaluateControl, evaluateDamageImmunity, evaluateDamageTaken, evaluateFlightSpeed, evaluateMinimumSpeed } from "./attribute-evaluation.js";
 import { CHARACTER_EXTENSIONS } from "../assembly/registry.js";
-import { composeCapabilities, compileHooks } from "../assembly/extension-contract.js";
+import { composeCapabilities, compileHooks, compileTimedAttributes } from "../assembly/extension-contract.js";
+
+const timedAttributes = compileTimedAttributes(CHARACTER_EXTENSIONS);
 
 const queries = compileHooks(CHARACTER_EXTENSIONS.map((extension) => ({ hooks: extension.queries })), ["barrierRamProfile", "fireRate", "hullCollision", "broadcast"]);
 
@@ -26,15 +28,15 @@ const sharedRules = Object.freeze({
     return evaluateDamageImmunity(sampleImmunityFacts(ship), ship.isKoizumiOrbActive());
   },
   statWithBuffs(ship, statKey, baseValue) {
-    return evaluateAttribute(sampleAttributeFacts(ship), statKey, baseValue);
+    return evaluateAttribute(sampleAttributeFacts(ship), statKey, baseValue, timedAttributes);
   },
   effectiveSpeed(ship) {
     const speeds = ship.team.fleetMembersForShip(ship).map((member) =>
-      evaluateAttribute(sampleAttributeFacts(member), "speed", member.base.speed));
+      evaluateAttribute(sampleAttributeFacts(member), "speed", member.base.speed, timedAttributes));
     return evaluateFlightSpeed(sampleControlFacts(ship), speeds, ship.isControlImmune());
   },
   minimumFlightSpeed(ship) {
-    return evaluateMinimumSpeed(sampleAttributeFacts(ship));
+    return evaluateMinimumSpeed(sampleAttributeFacts(ship), timedAttributes);
   },
   damageTakenMultiplier(ship) {
     return evaluateDamageTaken(sampleDamageFacts(ship));
