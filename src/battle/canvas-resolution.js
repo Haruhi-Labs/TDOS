@@ -1,4 +1,4 @@
-import { DEFAULT_WORLD_SIZE } from "../../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE } from "../../shared/game/foundation/constants.js";
 
 // 显示分辨率与逻辑世界分离；仅受实际渲染后端的硬件尺寸上限约束。
 export function canvasBackingSize(cssSize, pixelRatio, maxDimension = Infinity) {

@@ -1,5 +1,6 @@
 import { BUNNY_MESSAGES } from "./bunny-haruhi-text.js";
 export const JA_MESSAGES = {
+  "已按本局规则完成结算": "この対戦のルールに基づいて結果が確定しました。",
   ...BUNNY_MESSAGES.ja,
   "比赛房间": "大会ルーム",
   "创建比赛房间": "大会ルームを作成",

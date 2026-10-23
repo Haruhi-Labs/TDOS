@@ -1,6 +1,6 @@
 // 角色针对性战术：威胁优先级、古泉能量圈的攻防编组与定向技能预判。只消费观测与情报记忆。
-import { CHARACTER_DEFS, skillMetaForCharacter } from "../../../characters.js";
-import { clamp, distance } from "../../../math.js";
+import { CHARACTER_DEFS, skillMetaForCharacter } from "../../../characters/catalog.js";
+import { clamp, distance } from "../../../foundation/math.js";
 
 export const KOIZUMI_BARRIER_INTEL_MAX_AGE = 8;
 

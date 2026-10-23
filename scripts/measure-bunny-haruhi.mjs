@@ -1,6 +1,8 @@
+import { installBalanceScenario, observeHullTransactions } from "./core-tests/balance-scenario-driver.mjs";
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 // 离线验收：只在内存模拟和 bench 输出，不连接游戏、身份或统计服务。
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync, mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, writeFileSync, mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir, cpus } from "node:os";
 import { resolve, join, dirname } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
@@ -8,11 +10,12 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import { withSeededRandom } from "./core-tests/helpers.mjs";
-import { BUNNY_HARUHI_CONFIG as C } from "../shared/game/bunny-haruhi-config.js";
-import { DAMAGE_KIND } from "../shared/game/damage.js";
+import { BUNNY_HARUHI_CONFIG as C } from "../shared/game/characters/bunny-haruhi/config.js";
+import { DAMAGE_KIND } from "../shared/game/rules/damage.js";
 
 const root = resolve(import.meta.dirname, "..");
-const output = resolve(root, "bench/bunny-haruhi-acceptance");
+// 可指定隔离的验收输出目录，避免局部复测覆盖已归档证据。
+const output = resolve(root, process.argv.find((arg) => arg.startsWith("--output-dir="))?.slice("--output-dir=".length) || "bench/bunny-haruhi-acceptance");
 const quantile = (values, p) => [...values].sort((a, b) => a - b)[Math.floor((values.length - 1) * p)];
 const fixed = (number) => Math.round(number * 10000) / 10000;
 const loadout = (main = "kyon", sub1 = "bunny_haruhi", sub2 = "yuki") => ({ main, sub1, sub2 });
@@ -26,20 +29,28 @@ const oldLoadout = (value) => {
 
 async function measureWorker(moduleRoot, worst) {
   const core = await import(pathToFileURL(join(moduleRoot, "shared/game-core.js")));
+  // 旧版普通阵容基线早于支援模块抽取，只有压力场景需要这项装配能力。
+  const supportModule = worst
+    ? (await import(pathToFileURL(join(moduleRoot, existsSync(join(moduleRoot, "shared/game/characters/haruhi/support.js"))
+      ? "shared/game/characters/haruhi/support.js" : "shared/game/haruhi-support.js")))) : null;
   return withSeededRandom(20261003, () => {
     core.__resetEntityIds(1);
     const roster = worst ? loadout("haruhi", C.characterId, "asakura") : loadout("haruhi", "koizumi", "asakura");
     const sim = new core.MatchSimulation({ mode: "pvp", aiSeats: ["A", "B"], teamLoadouts: { A: roster, B: roster } });
     if (worst) for (const team of [sim.teamA, sim.teamB]) {
-      team.splitLevel = 2;
+      // 旧 Git 基线尚无组件命令；兼容仅限此离线对照夹具。
+      if (typeof team.configureFormation === "function") team.configureFormation(2);
+      else team.splitLevel = 2;
       // 压力夹具从双方已解锁全部支援与伴随舰开始，不改变实战的施放规则。
       for (let i = 0; i < 4; i++) {
-        team.cooldowns.sub1 = 0;
+        if (typeof team.startCooldown === "function") team.startCooldown("sub1", 0);
+        else team.cooldowns.sub1 = 0;
         assert.equal(team.castSubSkill("sub1"), true);
       }
-      for (const id of ["alien", "time_traveler", "otherworlder", "esper"]) team.haruhiFlagship.supporters.add(id);
-      team.haruhiFlagship.alienNextAt = 1;
-      team.haruhiFlagship.timeTravelerNextAt = 1;
+      // 用相同解锁操作构造已运行中的日程，保持原压力夹具首次发射在第 1 秒。
+      for (const [id, unlockedAt] of [["alien", -5], ["time_traveler", -9], ["otherworlder", 0], ["esper", 0]]) {
+        supportModule.unlockSupport(supportModule.readSupportState ? team : team.haruhiFlagship, [id], unlockedAt, () => 0);
+      }
     }
     const samples = [];
     let maxBytes = 0;
@@ -123,19 +134,18 @@ if (process.argv[2] === "--worker") {
           const opponent = scenario.opponent || loadout("kyon", "tsuruya", "asakura");
           const sim = new core.MatchSimulation({ mode: "pvp", aiSeats: ["A", "B"], aiDifficulty: "master", teamLoadouts: { [seat]: roster, [enemySeat]: opponent } });
           const own = seat === "A" ? sim.teamA : sim.teamB;
-          const bot = sim.bots[seat];
           let opening = null;
           if (scenario.prepared) {
             const originals = [];
             // 对局经 aiRunners 驱动 AI；准备期用对局自带的开关暂停双方 AI。
             for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, false);
             for (const team of [sim.teamA, sim.teamB]) {
-              sim.combatEnabled[team.seat] = false;
-              team.splitLevel = 2;
+              sim.setCombatEnabled(team.seat, false);
+              team.configureFormation(2);
               for (const unit of team.getAllShips()) {
                 originals.push([unit, unit.takeDamage]);
                 unit.takeDamage = () => {};
-                unit.throttle = unit.speed = 0;
+                setScenarioField(unit, 'throttle', setScenarioField(unit, 'speed', 0));
               }
             }
             let casts = 0;
@@ -148,67 +158,38 @@ if (process.argv[2] === "--worker") {
             for (const [unit, method] of originals) unit.takeDamage = method;
             for (const aiSeat of ["A", "B"]) sim.setAiEnabled(aiSeat, true);
             for (const team of [sim.teamA, sim.teamB]) {
-              sim.combatEnabled[team.seat] = true;
+              sim.setCombatEnabled(team.seat, true);
               if (scenario.bribe) team.getAllShips().forEach((unit, index) => {
-                unit.x = team === own ? 650 : 780;
-                unit.y = 620 + index * 30;
-                unit.command = { x: unit.x, y: unit.y };
+                setScenarioField(unit, 'x', team === own ? 650 : 780);
+                setScenarioField(unit, 'y', 620 + index * 30);
+                unit.followTarget({ x: unit.x, y: unit.y });
               });
             }
             opening = { preparationSeconds: sim.elapsed, hp: own.ships.sub1.hp, energy: own.ships.sub1.energy,
               form: own.ships.sub1.bunnyHaruhi?.form || null, note: "准备期双方停战且不承受外部伤害；资源支付与CD不跳过。正式统计从这里开始；策反场景双方位于中央战区。" };
           }
-          const originalCast = bot.shouldCastSubSkill.bind(bot);
-          let policyDecisions = 0;
-          if (scenario.policy && variant === "new") bot.shouldCastSubSkill = (ship, estimate, context) => {
-            // AI 传入的是观测数据；场景策略需要的成功施放次数只在权威状态里，按舰位取回实时舰船。
-            const state = own.ships[ship.key]?.bunnyHaruhi;
-            if (!state) return originalCast(ship, estimate, context);
-            policyDecisions++;
-            if (scenario.policy === "bless") return state.successfulCasts === 0;
-            if (scenario.policy === "encore") return state.successfulCasts < 4;
-            if (scenario.policy === "defense") return state.form === "bless" ? ship.hp / ship.maxHp < 0.48 : originalCast(ship, estimate, context);
-            return true;
-          };
-          if (scenario.route) {
-            const enemyBot = sim.bots[enemySeat];
-            const issue = enemyBot.issueShipRoute.bind(enemyBot);
-            enemyBot.issueShipRoute = (ship, x, y, throttle, padding) => {
-              const contact = enemyBot.currentContext?.focus;
-              if (contact && contact.source !== "spawn" && (contact.visible || contact.age <= 3)) {
-                const angle = Math.atan2(ship.y - contact.y, ship.x - contact.x) + (scenario.route === "kite" ? 0.4 : 0);
-                const radius = scenario.route === "kite" ? C.baseStats.vision + 80 : C.baseStats.vision + (Math.floor(sim.elapsed / 4) % 2 ? 60 : -50);
-                x = contact.x + Math.cos(angle) * radius;
-                y = contact.y + Math.sin(angle) * radius;
-              }
-              return issue(ship, x, y, throttle, padding);
-            };
-          }
+          const scenarioDriver = installBalanceScenario(sim, seat, scenario, variant);
           const metrics = { formSeconds: { neutral: 0, bless: 0, knows: 0, encore: 0 }, casts: 0, companionSeconds: 0, conversions: 0, entrances: 0,
             firstStageHeal: 0, stageHeal: 0, companionHeal: 0, encoreHeal: 0, otherHeal: 0, transformCost: 0, selfDrain: 0,
             supportBeamDamage: 0, supportImpactDamage: 0, companionDamage: { A: 0, B: 0 }, beamLaunches: 0, flagshipCasts: { A: 0, B: 0 } };
-          // 仅离线收集器拦截实际HP写入，计实际到账量（含满血截断），不改规则/公开快照。
+          // 仅离线收集器观察领域操作前后HP，计实际到账量（含满血截断），不改规则/公开快照。
           const observed = new Set();
           const observe = (unit) => {
             if (observed.has(unit.id)) return;
             observed.add(unit.id);
-            let hp = unit.hp;
-            Object.defineProperty(unit, "hp", { enumerable: true, configurable: true, get: () => hp, set(value) {
-              const delta = value - hp;
-              hp = value;
-              if (!delta) return;
-              const stack = new Error().stack;
+            observeHullTransactions(unit, (delta, stack) => {
               if (delta > 0) {
                 const key = stack.includes("resolveBunnyStages") ? "firstStageHeal" : stack.includes("advanceBunnyRules") ? "stageHeal"
                   : stack.includes("prepareBunnyCompanions") ? "companionHeal" : stack.includes("commitBunnyTransform") ? "encoreHeal" : "otherHeal";
                 metrics[key] += delta;
               } else if (stack.includes("commitBunnyTransform")) metrics.transformCost -= delta;
               else if (stack.includes("advanceBunnyRules")) metrics.selfDrain -= delta;
-            } });
+            });
           };
           for (const team of [sim.teamA, sim.teamB]) {
-            const spawn = team.spawnBunnyCompanion.bind(team);
-            team.spawnBunnyCompanion = (...args) => { const result = spawn(...args); team.extraShips.forEach(observe); return result; };
+            const publish = team.addAuxiliaryShip.bind(team);
+            // 只观察集合所有者的发布，不重新挂回已移除的角色生成入口。
+            team.addAuxiliaryShip = (ship) => { const result = publish(ship); observe(ship); return result; };
             const beam = team.launchHaruhiRandomBeam.bind(team);
             team.launchHaruhiRandomBeam = (...args) => { metrics.beamLaunches++; return beam(...args); };
             const cast = team.castFlagshipSkill.bind(team);
@@ -254,7 +235,7 @@ if (process.argv[2] === "--worker") {
             }
           }
           if (scenario.policy && variant === "new") {
-            assert.ok(policyDecisions > 0, `${scenario.id} 的场景策略从未被 AI 调用`);
+            assert.ok(scenarioDriver.decisions > 0, `${scenario.id} 的独立场景策略从未执行`);
             if (scenario.policy === "bless") assert.ok(metrics.casts <= 1 && metrics.formSeconds.knows === 0, "停留bless的场景不得继续变身");
             if (scenario.policy === "encore") assert.ok(metrics.casts <= 4, "冲encore后停留的场景不得超过四次施放");
           }
@@ -269,8 +250,8 @@ if (process.argv[2] === "--worker") {
       return [variant, { n: rows.length, wins: rows.filter((r) => r.won).length, timeouts: rows.filter((r) => r.timedOut).length,
         winRate: fixed(rows.filter((r) => r.won).length / rows.length), meanDuration: fixed(rows.reduce((n, r) => n + r.duration, 0) / rows.length) }];
     })) }));
-    writeFileSync(join(output, only ? `balance-${only.join("_")}.json` : "balance.json"), JSON.stringify({ seeds: [410, 7919, 20261], limitSeconds: 180, summary, results,
-      note: "每场景3种子×双方换边×新旧阵容；两个prepared条件开局与自然开局分开报告，不合并胜率。超时单列，不用剩余血量伪造胜负。形态秒数仅存活时累计；治疗/自损记录实际HP写入，支援伤害含双方春日来源，伴随舰伤害按当前阵营。无吸弹伤害折算。未出现的事件不能算覆盖。小样本不证明平衡。" }, null, 2));
+    writeFileSync(join(output, only ? `balance-${only.join("_")}.json` : "balance.json"), JSON.stringify({ scenarioDriverVersion: 2, seeds: [410, 7919, 20261], limitSeconds: 180, summary, results,
+      note: "条件策略独立调度并在正式策略之后提交，路线在数据端口改写；与旧版方法覆写采样不可直接对比。每场景3种子×双方换边×新旧阵容；两个prepared条件开局与自然开局分开报告，不合并胜率。超时单列，不用剩余血量伪造胜负。形态秒数仅存活时累计；治疗/自损记录领域事务实际到账差额，支援伤害含双方春日来源，伴随舰伤害按当前阵营。无吸弹伤害折算。未出现的事件不能算覆盖。小样本不证明平衡。" }, null, 2));
     console.log(JSON.stringify(summary));
   }
 }

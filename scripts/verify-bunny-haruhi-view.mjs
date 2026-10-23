@@ -10,7 +10,7 @@ import { isShipSelectable } from "../src/battle/ship-selection.js";
 import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 import { createStatePatch, applyStatePatch, quantizeNetworkState } from "../shared/network-patch.js";
 import { BUNNY_MESSAGES } from "../src/i18n/bunny-haruhi-text.js";
-import { STATUS_EFFECT_DEFS } from "../shared/game/status-effect-definitions.js";
+import { STATUS_EFFECT_DEFS } from "../shared/game/projection/status-effect-definitions.js";
 
 const { states } = createBunnyViewFixture();
 const saved = JSON.stringify(states);
@@ -56,8 +56,9 @@ for (const locale of ["en", "ja"]) for (const [id, def] of Object.entries(STATUS
 const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logLevel: "silent", server: { host: "127.0.0.1", port: 0 }, plugins: [{
   name: "bunny-view-fixture",
   transform(code, id) {
-    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, publish(state) { app.paused = true; app.state = state; app.renderState = app.renderPreviousState = app.renderCurrentState = state; app.playerLoadout = state.teams.A.loadout; updateShipSwitchLabels(app.playerLoadout); app.sim.serializeState = () => state; updateUi(); } };`;
-    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; } };`;
+    if (id.endsWith("/src/solo/session.js")) return code.replace("simulation = createSimulation(options);", "simulation = createSimulation(options); globalThis.testSoloSimulation = simulation; globalThis.invalidateSoloSnapshot = () => { dirty = true; };");
+    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, publish(state) { globalThis.invalidateSoloSnapshot(); app.paused = true; app.state = state; app.renderState = state; app.playerLoadout = state.teams.A.loadout; updateShipSwitchLabels(app.playerLoadout); globalThis.testSoloSimulation.serializeState = () => state; updateUi(); } };`;
+    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.bunnyFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
 }] });
@@ -92,7 +93,7 @@ try {
       }
       await page.locator(".cs-launch").click();
       await page.locator("#battleView").waitFor({ state: "visible" });
-      await page.waitForFunction(() => Boolean(window.bunnyFixture.app.sim));
+      await page.waitForFunction(() => Boolean(window.bunnyFixture.simulation));
     } else {
       const wsUrl = "ws://127.0.0.1:65530/bunny-view-fixture";
       await page.routeWebSocket(wsUrl, (ws) => { socket = ws; ws.onMessage((raw) => {
@@ -100,6 +101,8 @@ try {
         if (message.type === "input") resolveInput?.(message);
       }); });
       await page.goto(`${vite.resolvedUrls.local[0]}online?ws=${encodeURIComponent(wsUrl)}`, { waitUntil: "networkidle" });
+      // 动态页面模块装配完夹具后再模拟握手，避免网络空闲早于模块初始化。
+      await page.waitForFunction(() => Boolean(window.bunnyFixture?.timeline));
       socket.send(JSON.stringify({ type: "connected", playerId: "view-test", rulesetVersion: RULESET_VERSION, tickRate: 30, snapshotRate: mode === "spectator" ? 7.5 : 15, protocolVersion: 2 }));
       socket.send(JSON.stringify({ type: "room_state", room: { roomId: "bunny-view", status: "running", mode: "pvp", players: ["A", "B"].map((seat) => ({ seat, name: seat, loadout: states.encore.teams[seat].loadout })) }, self: { seat: mode === "spectator" ? null : "A", spectating: mode === "spectator", loadout: states.encore.teams.A.loadout } }));
     }
@@ -109,7 +112,7 @@ try {
         for (let i = 0; i < 2; i += 1) {
           sequence++;
           socket.send(JSON.stringify({ type: "snapshot", roomId: "bunny-view", snapshotSeq: sequence, tick: sequence, state }));
-          await page.waitForFunction((seq) => window.bunnyFixture.app.latestSnapshot?.snapshotSeq === seq, sequence);
+          await page.waitForFunction((seq) => window.bunnyFixture?.timeline?.latestSnapshot?.snapshotSeq === seq, sequence);
           if (!i) await page.waitForTimeout(120);
         }
       }
@@ -183,7 +186,9 @@ try {
       for (const source of await page.locator("#resultVersus img").evaluateAll((images) => images.map((image) => image.src))) {
         assert.ok(!source.includes("bunny_haruhi"), "单人、联机与观战终局都必须复用原皮素材");
       }
-      assert.ok((await page.locator("#resultVersus").innerText()).includes(locale === "zh-CN" ? "兔女郎春日" : locale === "en-US" ? "Bunny Haruhi" : "バニーハルヒ"));
+      const resultText = await page.locator("#resultVersus").innerText();
+      const expectedName = locale === "zh-CN" ? "兔女郎春日" : locale === "en-US" ? "Bunny Haruhi" : "バニーハルヒ";
+      assert.ok(resultText.includes(expectedName), `${mode}/${locale}/${mobile ? "移动端" : "桌面"}结算缺少${expectedName}：${JSON.stringify(resultText)}`);
       if (screenshots && locale === "zh-CN") await page.screenshot({ path: join(screenshots, `result-${mode}-${mobile ? "mobile" : "desktop"}.png`) });
     }
     assert.deepEqual(missingAssets, [], "占位美术不得产生404");

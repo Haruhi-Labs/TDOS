@@ -7,10 +7,10 @@ export default {
   flagship: {
     purgeableBuff: true,
     // 视野波：能在敌方可见增益到期前净化它，或隐藏敌舰附近有值得一扫的线索时施放。
-    shouldCast(policy, { K, estimate, context, dist }) {
-      const now = policy.obs.time;
-      const visibleShips = policy.obs.enemy.visible.filter((entity) => entity.kind === "ship");
-      const teamBuffs = policy.obs.enemy.visibleTeamBuffs;
+    shouldCast(facts, { K, estimate, context, dist }) {
+      const now = facts.obs.time;
+      const visibleShips = facts.obs.enemy.visible.filter((entity) => entity.kind === "ship");
+      const teamBuffs = facts.obs.enemy.visibleTeamBuffs;
       let visibleBuffRemaining = 0;
       if (visibleShips.length > 0) {
         visibleBuffRemaining = Math.max(
@@ -31,19 +31,19 @@ export default {
 
       const waveArrivalSeconds = dist / K.asakuraWaveSpeed;
       const canPurgeBeforeExpiry = visibleBuffRemaining > waveArrivalSeconds + K.asakuraPurgeMargin;
-      const hasHiddenEnemyShip = policy.obs.privileged.hasHiddenEnemyShip;
+      const hasHiddenEnemyShip = facts.obs.privileged.hasHiddenEnemyShip;
       const usefulSearchPulse = hasHiddenEnemyShip && Boolean(
         estimate.source === "radar"
         || (!estimate.visible && estimate.source !== "spawn" && estimate.age <= K.asakuraSearchAge)
         || context?.trackableIntel
-        || (policy.mode === "search" && (context?.searchRequired || context?.intelUrgency > K.asakuraSearchUrgency)),
+        || (facts.mode === "search" && (context?.searchRequired || context?.intelUrgency > K.asakuraSearchUrgency)),
       );
       return canPurgeBeforeExpiry || usefulSearchPulse;
     },
   },
   sub: {
     purgeableBuff: true,
-    shouldCast(policy, { K, ship, estimate, context, dist, assignedToBreach, breachDistance }) {
+    shouldCast(facts, { K, ship, estimate, context, dist, assignedToBreach, breachDistance }) {
       if (assignedToBreach) {
         return Boolean(
           estimate

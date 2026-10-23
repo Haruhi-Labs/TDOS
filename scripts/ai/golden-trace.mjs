@@ -1,3 +1,6 @@
+import { setScenarioField } from '../core-tests/ship-fixture.mjs';
+import { observeEnemyEntity } from "../../shared/game/ai/bridge/observation.js";
+import { unlockSupport } from "../../shared/game/characters/haruhi/support.js";
 // AI 重构期的黄金轨迹工具：在固定随机序列下逐帧记录对局摘要，用于证明重构前后行为一致。
 // 基线对任何规则改动都敏感，只作为本地门禁使用，不加入 test:all。
 //
@@ -7,7 +10,6 @@
 //   node scripts/ai/golden-trace.mjs --dump=<名称>:<tick>   输出该场景运行到指定 tick 后的完整状态
 //   node scripts/ai/golden-trace.mjs --perf                记录 tick 耗时基线
 //   node scripts/ai/golden-trace.mjs --strict-observation  观测经 JSON 往返后再交给 AI，结果仍须与基线一致
-//   node scripts/ai/golden-trace.mjs --action-mode=direct|dispatch  指定 AI 动作执行路径，并在分歧时给出权限校验拒绝的归因
 //   --baseline=<路径>  指定基线文件；--out=<路径>  指定录制或耗时输出文件；--force  忽略环境不符
 import { createHash } from "node:crypto";
 import { execSync } from "node:child_process";
@@ -30,13 +32,12 @@ const WORLD_SIZE = 1440;
 const CHECKPOINT_TICKS = 30;
 
 function parseArgs(argv) {
-  const args = { record: false, perf: false, force: false, strictObservation: false, actionMode: null, scenario: null, dump: null, baseline: null, out: null };
+  const args = { record: false, perf: false, force: false, strictObservation: false, scenario: null, dump: null, baseline: null, out: null };
   for (const item of argv) {
     if (item === "--record") args.record = true;
     else if (item === "--perf") args.perf = true;
     else if (item === "--force") args.force = true;
     else if (item === "--strict-observation") args.strictObservation = true;
-    else if (item.startsWith("--action-mode=")) args.actionMode = item.slice("--action-mode=".length);
     else if (item.startsWith("--scenario=")) args.scenario = item.slice("--scenario=".length);
     else if (item.startsWith("--dump=")) args.dump = item.slice("--dump=".length);
     else if (item.startsWith("--baseline=")) args.baseline = item.slice("--baseline=".length);
@@ -75,11 +76,11 @@ function loadoutAt(index) {
 }
 
 function holdShip(ship, x, y, angle = null) {
-  ship.x = x;
-  ship.y = y;
-  if (angle !== null) ship.angle = angle;
-  ship.command = { x, y };
-  ship.route = null;
+  setScenarioField(ship, 'x', x);
+  setScenarioField(ship, 'y', y);
+  if (angle !== null) setScenarioField(ship, 'angle', angle);
+  ship.followTarget({ x, y });
+  ship.clearRoute();
 }
 
 // 与 simulate-ai-battles.mjs 的固定破盾布置保持一致。
@@ -106,19 +107,18 @@ function buildBarrierBreach(breakerKind) {
   const breaker = isHaruhi ? attackingTeam.ships.main : attackingTeam.ships.sub1;
   if (!isHaruhi) attackingTeam.split(1);
   if (isHaruhi) {
-    attackingTeam.haruhiFlagship.supporters.add("otherworlder");
-    attackingTeam.haruhiFlagship.otherworlderReadyAt = simulation.elapsed;
-    bot.flagshipTimer = 999;
+    unlockSupport(attackingTeam, ["otherworlder"], simulation.elapsed, () => 0);
+    bot.scheduleSkillDecision("flagship", 999);
   } else {
-    bot.subTimers.sub1 = 0;
+    bot.scheduleSkillDecision("sub1", 0);
   }
   holdShip(defendingMain, 650, 720);
   holdShip(breaker, 940, 720, Math.PI);
-  breaker.energy = breaker.maxEnergy;
-  attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
-  attackingTeam.ships.main.y = 720;
-  bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  setScenarioField(breaker, 'energy', breaker.maxEnergy);
+  setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
+  setScenarioField(attackingTeam.ships.main, 'y', 720);
+  bot.scheduleDecision("movement", 0);
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;
 }
 
@@ -138,8 +138,8 @@ function buildBarrierInfiltration() {
   const bot = simulation.botBySeat("B");
   holdShip(defendingMain, 650, 720);
   holdShip(simulation.teamB.ships.main, 930, 720, Math.PI);
-  bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  bot.scheduleDecision("movement", 0);
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
   return simulation;
 }
 
@@ -266,8 +266,7 @@ function buildScenarios() {
       // 强制模式（搜索、脱离边缘等）会改写 mode，因此每帧重新钉住。
       beforeTick: (simulation) => {
         for (const bot of Object.values(simulation.bots)) {
-          bot.mode = mode;
-          bot.modeTimer = 1e9;
+          bot.pinMode(mode, 1e9);
         }
       },
     });
@@ -314,16 +313,13 @@ function checkpoint(simulation, random) {
   };
 }
 
-function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false, actionMode = null } = {}) {
+function runScenario(scenario, { dumpTick = null, digest = true, timings = null, strictObservation = false } = {}) {
   const originalRandom = Math.random;
   const random = seededRandom(scenario.seed);
   __resetEntityIds(1);
   Math.random = random;
   try {
     const simulation = scenario.build();
-    if (actionMode) {
-      for (const runner of Object.values(simulation.aiRunners)) runner.port.mode = actionMode;
-    }
     if (strictObservation) {
       for (const bot of Object.values(simulation.bots)) bot.strictObservation = true;
     }
@@ -468,7 +464,7 @@ if (args.dump) {
     checkpointTicks: CHECKPOINT_TICKS,
     environment: environment(),
     scenarios: scenarios.map((scenario) => {
-      const { permissionRejections, ...recorded } = runScenario(scenario, { actionMode: args.actionMode });
+      const { permissionRejections, ...recorded } = runScenario(scenario, {});
       return recorded;
     }),
   };
@@ -502,7 +498,7 @@ if (args.dump) {
       failures.push(`${scenario.name}：基线中没有该场景`);
       continue;
     }
-    const actual = runScenario(scenario, { strictObservation: args.strictObservation, actionMode: args.actionMode });
+    const actual = runScenario(scenario, { strictObservation: args.strictObservation });
     const difference = compareScenario(expected, actual);
     const rejected = Object.values(actual.permissionRejections).filter((item) => item.count > 0);
     const rejectionNote = rejected.length > 0
@@ -510,7 +506,7 @@ if (args.dump) {
         + `（其中禁控 ${rejected.reduce((sum, item) => sum + item.controlLocked, 0)} 次，首次在第 ${Math.min(...rejected.map((item) => item.firstTick))} tick）`
       : "";
     if (difference) failures.push(`${scenario.name}：${difference}${rejectionNote}`);
-    else if (rejectionNote && args.actionMode) console.log(`${scenario.name}：与基线一致${rejectionNote}`);
+    else if (rejectionNote) console.log(`${scenario.name}：与基线一致${rejectionNote}`);
   }
   const elapsedSeconds = ((performance.now() - startedAt) / 1000).toFixed(1);
   if (failures.length > 0) {

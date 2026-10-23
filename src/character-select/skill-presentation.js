@@ -1,12 +1,12 @@
-import { CHARACTER_DEFS, skillMetaForCharacter } from "../../shared/game/characters.js";
-import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/koizumi-barrier.js";
-import { HARUHI_BOOST_MULTIPLIER, HARUHI_DAMAGE_TAKEN_MULTIPLIER, HARUHI_ALIEN_INTERVAL, HARUHI_TIME_TRAVELER_INTERVAL, HARUHI_TIME_TRAVELER_BEAM_GAP, HARUHI_OTHERWORLDER_COOLDOWN, HARUHI_OTHERWORLDER_DAMAGE_RATIO } from "../../shared/game/haruhi-flagship.js";
-import { HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER } from "../../shared/game/haruhi-hero-power.js";
-import { YUKI_RADAR_ROTATION_SECONDS } from "../../shared/game/combat-rules.js";
-import { SHAMISEN_HUNT_DAMAGE_MULTIPLIER } from "../../shared/game/shamisen-hunt.js";
+import { CHARACTER_DEFS, skillMetaForCharacter } from "../../shared/game/characters/catalog.js";
+import { KOIZUMI_BARRIER_DISABLE_SECONDS, KOIZUMI_BARRIER_MAX_HITS } from "../../shared/game/characters/koizumi/barrier.js";
+import { HARUHI_BOOST_MULTIPLIER, HARUHI_DAMAGE_TAKEN_MULTIPLIER, HARUHI_ALIEN_INTERVAL, HARUHI_TIME_TRAVELER_INTERVAL, HARUHI_TIME_TRAVELER_BEAM_GAP, HARUHI_OTHERWORLDER_COOLDOWN, HARUHI_OTHERWORLDER_DAMAGE_RATIO } from "../../shared/game/characters/haruhi/flagship.js";
+import { HARUHI_HERO_POWER_DAMAGE_TAKEN_MULTIPLIER } from "../../shared/game/characters/haruhi/hero-power.js";
+import { YUKI_RADAR_ROTATION_SECONDS } from "../../shared/game/rules/combat-rules.js";
+import { SHAMISEN_HUNT_DAMAGE_MULTIPLIER } from "../../shared/game/characters/shamisen/hunt.js";
 import { skillText, t } from "../i18n.js";
-import { BUNNY_VIEW_PARAMS } from "../../shared/game/bunny-haruhi-view-params.js";
-import { BUNNY_HARUHI_CONFIG as BUNNY } from "../../shared/game/bunny-haruhi-config.js";
+import { BUNNY_VIEW_PARAMS } from "../../shared/game/characters/bunny-haruhi/view-params.js";
+import { BUNNY_HARUHI_CONFIG as BUNNY } from "../../shared/game/characters/bunny-haruhi/config.js";
 
 const number = (value) => String(Math.round(Number(value) * 1000) / 1000);
 const seconds = (value) => t("{value}秒", { value: number(value) });

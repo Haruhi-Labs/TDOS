@@ -1,4 +1,4 @@
-import { normalizeThrottleToGear } from "../../shared/game/throttle.js";
+import { normalizeThrottleToGear } from "../../shared/game/rules/throttle.js";
 
 const DEFAULT_MAX_ACK_HOLD_MS = 1200;
 const THROTTLE_EPSILON = 1e-6;

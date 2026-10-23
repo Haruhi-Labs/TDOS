@@ -45,6 +45,14 @@ const failures = [];
 const files = SOURCE_ROOTS.flatMap(walk);
 const graph = new Map(files.map((file) => [file, []]));
 
+// 战斗根目录只提供导航；新增模块必须选择明确的职责目录。
+for (const file of files) {
+  if (dirname(file) === resolve(ROOT, "shared/game")) {
+    failures.push(`${display(file)} 应按职责放入战斗子目录，不能恢复根目录散放`);
+  }
+}
+
+
 for (const file of files) {
   for (const specifier of importSpecifiers(file)) {
     const target = resolveImport(file, specifier);
@@ -61,8 +69,18 @@ for (const file of files) {
 const leafBoundaries = [
   {
     dir: "shared/game",
-    allowedRoots: ["shared/game", "shared/protocol"],
+    allowedRoots: ["shared/game", "shared/protocol", "shared/data"],
     reason: "共享规则叶模块不得反向依赖总入口、界面或服务端",
+  },
+  {
+    dir: "shared/game/foundation",
+    allowedRoots: ["shared/game/foundation", "shared/data"],
+    reason: "基础工具不得依赖游戏规则、角色、实体或编排",
+  },
+  {
+    dir: "shared/game/rules",
+    allowedRoots: ["shared/game/rules", "shared/game/foundation", "shared/data"],
+    reason: "通用规则不得依赖具体角色、状态所有者或适配器",
   },
   {
     dir: "shared/game/ai/policy",
@@ -70,15 +88,21 @@ const leafBoundaries = [
       "shared/game/ai/policy",
       "shared/game/ai/params",
       "shared/game/ai/actions.js",
-      "shared/game/math.js",
-      "shared/game/characters.js",
-      "shared/game/throttle.js",
-      "shared/game/combat-rules.js",
-      "shared/game/constants.js",
-      "shared/game/bunny-haruhi-config.js",
+      "shared/data",
+      "shared/game/foundation/math.js",
+      "shared/game/characters/catalog.js",
+      "shared/game/rules/throttle.js",
+      "shared/game/rules/combat-rules.js",
+      "shared/game/foundation/constants.js",
+      "shared/game/characters/bunny-haruhi/config.js",
       "shared/protocol",
     ],
     reason: "AI 策略只消费观测数据，不得导入运行时规则模块、观测桥或战斗内核",
+  },
+  {
+    dir: "shared/game/ai/policy/algorithms",
+    allowedRoots: ["shared/game/ai/policy/algorithms", "shared/game/foundation", "shared/game/rules", "shared/game/characters/catalog.js", "shared/data"],
+    reason: "AI 事实算法不得导入策略协调器、状态组件、启发式或动作桥",
   },
   {
     dir: "shared/protocol",
@@ -149,37 +173,107 @@ for (const fileName of ["server/config.js", "server/protocol.js", "server/snapsh
   }
 }
 
+for (const file of walk("shared/game/model")) {
+  for (const specifier of importSpecifiers(file)) {
+    if (display(resolveImport(file, specifier)).startsWith("shared/game/runtime/")) {
+      failures.push(`${display(file)} 不得反向导入对局编排层`);
+    }
+  }
+}
+
+// 舰船推进只消费装配时注入的能力、效果与投影，不再导入具体角色实现。
+for (const fileName of ["shared/game/model/ship.js", "shared/game/model/projectile.js", "shared/game/model/scout.js", "shared/game/model/wingman.js"]) {
+  const allowed = new Set([
+    "shared/game/rules/throttle.js", "shared/game/rules/combat-rules.js", "shared/game/characters/catalog.js",
+    "shared/game/foundation/math.js", "shared/game/foundation/rng.js", "shared/game/rules/damage.js", "shared/game/systems/collision-system.js",
+    "shared/game/model/model-support.js",
+    "shared/data/plain-data.js",
+    "shared/game/systems/ship-navigation.js", "shared/game/adapters/navigation-port.js",
+    "shared/game/systems/ship-status.js", "shared/game/systems/weapon-cycle.js", "shared/game/systems/hull-damage.js", "shared/game/adapters/ship-combat-port.js",
+  ]);
+  for (const specifier of importSpecifiers(resolve(ROOT, fileName))) {
+    const target = display(resolveImport(resolve(ROOT, fileName), specifier));
+    if (!allowed.has(target)) failures.push(`${fileName} 不得直接解释角色组件或角色投影 ${target}`);
+  }
+}
+
+// 编队和胜负资格由能力层解释，舰队与猎杀不能自行绑定某个伴随角色。
+for (const fileName of ["shared/game/model/team.js", "shared/game/characters/shamisen/hunt.js"]) {
+  const file = resolve(ROOT, fileName);
+  if (importSpecifiers(file).some((specifier) => display(resolveImport(file, specifier)) === "shared/game/characters/bunny-haruhi/companion-rules.js")) {
+    failures.push(`${fileName} 应通过能力契约读取参与资格，不得直接导入伴随角色规则`);
+  }
+}
+
+// 通用算法只允许基础工具；角色能力由调用方注入。
+for (const fileName of walk("shared/game/systems").map(display)) {
+  const file = resolve(ROOT, fileName);
+  for (const specifier of importSpecifiers(file)) {
+    const target = display(resolveImport(file, specifier));
+    if (!["shared/game/foundation/math.js", "shared/game/rules/damage.js", "shared/game/rules/throttle.js", "shared/data/plain-data.js"].includes(target)) {
+      failures.push(`${fileName} 不得导入角色实现或状态所有者 ${target}`);
+    }
+  }
+}
+
+// 雷达状态机消费值样本；实体映射和识别提交只能留在角色端口。
+for (const specifier of importSpecifiers(resolve(ROOT, "shared/game/characters/yuki/radar-runtime.js"))) {
+  const target = display(resolveImport(resolve(ROOT, "shared/game/characters/yuki/radar-runtime.js"), specifier));
+  if (!["shared/game/foundation/math.js", "shared/game/rules/combat-rules.js"].includes(target)) {
+    failures.push(`长门雷达运行时不得导入实体、装配器或角色端口 ${target}`);
+  }
+}
+
+// 页面装配可创建对局，表现与联机消费模块只使用静态定义、纯算法及读模型。
+for (const [file, targets] of graph) {
+  if (targets.some((target) => display(target) === "shared/game/runtime/battle-runtime.js")
+    && display(file) !== "shared/game/runtime/match-simulation.js") {
+    failures.push(`${display(file)} 不得绕过权威模拟直接装配带外部时间源的战斗世界`);
+  }
+}
+
+const simulationEntrypoints = new Set(["src/solo/session.js", "src/debug.js", "src/battle/native-webgl-visual-fixture.js"]);
+for (const file of walk("src")) {
+  for (const specifier of importSpecifiers(file)) {
+    const target = display(resolveImport(file, specifier));
+    if ((target === "shared/game-core.js" || target.startsWith("shared/game/model/") || target.startsWith("shared/game/runtime/"))
+      && !simulationEntrypoints.has(display(file))) {
+      failures.push(`${display(file)} 不得依赖权威实体或模拟入口 ${target}`);
+    }
+  }
+}
+
 const requiredLinks = [
-  ["shared/game-core.js", "./game/bot-controller.js"],
-  ["shared/game-core.js", "./game/characters.js"],
-  ["shared/game-core.js", "./game/combat-rules.js"],
-  ["shared/game-core.js", "./game/math.js"],
-  ["shared/game-core.js", "./game/throttle.js"],
-  ["shared/game-core.js", "./game/visibility-radar.js"],
-  ["shared/game-core.js", "./game/vision-wave.js"],
-  ["shared/game-core.js", "./game/targeting-system.js"],
-  ["shared/game-core.js", "./game/action-dispatcher.js"],
-  ["shared/game-core.js", "./game/collision-system.js"],
-  ["shared/game-core.js", "./game/koizumi-barrier.js"],
-  ["shared/game-core.js", "./game/haruhi-hero-power.js"],
-  ["shared/game-core.js", "./game/shamisen-hunt.js"],
-  ["shared/game-core.js", "./game/ai/bridge/runner.js"],
-  ["shared/game/bot-controller.js", "./ai/policy/rule-policy.js"],
+  ["shared/game/runtime/match-simulation.js", "./battle-runtime.js"],
+  ["shared/game/runtime/match-simulation.js", "./simulation-time.js"],
+  ["shared/game-core.js", "./game/ai/bot-controller.js"],
+  ["shared/game-core.js", "./game/characters/catalog.js"],
+  ["shared/game-core.js", "./game/rules/combat-rules.js"],
+  ["shared/game-core.js", "./game/foundation/math.js"],
+  ["shared/game-core.js", "./game/rules/throttle.js"],
+  ["shared/game-core.js", "./game/runtime/match-simulation.js"],
+  ["shared/game/runtime/battle-runtime.js", "../model/team.js"],
+  ["shared/game/runtime/battle-runtime.js", "../ai/bridge/runner.js"],
+  ["shared/game/runtime/battle-runtime.js", "./action-dispatcher.js"],
+  ["shared/game/model/team.js", "../model/ship.js"],
+  ["shared/game/model/team.js", "../systems/targeting-system.js"],
+  ["shared/game/model/team.js", "../adapters/visibility-port.js"],
+  ["shared/game/ai/bot-controller.js", "./policy/rule-policy.js"],
   ["shared/game/ai/bridge/runner.js", "./action-port.js"],
-  ["shared/game/ai/bridge/action-port.js", "../../action-dispatcher.js"],
+  ["shared/game/ai/bridge/action-port.js", "../../runtime/action-dispatcher.js"],
   ["shared/game/ai/bridge/action-port.js", "./observation.js"],
   ["shared/game/ai/policy/rule-policy.js", "../params/index.js"],
-  ["shared/game/ai/policy/context.js", "./tactics/character-counterplay.js"],
-  ["shared/game/ai/policy/context.js", "./tactics/shamisen-hunt.js"],
-  ["server/match-runtime.js", "../shared/game/fixed-step-clock.js"],
+  ["shared/game/ai/policy/heuristics/context.js", "../tactics/character-counterplay.js"],
+  ["shared/game/ai/policy/heuristics/context.js", "../tactics/shamisen-hunt.js"],
+  ["server/match-runtime.js", "../shared/game/runtime/fixed-step-clock.js"],
   ["server/server.js", "../shared/protocol/ruleset-version.js"],
-  ["shared/game/action-dispatcher.js", "../protocol/match-actions.js"],
+  ["shared/game/runtime/action-dispatcher.js", "../../protocol/match-actions.js"],
   ["src/solo.js", "../shared/protocol/match-actions.js"],
   ["src/solo.js", "./battle/action-transport.js"],
   ["src/solo.js", "./battle/scout-joystick.js"],
-  ["src/solo.js", "./battle/state-interpolation.js"],
+  ["src/solo/session.js", "../battle/state-interpolation.js"],
   ["src/solo.js", "./battle/native-webgl-renderer.js"],
-  ["src/solo.js", "../shared/game/fixed-step-clock.js"],
+  ["src/solo/session.js", "../../shared/game/runtime/fixed-step-clock.js"],
   ["src/online.js", "../shared/protocol/match-actions.js"],
   ["src/online.js", "./battle/action-transport.js"],
   ["src/online.js", "./battle/scout-joystick.js"],

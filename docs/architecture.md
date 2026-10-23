@@ -1,6 +1,8 @@
 # 项目架构与模块边界
 
-本文是修改代码时的定位入口。目标是让规则、表现、联机传输和页面编排各自只承担一种职责，并在不破坏旧导入路径的前提下逐步缩小修改范围。
+本文是修改代码时的定位入口。目标是让规则、表现、联机传输和页面编排各自只承担一种职责，保留 `shared/game-core.js` 稳定入口，内部模块按职责定位并直接导入。
+
+模块级图、真实状态所有者、单帧顺序与 F1～F6 完成对照见 [详细架构地图](architecture-map.md)；静态文件定位见 [模块索引](architecture-module-index.md)。地图注明源码基线，不把静态导入图等同于运行期耦合。新增角色、效果或模式先看[扩展游戏指南](extending-game.md)，不必先读重构历史。
 
 ## 总体依赖方向
 
@@ -24,13 +26,75 @@
                                                     └─ 15Hz 快照 ─────────────┴─→ 共享插值显示
 ```
 
-- 角色数值、技能、AI、视野、碰撞、推进和能量规则只定义在 `shared/game/` 与 `shared/game-core.js`。
-- 两条执行链都调用 `shared/game/action-dispatcher.js`，动作名称与载荷来自 `shared/protocol/match-actions.js`。
-- 单人和服务端共用 `shared/game/fixed-step-clock.js`，以固定 30Hz 推进逻辑；联机客户端不自行推进权威战斗状态。
+- 角色数值、技能、AI、视野、碰撞、推进和能量规则只定义在 `shared/game/`；`shared/game-core.js` 仅保留稳定兼容导出。
+- 两条执行链都调用 `shared/game/runtime/action-dispatcher.js`，动作名称与载荷来自 `shared/protocol/match-actions.js`。
+- 单人和服务端共用 `shared/game/runtime/fixed-step-clock.js`，以固定 30Hz 推进逻辑；联机客户端不自行推进权威战斗状态。
 - `src/battle/state-interpolation.js` 只在相邻权威状态之间生成显示副本；单人教程、技能、AI 与联机输入确认均不读取或写回这个显示副本。
 - `scripts/verify-authority-parity.mjs` 会把同一组动作分别经本地直连和服务端输入队列回放，并逐 tick 比较序列化状态。
 
 因此，规则或角色行为通常只修改一次；需要分别维护的是本地/远程传输和联机显示策略，而不是两套战斗权威。
+
+## 状态所有权与消费时机
+
+`MatchSimulation` 独占 `SimulationTime`，每个运行步先提交不可变的 `{tick, elapsed}` 样本，再调用 `BattleRuntime` 的战斗阶段。`BattleRuntime` 只持有读取时间的能力，没有跳时或重置时钟方法；生产模块只能经 MatchSimulation 装配它。组件测试可另外装配带假时间源的场景，但不能改生产模拟的时间。`fixed-step-clock.js` 负责客户端/服务端追帧累加，不拥有战斗逻辑时间。
+
+`runtime/battle-mode.js` 集中选择默认席位、阵容、初始化命令和胜负规则。教程初始化只取得训练配置与开关命令；胜负求值只接收双方存活和当前经过时间的普通事实，不取得实体、时钟或终局写权限。`battleMode` 选择规则，与 AI/玩家控制的 `mode` 分开；可选结束原因随终局一次提交，经快照与房间状态传到结算界面。`BattleRuntime` 在角色与 AI 装配完成后执行初始化，在原帧尾采样胜负事实并提交结果。房间类型、战斗规则与页面入口是不同维度，比赛房继续复用 pvp 规则。结算摘要只为非标准规则增加 `battleMode`，现有胜率入口拒绝混入其他规则，不由房间的 AI/PVP 席位类型推断规则口径。
+
+终局阶段与胜者作为一份私有结果原子提交，只有胜负资格判定能把运行态变为终局；后续判定不覆盖结果，已结束对局不再推进。统计/房间测试使用结算读模型或明确的假对局，不设置权威对象的胜者字段。
+
+对局的 AI 和常规开火开关由 `MatchSimulation` 私有持有，只能通过 `setAiEnabled` / `setCombatEnabled` 写入；读取返回冻结的历史值。每席执行前即时读取，前一席的设置在同帧内影响后一席，不把开关批量缓存到帧首。关闭常规开火不等于暂停移动、时钟或已存在技能效果。
+
+实体负责资源、位移、推进、控制及退场操作；角色组件负责自己的形态、支援和资格记录。跨域效果通过实体操作提交，伴随舰转移同时更新原舰队和目标舰队，弹体来源清理交给对局集合所有者。专属状态机不需要改造成统一配置引擎。
+
+舰船导航由 `ShipNavigation` 持有目标点、航线与击退状态，完成曲率约束、普通推进和编队跟随。导航端口只提供只读运动参数与转向飞行、编队靠拢、击退采样操作，不开放位置、航向、速度或油门的属性写权限。航线、目标、击退和武器周期为只读属性，不保留原始航线替换入口。导航计算意图，Ship 统一提交物理积分、边界约束及击退完成后的碰撞减速清理；不暴露舰队、对局或生命资源。实体保留导航命令门面，路线与击退读数是独立只读数据；替换输入必须复制，不能通过持有旧路线引用修改当前导航。
+
+射击周期由 `WeaponCycle` 持有，瞄准仅消费目标读数、随机流和发射端口。承伤由 `resolveHullDamage` 编排增幅、份额投递、自身扣血和死亡步骤；份额目标只有投递权限，不能改目标资源。Ship 只提交自身生命与退场状态。分摊副作用仍即时影响后续承伤，瞄准随机数仍先于射界拒绝消费。
+
+编队由 `FleetFormation` 持有分离层级，负责成员归属、共享速度/能量、比例扣费及死亡后的分离顺序。成员句柄仅开放读取、扣能与设置航线；编队组件不能取得完整实体。普通动作走 `split`，训练与场景装配通过 `configureFormation` 显式配置层级，读出的 `splitLevel` 不可覆写。
+
+兔女郎舞台样本、接收者状态及持续结算游标由 `characters/bunny-haruhi/stage-runtime.js` 私有持有，形态历史归 `characters/bunny-haruhi/form-runtime.js`。两个状态机只接收事实与有限能力；`characters/bunny-haruhi/form-port.js` 和 `characters/bunny-haruhi/stage-port.js` 负责实体适配。对局初始化角色运行时并编排既有阶段，舰队只读取不可变舞台样本；双方圆先采样再提交成员状态。重复初始化不重置游标，重复采样和投影不重复结算持续资源，死亡清理不修改已发布的历史样本。
+
+支援调度按显式来源身份持有私有存储；`readSupportState` 只发布不可变历史快照，不能将快照或普通计划对象作为写入入口。角色变身先在事务私有来源上完成解锁，再与形态一起提交，保持随机消费和发布顺序。追帧发射回调期间读取的快照也不追随同帧后续推进。
+
+伴随舰工厂在 Ship 装配角色能力时注入运行时，生成事务直接发布成员及母舰关系，不经 Team 回调角色运行时。鹤屋战区策反由 `characters/interactions/support-conversion.js` 编排侦察机、僚机和伴随舰的转移及视野刷新，Team 仅提供成员归属操作；原角色事务门面及无人调用的闪现/效果转发入口已移除。
+
+角色目录与定义是共享只读配置。舰队创建时取得独立且不可替换的阵容；舰船身份固定，基础机体通过只读视图消费，自定义机体入参必须复制。训练装配由舰体操作替换自己的基础配置，不修改共享角色定义或历史配置。换队、槽位和战斗形态属于运行状态，不能通过改角色身份或阵容字段实现。
+
+界面语言由 `src/character-presentation.js` 投影为只读角色文案和技能元数据，选角、编队、战场技能按钮及观战消费该投影。语言切换只更新界面语言与通知，不再调用原 `applyCoreLocale` 改写共享角色定义；这个旧写入接口已删除。规则数值继续来自共享定义，三种语言下的权威快照应一致。
+
+`characters/abilities/character-rules.js` 解释角色状态并提供碰撞资格、承伤、控制、属性、目标偏好和广播能力；通用算法通过注入的契约读取能力，不枚举角色字段。`rules/contact-geometry.js` 只提供共享几何，表现层不导入接触结算实现。
+
+AI 动作端口不暴露真实舰队，也没有接收实体后隐式补算战术的兼容入口。外部策略调用拒绝领域实例，仅读取观测及策略数据；战术描述在观测桥中一次投影。测试的战场布置与观测投影留在测试夹具中，不能让生产策略为了旧测试重新接收实体。
+
+AI 内部的 `IntelTracker` 独占已确认接触和反应延迟队列，入队时复制数据，对外发布不可变记录；`SearchBelief` 独占概率网格，每次显式消费观测和记忆。搜索区域是策略的导航意图，不再混在情报仓库里供不同模块互改。`ScoutDoctrine` 独占部署游标、承诺窗口、重编组时钟和计划缓存，通过动作结果记录成功部署；策略与调试消费者只能读取其快照。`SkillDecisionCycle` 独占技能检查时钟和历史决策；角色档案只接收复制并冻结的事实与战术输入，档案注册表也不可变。技能施放后读取最新冷却，破盾成功返回重规划结果，由策略协调层在同帧重置移动计划；技能组件不能写移动时钟。场景装配通过显式检查计划命令设置下一次检查时间，不恢复计时字段写入口。其余启发式阶段仍共同构成一个决策策略，不能直接访问这些组件的存储。
+
+胜负、战局生命比例、舰损与猎杀候选统一消费 `countsForVictory`；额外舰船的编队归属消费独立的 `isFleetParticipant`。舰队和猎杀模块不直接识别伴随角色。当前规则仍只排除专属伴随舰，旧额外舰船资格不变；参与编队与参与胜负不是同一个概念。
+
+查询与序列化不负责推进：例如抓痕过期在实体更新或下一次命中时提交，界面重复查询只得到已过期的读数。`serializeState()`、AI 观察、房间与结果输出不携带权威状态的可写引用；`shared/data/plain-data.js` 只复制/冻结纯数据，不能用于实体、Map 或循环对象图。
+
+`FleetPerception` 独占可见集合并发布只读采样，历史样本不跟随新帧改变。`systems/targeting-system.js` 的 `FleetFireControl` 持有本轮集火分配，仅消费候选 DTO 并返回目标 ID；`adapters/fire-control.js` 负责从领域对象收集资格与映射目标，`Team.stepCombat()` 负责按舰船、僚机、侦察机顺序立即执行攻击。碰撞通过 `adapters/collision-port.js` 的只读船体句柄读取实时几何，只能提交位移和碰撞减速；`HullCollisionSystem` 私有持有接触历史并执行迟滞判定，不再由对局传入、接收或替换 Set。`characters/<角色>/extension.js` 声明角色效果的操作顺序，`characters/assembly/active-skills.js` 编译并消费这些声明，舰队装配公共权限和统计端口，编队组件管理资源分摊，施放组件管理冷却和成功事务，角色声明不持有舰队或对局对象。公共和专属副舰技能的成功提交都在 `SkillCycle` 内部完成，角色不能调用 Team 伪造完成；兔女郎返回冷却及视野刷新需求，组件先提交冷却、统计和显形，再刷新视野。
+
+`MatchTelemetry` 独占统计计数表，Match 只提交动作、攻击、伤害和舰损事件；`statisticsSummary()` 读取独立数据副本，统计存储和公开榜单不取得权威计数引用。
+
+弹体创建由 `MatchSimulation.spawnProjectile` 发布，攻击者负责射击资格与冷却。`systems/projectile-system.js` 的 `ProjectileSystem` 独占弹体集合、创建发布、来源清理和活集合遍历；成员视图冻结，创建与推进不接受外部数组。它规定拦截先于移动和活集合筛选，`characters/interactions/projectile-phase.js` 适配护盾与支援防御；清理死亡弹体并发布集合后才收尾修复护盾。勇者之力由 `characters/haruhi/hero-power-runtime.js` 持有战斗事件生命周期；`runtime/match-feedback.js` 只持有护盾/猎杀表现记录及限频，不能负责伤害、控制或目标重选。死亡规则在 `characters/interactions/ship-destruction.js` 同步完成，表现消费不回写规则。
+
+`src/solo/session.js` 独立持有本地模拟、固定步时钟与前后权威帧。单人页面通过标准动作写入、通过冻结快照和即时控制投影读取；每次推进、输入尝试和教程阶段转换使投影失效，未变化的显示帧复用快照。不能只按动作返回成功与否失效，因为失败施放也可能经过扣费与退款。插值输出仍只供显示消费。
+
+服务端输入队列和快照流分别用私有会话保存待处理动作、确认序号、差量基线和拥塞档位。房间生命周期通过重置操作通知它们，连接记录不再携带这些可写字段。快照流消费后冻结共享帧，补帧、协议升级和确认通过显式方法提交；大厅和结算视图只读取独立上下文，结算显示去重由视图持有，胜者变化通过事件回调通知页面。
+
+“分层消费”不意味着统一延迟到帧末。输入校验后立即提交，AI 每次动作后刷新观测，属性变化即时影响后续计算；需要同时采样的双方舞台在固定阶段统一采样后提交。伤害分摊、死亡、支援、碰撞及广播仍保持原顺序。显示只消费快照，统计在完成状态已提交后消费结算。完整范围与验收见[架构重构记录](architecture-refactor.md)。
+
+## 状态所有权与角色装配
+
+`Ship` 私有持有资源、运动与归属，`Scout/Wingman` 私有持有任务、武器、寿命和机体状态。只读成员数组里的元素仍是领域实体，允许明确领域操作，但不允许直接赋值。`FleetRoster` 和 `AircraftOperations` 负责成员唯一性及归属检查；转移预检先于成员移除和角色副作用，失败不留下部分提交。
+
+`CHARACTER_ASSEMBLY` 统一提供规则、实体扩展、投影、队级与对局角色工厂。`character-team.js` 持有队级角色组件；`character-battle.js` 持有对局角色组件并消费扩展契约编译的固定阶段表；`team-projection.js` 独立投影角色摘要。`character-launch.js` 独占长门技能机群和春日随机发射规则，生成仍经 Team 的通用成员接收与光线入队；航空组件不再决定角色参数或随机发射几何。支援冷却消费由私有所有者复核当前资格，查询快照不充当写许可。新增角色在角色层登记能力、阶段和投影，不向 Match、Team、Ship 增加专属存储或新的更新分支。状态卡的资格与参数由 `extension.statusEffects` 提供，公共投影器只汇总寿命与顺序；定时增益的净化键由 `positiveTimedEffects` 登记。净化钩子广播给所有处理者，不使用独占处理的短路语义。
+
+`attribute-facts.js` 按属性、控制、免伤、承伤的需求采样当前事实，`attribute-evaluation.js` 只消费普通数据。编队组件只提供成员关系，不回调成员基础速度；伴随母舰、可靠效果和舞台来源在关系建立时登记，查询不扫描整个对局。事实不跨角色状态变更缓存，同帧资格保持即时。
+
+策略不对外发布动作端口和随机流；配置操作的链式返回保持在受校验门面内。AI 的观测深只读，`ObservationView` 的索引私有；`SearchNavigation` 持有导航搜索状态，候选查询与实际消费分离并校验版本。`PolicyProgram` 将查询上下文与声明式执行能力分开，普通查询没有动作、随机流和调度权限；执行入口只获得需要的命令，查询子调用不继承写权限。RulePolicy 依次消费走位准备事实、搜索、模式和路线结果，不再由启发式回调策略进行调度；调度、模式和历史计划由 RulePolicy 私有提交。只读指标替代测试覆写方法的诊断方式。情报外推只在同一观测和参数身份下复用。
+
+`Room` 聚合独占席位、就绪、观众、比赛阶段与结果，`SnapshotSchedule` 独占快照序号和累加器。连接/生命周期/运行模块只能调用领域命令和读取状态；结果复制冻结后供统计与广播消费。房间持有权威模拟的引用以推进对局，但不允许消费者替换它。
 
 ## 协议版本约定
 
@@ -74,42 +138,51 @@
 
 选舰属于客户端操作焦点，动作权限由权威舰船的 `canControl` 决定。`src/battle/ship-selection.js` 区分两者：眩晕与冲击波短时禁控时保留当前选舰、镜头跟随和技能上下文，也允许主动选择该舰；移动、换挡、侦察和技能仍按权威状态禁止。联机发送动作前读取最新权威快照，插值中的旧可操作状态不得放行禁控指令或航线预测。击沉、未分离和光球自动归航继续沿用原来的选舰失效处理，单人、联机及双端操作台共用判断。
 
-朝仓副舰「刀锋女王」的倍率、最低档位、接触伤害和结算间隔统一由 `characters.js` 技能元数据提供。航速下限取技能强化后三档满能量航速，忽略低档、能量耗尽、转弯和负面减速；禁控仍拒绝操作与转向，但沿当前朝向继续飞行，刀锋期间击退不替换前飞位移。接触伤害固定为目标最大生命的15%，首次接触立即结算，持续重叠每秒一次；穿舰、刀锋半径扩大25%与破古泉屏障保留。到期或被涤除后恢复普通推进与控制效果，地图边界仍正常约束位置。
+朝仓副舰「刀锋女王」的倍率、最低档位、接触伤害和结算间隔统一由 `characters/catalog.js` 技能元数据提供。航速下限取技能强化后三档满能量航速，忽略低档、能量耗尽、转弯和负面减速；禁控仍拒绝操作与转向，但沿当前朝向继续飞行，刀锋期间击退不替换前飞位移。接触伤害固定为目标最大生命的15%，首次接触立即结算，持续重叠每秒一次；穿舰、刀锋半径扩大25%与破古泉屏障保留。到期或被涤除后恢复普通推进与控制效果，地图边界仍正常约束位置。
 
 古泉副舰的光球在主动飞行及自动归航期间统一免疫控制：眩晕、沉默、击退和勇者震慑不写入控制状态，也不停止飞行。开启形态清除既有控制，保留猫爪与猎杀等非控制标记；归航的输入限制属于自动导航。正常8秒到期进入免伤免控归航，敌方净化则直接解除光球形态并恢复普通推进，不瞬移到中心。
 
-古泉主舰的次数盾在 `shared/game/koizumi-barrier.js` 统一结算：15次拦截（每颗圈外敌弹、每次独立射线各扣1次，第15次仍阻挡），原有特殊冲撞可直接破盾。破盾后只监测敌方子弹穿越原边界，内外双向、高速贯穿和边界随旗舰移动都重新开始5秒计时；己方子弹和未穿越的圈内飞行不延迟修复。权威帧在本帧穿越结算后修复为15次，几何查询与序列化不写回规则状态。剩余次数与修复倒计时进入共享快照，次数采用最新权威值而不做小数插值。
+古泉主舰的次数盾在 `shared/game/characters/koizumi/barrier.js` 统一结算：15次拦截（每颗圈外敌弹、每次独立射线各扣1次，第15次仍阻挡），原有特殊冲撞可直接破盾。破盾后只监测敌方子弹穿越原边界，内外双向、高速贯穿和边界随旗舰移动都重新开始5秒计时；己方子弹和未穿越的圈内飞行不延迟修复。权威帧在本帧穿越结算后修复为15次，几何查询与序列化不写回规则状态。剩余次数与修复倒计时进入共享快照，次数采用最新权威值而不做小数插值。
 
-- `shared/game-core.js`：兼容入口与战斗模拟编排。旧调用方可以继续从这里导入稳定 API。
-- `shared/game/constants.js`：世界尺寸、逻辑帧率和快照频率等跨端基础常量。
-- `shared/game/fixed-step-clock.js`：单人和服务端共用的固定逻辑步长、暂停与追帧上限。
-- `shared/game/throttle.js`：推进档位、档位归一化以及推进与能量收支的关系。
-- `shared/game/combat-rules.js`：火力方向、侦察消耗和雷达转速等独立规则。
-- `shared/game/characters.js`：角色静态数据、默认阵容和技能元数据。
-- `shared/game/bunny-haruhi-config.js`、`bunny-haruhi.js`、`bunny-haruhi-companion.js`：独立配置与纯规则；`bunny-haruhi-runtime.js` 协调舞台、变身、资源与公开摘要，`bunny-companion-runtime.js` 通过注入的Ship工厂接入阿虚实体、独立编队、自动技能、临时策反与来源清理。阿虚排除胜负/玩家舰损/猎杀资格，旧额外舰船资格不变；跨队归还在两队更新前处理。仅显式内部模拟开关允许构造新角色，未加入公开目录/随机池。接口与阶段边界见[兔女郎春日规则](bunny-haruhi-rules.md)。
-- `shared/game/haruhi-support.js`：支援状态、有限池抽取、节拍与来源几何；旧 `haruhi-flagship.js` 保持兼容包装。`bunny-haruhi-support.js` 提供显式副舰来源适配，新来源的调度、碰撞、破盾与吸弹只在包含新角色的模拟中执行，不改变旧旗舰身份与停用策略。
-- `shared/game/bunny-haruhi-view-params.js` 仅派生展示数值；`src/battle/bunny-haruhi-view.js`、`render/bunny-haruhi.js` 让单人、联机和观战共用权威舰况、技能展示元数据和基础图元。状态/锁档/施放资格采用当前权威帧，显示插值不产生规则事件。原皮占位在图片资源层映射，不注册实验角色或复制战斗规则。
-- `shared/game/math.js`：无业务状态的几何与数值工具。
-- `shared/game/rng.js`：对局级随机源。`MatchSimulation` 传入整数 `seed` 时规则与各席 AI 使用互不干扰的种子随机流，实体 ID 也改为对局内计数，整局可复现；未传时每次取值读取调用时刻的 `Math.random`，取值顺序不变。对局内规则与 AI 不直接调用 `Math.random`；种子不进入快照。
+- `shared/game-core.js`：仅提供稳定 API 的兼容导出，不持有或推进状态。
+- `shared/game/runtime/match-simulation.js`：权威模拟入口，私有持有并推进 `simulation-time.js` 的逻辑时钟。
+- `shared/game/runtime/battle-runtime.js`：装配战斗世界、消费只读时间、编排固定阶段与私有终局；弹体集合和接触历史归对应系统。
+- `shared/game/model/`：舰队和实体的装配、资源、位姿与生命周期入口；通过组件完成导航、编队、施放和航空作业，不得反向导入对局编排。
+- `shared/game/systems/`：通用算法及独立组件；只消费基础数据或受限能力端口，不导入实体、角色实现或对局。
+- `shared/game/rules/`：通用纯规则；`characters/`：角色定义、能力与生命周期；`adapters/`：真实实体映射和受限组件端口；`projection/`：只读快照输出。目录细分与新增代码归属见[战斗代码导航](../shared/game/README.md)。
+- `shared/game/foundation/constants.js`：世界尺寸、逻辑帧率和快照频率等跨端基础常量。
+- `shared/game/runtime/fixed-step-clock.js`：单人和服务端共用的固定逻辑步长、暂停与追帧上限。
+- `shared/game/rules/throttle.js`：推进档位、档位归一化以及推进与能量收支的关系。
+- `shared/game/rules/combat-rules.js`：火力方向、侦察消耗和雷达转速等独立规则。
+- `shared/game/characters/catalog.js`：角色静态数据、默认阵容和技能元数据。
+- `shared/game/characters/bunny-haruhi/config.js`、`characters/bunny-haruhi/rules.js`、`characters/bunny-haruhi/companion-rules.js`：独立配置与纯规则；`characters/bunny-haruhi/form-port.js` 适配变身与资源事务，`stage-port.js` 适配舞台，`projection.js` 生成公开摘要，`characters/bunny-haruhi/companion-runtime.js` 通过实体装配时注入的 Ship 工厂接入阿虚实体、独立编队、自动技能、临时策反与来源清理。阿虚排除胜负/玩家舰损/猎杀资格，旧额外舰船资格不变；跨队归还在两队更新前处理。兔女郎春日已进入公开选角目录，旧随机 AI 阵容池仍排除该角色。接口与阶段边界见[兔女郎春日规则](bunny-haruhi-rules.md)。
+- `shared/game/characters/haruhi/support.js`：支援状态、有限池抽取、节拍与来源几何；旧 `characters/haruhi/flagship.js` 保持兼容包装。`characters/bunny-haruhi/support.js` 提供显式副舰来源适配，新来源的调度、碰撞、破盾与吸弹只在包含新角色的模拟中执行，不改变旧旗舰身份与停用策略。
+- `shared/game/characters/bunny-haruhi/view-params.js` 仅派生展示数值；`src/battle/bunny-haruhi-view.js`、`render/bunny-haruhi.js` 让单人、联机和观战共用权威舰况、技能展示元数据和基础图元。状态/锁档/施放资格采用当前权威帧，显示插值不产生规则事件。原皮占位在图片资源层映射，展示层不注册角色或复制战斗规则。
+- `shared/game/foundation/math.js`：无业务状态的几何与数值工具。
+- `shared/game/foundation/rng.js`：对局级随机源。`MatchSimulation` 传入整数 `seed` 时规则与各席 AI 使用互不干扰的种子随机流，实体 ID 也改为对局内计数，整局可复现；未传时每次取值读取调用时刻的 `Math.random`，取值顺序不变。对局内规则与 AI 不直接调用 `Math.random`；种子不进入快照。
 - `shared/game/ai/bridge/observation.js`：规则层到 AI 的唯一读取出口。`buildObservation(match, seat)` 把实时对局翻译成该席位有权知道的纯数据（己方完整状态、视野内敌方实体及其公开技能状态、长门雷达接触、猫爪标记、可感知弹体与公开波纹）；现状中未经迷雾过滤的四项读取集中在 `privileged`。时间字段保留绝对时间戳，观测可 JSON 往返。
 - `shared/game/ai/actions.js`：AI 的动作词表。标准动作复用 `shared/protocol/match-actions.js`；带寻的点的侦察机发射与侦察机重编组是 AI 扩展动作，不进入对局动作协议，网络输入校验会拒绝它们。
-- `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，也是 AI 侧唯一持有实时舰队的位置。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作默认经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；`direct` 模式保留改造前的直接调用路径，只用于行为对照。
+- `shared/game/ai/bridge/action-port.js`：AI 与对局之间的端口，实时舰队只保留在桥接闭包内。`observe()` 返回观测，`submit(action)` 立即执行并返回是否被接受，提交后观测失效重建。标准动作始终经 `applyMatchAction` 执行，AI 与玩家受同样的操作权限约束；旧 `direct` 执行路径及模式切换已经删除。
 - `shared/game/ai/bridge/runner.js`：为每个 AI 席位创建端口与策略，并在每个逻辑帧驱动一次。
 - `shared/game/ai/params/`：AI 参数层。`default.js` 是默认参数（等于极限难度的行为），按决策阶段分节；`difficulty.js` 把单人难度拆成决策参数的覆盖层和规则层的让分表（数值缩放、集火残血），让分由 `MatchSimulation` 写入 AI 所控舰队；`presets.js` 提供 `legacy` 旧版对照预设；`index.js` 的 `resolveAiParams({ difficulty, preset, overrides })` 按「默认、难度、预设、覆盖」的顺序合并并深冻结，未知键或类型不符直接报错。`MatchSimulation` 的 `aiParams` 选项可按席位指定预设与覆盖。走位候选点几何与三个策略模块里的数值尚未外提，用 `node scripts/ai/list-literals.mjs` 查看剩余的内联数值。
-- `shared/game/ai/policy/`：AI 的决策代码，只消费观测、参数与随机流，经端口提交动作；`check:modules` 禁止它导入运行时规则模块、观测桥或战斗内核。`rule-policy.js` 负责状态初始化与每帧的阶段编排，各阶段的方法按职责分在同目录模块里并安装到 `RulePolicy` 原型上：`intel-tracker.js`（情报记忆与外推）、`belief.js`（占据图）、`evaluation.js`（战力估值与态势）、`context.js`（焦点与战术上下文）、`energy.js`、`split.js`、`mode.js`、`targets.js`（主舰目标点）、`detached.js`（分离舰角色与站位）、`movement.js`（改航编排）、`scout.js`、`skills.js`、`view.js`、`commands.js`、`geometry.js`、`debug-state.js`。
+- `shared/game/ai/policy/`：`rule-policy.js` 编排决策并提交计划，`policy-program.js` 按 `policy-inputs.js` 为每个算法装配独立权限。`algorithms/` 放显式事实计算，`state/` 放记忆与时钟所有者，`heuristics/` 放移动、目标、技能、侦察等启发式。不存在向 RulePolicy 原型混入算法的路径。输入采样、命令与调试投影保留在策略目录根部，入口与定位见 [AI 导航](../shared/game/ai/README.md)。
 - `shared/game/ai/policy/characters/`：每个角色一个 AI 档案，声明分离与前探偏置、默认分离角色、技能增益是否怕净化，以及技能的施放条件与瞄准。新增角色的 AI 在这里加档案并在 `index.js` 注册。
 - `shared/game/ai/policy/tactics/`：跨多个决策阶段的战术。`character-counterplay.js` 负责威胁优先级、古泉能量圈攻防、现有阵容破盾手选择、无破盾阵容的多路突入与定向技能预判，不得读取未进入 AI 情报记忆的隐藏角色状态，也不得为对局补配克制角色；`shamisen-hunt.js` 负责“猫爪印记”的攻守编队，猎杀标记不会在此被提升为真实视野；`yuki-scout.js` 是纯计算的侦察条令；`bunny-stage.js` 负责兔女郎春日的变身时机与舞台走位。
-- `shared/game/bot-controller.js`：`RulePolicy` 的对外门面，供对局循环、调试页和测试使用：外部调用任一方法时先刷新观测，并把传入的实时舰船换成观测数据。
-- `shared/game/visibility-radar.js`：统一汇总常规探测、视野波覆盖与长门雷达信息，并负责长门回波生成和私有序列化。
-- `shared/game/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。
-- `shared/game/koizumi-orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。
-- `shared/game/koizumi-barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
-- `shared/game/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
-- `shared/game/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法；AI 经动作端口进入同一条执行链。
-- `shared/game/collision-system.js`：舰船碰撞、侦察机相撞和刀锋女王接触结算。
-- `shared/game/match-telemetry.js`：对局内常数级动作、攻击、伤害和损失计数；只由结算摘要读取，不进入显示状态或网络快照。
+- `shared/game/ai/bot-controller.js`：`RulePolicy` 的对外门面，供对局循环、调试页和测试使用：外部方法入口拒绝实体、循环对象与能力回调，刷新观测后只消费数据。入口守卫缓存保留在闭包中，不公开可绕过校验的执行函数。
+- `shared/game/adapters/visibility-port.js`：采样常规探测、视野波覆盖与广播，交给通用可见集合组件消费。
+- `shared/game/characters/yuki/radar-runtime.js`：独占长门扫描相位、噪声序号和回波，消费纯数据并输出待识别编号；同目录 `radar-port.js` 负责实体采样、同步识别与公私投影读取。Team 通过角色装配能力消费私有回波。
+- `shared/game/characters/asakura/vision-wave.js`：朝仓主舰视野波的发射节拍、共用扩散波环带覆盖判定、失效清理与公共状态序列化。
+- `shared/game/characters/koizumi/orb.js`：古泉分舰光球运动、撞击击退与沉默、撞击能量波传播及1秒眩晕。
+- `shared/game/characters/koizumi/barrier.js`：古泉主舰能量圈的弹体/射线截断、三类冲撞破盾、5 秒失效与公共状态序列化。
+- `shared/game/systems/targeting-system.js`：开火候选、最近目标和极限难度集火分配。
+- `shared/game/runtime/action-dispatcher.js`：将客户端或 AI 的标准动作映射到舰队领域方法；AI 经动作端口进入同一条执行链。
+- `shared/game/systems/collision-system.js`：通用舰体碰撞与侦察机相撞；通过能力契约决定参与资格，通过实体方法提交位移与减速。
+- `shared/game/characters/interactions/character-contacts.js`：春日支援、兔女郎支援、刀锋女王的专属接触结算。
+- `shared/game/characters/abilities/character-rules.js`：只读角色能力适配，负责控制、免疫、属性、伤害修正、目标资格和视野广播。由对局装配后供通用机制消费。
+- `shared/game/systems/visibility.js`：不依赖角色的纯视野集合计算；舰队负责提交结果。
+- `shared/game/runtime/match-telemetry.js`：对局内常数级动作、攻击、伤害和损失计数；只由结算摘要读取，不进入显示状态或网络快照。
 
-只有需要协调多种规则、修改实时战斗状态的逻辑才留在 `game-core.js`。新增纯数据、纯计算或 AI 策略时，应直接放入对应叶模块，再由兼容入口按需导出。
+需要协调多种规则的战斗阶段位于 `runtime/battle-runtime.js`，生产入口 `runtime/match-simulation.js` 负责先推进逻辑时间再调用阶段；实体内部状态修改由 `model/` 负责。新增纯数据、纯计算或 AI 策略时，应直接放入对应叶模块，再由兼容入口按需导出。
 
 ### 战斗界面
 
@@ -131,8 +204,8 @@
 
 ### 联机链路
 
-- `src/online/state-sync.js`：客户端快照时间轴采样、有限外推、本地航线覆盖和显示稳定；具体状态插值复用战斗界面的纯插值模块，不读 DOM，也不管理 WebSocket。
-- `src/online/snapshot-transport.js`：延迟与时钟估计、快照差量解码、确认、排序和历史队列。
+- `src/online/state-sync.js`：通过只读时间轴采样、有限外推、本地航线查询和显示稳定；平滑缓存与显示时间由自身持有，通过 `reset()` 清理。历史裁剪交给传输端口，具体插值复用战斗界面的纯模块，不读 DOM，也不管理 WebSocket。
+- `src/online/snapshot-transport.js`：独立持有延迟、时钟、差量基线、确认、排序和历史队列。页面只读 `state`；收包、规则冲突和重置通过明确方法提交，解码后的快照深冻结，插值不能修改差量基线。
 - `src/online/connection-target.js`：同源代理、直连和本地备用 WebSocket 地址策略。
 - `src/online/lobby-view.js`、`profile-controller.js`、`result-view.js`：大厅、玩家档案和结算界面职责。
 - `shared/network-patch.js`：服务端与客户端共用的快照差量格式。
@@ -142,10 +215,11 @@
 - `server/config.js`：环境变量、容量和拥塞阈值。
 - `server/protocol.js`：控制消息类型与错误码归类。
 - `server/snapshot-stream.js`：快照发送、关键帧/差量选择、缓冲保护和单连接流控。
-- `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。
+- `server/room-registry.js`：玩家与房间注册表、A/B 席位、观战集合和大厅/房间状态序列化。查询只过滤失效连接，不修改集合；生命周期显式整理。阵容及结算输出与内部记录断开可写引用。
 - `server/room-lifecycle.js`：创建、加入、离开、关闭房间及比赛就绪/主持开赛的生命周期与容量门禁。
 - `server/input-queue.js`：客户端输入顺序、连续操作合并、队列上限和逐帧消费。
-- `server/match-runtime.js`：倒计时切换、权威逻辑帧、快照节拍、结算、结算后 10 秒强制回收房间和追帧保护。
+- `server/room-state.js`：统一提交开局、倒计时结束与结算转换，保证结果构建时房间已进入完成状态。
+- `server/match-runtime.js`：驱动房间阶段操作、权威逻辑帧、快照节拍、结算通知、结算后 10 秒强制回收房间和追帧保护。
 - `server/server.js`：WebSocket 连接、消息路由和权威模拟进程编排。
 - `server/statistics-records.js`：把服务端权威对局或客户端单人结算归一为同一份对局档案，负责匿名玩家字段与终局摘要组装。
 - `server/statistics-store.js`：按月追加 JSONL、对局 ID 去重、私有玩家聚合和按公开版本划分的阵容榜缓存。磁盘写入只在结算发生，服务端比赛循环不等待写盘。
@@ -179,18 +253,18 @@
 
 | 要修改的内容 | 首选文件 | 通常需要联查 |
 | --- | --- | --- |
-| 推进档位、速度与能量 | `shared/game/throttle.js` | `src/battle/throttle.js`、核心测试 |
-| 角色数值或技能描述元数据 | `shared/game/characters.js` | `src/i18n/character-text.js` |
-| 技能实际生效过程 | `shared/game-core.js` | 对应 `shared/game/*` 叶模块、核心测试 |
-| 朝仓主舰视野波规则 | `shared/game/vision-wave.js` | `shared/game/visibility-radar.js`、`shared/game-core.js`、核心测试 |
-| 古泉主舰能量圈规则 | `shared/game/koizumi-barrier.js` | `shared/game-core.js`、碰撞/射线规则、核心测试 |
+| 推进档位、速度与能量 | `shared/game/rules/throttle.js` | `src/battle/throttle.js`、核心测试 |
+| 角色数值或技能描述元数据 | `shared/game/characters/catalog.js` | `src/i18n/character-text.js` |
+| 技能实际生效过程 | `shared/game/model/team.js`、对应角色运行时 | `shared/game/model/ship.js`、`shared/game/characters/abilities/character-rules.js`、核心测试 |
+| 朝仓主舰视野波规则 | `shared/game/characters/asakura/vision-wave.js` | `shared/game/adapters/visibility-port.js`、`shared/game/runtime/battle-runtime.js`、核心测试 |
+| 古泉主舰能量圈规则 | `shared/game/characters/koizumi/barrier.js` | `shared/game/model/team.js`、碰撞/射线规则、核心测试 |
 | AI 决策和能量策略 | `shared/game/ai/policy/` 下对应阶段的模块 | `shared/game/ai/params/`、核心 AI 测试 |
 | 某个角色的 AI（技能时机、偏置） | `shared/game/ai/policy/characters/<角色>.js` | `shared/game/ai/params/default.js`、`test:core:ai-policy` |
 | AI 能读到什么、能做什么 | `shared/game/ai/bridge/observation.js`、`shared/game/ai/actions.js` | `test:core:ai-observation`、`test:core:ai-actions` |
 | AI 的权重、阈值、计时区间与难度 | `shared/game/ai/params/` | `shared/game/ai/policy/`、`test:core:ai-params`；改默认值属于规则变更 |
-| AI 角色识别与针对性反制 | `shared/game/ai/policy/tactics/character-counterplay.js` | `shared/game/ai/policy/context.js`、`shared/game/ai/bridge/observation.js`、核心 AI 测试 |
-| 三味线猎杀攻守编队 | `shared/game/ai/policy/tactics/shamisen-hunt.js` | `shared/game/ai/policy/movement.js`、`shared/game/shamisen-hunt.js`、核心 AI 测试 |
-| 侦察战区规划与长门僚机编组 | `shared/game/ai/policy/tactics/yuki-scout.js` | `shared/game/ai/policy/scout.js`、`shared/game-core.js` |
+| AI 角色识别与针对性反制 | `shared/game/ai/policy/tactics/character-counterplay.js` | `shared/game/ai/policy/heuristics/context.js`、`shared/game/ai/bridge/observation.js`、核心 AI 测试 |
+| 三味线猎杀攻守编队 | `shared/game/ai/policy/tactics/shamisen-hunt.js` | `shared/game/ai/policy/heuristics/movement.js`、`shared/game/characters/shamisen/hunt.js`、核心 AI 测试 |
+| 侦察战区规划与长门僚机编组 | `shared/game/ai/policy/tactics/yuki-scout.js` | `shared/game/ai/policy/heuristics/scout.js`、`shared/game/model/team.js` |
 | 通用战场视觉 | `src/battle/render.js` | 单人、联机、观战界面回归 |
 | WebGL 图元、批处理与着色器 | `src/battle/webgl/*` | `src/battle/native-webgl-renderer.js`、`npm run test:ui:webgl` |
 | 长门雷达视觉 | `src/battle/render/radar.js` | 雷达状态生成逻辑 |
@@ -198,14 +272,14 @@
 | 古泉能量圈视觉 | `src/battle/render/koizumi-barrier.js` | 弹体、射线、冲撞事件与单人/联机/观战回归 |
 | 单人/联机画面抖动与状态插值 | `src/battle/state-interpolation.js` | `src/solo.js`、`src/online/state-sync.js`、`scripts/verify-online-state-sync.mjs` |
 | 联机快照时间轴、外推和预测 | `src/online/state-sync.js` | `src/online/snapshot-transport.js`、`scripts/verify-online-state-sync.mjs` |
-| 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/action-dispatcher.js`、本地/远程传输测试 |
+| 新增或修改战斗动作 | `shared/protocol/match-actions.js` | `shared/game/runtime/action-dispatcher.js`、本地/远程传输测试 |
 | 规则版本与兼容门禁 | `shared/protocol/ruleset-version.js` | `src/online/snapshot-transport.js`、`server/server.js` |
 | 房间模型与席位 | `server/room-registry.js` | `scripts/verify-server-rooms.mjs` |
 | 入房、退房和容量门禁 | `server/room-lifecycle.js` | 协议与网络保护测试 |
 | 输入积压、合并与确认 | `server/input-queue.js` | `scripts/verify-server-runtime.mjs` |
 | 服务端逻辑帧与快照节拍 | `server/match-runtime.js` | 运行时与网络保护测试 |
 | 快照带宽和拥塞保护 | `server/snapshot-stream.js`、`server/config.js` | `shared/network-patch.js` |
-| 对局统计字段与公开榜单 | `server/statistics-store.js`、`statistics-records.js` | `shared/game/match-telemetry.js`、`src/statistics*.js`、统计测试 |
+| 对局统计字段与公开榜单 | `server/statistics-store.js`、`statistics-records.js` | `shared/game/runtime/match-telemetry.js`、`src/statistics*.js`、统计测试 |
 | 日英翻译文本 | `src/i18n/messages-ja.js`、`messages-en.js` | `src/i18n/catalog.js` |
 | 版本号与公共更新日志 | `src/changelog/meta.js`、`entries.js` | `src/changelog.js`、`src/menu.js`、`scripts/verify-changelog.mjs` |
 | 角色立绘与阵营颜色 | `src/character-select/portraits.js` | 角色选择与地图侧边立绘 |
@@ -215,3 +289,34 @@
 按改动选择的测试矩阵、完整候选门禁和证据限制统一维护在[测试与验收](testing.md)。架构描述不要求纯文档或局部文案修改运行全部游戏检查。
 
 模块依赖由 `check:modules` 检查已声明的边界；战场表现副本由 `check:static` 中的漂移守卫检查。它们是有限的静态检查，不能证明所有运行时依赖、显示隔离或游戏语义正确；对应行为仍需领域测试和实际场景验收。
+
+## 状态所有权
+
+通用算法不直接解释角色字段。能力查询不写入状态，新增复杂形态仍由专属状态机维护。实体的位移、碰撞减速、击退、资源恢复与档位修改通过领域方法提交；角色组件内部状态由其生命周期模块维护。对局和舰队分别持有接触集合、可见集合和集火分配，计算模块返回结果，由所有者提交。攻击来源修正保持在编队分摊之前，分摊份额不重复放大。
+
+春日旗舰的强化寿命、同帧净化保护与激活事务由 `HaruhiFlagshipRuntime` 持有，舰队的旧字段仅保留只读查询；续期不重复换算，净化不撤销常驻支援。朝仓净化阶段只消费独立只读目标句柄与效果端口，实体映射留在适配器内部，单舰净化由舰队校验归属；双方四组命中先全部采样，随后保持友军负面、敌军正面的即时结算顺序；对局只调用该阶段。
+
+重构范围与全系统数据消费路径见[架构重构](architecture-refactor.md)。
+
+
+基础算法通过显式数据复用：`systems/expanding-wave.js` 接收世界尺寸、时间、来源坐标和编号，不读取舰队或技能状态；视野波与古泉冲击波各自持有生命周期。舰船自身负责油门存储和可选实时约束装配，角色运行时提供约束函数，不重定义舰船属性；读取约束不能修改存储，写入须保存最终受约束值。
+
+技能公共施放事务由 `SkillCycle` 持有冷却槽位，依次消费资格、能量、效果执行和成功记录；失败退款仍由具体效果负责。冷却快照不可写，外部只能提交 `startCooldown`。角色适配器提供有限施放能力，不向周期组件传入 Team 或 Ship。
+
+`ShipStatus` 同时持有限时效果、充能倍率和技能生效帧。生效与净化通过操作提交，同帧保护不能被修改效果字典绕过；外部查询得到不可写的历史值，不公开生效帧存储。
+
+`AircraftOperations` 拥有侦察机/僚机集合与自动任务，负责资格检查、生产扣费、任务派发、推进和退场回收。Team 只装配生产端口并安排阶段；生产输入是来源读数，集合只能通过增删操作移交，退场回收仍在光线推进之后。
+
+护盾耐久与恢复、猎杀目标与轮次、震慑时间、光球运动与命中历史由各角色模块私有持有；实体只提供只读历史投影。测试通过命中、破盾、目标选择、震慑、运动采样和净化布置场景，不能直接覆写组件字段。光球命中历史不进入查询视图。
+
+雷达回波 Map 与扫描游标只归 `RadarRuntime` 所有，AI 桥接消费雷达投影；波纹模块独占发射游标和波列表，光球撞击波的命中去重集合也不外泄。权威实体上的波纹查询深只读，显示快照仍是可独立消费的数据副本。
+
+舰队主副舰槽位在创建后固定；额外舰船集合由 Team 私有持有，通过增加、移除和实体换队事务维护。查询数组不能增删成员，实体的生命、能量与位姿仍由实体操作提交；只读集合并不把实体本身变成显示快照。
+
+
+四项边界细化后的接入约定：
+
+- Ship 不再接收最终血量/能量覆盖计划；角色提交资源比例意图，实体按当前容量和余额一次校验与落值。
+- `characters/assembly/registry.js` 是角色扩展注册表；各角色声明主动技能、规则能力、查询优先级、实体钩子、队级工厂、对局阶段与投影。阶段语义固定，装配器拒绝重复顺序、未知阶段、重复角色编号，以及覆盖生命周期、基础字段或公共求值。协议顺序表只维护已有字段的字节顺序。
+- AI 估值、威胁、几何和模式函数使用显式事实；其余启发式按 `policy-inputs.js` 获得直接依赖，不继承共同上下文。执行阶段使用明确重读函数，动作之后不能继续拿旧观测规划后续分离。
+- 角色运行时、AI 和投影的实际调用关系见架构图九；私有存储、受限能力与事务协调分别表达，不把字段私有化视作职责已经充分拆分。

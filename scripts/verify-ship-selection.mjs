@@ -1,3 +1,4 @@
+import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "../shared/game/characters/haruhi/hero-power.js";
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { chromium } from "playwright";
@@ -9,10 +10,10 @@ import { isShipSelectable, resolveSelectedShipKey } from "../src/battle/ship-sel
 
 const loadout = { main: "haruhi", sub1: "future1096", sub2: "yuki" };
 const simulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: loadout } });
-simulation.teamA.splitLevel = 2;
+simulation.teamA.configureFormation(2);
 for (const key of ["main", "sub1"]) {
   const ship = simulation.teamA.ships[key];
-  ship.effects.stunnedUntil = simulation.elapsed + 1;
+  ship.stunUntil(simulation.elapsed + 1);
   const team = simulation.serializeState().teams.A;
   assert.equal(isShipSelectable(team.ships[key]), true, "眩晕只禁止操作，不能使当前舰不可选择");
   assert.equal(resolveSelectedShipKey(team, key), key, "眩晕时必须保留选舰");
@@ -25,7 +26,7 @@ for (const key of ["main", "sub1"]) {
     key === "main" ? matchActions.castFlagshipSkill() : matchActions.castSubSkill({ shipKey: key, targetX: 600, targetY: 700 }),
   ]) assert.equal(simulation.applyActionForSeat("A", action), false, "眩晕时战斗操作必须无效");
   assert.equal(JSON.stringify(ship.serialize()), before, "被拒绝的动作不能改变舰船状态");
-  ship.effects.stunnedUntil = 0;
+  ship.clearTimedEffect("stunnedUntil", false);
   assert.equal(simulation.applyActionForSeat("A", matchActions.setThrottle({ shipKey: key, throttle: 1.4 })), true, "眩晕解除后应可继续操作同一舰");
 }
 const team = simulation.serializeState().teams.A;
@@ -42,8 +43,9 @@ assert.equal(resolveSelectedShipKey(team, "sub1"), "main", "光球自动归航�
 const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logLevel: "silent", server: { host: "127.0.0.1", port: 0 }, plugins: [{
   name: "ship-selection-fixture",
   transform(code, id) {
-    if (id.endsWith("/src/solo.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, refresh() { app.state = app.sim.serializeState(); app.renderState = app.renderPreviousState = app.renderCurrentState = app.state; updateUi(); } };`;
-    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; } };`;
+    if (id.endsWith("/src/solo/session.js")) return code.replace("simulation = createSimulation(options);", "simulation = createSimulation(options); globalThis.testSoloSimulation = simulation; globalThis.invalidateSoloSnapshot = () => { dirty = true; };");
+    if (id.endsWith("/src/solo.js")) return `import { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock } from "/shared/game/characters/haruhi/hero-power.js";\n${code}\nglobalThis.selectionFixture = { applyHaruhiHeroPowerShock, resetHaruhiHeroPowerShock, get app() { return app; }, get simulation() { return globalThis.testSoloSimulation; }, refresh() { globalThis.invalidateSoloSnapshot(); app.state = globalThis.testSoloSimulation.serializeState(); app.renderState = app.state; updateUi(); } };`;
+    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.selectionFixture = { get app() { return app; }, get timeline() { return snapshotTransport.state; } };`;
     return null;
   },
 }] });
@@ -69,8 +71,8 @@ try {
       }
       await page.locator(mobile ? ".csm-cta" : ".cs-launch").click();
       await page.locator("#battleView").waitFor({ state: "visible" });
-      await page.waitForFunction(() => Boolean(window.selectionFixture.app.sim));
-      await page.evaluate(() => { const f = window.selectionFixture; f.app.paused = true; f.app.sim.teamA.splitLevel = 2; f.refresh(); });
+      await page.waitForFunction(() => Boolean(window.selectionFixture.simulation));
+      await page.evaluate(() => { const f = window.selectionFixture; f.app.paused = true; f.simulation.teamA.configureFormation(2); f.refresh(); });
     } else {
       // 联机只接收本脚本生成的权威快照，不连接现有 WebSocket 服务。
       const wsUrl = "ws://127.0.0.1:65530/selection-fixture";
@@ -80,31 +82,35 @@ try {
       socket.send(JSON.stringify({ type: "connected", playerId: "selection-test", rulesetVersion: RULESET_VERSION, tickRate: 30, snapshotRate: 15, protocolVersion: 2 }));
       socket.send(JSON.stringify({ type: "room_state", room: { roomId: "selection-room", status: "running", mode: "pvp", players: [{ seat: "A", name: "选舰验收", loadout }, { seat: "B", name: "对手", loadout }] }, self: { seat: "A", loadout } }));
       onlineSimulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: loadout } });
-      onlineSimulation.teamA.splitLevel = 2;
+      onlineSimulation.teamA.configureFormation(2);
     }
     async function publish(key, status) {
       if (mode === "solo") {
         await page.evaluate(({ key, status }) => {
           const f = window.selectionFixture;
-          const ship = f.app.sim.teamA.ships[key];
-          ship.effects.stunnedUntil = status === "stun" ? f.app.sim.elapsed + 30 : 0;
-          ship.heroPowerShock = { hitAt: f.app.sim.elapsed, lockUntil: status === "shock" ? f.app.sim.elapsed + 30 : 0, recoveryUntil: status === "shock" ? f.app.sim.elapsed + 35 : 0 };
+          const ship = f.simulation.teamA.ships[key];
+          ship.clearTimedEffect("stunnedUntil", false);
+          if (status === "stun") ship.stunUntil(f.simulation.elapsed + 30);
+          f.resetHaruhiHeroPowerShock(ship);
+          if (status === "shock") f.applyHaruhiHeroPowerShock(ship, f.simulation.elapsed, { lockDuration: 30, recoveryDuration: 5 });
           ship.alive = status !== "dead";
           f.refresh();
         }, { key, status });
       } else {
         const ship = onlineSimulation.teamA.ships[key];
-        ship.effects.stunnedUntil = status === "stun" ? 30 : 0;
-        ship.heroPowerShock = { hitAt: 0, lockUntil: status === "shock" ? 30 : 0, recoveryUntil: status === "shock" ? 35 : 0 };
+        ship.clearTimedEffect("stunnedUntil", false);
+        if (status === "stun") ship.stunUntil(30);
+        resetHaruhiHeroPowerShock(ship);
+        if (status === "shock") applyHaruhiHeroPowerShock(ship, 0, { lockDuration: 30, recoveryDuration: 5 });
         ship.alive = status !== "dead";
         snapshotSeq++;
         socket.send(JSON.stringify({ type: "snapshot", roomId: "selection-room", snapshotSeq, tick: snapshotSeq, state: onlineSimulation.serializeState() }));
-        await page.waitForFunction((seq) => window.selectionFixture.app.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
+        await page.waitForFunction((seq) => window.selectionFixture.timeline.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
         // HUD 按 10Hz 节流，等待下一份同状态快照刷新；不直接调用页面选舰函数。
         await page.waitForTimeout(110);
         snapshotSeq++;
         socket.send(JSON.stringify({ type: "snapshot", roomId: "selection-room", snapshotSeq, tick: snapshotSeq, state: onlineSimulation.serializeState() }));
-        await page.waitForFunction((seq) => window.selectionFixture.app.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
+        await page.waitForFunction((seq) => window.selectionFixture.timeline.latestSnapshot?.snapshotSeq === seq, snapshotSeq);
       }
       await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
     }
@@ -113,11 +119,11 @@ try {
       const select = page.locator(mobile ? `.mobile-ship-btn[data-ship="${key}"]` : `.fleet-row[data-ship="${key}"]`);
       await select.click();
       const beforeRemovedKey = mode === "solo"
-        ? await page.evaluate(() => JSON.stringify(window.selectionFixture.app.sim.serializeState()))
+        ? await page.evaluate(() => JSON.stringify(window.selectionFixture.simulation.serializeState()))
         : outgoing.filter((message) => message.type === "input").length;
       await page.keyboard.press("b");
       if (mode === "solo") {
-        assert.equal(await page.evaluate(() => JSON.stringify(window.selectionFixture.app.sim.serializeState())), beforeRemovedKey, "可控舰按 B 键不能扣能量、减速或写入急刹状态");
+        assert.equal(await page.evaluate(() => JSON.stringify(window.selectionFixture.simulation.serializeState())), beforeRemovedKey, "可控舰按 B 键不能扣能量、减速或写入急刹状态");
       } else {
         assert.equal(outgoing.filter((message) => message.type === "input").length, beforeRemovedKey, "可控舰按 B 键不能发送旧急刹动作");
       }

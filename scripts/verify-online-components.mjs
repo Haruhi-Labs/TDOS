@@ -72,41 +72,10 @@ assert.deepEqual(local, [
 let currentTime = 10_000;
 const sentMessages = [];
 let connectionUiUpdates = 0;
-const transportApp = {
-  connected: true,
-  pingMs: 0,
-  jitterMs: 0,
-  interpDelayMs: DEFAULT_INTERP_MS,
-  pingTimer: null,
-  pingSeq: 0,
-  pendingPings: new Map(),
-  rttVarianceMs: 0,
-  bestClockRttMs: Infinity,
-  clockOffsetMs: 0,
-  clockReady: false,
-  serverTickRate: 30,
-  serverSnapshotRate: 20,
-  networkProtocolVersion: 2,
-  serverRulesetVersion: "",
-  rulesetStatus: "pending",
-  rulesetCompatible: false,
-  snapshotIntervalMs: 50,
-  snapshots: [],
-  latestSnapshot: null,
-  lastSnapshotTick: 0,
-  lastSnapshotSeq: 0,
-  decodedSnapshotState: null,
-  decodedSnapshotSeq: 0,
-  lastSnapshotAckSentAt: 0,
-  lastAckedSnapshotSeq: 0,
-  lastSnapshotArriveAtMs: 0,
-  snapshotArrivalMs: 0,
-  snapshotArrivalJitterMs: 0,
-  snapshotLossRatio: 0,
-  snapshotReorderRatio: 0,
-};
+let playerId = null;
 const transport = createOnlineSnapshotTransport({
-  app: transportApp,
+  isConnected: () => true,
+  onPlayerId: (id) => { playerId = id; },
   nowMs: () => currentTime,
   socketSend: (payload) => {
     sentMessages.push(payload);
@@ -124,11 +93,11 @@ transport.handleConnected({
   snapshotRate: 15,
   serverTime: 10_025,
 });
-assert.equal(transportApp.playerId, "player-a");
-assert.equal(transportApp.serverSnapshotRate, 15);
-assert.equal(transportApp.clockOffsetMs, 25);
-assert.equal(transportApp.rulesetCompatible, true);
-assert.equal(transportApp.rulesetStatus, "compatible");
+assert.equal(playerId, "player-a");
+assert.equal(transport.state.serverSnapshotRate, 15);
+assert.equal(transport.state.clockOffsetMs, 25);
+assert.equal(transport.state.rulesetCompatible, true);
+assert.equal(transport.state.rulesetStatus, "compatible");
 assert.deepEqual(sentMessages.at(-1), {
   type: "protocol_hello",
   protocolVersion: 2,
@@ -142,8 +111,8 @@ transport.handleConnected({
   tickRate: 30,
   snapshotRate: 15,
 });
-assert.equal(transportApp.rulesetCompatible, true, "未声明规则版本的旧服务端应保持兼容");
-assert.equal(transportApp.rulesetStatus, "legacy");
+assert.equal(transport.state.rulesetCompatible, true, "未声明规则版本的旧服务端应保持兼容");
+assert.equal(transport.state.rulesetStatus, "legacy");
 
 transport.handleConnected({
   playerId: "mismatch-player",
@@ -152,8 +121,8 @@ transport.handleConnected({
   tickRate: 30,
   snapshotRate: 15,
 });
-assert.equal(transportApp.rulesetCompatible, false, "显式规则版本冲突必须阻止进入对局");
-assert.equal(transportApp.rulesetStatus, "mismatch");
+assert.equal(transport.state.rulesetCompatible, false, "显式规则版本冲突必须阻止进入对局");
+assert.equal(transport.state.rulesetStatus, "mismatch");
 
 transport.handleConnected({
   playerId: "player-a",
@@ -168,13 +137,17 @@ const fullState = { phase: "running", winnerSeat: null, teams: { A: { hullRatio:
 const firstSnapshot = transport.receiveSnapshot({
   type: "snapshot",
   snapshotSeq: 1,
-  tick: 30,
+  snapshotRate: 20,
   simTime: 1,
   serverTime: 10_025,
   state: fullState,
 });
 assert.equal(firstSnapshot.state, fullState);
-assert.equal(transportApp.latestSnapshot.tick, 30);
+assert.equal(transport.state.serverSnapshotRate, 20);
+assert.throws(() => { transport.state.rulesetCompatible = false; }, TypeError);
+assert.throws(() => { firstSnapshot.state.teams.A.hullRatio = 0; }, TypeError);
+assert.throws(() => { transport.state.snapshots.shift(); }, TypeError);
+assert.equal(transport.state.latestSnapshot.tick, 30);
 assert.deepEqual(sentMessages.at(-1), { type: "snapshot_ack", snapshotSeq: 1 });
 
 currentTime += 70;
@@ -189,18 +162,24 @@ const secondSnapshot = transport.receiveSnapshot({
   patch: createStatePatch(fullState, nextState),
 });
 assert.deepEqual(secondSnapshot.state, nextState);
-assert.equal(transportApp.snapshots.length, 2);
-assert.equal(transportApp.snapshotArrivalMs, 70);
+assert.equal(transport.state.snapshots.length, 2);
+assert.equal(transport.state.snapshotArrivalMs, 70);
 
-transportApp.pendingPings.set(7, currentTime - 80);
-transport.handlePong({ pingId: 7, serverRecvTime: currentTime - 45, serverSendTime: currentTime - 40 });
-assert.equal(transportApp.pingMs, 80);
-assert.equal(transportApp.pendingPings.has(7), false);
+transport.sendPingProbe();
+const ping = sentMessages.at(-1);
+currentTime += 80;
+transport.handlePong({ pingId: ping.pingId, serverRecvTime: currentTime - 45, serverSendTime: currentTime - 40 });
+assert.equal(transport.state.pingMs, 80);
+assert.equal(transport.state.pendingPings, undefined, "调用方不得访问可写探针集合");
 assert.ok(connectionUiUpdates >= 2);
 
+transport.handleRulesetMismatch({ serverRulesetVersion: "其他版本" });
+assert.equal(transport.state.rulesetCompatible, false);
+assert.equal(transport.state.serverRulesetVersion, "其他版本");
 transport.resetMatchState();
-assert.equal(transportApp.snapshots.length, 0);
-assert.equal(transportApp.decodedSnapshotState, null);
+assert.equal(transport.state.snapshots.length, 0);
+assert.equal(transport.state.latestSnapshot, null);
+assert.equal(transport.state.decodedSnapshotState, undefined, "差量基线属于传输内部状态");
 
 const throttleCommands = createThrottleCommandState({ maxAckHoldMs: 1200 });
 assert.equal(throttleCommands.valueFor("main", 1), 1);
@@ -228,3 +207,39 @@ assert.deepEqual(buildServerUrlCandidates({
   locationObject: { host: "haruyuki.cn", hostname: "haruyuki.cn", protocol: "https:", search: "?ws=wss://star.haruyuki.cn/ws/" },
   baseUrl: "/test-game/",
 }), ["wss://haruyuki.cn/test-game/ws/"], "测试服不得回落或被查询参数改向正式联机服务");
+
+// 结算视图持有自身显示生命周期，外部只提供冻结读模型和显式事件回调。
+const { createOnlineResultView } = await import("../src/online/result-view.js");
+const oldDocument = globalThis.document;
+const subtitle = { textContent: "" };
+globalThis.document = { getElementById: (id) => id === "resultSub" ? subtitle : null };
+try {
+  const classes = new Set();
+  const ui = {
+    overlay: { classList: { add: (name) => classes.add(name), remove: (name) => classes.delete(name) } },
+    overlayTitle: { textContent: "" },
+  };
+  const context = Object.freeze({ seat: "A", spectating: false, room: Object.freeze({ roomId: "test-result", closesAt: 0 }) });
+  const winners = [];
+  const logs = [];
+  const result = createOnlineResultView({ getContext: () => context, ui, log: (value) => logs.push(value), onWinner: (winner) => winners.push(winner) });
+  result.show("A");
+  result.show("A");
+  assert.equal(logs.length, 1, "重复快照不得重复记录结算");
+  assert.deepEqual(winners, ["A", "A"]);
+  assert.equal(classes.has("hidden"), false);
+  result.close();
+  assert.equal(classes.has("hidden"), true);
+  result.show("B");
+  assert.equal(logs.length, 2, "关闭后下一次展示应重新生成结算");
+  result.reset();
+  result.show(null);
+  assert.equal(logs.length, 3, "重开应清除显示去重状态");
+  assert.equal(winners.at(-1), null);
+  assert.equal(context.seat, "A", "视图不能反写会话上下文");
+  result.close();
+} finally {
+  if (oldDocument === undefined) delete globalThis.document;
+  else globalThis.document = oldDocument;
+}
+console.log("结算视图边界通过：冻结上下文、显式事件、显示去重与重置。");

@@ -1,4 +1,5 @@
-import { DEFAULT_WORLD_SIZE, clamp } from "../../../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE } from "../../../shared/game/foundation/constants.js";
+import { clamp } from "../../../shared/game/foundation/math.js";
 import { characterShortName } from "../../i18n.js";
 
 const TAU = Math.PI * 2;

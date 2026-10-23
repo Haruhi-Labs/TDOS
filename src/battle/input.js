@@ -1,5 +1,5 @@
 // 共享战场命中检测:世界坐标 → 战区/航线把手。纯函数,状态显式传入。
-import { distance } from "../../shared/game-core.js";
+import { distance } from "../../shared/game/foundation/math.js";
 import { ROUTE_HANDLE_RADIUS } from "./render.js";
 
 export function zoneFromPoint(state, x, y) {

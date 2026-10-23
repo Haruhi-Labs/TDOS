@@ -1,4 +1,5 @@
-import { SNAPSHOT_RATE } from "../shared/game/constants.js";
+import { freezePlainData } from "../shared/data/plain-data.js";
+import { SNAPSHOT_RATE } from "../shared/game/foundation/constants.js";
 import { createStatePatch } from "../shared/network-patch.js";
 import {
   CONGESTION_ACK_AGE_MS,
@@ -15,8 +16,10 @@ import {
   STREAM_RECOVERY_STABLE_MS,
 } from "./config.js";
 
-export function createSnapshotStream({ networkStats }) {
+export function createSnapshotStream({ networkStats, now = Date.now }) {
   let nextSnapshotStreamPhase = 0;
+  const streams = new WeakMap();
+  const framePatches = new WeakMap();
 
   function send(ws, payload) {
     if (!ws || ws.readyState !== 1) {
@@ -37,7 +40,7 @@ export function createSnapshotStream({ networkStats }) {
       return;
     }
     nextSnapshotStreamPhase += 1;
-    player.snapshotStream = {
+    streams.set(player, {
       sequence: 0,
       lastState: null,
       lastRoomSnapshotSeq: 0,
@@ -46,17 +49,44 @@ export function createSnapshotStream({ networkStats }) {
       rateTier: 0,
       phase: nextSnapshotStreamPhase,
       lastDeliveryAckSeq: 0,
-      lastDeliveryAckAt: Date.now(),
+      lastDeliveryAckAt: now(),
       healthySince: 0,
-    };
+    });
   }
   
+  function requestKeyframe(player) {
+    const stream = streams.get(player);
+    if (stream) stream.forceKeyframe = true;
+  }
+
+  function upgradeProtocol(player) {
+    const stream = streams.get(player);
+    if (!stream) return;
+    stream.forceKeyframe = true;
+    stream.lastState = null;
+    // 握手前的兼容全量帧不要求客户端补交到达确认。
+    stream.lastDeliveryAckSeq = stream.sequence;
+    stream.lastDeliveryAckAt = now();
+  }
+
+  function acknowledge(player, sequence) {
+    const stream = streams.get(player);
+    if (!stream || !Number.isInteger(sequence) || sequence <= stream.lastDeliveryAckSeq || sequence > stream.sequence) return false;
+    stream.lastDeliveryAckSeq = sequence;
+    stream.lastDeliveryAckAt = now();
+    return true;
+  }
+
+  function rateTierFor(player) {
+    return streams.get(player)?.rateTier || 0;
+  }
+
   function streamDivisors(options) {
     return options.spectating ? SPECTATOR_STREAM_DIVISORS : PLAYER_STREAM_DIVISORS;
   }
   
   function updateStreamCongestion(player, now, options) {
-    const stream = player.snapshotStream;
+    const stream = streams.get(player);
     const bufferedBytes = Number(player.ws.bufferedAmount) || 0;
     const inFlight = Math.max(0, stream.sequence - stream.lastDeliveryAckSeq);
     // 已全部确认时没有在途数据，等待阶段即使很久没有新 ACK 也不属于拥塞。
@@ -107,22 +137,21 @@ export function createSnapshotStream({ networkStats }) {
     // 战场快照是可替换状态，不应在慢连接上无限排队。积压超过阈值时直接跳过旧帧，
     // 等发送缓冲恢复后再下发最新快照，避免延迟从数百毫秒滚成数秒并拖高进程内存。
     if (player.ws.bufferedAmount > MAX_SNAPSHOT_BUFFERED_BYTES) {
-      player.skippedSnapshots = (player.skippedSnapshots || 0) + 1;
       networkStats.skippedSnapshots += 1;
-      if (player.snapshotStream) {
-        player.snapshotStream.forceKeyframe = true;
+      if (streams.get(player)) {
+        streams.get(player).forceKeyframe = true;
       }
       return false;
     }
   
-    if (!player.snapshotStream) {
+    if (!streams.get(player)) {
       resetSnapshotStream(player);
     }
-    const stream = player.snapshotStream;
-    const now = Date.now();
+    const stream = streams.get(player);
+    const currentTime = now();
     const supportsDeltaProtocol = Number(player.networkProtocolVersion) >= 2;
     if (supportsDeltaProtocol) {
-      updateStreamCongestion(player, now, options);
+      updateStreamCongestion(player, currentTime, options);
     } else {
       stream.rateTier = 0;
       stream.healthySince = 0;
@@ -163,12 +192,14 @@ export function createSnapshotStream({ networkStats }) {
   
     if (!keyframeDue) {
       const baseRoomSeq = stream.lastRoomSnapshotSeq;
-      let patch = frame.patchCache.get(baseRoomSeq);
-      if (!frame.patchCache.has(baseRoomSeq)) {
+      if (!framePatches.has(frame)) framePatches.set(frame, new Map());
+      const patchCache = framePatches.get(frame);
+      let patch = patchCache.get(baseRoomSeq);
+      if (!patchCache.has(baseRoomSeq)) {
         // 同一房间、同一发送档位的连接拥有相同基线。差量树只计算一次，
         // 玩家与观战扇出时复用结果，避免连接数增加后重复遍历整份战场状态。
         patch = createStatePatch(stream.lastState, frame.state);
-        frame.patchCache.set(baseRoomSeq, patch);
+        patchCache.set(baseRoomSeq, patch);
       }
       const deltaPayload = {
         type: "snapshot_delta",
@@ -202,7 +233,7 @@ export function createSnapshotStream({ networkStats }) {
       networkStats.deltas += 1;
     }
     stream.sequence = snapshotSeq;
-    stream.lastState = frame.state;
+    stream.lastState = freezePlainData(frame.state);
     stream.lastRoomSnapshotSeq = frame.roomSnapshotSeq;
     stream.forceKeyframe = false;
     if (keyframe) {
@@ -212,5 +243,5 @@ export function createSnapshotStream({ networkStats }) {
   }
   
 
-  return { send, sendToPlayer, resetSnapshotStream, sendSnapshotToPlayer };
+  return { send, sendToPlayer, resetSnapshotStream, sendSnapshotToPlayer, requestKeyframe, upgradeProtocol, acknowledge, rateTierFor };
 }

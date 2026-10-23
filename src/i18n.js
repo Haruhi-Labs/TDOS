@@ -1,7 +1,6 @@
 import { gameStorageKey } from "./deployment.js";
-import { CHARACTER_DEFS } from "../shared/game-core.js";
 import { CHARACTER_TEXT, MESSAGES } from "./i18n/catalog.js";
-import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/characters/bunny-haruhi/view-params.js";
 
 const STORAGE_KEY = gameStorageKey("haruhi-locale-v1");
 
@@ -103,26 +102,6 @@ export function skillText(characterId, mode = "flagship", field = "name") {
   const key = mode === "sub" ? "subSkill" : "flagshipSkill";
   const text = localized?.[key]?.[field] || zh?.[key]?.[field] || "";
   return characterId === "bunny_haruhi" ? interpolate(text, BUNNY_VIEW_PARAMS) : text;
-}
-
-export function applyCoreLocale(locale = getLocale()) {
-  const pack = CHARACTER_TEXT[locale] || CHARACTER_TEXT.zh;
-  for (const [id, text] of Object.entries(pack)) {
-    const def = CHARACTER_DEFS[id];
-    if (!def) continue;
-    def.name = text.name;
-    def.shortName = text.shortName;
-    def.title = text.title;
-    def.flavor = text.flavor;
-    if (def.flagshipSkill && text.flagshipSkill) {
-      def.flagshipSkill.name = text.flagshipSkill.name;
-      def.flagshipSkill.description = text.flagshipSkill.description;
-    }
-    if (def.subSkill && text.subSkill) {
-      def.subSkill.name = text.subSkill.name;
-      def.subSkill.description = text.subSkill.description;
-    }
-  }
 }
 
 export function slotLabel(slotKey, style = "long") {
@@ -277,7 +256,6 @@ export function setLocale(locale, options = {}) {
   if (next === currentLocale && !options.force) return next;
   currentLocale = next;
   writeStoredLocale(next);
-  applyCoreLocale(next);
   applyDocumentLocale();
   if (typeof window !== "undefined" && options.notify !== false) {
     window.dispatchEvent(new CustomEvent("haruhi:locale-change", { detail: { locale: next } }));
@@ -287,7 +265,6 @@ export function setLocale(locale, options = {}) {
 
 export function initI18n() {
   currentLocale = readStoredLocale() || detectLocale();
-  applyCoreLocale(currentLocale);
   applyDocumentLocale();
   return currentLocale;
 }

@@ -38,9 +38,12 @@ export function createNativeBattleVisualFixture() {
       B: { main: "haruhi", sub1: "future1096", sub2: "shamisen" },
     },
   });
-  simulation.elapsed = VISUAL_FIXTURE_TIME;
   const state = simulation.serializeState();
   state.elapsed = VISUAL_FIXTURE_TIME;
+  // 画面夹具只配置展示时间，不改权威时钟；扫线采样时间也属于展示样本。
+  for (const team of Object.values(state.teams)) {
+    if (team.radarSweep) team.radarSweep.sampledAt = VISUAL_FIXTURE_TIME;
+  }
   const teamA = state.teams.A;
   const teamB = state.teams.B;
   setShip(teamA.ships.main, {

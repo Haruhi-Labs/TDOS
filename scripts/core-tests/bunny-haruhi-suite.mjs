@@ -1,23 +1,37 @@
+import { MatchSimulation } from "../../shared/game-core.js";
 import assert from "node:assert/strict";
-import { BUNNY_HARUHI_CONFIG as C, BUNNY_FORMS, BUNNY_STAGE_PHASES } from "../../shared/game/bunny-haruhi-config.js";
+import { BUNNY_HARUHI_CONFIG as C, BUNNY_FORMS, BUNNY_STAGE_PHASES } from "../../shared/game/characters/bunny-haruhi/config.js";
 import {
   createBunnyHaruhiState, createBunnyStageExposure, nextBunnyForm, planBunnyTransform,
   clearBunnyFormWindows, purgeBunnyForm, leaveBunnyStage, resolveBunnyStageExposure,
   cleanseBunnyStageControl, bunnyStatMultiplier, bunnyDamageTakenMultiplier,
   isBunnyDamageImmune, isBunnyBroadcasting, isBunnyControlLocked, bunnyStageSpeedFactor,
   canBunnyLaunchScout, resolveBunnyThrottle, bunnySelfDrainAmount, bunnyStageHealAmount, bunnyEnergyRate,
-} from "../../shared/game/bunny-haruhi.js";
+} from "../../shared/game/characters/bunny-haruhi/rules.js";
 import {
   deriveBunnyCompanionBase, createBunnyCompanionState, planBunnyCompanionConversion,
   advanceBunnyCompanion, createBunnyReliableState, purgeBunnyReliable, expireBunnyReliable,
   bunnyReliableRecovery,
-} from "../../shared/game/bunny-haruhi-companion.js";
-import { CHARACTER_DEFS, CHARACTER_ORDER, normalizeLoadout } from "../../shared/game/characters.js";
-import { energyRateForThrottle } from "../../shared/game/throttle.js";
+} from "../../shared/game/characters/bunny-haruhi/companion-rules.js";
+import { CHARACTER_DEFS, CHARACTER_ORDER, normalizeLoadout } from "../../shared/game/characters/catalog.js";
+import { energyRateForThrottle } from "../../shared/game/rules/throttle.js";
 
 const resources = { hp: 880, maxHp: 880, energy: 0, maxEnergy: 130 };
 const near = (actual, expected, message = "") => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} 应接近 ${expected} ${message}`);
-const cast = (state, now = 0, tick = 0, values = {}) => planBunnyTransform(state, { ...resources, ...values }, now, tick);
+// 数值断言经过真实资源所有者消费，纯角色规划不再决定最终资源。
+function consumeResources(effect, values = {}) {
+  const input = { ...resources, ...values };
+  const ship = new MatchSimulation({ seed: 76 }).teamA.ships.main;
+  ship.configureTraining({ ...ship.base, hp: input.maxHp, energy: input.maxEnergy }, { x: ship.x, y: ship.y });
+  ship.drainHull(ship.hp - input.hp);
+  ship.spendEnergy(ship.energy - input.energy);
+  ship.grantResources(effect);
+  return { hp: ship.hp, energy: ship.energy };
+}
+const cast = (state, now = 0, tick = 0, values = {}) => {
+  const result = planBunnyTransform(state, { ...resources, ...values }, now, tick);
+  return result.ok ? { ...result, ...consumeResources(result.resources, values) } : result;
+};
 const enter = (state, now, inside = true, sourceShipId = 1) => resolveBunnyStageExposure(state, {
   now, tick: Math.round(now * 30), inside, sourceShipId,
 });
@@ -324,9 +338,9 @@ function companionLifecycleCheck() {
   assert.equal(expireBunnyReliable(reliable, 35.999), reliable);
   assert.equal(expireBunnyReliable(reliable, 36), null);
   assert.equal(expireBunnyReliable(reliable, 31, false), null);
-  assert.deepEqual(bunnyReliableRecovery({ hp: 400, maxHp: 880, energy: 0, maxEnergy: 130 }), { hp: 452.8, energy: 19.5 });
-  assert.deepEqual(bunnyReliableRecovery({ hp: 879, maxHp: 880, energy: 129, maxEnergy: 130 }), { hp: 880, energy: 130 });
-  assert.deepEqual(bunnyReliableRecovery({ hp: 0, maxHp: 880, energy: 5, maxEnergy: 130 }), { hp: 0, energy: 5 });
+  assert.deepEqual(consumeResources(bunnyReliableRecovery(), { hp: 400, maxHp: 880, energy: 0, maxEnergy: 130 }), { hp: 452.8, energy: 19.5 });
+  assert.deepEqual(consumeResources(bunnyReliableRecovery(), { hp: 879, maxHp: 880, energy: 129, maxEnergy: 130 }), { hp: 880, energy: 130 });
+  assert.deepEqual(consumeResources(bunnyReliableRecovery(), { hp: 0, maxHp: 880, energy: 5, maxEnergy: 130 }), { hp: 0, energy: 5 });
 }
 
 export function runBunnyHaruhiSuite() {

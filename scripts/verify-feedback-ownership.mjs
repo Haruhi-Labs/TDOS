@@ -1,0 +1,57 @@
+import { initializeShamisenHunt, selectShamisenHuntTarget } from "../shared/game/characters/shamisen/hunt.js";
+import assert from "node:assert/strict";
+import { createMatchFeedback } from "../shared/game/runtime/match-feedback.js";
+import { resolveShipDestruction } from "../shared/game/characters/interactions/ship-destruction.js";
+import { MatchSimulation } from "../shared/game-core.js";
+
+let now = 0;
+let ids = 0;
+const feedback = createMatchFeedback({ now: () => now, nextId: () => ++ids });
+assert.equal(feedback.barrierImpact({ teamSeat: "A" }), true);
+assert.equal(feedback.barrierImpact({ teamSeat: "A" }), false);
+assert.equal(ids, 1, "限频拒绝不能消耗共享实体编号");
+assert.equal(feedback.barrierImpact({ teamSeat: "B" }), true, "两方表现限频必须独立");
+assert.equal(feedback.barrierImpact({ teamSeat: "A", kind: "beam" }), true, "光线不受炮弹表现限频影响");
+const historical = feedback.inspectBarrierImpacts();
+assert.throws(() => { historical[0].life = 0; }, TypeError);
+assert.throws(() => historical.pop(), TypeError);
+const snapshot = feedback.serializeBarrierImpacts();
+snapshot[0].life = 999;
+feedback.advance(0.62);
+assert.equal(feedback.inspectBarrierImpacts().length, 1);
+assert.equal(historical.length, 3);
+assert.equal(historical[0].life, 0.62);
+now = 10;
+assert.equal(feedback.barrierImpact({ teamSeat: "A" }), true);
+
+const hunter = { seat: "A", mainCharacterId: () => "shamisen" };
+initializeShamisenHunt(hunter);
+selectShamisenHuntTarget(hunter, { getVictoryShips: () => [{ id: 7, alive: true }] }, () => 0);
+const survivor = { id: 8, alive: true };
+const hunted = { seat: "B", getVictoryShips: () => [survivor] };
+const destroyed = { id: 7, alive: false, x: 50, y: 60, radius: 12 };
+let rolls = 0;
+resolveShipDestruction({ teamA: hunter, teamB: hunted, rng: { next: () => {
+  rolls += 1;
+  assert.equal(feedback.inspectHuntKills()[0].targetId, 7, "必须先发布旧目标反馈，再随机选择新目标");
+  return 0;
+} } }, destroyed, feedback);
+assert.equal(rolls, 1);
+assert.equal(hunter.shamisenHunt.targetId, 8, "死亡处理返回前已完成新目标选择");
+destroyed.x = 999;
+assert.equal(feedback.inspectHuntKills()[0].x, 50);
+feedback.advance(2);
+assert.deepEqual(feedback.inspectHuntKills(), []);
+assert.equal(hunter.shamisenHunt.targetId, 8, "表现寿命推进不能再次改变猎杀规则");
+
+const match = new MatchSimulation({ seed: 811, aiSeats: [] });
+assert.equal(match.spawnKoizumiBarrierImpact({ teamSeat: "A" }), true);
+assert.throws(() => { match.koizumiBarrierImpacts = []; }, TypeError);
+assert.throws(() => { match.shamisenHuntKillEffects = []; }, TypeError);
+assert.throws(() => { match.koizumiBarrierImpacts[0].x = 100; }, TypeError);
+const state = match.serializeState();
+state.koizumiBarrierImpacts[0].life = 100;
+assert.equal(match.koizumiBarrierImpacts[0].life, 0.62);
+match.updateVisualEffects(1);
+assert.deepEqual(match.koizumiBarrierImpacts, []);
+console.log("表现所有权校验通过：独立限频、编号消费、只读历史、投影隔离及死亡规则即时结算。");

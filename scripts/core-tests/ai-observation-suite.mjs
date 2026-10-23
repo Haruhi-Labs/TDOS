@@ -1,3 +1,4 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { MatchSimulation, TICK_DT } from "../../shared/game-core.js";
 import { buildObservation, observeEnemySpawn } from "../../shared/game/ai/bridge/observation.js";
@@ -8,10 +9,10 @@ function createMatch(teamLoadouts, options = {}) {
 }
 
 function hold(ship, x, y) {
-  ship.x = x;
-  ship.y = y;
-  ship.command = { x, y };
-  ship.route = null;
+  setScenarioField(ship, 'x', x);
+  setScenarioField(ship, 'y', y);
+  ship.followTarget({ x, y });
+  ship.clearRoute();
 }
 
 function pureDataCheck() {
@@ -65,7 +66,7 @@ function fogCheck() {
   assert.ok(seen.enemy.visibleTeamBuffs, "看见敌舰后可以读取公开的编队增益");
 
   // 可见集合来自上一帧，观测不得包含已被击沉的实体。
-  enemyMain.alive = false;
+  setScenarioField(enemyMain, 'alive', false);
   assert.equal(buildObservation(sim, "B").enemy.visible.some((entity) => entity.id === enemyMain.id), false);
 }
 
@@ -153,7 +154,7 @@ function bunnyBroadcastCheck() {
   assert.equal(fleet.ships.sub1.bunnyHaruhi.form, "bless");
   assert.deepEqual(visibleKeys(), ["main", "sub1", "sub2"], "bless 向对手 AI 暴露己方全部玩家舰");
 
-  fleet.cooldowns.sub1 = 0;
+  fleet.startCooldown("sub1", 0);
   assert.equal(fleet.castSubSkill("sub1"), true);
   assert.equal(fleet.ships.sub1.bunnyHaruhi.form, "knows");
   assert.deepEqual(visibleKeys(), ["sub1"], "knows 只向对手 AI 暴露施放者自身");
@@ -162,7 +163,7 @@ function bunnyBroadcastCheck() {
   assert.equal(buildObservation(sim, "B").privileged.hasHiddenEnemyShip, true);
 
   // 技能被封印时广播停止，对手 AI 的观测随之清空。
-  fleet.forceSkillsDisabled = true;
+  fleet.setRestrictions({ skills: true });
   assert.deepEqual(visibleKeys(), []);
 }
 
@@ -174,11 +175,20 @@ function facadeCheck() {
   const bot = sim.botBySeat("B");
   assert.equal(Object.hasOwn(bot, "enemy"), false, "AI 不得持有敌方舰队引用");
   const aiMain = sim.teamB.ships.main;
-  // 测试直接改实时状态后调用内部方法，门面必须先刷新观测并把实时舰船换成观测数据。
-  aiMain.energy = aiMain.maxEnergy * 0.5;
-  const before = bot.energyProfile(aiMain).current;
-  aiMain.energy = 0;
-  assert.ok(bot.energyProfile(aiMain).current < before, "外部调用没有刷新观测");
+  // 决策只读取新观测，不再接收真实实体，也不暴露舰队兼容字段。
+  assert.equal(bot.team, undefined);
+  assert.equal(bot.port, undefined);
+  assert.equal(bot.rng, undefined);
+  assert.equal(bot.guardedEntry, undefined);
+  assert.equal(bot.entryGuards, undefined);
+  assert.throws(() => bot.energyProfile(() => aiMain), /不接受.*回调/);
+  assert.equal(sim.aiRunners.B.port.observeLive, undefined);
+  assert.equal(sim.aiRunners.B.port.observeTactics, undefined);
+  assert.throws(() => bot.energyProfile(aiMain), /只接受观测数据/);
+  setScenarioField(aiMain, 'energy', aiMain.maxEnergy * 0.5);
+  const before = bot.energyProfile("main").current;
+  setScenarioField(aiMain, 'energy', 0);
+  assert.ok(bot.energyProfile("main").current < before, "外部调用没有刷新观测");
   assert.equal(bot.energyProfile("main").current, sim.teamB.fleetEnergyForShip("main").current);
 }
 

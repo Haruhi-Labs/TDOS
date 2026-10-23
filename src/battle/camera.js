@@ -6,7 +6,8 @@
 //   directorMode()      → 观战使用独立的平滑取景状态
 //   getTrackedShip()    → 相机跟随目标(单人=本地选中舰,在线=快照中的选中舰)
 //   onZoomChanged()     → 缩放变化后的 HUD 同步(单人=updateUi,在线=updateBattleStatus)
-import { DEFAULT_WORLD_SIZE, clamp } from "../../shared/game-core.js";
+import { DEFAULT_WORLD_SIZE } from "../../shared/game/foundation/constants.js";
+import { clamp } from "../../shared/game/foundation/math.js";
 import { createDirectorCamera, DIRECTOR_ZOOM_MAX } from "./director-camera.js";
 import { observeCanvasResolution } from "./canvas-resolution.js";
 

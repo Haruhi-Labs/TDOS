@@ -1,7 +1,7 @@
-import { skillMetaForCharacter } from "../../shared/game/characters.js";
-import { BUNNY_HARUHI_CONFIG as C } from "../../shared/game/bunny-haruhi-config.js";
-import { BUNNY_VIEW_PARAMS } from "../../shared/game/bunny-haruhi-view-params.js";
-import { STATUS_EFFECT_DEFS } from "../../shared/game/status-effect-definitions.js";
+import { skillPresentation as skillMetaForCharacter } from "../character-presentation.js";
+import { BUNNY_HARUHI_CONFIG as C } from "../../shared/game/characters/bunny-haruhi/config.js";
+import { BUNNY_VIEW_PARAMS } from "../../shared/game/characters/bunny-haruhi/view-params.js";
+import { STATUS_EFFECT_DEFS } from "../../shared/game/projection/status-effect-definitions.js";
 import { skillText, t } from "../i18n.js";
 
 export function battleSkillMeta(id, mode) {

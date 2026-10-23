@@ -1,5 +1,6 @@
-import { TICK_DT } from "../shared/game/constants.js";
-import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
+import { startRoomRunning, finishRoomMatch } from "./room-state.js";
+import { TICK_DT } from "../shared/game/foundation/constants.js";
+import { createFixedStepClock } from "../shared/game/runtime/fixed-step-clock.js";
 import {
   FINISHED_ROOM_CLOSE_DELAY_MS,
   LOOP_IDLE_MS,
@@ -47,11 +48,9 @@ export function createMatchRuntime({
       }
 
       if (room.status === "countdown" && room.match) {
-        if (currentTime < Number(room.countdownEndsAt || 0)) {
+        if (!startRoomRunning(room, currentTime)) {
           continue;
         }
-        room.status = "running";
-        room.countdownEndsAt = null;
         sendRoomStateToMembers(room);
         sendSnapshot(room);
         broadcastLobby();
@@ -61,17 +60,9 @@ export function createMatchRuntime({
         applyQueuedInputs(room);
         room.match.update(tickDt);
 
-        room.snapshotAccumulator += tickDt;
-        while (room.snapshotAccumulator >= snapshotInterval) {
-          room.snapshotAccumulator -= snapshotInterval;
-          sendSnapshot(room);
-        }
+        room.advanceSnapshots(tickDt, snapshotInterval, () => sendSnapshot(room));
 
-        if (room.match.phase === "finished" && room.status !== "finished") {
-          room.status = "finished";
-          room.finishedAt = currentTime;
-          room.closesAt = currentTime + closeDelayMs;
-          room.result = buildMatchResult(room, currentTime);
+        if (finishRoomMatch(room, currentTime, closeDelayMs, buildMatchResult)) {
           try {
             onMatchFinished(room, currentTime);
           } catch (error) {

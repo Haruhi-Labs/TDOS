@@ -1,8 +1,4 @@
-import {
-  THROTTLE_GEAR_VALUES,
-  throttleForGear,
-  throttleGearForValue,
-} from "../../shared/game-core.js";
+import { THROTTLE_GEAR_VALUES, throttleForGear, throttleGearForValue } from "../../shared/game/rules/throttle.js";
 import { t } from "../i18n.js";
 
 export function throttleGearLabel(gear) {
@@ -30,9 +26,9 @@ export function syncThrottleGearControls(ui, throttle) {
 }
 
 // 单人动作会先更新本地权威模拟，显示快照要到下一个固定逻辑帧才刷新。
-// 控制链必须优先读取模拟舰船，否则同帧续设航线会把旧显示档位写回权威状态。
-export function localThrottleForShip(simulatedShip, renderedShip = null) {
-  const throttle = simulatedShip?.throttle ?? renderedShip?.throttle;
+// 控制链必须优先读取即时控制投影，否则同帧续设航线会把旧显示档位写回权威状态。
+export function localThrottleForShip(controlState, renderedShip = null) {
+  const throttle = controlState?.throttle ?? renderedShip?.throttle;
   return throttleValueForGear(throttleGearForValue(throttle));
 }
 

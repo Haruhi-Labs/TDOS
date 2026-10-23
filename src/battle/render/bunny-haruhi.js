@@ -1,4 +1,4 @@
-import { DEFAULT_WORLD_SIZE } from "../../../shared/game/constants.js";
+import { DEFAULT_WORLD_SIZE } from "../../../shared/game/foundation/constants.js";
 
 const TAU = Math.PI * 2;
 const allShips = (team) => [...Object.values(team?.ships || {}), ...(team?.extraShips || [])];

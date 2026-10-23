@@ -1,20 +1,33 @@
+import { setScenarioField } from './ship-fixture.mjs';
+import { HaruhiFlagshipRuntime } from "../../shared/game/characters/haruhi/flagship-runtime.js";
 import assert from "node:assert/strict";
-import * as legacy from "../../shared/game/haruhi-flagship.js";
+import * as legacy from "../../shared/game/characters/haruhi/flagship.js";
 import {
-  createSupportState, unlockSupport, tickSupportSource, supportOrbGeometry,
+  createSupportState, initializeSupport, readSupportState, unlockSupport, tickSupportSource, supportOrbGeometry,
   supportOtherworlderReady, triggerSupportOtherworlder,
-} from "../../shared/game/haruhi-support.js";
+} from "../../shared/game/characters/haruhi/support.js";
 import {
   bunnyHaruhiSupportSource, unlockBunnyHaruhiSupport, updateBunnyHaruhiSupport,
-} from "../../shared/game/bunny-haruhi-support.js";
-import { createBunnyHaruhiState } from "../../shared/game/bunny-haruhi.js";
+} from "../../shared/game/characters/bunny-haruhi/support.js";
+import { createBunnyHaruhiState } from "../../shared/game/characters/bunny-haruhi/rules.js";
+
+function initializedSource(initial) { const owner = {}; initializeSupport(owner, initial); return owner; }
 
 function fixture() {
   const team = {
-    match: { elapsed: 0 }, effects: {}, marks: [], ships: {},
-    mainCharacterId: () => "haruhi", haruhiFlagship: legacy.createHaruhiFlagshipState(),
-    markActiveSkillEffectStarted(key) { this.marks.push(key); },
+    match: { elapsed: 0, tick: 0 }, effects: {}, ships: {},
+    mainCharacterId: () => "haruhi",
+
   };
+  initializeSupport(team);
+  Object.defineProperty(team, "haruhiFlagship", { get: () => readSupportState(team) });
+  team.flagshipRuntime = new HaruhiFlagshipRuntime({
+    enabled: () => team.mainCharacterId() === "haruhi",
+    now: () => team.match.elapsed, tick: () => team.match.tick,
+    unlockSupport: (now, random) => unlockSupport(team, legacy.HARUHI_SUPPORTS, now, random),
+  });
+  team.activateHaruhiSupport = (duration, random) => team.flagshipRuntime.activate(duration, random);
+  Object.defineProperty(team.effects, "haruhiBoostUntil", { get: () => team.flagshipRuntime.expiresAt });
   team.ships.main = {
     id: 1, characterId: "haruhi", slotKey: "main", team, alive: true,
     x: 100, y: 200, radius: 10, effectiveVision: () => 100,
@@ -24,6 +37,8 @@ function fixture() {
     x: 500, y: 600, radius: 12.8, effectiveVision: () => 172,
     bunnyHaruhi: createBunnyHaruhiState(),
   };
+  initializeSupport(team.ships.sub1);
+  Object.defineProperty(team.ships.sub1.bunnyHaruhi, "support", { get: () => readSupportState(team.ships.sub1) });
   return team;
 }
 
@@ -57,7 +72,8 @@ function factoryAndUnlockCheck() {
   // 已与抽取前实现核对；此夹具不包含Match构造时的随机数消费。
   assert.deepEqual(results, ["esper", "alien", "time_traveler", "otherworlder", null]);
   assert.equal(oldRandom.calls, 4);
-  assert.equal(team.marks.length, 5);
+  assert.equal(team.flagshipRuntime.clear(), false, "多次续期仍保留同帧净化保护");
+  assert.equal(team.effects.haruhiBoostUntil, 16);
   team.match.elapsed = 20;
   assert.equal(legacy.activateHaruhiFlagship(team, 16, oldRandom.next), null);
   assert.equal(oldRandom.calls, 4);
@@ -74,9 +90,9 @@ function factoryAndUnlockCheck() {
   assert.equal(source.state.otherworlderReadyAt, 5);
   assert.equal(source.state.supporters.has("alien"), false);
   for (const [roll, expected] of [[-1, "alien"], [NaN, "alien"], [undefined, "alien"], [Infinity, "esper"], [1, "esper"]]) {
-    assert.equal(unlockSupport(createSupportState(), legacy.HARUHI_SUPPORTS, 0, () => roll), expected);
+    assert.equal(unlockSupport(initializedSource(), legacy.HARUHI_SUPPORTS, 0, () => roll), expected);
   }
-  assert.equal(unlockSupport(b, [], 0, () => { throw new Error("空池不应消费随机数"); }), null);
+  assert.equal(unlockSupport(initializedSource(b), [], 0, () => { throw new Error("空池不应消费随机数"); }), null);
 }
 
 function legacySchedulingCheck() {
@@ -107,7 +123,7 @@ function legacySchedulingCheck() {
   team.match.elapsed = 30.3 - 5e-10;
   legacy.updateHaruhiFlagship(team, hooks);
   assert.equal(calls, 17, "保留旧时间比较容差");
-  team.ships.main.alive = false;
+  setScenarioField(team.ships.main, 'alive', false);
   team.match.elapsed = 50;
   legacy.updateHaruhiFlagship(team, hooks);
   assert.equal(calls, 17);
@@ -118,7 +134,7 @@ function legacySchedulingCheck() {
   assert.equal(legacy.haruhiOtherworlderReady(team), false);
   const invalid = fixture();
   invalid.mainCharacterId = () => "bunny_haruhi";
-  const before = structuredClone(invalid.haruhiFlagship);
+  const before = invalid.haruhiFlagship;
   assert.equal(legacy.activateHaruhiFlagship(invalid, 16, random), null);
   legacy.updateHaruhiFlagship(invalid, hooks);
   assert.equal(legacy.hasHaruhiSupport(invalid, "esper"), false);
@@ -131,7 +147,7 @@ function legacySchedulingCheck() {
 
 function geometryAndCooldownCheck() {
   const team = fixture();
-  team.haruhiFlagship.supporters = new Set(legacy.HARUHI_SUPPORTS);
+  for (const id of legacy.HARUHI_SUPPORTS) unlockSupport(team, [id], 0, () => 0);
   const oldOrb = legacy.haruhiEsperOrb(team);
   assert.deepEqual(oldOrb, {
     x: 200, y: 200, angle: 0, orbitRadius: 100,
@@ -144,9 +160,10 @@ function geometryAndCooldownCheck() {
   const view = legacy.serializeHaruhiFlagship(team);
   assert.deepEqual(Object.keys(view), ["boostActive", "supporters", "otherworlderReady", "esperOrb"]);
   assert.deepEqual(view.supporters, ["alien", "time_traveler", "otherworlder", "esper"]);
-  team.haruhiFlagship.otherworlderReadyAt = 37;
+  team.match.elapsed = 29;
+  assert.equal(legacy.triggerHaruhiOtherworlder(team), true);
   const source = bunnyHaruhiSupportSource(team.ships.sub1, true);
-  source.state.supporters = new Set(["esper", "otherworlder"]);
+  for (const id of ["esper", "otherworlder"]) unlockSupport(source.owner, [id], 0, () => 0);
   const newOrb = supportOrbGeometry(source);
   assert.equal(newOrb.x, 672);
   assert.equal(newOrb.y, 600);
@@ -159,7 +176,7 @@ function geometryAndCooldownCheck() {
   assert.deepEqual(legacy.haruhiEsperOrb(team), oldOrb);
   assert.equal(supportOrbGeometry({ ...source, enabled: false }), null);
   assert.equal(triggerSupportOtherworlder({ ...source, enabled: false }, 8), false);
-  team.ships.sub1.alive = false;
+  setScenarioField(team.ships.sub1, 'alive', false);
   assert.equal(supportOrbGeometry(source), null);
   assert.equal(supportOtherworlderReady(source, 8), false);
 }
@@ -178,7 +195,7 @@ function explicitSourceCheck() {
   const source = bunnyHaruhiSupportSource(ship, true);
   assert.equal(source.sourceShip, ship);
   assert.notEqual(source.state, team.haruhiFlagship);
-  const originalOldState = structuredClone(team.haruhiFlagship);
+  const originalOldState = team.haruhiFlagship;
   unlockBunnyHaruhiSupport(source, 0, () => 0);
   const emitters = [];
   const hooks = { launchRandomBeam: (emitter) => emitters.push(emitter) };
@@ -200,7 +217,7 @@ function explicitSourceCheck() {
   assert.equal(emitters.length, 2, "封印恢复不补发积压或取消的光线");
   updateBunnyHaruhiSupport(source, 110, 0, hooks);
   assert.equal(emitters.length, 3);
-  ship.alive = false;
+  setScenarioField(ship, 'alive', false);
   updateBunnyHaruhiSupport(source, 110.3, 0, hooks);
   assert.equal(emitters.length, 3);
   assert.deepEqual(source.state.queuedBeamAt, []);

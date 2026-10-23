@@ -1,10 +1,11 @@
+import { hasShamisenFlagship } from "../../characters/shamisen/hunt.js";
 // 规则层到 AI 的唯一读取出口：把实时对局对象翻译成某一席位有权知道的纯数据。
 // 这里可以接触 Team/Ship 实例；AI 决策代码只消费本模块产出的观测。
-import { nextBunnyForm } from "../../bunny-haruhi.js";
-import { bunnyTransformBlockReason } from "../../bunny-haruhi-runtime.js";
-import { haruhiOtherworlderReady } from "../../haruhi-flagship.js";
-import { koizumiBarrierGeometry } from "../../koizumi-barrier.js";
-import { distance } from "../../math.js";
+import { nextBunnyForm } from "../../characters/bunny-haruhi/rules.js";
+import { bunnyTransformBlockReason } from "../../characters/bunny-haruhi/form-port.js";
+import { haruhiOtherworlderReady } from "../../characters/haruhi/flagship.js";
+import { koizumiBarrierGeometry } from "../../characters/koizumi/barrier.js";
+import { distance } from "../../foundation/math.js";
 
 export const OBSERVATION_SCHEMA = 1;
 
@@ -230,10 +231,10 @@ export function buildObservation(match, seat) {
 
   // 雷达接触本身带位置误差；已击沉目标的残留接触在这里剔除，不向 AI 暴露敌舰实体。
   let radar = null;
-  if (team.hasYukiFlagship() && team.radarPassive?.contacts instanceof Map) {
+  if (team.hasYukiFlagship()) {
     const aliveIds = new Set(enemyShips.filter((ship) => ship.alive).map((ship) => ship.id));
     radar = {
-      contacts: [...team.radarPassive.contacts.values()]
+      contacts: (team.serializeRadarPassive()?.contacts || [])
         .filter((contact) => aliveIds.has(Number(contact?.targetId ?? contact?.id)))
         .map((contact) => primitiveFields(contact)),
     };
@@ -241,7 +242,7 @@ export function buildObservation(match, seat) {
 
   // 猫爪印记对猎杀方持续显示精确位置，但不暴露角色、席位、血量或朝向。
   let hunt = null;
-  if (team.hasShamisenFlagship?.()) {
+  if (hasShamisenFlagship(team)) {
     const targetId = team.shamisenHunt?.targetId;
     const target = enemyShips.find((ship) => ship?.alive && ship.id === targetId);
     if (target) {
@@ -249,7 +250,7 @@ export function buildObservation(match, seat) {
     }
   }
   let hunted = null;
-  if (enemy.hasShamisenFlagship?.()) {
+  if (hasShamisenFlagship(enemy)) {
     const targetId = enemy.shamisenHunt?.targetId;
     const ship = team.getAllShips().find((candidate) => candidate?.alive && candidate.id === targetId);
     if (ship) hunted = { shipId: ship.id, shipKey: ship.key };
@@ -264,7 +265,7 @@ export function buildObservation(match, seat) {
     world: {
       size: match.worldSize,
       mapPadding: match.mapPadding,
-      zones: match.zones,
+      zones: match.zones.map((zone) => ({ ...zone })),
     },
     rules: {
       bunnyStage: Boolean(match.bunnyHaruhiActive),
@@ -275,7 +276,7 @@ export function buildObservation(match, seat) {
       flags: {
         yukiFlagship: team.hasYukiFlagship(),
         kyonFlagship: team.hasKyonFlagship(),
-        shamisenFlagship: Boolean(team.hasShamisenFlagship?.()),
+        shamisenFlagship: Boolean(hasShamisenFlagship(team)),
       },
       splitLevel: team.splitLevel,
       hullRatio: team.hullRatio(),

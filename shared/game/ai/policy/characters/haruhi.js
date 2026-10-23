@@ -1,4 +1,4 @@
-import { distance } from "../../../math.js";
+import { distance } from "../../../foundation/math.js";
 
 export default {
   id: "haruhi",
@@ -14,17 +14,17 @@ export default {
   },
   sub: {
     timerFollowsCooldown: true,
-    shouldCast(policy, { K, ship, estimate, context, dist }) {
-      const shockRadius = policy.obs.world.size / K.haruhiShockRadiusDivisor;
-      const visibleEnemyShips = policy.obs.enemy.visible.filter((enemyShip) => (
+    shouldCast(facts, { K, ship, estimate, context, dist }) {
+      const shockRadius = facts.obs.world.size / K.haruhiShockRadiusDivisor;
+      const visibleEnemyShips = facts.obs.enemy.visible.filter((enemyShip) => (
         enemyShip.kind === "ship"
         && distance(ship.x, ship.y, enemyShip.x, enemyShip.y) <= shockRadius + enemyShip.radius
       ));
-      const visibleEnemyAircraft = policy.obs.enemy.visible.filter((aircraft) => (
+      const visibleEnemyAircraft = facts.obs.enemy.visible.filter((aircraft) => (
         aircraft.kind !== "ship"
         && distance(ship.x, ship.y, aircraft.x, aircraft.y) <= shockRadius + aircraft.radius
       ));
-      const ownAircraftAtRisk = [...policy.obs.self.scouts, ...policy.obs.self.wingmen].filter((aircraft) => (
+      const ownAircraftAtRisk = [...facts.obs.self.scouts, ...facts.obs.self.wingmen].filter((aircraft) => (
         aircraft.alive
         && distance(ship.x, ship.y, aircraft.x, aircraft.y) <= shockRadius + aircraft.radius
       )).length;
@@ -37,7 +37,7 @@ export default {
       const worthwhileAircraftPurge = visibleEnemyAircraft.length >= Math.max(2, ownAircraftAtRisk + 1);
       return Boolean(
         (focusWillStayInRange || visibleEnemyShips.length >= 2 || worthwhileAircraftPurge)
-        && (((context?.skillAggression) || 0) > K.haruhiAggression || policy.energyProfile(ship).high),
+        && (((context?.skillAggression) || 0) > K.haruhiAggression || facts.energyHigh),
       );
     },
   },

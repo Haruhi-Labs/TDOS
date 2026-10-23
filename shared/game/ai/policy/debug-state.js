@@ -1,36 +1,37 @@
+import { copyPlainData } from "../../../data/plain-data.js";
 // 调试状态序列化：供推演页展示决策中间量，结构保持稳定。
-// 这些方法安装在 RulePolicy 的原型上，经 this 访问观测、参数、随机流与策略状态。
+// 每个算法显式声明事实和查询输入；执行算法按需重读动作后的事实。
 
 export const debugStateMethods = {
-  debugPoint(point) {
+  debugPoint({ zoneForPoint: capZoneForPoint }, point) {
     if (!point || !Number.isFinite(point.x) || !Number.isFinite(point.y)) {
       return null;
     }
     return {
       x: point.x,
       y: point.y,
-      zoneId: Number.isFinite(point.zoneId) ? point.zoneId : this.zoneForPoint(point.x, point.y).id,
+      zoneId: Number.isFinite(point.zoneId) ? point.zoneId : capZoneForPoint(point.x, point.y).id,
       intentAngle: Number.isFinite(point.intentAngle) ? point.intentAngle : null,
       preferredRange: Number.isFinite(point.preferredRange) ? point.preferredRange : null,
     };
   },
 
-  debugPointMap(plan) {
+  debugPointMap({ debugPoint: capDebugPoint }, plan) {
     if (!plan) {
       return null;
     }
     const output = {};
     for (const [key, point] of Object.entries(plan)) {
-      output[key] = this.debugPoint(point);
+      output[key] = capDebugPoint(point);
     }
     return output;
   },
 
-  debugContact(contact) {
+  debugContact({ obs: policyObs, zoneForPoint: capZoneForPoint }, contact) {
     if (!contact) {
       return null;
     }
-    const age = Number.isFinite(contact.age) ? contact.age : Math.max(0, this.obs.time - (contact.seenAt || this.obs.time));
+    const age = Number.isFinite(contact.age) ? contact.age : Math.max(0, policyObs.time - (contact.seenAt || policyObs.time));
     return {
       id: contact.id,
       kind: contact.kind || "ship",
@@ -41,7 +42,7 @@ export const debugStateMethods = {
       y: contact.y,
       angle: Number.isFinite(contact.angle) ? contact.angle : 0,
       speed: Number.isFinite(contact.speed) ? contact.speed : 0,
-      zoneId: Number.isFinite(contact.zoneId) ? contact.zoneId : this.zoneForPoint(contact.x, contact.y).id,
+      zoneId: Number.isFinite(contact.zoneId) ? contact.zoneId : capZoneForPoint(contact.x, contact.y).id,
       source: contact.source || "visible",
       age,
       confidence: Number.isFinite(contact.confidence) ? contact.confidence : 1,
@@ -53,12 +54,12 @@ export const debugStateMethods = {
     };
   },
 
-  debugThreatMap(shipThreats) {
+  debugThreatMap(_inputs, shipThreats) {
     const output = {};
-    if (!(shipThreats instanceof Map)) {
+    if (!shipThreats) {
       return output;
     }
-    for (const [key, threat] of shipThreats.entries()) {
+    for (const [key, threat] of Object.entries(shipThreats)) {
       output[key] = {
         sources: threat.sources || 0,
         pressure: threat.pressure || 0,
@@ -70,7 +71,7 @@ export const debugStateMethods = {
     return output;
   },
 
-  debugContext(context) {
+  debugContext({ debugThreatMap: capDebugThreatMap }, context) {
     if (!context) {
       return null;
     }
@@ -116,7 +117,7 @@ export const debugStateMethods = {
       maxShipThreat: context.maxShipThreat,
       overwhelmedShipKey: context.overwhelmedShipKey || null,
       counterCollapse: context.counterCollapse,
-      shipThreats: this.debugThreatMap(context.shipThreats),
+      shipThreats: capDebugThreatMap(context.shipThreats),
       shamisenHunt: context.shamisenHunt
         ? {
             attack: context.shamisenHunt.attack
@@ -179,7 +180,7 @@ export const debugStateMethods = {
     };
   },
 
-  debugDetachedPlan(plan) {
+  debugDetachedPlan(_inputs, plan) {
     if (!plan) {
       return null;
     }
@@ -191,71 +192,95 @@ export const debugStateMethods = {
     };
   },
 
-  serializeDebugState() {
-    const focus = this.currentContext?.focus || this.lastTacticalPlan?.focus || this.enemyIntel.main;
+  serializeDebugState({
+    currentContext: policyCurrentContext,
+    lastTacticalPlan: policyLastTacticalPlan,
+    rememberedMain: policyRememberedMain,
+    rememberedContacts: policyRememberedContacts,
+    obs: policyObs,
+    seat: policySeat,
+    mode: policyMode,
+    modeTimer: policyModeTimer,
+    moveTimer: policyMoveTimer,
+    scoutTimer: policyScoutTimer,
+    flagshipTimer: policyFlagshipTimer,
+    subTimers: policySubTimers,
+    searchZoneId: policySearchZoneId,
+    knownContactCount: policyKnownContactCount,
+    pendingContactCount: policyPendingContactCount,
+    debugContact: capDebugContact,
+    debugContext: capDebugContext,
+    lastScoutDecision: policyLastScoutDecision,
+    scoutDoctrine: policyScoutDoctrine,
+    lastFlagshipDecision: policyLastFlagshipDecision,
+    lastSubSkillDecision: policyLastSubSkillDecision,
+    lastSplitDecision: policyLastSplitDecision,
+  }) {
+    const focus = policyCurrentContext?.focus || policyLastTacticalPlan?.focus || policyRememberedMain;
     let visibleContacts = 0;
-    for (const contact of this.enemyIntel.entities.values()) {
-      const age = this.obs.time - contact.seenAt;
+    for (const contact of policyRememberedContacts) {
+      const age = policyObs.time - contact.seenAt;
       if ((contact.source === "visible" || age <= 0.6) && age <= 1.2) {
         visibleContacts += 1;
       }
     }
+    // 已投影的标量和新对象可直接发布，仅复制仍由策略持有的计划与决策。
     return {
-      seat: this.seat,
-      mode: this.mode,
-      modeTimer: this.modeTimer,
-      moveTimer: this.moveTimer,
-      scoutTimer: this.scoutTimer,
-      flagshipTimer: this.flagshipTimer,
+      seat: policySeat,
+      mode: policyMode,
+      modeTimer: policyModeTimer,
+      moveTimer: policyMoveTimer,
+      scoutTimer: policyScoutTimer,
+      flagshipTimer: policyFlagshipTimer,
       subTimers: {
-        sub1: this.subTimers.sub1,
-        sub2: this.subTimers.sub2,
+        sub1: policySubTimers.sub1,
+        sub2: policySubTimers.sub2,
       },
       intel: {
-        searchZoneId: this.enemyIntel.searchZoneId || null,
-        knownContacts: this.enemyIntel.entities.size,
+        searchZoneId: policySearchZoneId || null,
+        knownContacts: policyKnownContactCount,
         visibleContacts,
-        pendingContacts: this.pendingSightings.size,
+        pendingContacts: policyPendingContactCount,
       },
-      focus: this.debugContact(focus),
-      context: this.debugContext(this.currentContext),
-      searchCenter: this.lastTacticalPlan?.searchCenter || null,
-      combatCenter: this.lastTacticalPlan?.combatCenter || null,
-      searchAssignments: this.lastTacticalPlan?.searchAssignments || null,
-      sectorPlan: this.lastTacticalPlan?.sectorPlan || null,
-      shamisenHuntPlan: this.lastTacticalPlan?.shamisenHuntPlan || null,
-      detachedPlan: this.lastTacticalPlan?.detachedPlan || null,
-      orders: this.lastTacticalPlan?.orders || {},
-      useSearchSectorPlan: Boolean(this.lastTacticalPlan?.useSearchSectorPlan),
-      shouldUseDetachedRoles: Boolean(this.lastTacticalPlan?.shouldUseDetachedRoles),
+      focus: capDebugContact(focus),
+      context: capDebugContext(policyCurrentContext),
+      searchCenter: copyPlainData(policyLastTacticalPlan?.searchCenter || null),
+      combatCenter: copyPlainData(policyLastTacticalPlan?.combatCenter || null),
+      searchAssignments: copyPlainData(policyLastTacticalPlan?.searchAssignments || null),
+      sectorPlan: copyPlainData(policyLastTacticalPlan?.sectorPlan || null),
+      shamisenHuntPlan: copyPlainData(policyLastTacticalPlan?.shamisenHuntPlan || null),
+      detachedPlan: copyPlainData(policyLastTacticalPlan?.detachedPlan || null),
+      orders: copyPlainData(policyLastTacticalPlan?.orders || {}),
+      useSearchSectorPlan: Boolean(policyLastTacticalPlan?.useSearchSectorPlan),
+      shouldUseDetachedRoles: Boolean(policyLastTacticalPlan?.shouldUseDetachedRoles),
       scoutDecision: {
-        ...this.lastScoutDecision,
-        nextIn: this.scoutTimer,
+        ...copyPlainData(policyLastScoutDecision),
+        nextIn: policyScoutTimer,
       },
       scoutDoctrine: {
-        mode: this.scoutDoctrine.mode,
-        primaryZoneId: this.scoutDoctrine.primaryZoneId,
-        committedUntil: this.scoutDoctrine.committedUntil,
-        deployments: this.scoutDoctrine.deployments,
-        lastPlan: this.scoutDoctrine.lastPlan,
+        mode: policyScoutDoctrine.mode,
+        primaryZoneId: policyScoutDoctrine.primaryZoneId,
+        committedUntil: policyScoutDoctrine.committedUntil,
+        deployments: policyScoutDoctrine.deployments,
+        lastPlan: copyPlainData(policyScoutDoctrine.lastPlan),
       },
       flagshipDecision: {
-        ...this.lastFlagshipDecision,
-        nextIn: this.flagshipTimer,
+        ...copyPlainData(policyLastFlagshipDecision),
+        nextIn: policyFlagshipTimer,
       },
       subSkillDecision: {
         sub1: {
-          ...this.lastSubSkillDecision.sub1,
-          nextIn: this.subTimers.sub1,
+          ...copyPlainData(policyLastSubSkillDecision.sub1),
+          nextIn: policySubTimers.sub1,
         },
         sub2: {
-          ...this.lastSubSkillDecision.sub2,
-          nextIn: this.subTimers.sub2,
+          ...copyPlainData(policyLastSubSkillDecision.sub2),
+          nextIn: policySubTimers.sub2,
         },
       },
       splitDecision: {
-        ...this.lastSplitDecision,
-        level: this.obs.self.splitLevel,
+        ...copyPlainData(policyLastSplitDecision),
+        level: policyObs.self.splitLevel,
       },
     };
   },

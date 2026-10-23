@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 const contracts = new Map([
-  ["../shared/game/haruhi-flagship.js", [
+  ["../shared/game/characters/haruhi/flagship.js", [
     "HARUHI_ALIEN_INTERVAL", "HARUHI_BOOST_MULTIPLIER", "HARUHI_DAMAGE_TAKEN_MULTIPLIER",
     "HARUHI_ESPER_ABSORB_RADIUS_MULTIPLIER", "HARUHI_ESPER_ORBIT_SPEED",
     "HARUHI_OTHERWORLDER_COOLDOWN", "HARUHI_OTHERWORLDER_DAMAGE_RATIO",
@@ -23,11 +23,12 @@ const contracts = new Map([
     "randomAiLoadout", "skillMetaForCharacter", "slotLabel", "throttleForGear", "throttleGearForValue",
   ]],
   ["../src/i18n.js", [
-    "SUPPORTED_LOCALES", "applyCoreLocale", "bindLanguageSelector", "characterName", "characterShortName",
+    "SUPPORTED_LOCALES", "bindLanguageSelector", "characterName", "characterShortName",
     "characterText", "fleetSideLabel", "formatClockTime", "formatSeconds", "getLocale", "getLocaleInfo",
     "initI18n", "languageSelectorHTML", "localizeFloatingText", "seatLabel", "setLocale",
     "shipCharacterName", "shipDisplayName", "skillText", "slotLabel", "splitLabel", "t", "translateServerText",
   ]],
+  ["../src/character-presentation.js", ["characterPresentation", "skillPresentation"]],
   ["../src/character-select.js", [
     "CHARACTER_THEMES", "TEAM_COLORS", "createCharacterSelect", "drawInGamePortrait",
     "getLoadedPortraitImage", "getPortrait", "invalidatePortrait", "loadPortraitImage",

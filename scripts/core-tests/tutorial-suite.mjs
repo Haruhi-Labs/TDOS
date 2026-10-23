@@ -1,3 +1,5 @@
+import { discardScenarioProjectiles } from "./projectile-fixture.mjs";
+import { setScenarioField } from './ship-fixture.mjs';
 import { MatchSimulation } from "../../shared/game-core.js";
 import {
   TUTORIAL_ATTACK_TARGET,
@@ -28,8 +30,8 @@ function tutorialBattleRulesCheck() {
   assert(sim.teamB.areSkillsDisabled(), "教程敌方技能未被禁用");
   assert(!sim.teamB.castFlagshipSkill(), "教程敌方仍能发动旗舰技能");
   assert(sim.teamB.launchScout(5), "教程敌方角色技能禁用时侦察机也被错误禁用");
-  sim.teamB.scouts = [];
-  sim.teamB.cooldowns.scout = 0;
+  for (const scout of sim.teamB.scouts) sim.teamB.removeScout(scout);
+  sim.teamB.startCooldown("scout", 0);
 
   const enemyStart = { x: sim.teamB.ships.main.x, y: sim.teamB.ships.main.y };
   runSteps(sim, 0.8);
@@ -40,16 +42,16 @@ function tutorialBattleRulesCheck() {
   playerMain.takeDamage(playerMain.maxHp * 10, null, sim);
   assert(playerMain.alive && playerMain.hp >= playerMain.maxHp * 0.25, "教程友军1/4舰体锁定未生效");
 
-  playerMain.x = 720;
-  playerMain.y = 720;
-  playerMain.command = { x: 720, y: 720 };
-  playerMain.cooldown = 0;
+  setScenarioField(playerMain, 'x', 720);
+  setScenarioField(playerMain, 'y', 720);
+  playerMain.followTarget({ x: 720, y: 720 });
+  playerMain.resetAttackCycle(0);
   const enemyMain = sim.teamB.ships.main;
-  enemyMain.x = 840;
-  enemyMain.y = 720;
-  enemyMain.command = { x: 840, y: 720 };
+  setScenarioField(enemyMain, 'x', 840);
+  setScenarioField(enemyMain, 'y', 720);
+  enemyMain.followTarget({ x: 840, y: 720 });
   sim.teamA.computeVisibility(sim.teamB);
-  sim.projectiles = [];
+  discardScenarioProjectiles(sim);
   runSteps(sim, 0.2);
   assert(sim.projectiles.length === 0, "教程交火解锁前友军仍会自动开火");
   sim.setCombatEnabled("A", true);

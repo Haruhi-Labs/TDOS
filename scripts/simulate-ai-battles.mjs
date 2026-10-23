@@ -1,3 +1,6 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
+import { observeEnemyEntity } from "../shared/game/ai/bridge/observation.js";
+import { unlockSupport } from "../shared/game/characters/haruhi/support.js";
 import {
   CHARACTER_ORDER,
   MatchSimulation,
@@ -97,25 +100,6 @@ function runBattle({ index, loadoutA, loadoutB }) {
   });
   instrumentSkills(simulation.teamA, counters);
   instrumentSkills(simulation.teamB, counters);
-  let visionWaveBuffDeferrals = 0;
-  for (const bot of Object.values(simulation.bots)) {
-    const incomingVisionWaveWillPurge = bot.incomingVisionWaveWillPurge.bind(bot);
-    bot.incomingVisionWaveWillPurge = (...args) => {
-      const shouldDefer = incomingVisionWaveWillPurge(...args);
-      if (shouldDefer) visionWaveBuffDeferrals += 1;
-      return shouldDefer;
-    };
-    const retaskYukiCombatScouts = bot.retaskYukiCombatScouts.bind(bot);
-    bot.retaskYukiCombatScouts = (...args) => {
-      const retasked = retaskYukiCombatScouts(...args);
-      if (retasked > 0) {
-        const characterId = bot.team.mainCharacterId();
-        counters.scoutRetasks[characterId] = (counters.scoutRetasks[characterId] || 0) + retasked;
-      }
-      return retasked;
-    };
-  }
-
   const maxTicks = Math.ceil(MATCH_LIMIT_SECONDS / TICK_DT);
   let minEnergyRatio = 1;
   let minHullRatio = 1;
@@ -179,9 +163,17 @@ function runBattle({ index, loadoutA, loadoutB }) {
       minEnergyRatio = Math.min(minEnergyRatio, ship.energy / Math.max(1, ship.maxEnergy));
     }
     minHullRatio = Math.min(minHullRatio, simulation.teamA.hullRatio(), simulation.teamB.hullRatio());
-    if (simulation.teamA.radarPassive.contacts.size > 0 || simulation.teamB.radarPassive.contacts.size > 0) {
+    if ((simulation.teamA.serializeRadarPassive()?.contacts.length || 0) > 0 || (simulation.teamB.serializeRadarPassive()?.contacts.length || 0) > 0) {
       radarContactTicks += 1;
     }
+  }
+
+  let visionWaveBuffDeferrals = 0;
+  for (const bot of Object.values(simulation.bots)) {
+    const metrics = bot.decisionMetrics;
+    visionWaveBuffDeferrals += metrics.visionWaveBuffDeferrals;
+    const characterId = bot.obs.self.loadout.main;
+    counters.scoutRetasks[characterId] = (counters.scoutRetasks[characterId] || 0) + metrics.scoutRetasks;
   }
 
   return {
@@ -229,27 +221,26 @@ function runBarrierBreachScenario(breakerKind, seed) {
   const breaker = isHaruhi ? attackingTeam.ships.main : attackingTeam.ships.sub1;
   if (!isHaruhi) attackingTeam.split(1);
   if (isHaruhi) {
-    attackingTeam.haruhiFlagship.supporters.add("otherworlder");
-    attackingTeam.haruhiFlagship.otherworlderReadyAt = simulation.elapsed;
-    bot.flagshipTimer = 999;
+    unlockSupport(attackingTeam, ["otherworlder"], simulation.elapsed, () => 0);
+    bot.scheduleSkillDecision("flagship", 999);
   } else {
-    bot.subTimers.sub1 = 0;
+    bot.scheduleSkillDecision("sub1", 0);
   }
 
-  defendingMain.x = 650;
-  defendingMain.y = 720;
-  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
-  defendingMain.route = null;
-  breaker.x = 940;
-  breaker.y = 720;
-  breaker.angle = Math.PI;
-  breaker.energy = breaker.maxEnergy;
-  breaker.command = { x: breaker.x, y: breaker.y };
-  breaker.route = null;
-  attackingTeam.ships.main.x = isHaruhi ? breaker.x : 1010;
-  attackingTeam.ships.main.y = 720;
-  bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
+  defendingMain.followTarget({ x: defendingMain.x, y: defendingMain.y });
+  defendingMain.clearRoute();
+  setScenarioField(breaker, 'x', 940);
+  setScenarioField(breaker, 'y', 720);
+  setScenarioField(breaker, 'angle', Math.PI);
+  setScenarioField(breaker, 'energy', breaker.maxEnergy);
+  breaker.followTarget({ x: breaker.x, y: breaker.y });
+  breaker.clearRoute();
+  setScenarioField(attackingTeam.ships.main, 'x', isHaruhi ? breaker.x : 1010);
+  setScenarioField(attackingTeam.ships.main, 'y', 720);
+  bot.scheduleDecision("movement", 0);
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
   const previousRandom = Math.random;
   Math.random = seededRandom(seed);
@@ -295,17 +286,17 @@ function runBarrierInfiltrationScenario(seed) {
   const attackingTeam = simulation.teamB;
   const attackingMain = attackingTeam.ships.main;
   const bot = simulation.botBySeat("B");
-  defendingMain.x = 650;
-  defendingMain.y = 720;
-  defendingMain.command = { x: defendingMain.x, y: defendingMain.y };
-  defendingMain.route = null;
-  attackingMain.x = 930;
-  attackingMain.y = 720;
-  attackingMain.angle = Math.PI;
-  attackingMain.command = { x: attackingMain.x, y: attackingMain.y };
-  attackingMain.route = null;
-  bot.moveTimer = 0;
-  bot.rememberContact(defendingMain, "visible");
+  setScenarioField(defendingMain, 'x', 650);
+  setScenarioField(defendingMain, 'y', 720);
+  defendingMain.followTarget({ x: defendingMain.x, y: defendingMain.y });
+  defendingMain.clearRoute();
+  setScenarioField(attackingMain, 'x', 930);
+  setScenarioField(attackingMain, 'y', 720);
+  setScenarioField(attackingMain, 'angle', Math.PI);
+  attackingMain.followTarget({ x: attackingMain.x, y: attackingMain.y });
+  attackingMain.clearRoute();
+  bot.scheduleDecision("movement", 0);
+  bot.rememberContact(observeEnemyEntity(defendingMain, simulation.elapsed), "visible");
 
   let maximumInsideCount = 0;
   let sawStage = false;

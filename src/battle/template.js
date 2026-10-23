@@ -6,7 +6,8 @@
 //   panelActionsHTML   面板顶部「← 主菜单」之后的额外按钮(单人:换阵容)
 //   resultMetaClass    结算元信息行的附加类(在线:" result-match-meta")
 //   overlayActionsHTML 结算卡操作区(单人:再来一局+返回主菜单;在线:返回大厅)
-import { DEFAULT_THROTTLE_GEAR, DEFAULT_WORLD_SIZE, THROTTLE_GEAR_VALUES } from "../../shared/game-core.js";
+import { DEFAULT_THROTTLE_GEAR, THROTTLE_GEAR_VALUES } from "../../shared/game/rules/throttle.js";
+import { DEFAULT_WORLD_SIZE } from "../../shared/game/foundation/constants.js";
 import { t } from "../i18n.js";
 import "./command-panel.css";
 

@@ -1,3 +1,4 @@
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
 import assert from "node:assert/strict";
 import {
   drawKoizumiBarrier,
@@ -78,10 +79,10 @@ assert.equal(depleted.counts.arcRanges.filter(([radius]) => radius < 2).length, 
 team.koizumiBarrier.remainingHits = 15;
 
 const offscreen = createCountingContext();
-team.ships.main.x = 2200;
+setScenarioField(team.ships.main, 'x', 2200);
 assert.equal(drawKoizumiBarrier(offscreen.context, team, 2), false, "离屏古泉能量圈没有被裁掉");
 assert.equal(offscreen.counts.beginPath, 0, "离屏古泉能量圈仍生成了绘制路径");
-team.ships.main.x = 640;
+setScenarioField(team.ships.main, 'x', 640);
 
 const viewerTeam = {
   ships: {
@@ -118,7 +119,7 @@ assert.ok(
   "局部红圈绘制过程中泄露了完整圆周",
 );
 
-viewerTeam.ships.main.x = 1200;
+setScenarioField(viewerTeam.ships.main, 'x', 1200);
 const hiddenArcs = koizumiBarrierVisibleArcs(team, viewerTeam, 2);
 assert.deepEqual(hiddenArcs, [], "视野没有接触红圈时仍返回了可见圆弧");
 const hidden = createCountingContext();
@@ -144,7 +145,7 @@ assert.deepEqual(
 );
 viewerTeam.visionWaves.length = 0;
 
-viewerTeam.ships.main.x = 640;
+setScenarioField(viewerTeam.ships.main, 'x', 640);
 viewerTeam.ships.main.vision = 400;
 assert.deepEqual(
   koizumiBarrierVisibleArcs(team, viewerTeam, 2),

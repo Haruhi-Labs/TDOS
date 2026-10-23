@@ -1,9 +1,30 @@
+import { copyPlainData } from "../shared/data/plain-data.js";
 const MAX_INPUT_QUEUE_LENGTH = 90;
 const MAX_INPUTS_PER_TICK = 30;
 const REPLACEABLE_ACTION_TYPES = new Set(["route_control", "route_end", "set_throttle"]);
 
 export function createInputQueue({ networkStats = null } = {}) {
+  const sessions = new WeakMap();
+  function reset(player) {
+    sessions.set(player, { inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 });
+  }
+  function stateFor(player) {
+    if (!sessions.has(player)) reset(player);
+    return sessions.get(player);
+  }
+  function inspect(player) {
+    const state = sessions.get(player) || { inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 };
+    return Object.freeze({
+      lastProcessedSeq: state.lastProcessedSeq,
+      lastQueuedSeq: state.lastQueuedSeq,
+      pendingSequences: Object.freeze(state.inputQueue.map((item) => item.seq)),
+    });
+  }
+  function acknowledgedSequence(player) {
+    return sessions.get(player)?.lastProcessedSeq || 0;
+  }
   function queueInput(player, data) {
+    const state = stateFor(player);
     const seq = Number(data.seq);
     if (!Number.isInteger(seq) || seq <= 0) {
       return false;
@@ -12,13 +33,13 @@ export function createInputQueue({ networkStats = null } = {}) {
     if (!action || typeof action !== "object") {
       return false;
     }
-    if (seq <= player.lastProcessedSeq || seq <= (player.lastQueuedSeq || 0)) {
+    if (seq <= state.lastProcessedSeq || seq <= (state.lastQueuedSeq || 0)) {
       return false;
     }
 
-    player.lastQueuedSeq = seq;
-    const queued = { seq, action };
-    const lastQueued = player.inputQueue[player.inputQueue.length - 1];
+    state.lastQueuedSeq = seq;
+    const queued = { seq, action: copyPlainData(action) };
+    const lastQueued = state.inputQueue[state.inputQueue.length - 1];
     const replaceable = REPLACEABLE_ACTION_TYPES.has(action.type);
     if (
       replaceable &&
@@ -26,20 +47,20 @@ export function createInputQueue({ networkStats = null } = {}) {
       lastQueued.action?.type === action.type &&
       String(lastQueued.action?.shipKey || "main") === String(action.shipKey || "main")
     ) {
-      player.inputQueue[player.inputQueue.length - 1] = queued;
+      state.inputQueue[state.inputQueue.length - 1] = queued;
       if (networkStats) {
         networkStats.coalescedInputs += 1;
       }
     } else {
-      player.inputQueue.push(queued);
+      state.inputQueue.push(queued);
     }
-    trimInputQueue(player);
+    trimInputQueue(state);
     return true;
   }
 
-  function trimInputQueue(player) {
-    if (player.inputQueue.length > MAX_INPUT_QUEUE_LENGTH) {
-      player.inputQueue.splice(0, player.inputQueue.length - MAX_INPUT_QUEUE_LENGTH);
+  function trimInputQueue(state) {
+    if (state.inputQueue.length > MAX_INPUT_QUEUE_LENGTH) {
+      state.inputQueue.splice(0, state.inputQueue.length - MAX_INPUT_QUEUE_LENGTH);
     }
   }
 
@@ -50,22 +71,23 @@ export function createInputQueue({ networkStats = null } = {}) {
         continue;
       }
 
+      const state = stateFor(player);
       let handled = 0;
-      while (player.inputQueue.length > 0 && handled < MAX_INPUTS_PER_TICK) {
-        const item = player.inputQueue.shift();
+      while (state.inputQueue.length > 0 && handled < MAX_INPUTS_PER_TICK) {
+        const item = state.inputQueue.shift();
         if (!item || !Number.isInteger(item.seq)) {
           continue;
         }
-        if (item.seq <= player.lastProcessedSeq) {
+        if (item.seq <= state.lastProcessedSeq) {
           continue;
         }
         room.match.applyActionForSeat(seat, item.action);
-        player.lastProcessedSeq = item.seq;
+        state.lastProcessedSeq = item.seq;
         handled += 1;
       }
-      trimInputQueue(player);
+      trimInputQueue(state);
     }
   }
 
-  return { applyQueuedInputs, queueInput };
+  return { applyQueuedInputs, queueInput, reset, inspect, acknowledgedSequence };
 }

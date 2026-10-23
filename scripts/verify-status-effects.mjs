@@ -1,13 +1,16 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
+import { setScenarioField } from './core-tests/ship-fixture.mjs';
+import { selectShamisenHuntTarget } from "../shared/game/characters/shamisen/hunt.js";
+import { unlockSupport } from "../shared/game/characters/haruhi/support.js";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { chromium } from "playwright";
 import { createServer } from "vite";
-import { MatchSimulation } from "../shared/game-core.js";
-import { STATUS_EFFECT_DEFS } from "../shared/game/status-effect-definitions.js";
-import { serializeShipStatusEffects } from "../shared/game/status-effects.js";
-import { activateKoizumiOrb, beginKoizumiOrbReturn } from "../shared/game/koizumi-orb.js";
-import { applyHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
+import { STATUS_EFFECT_DEFS } from "../shared/game/projection/status-effect-definitions.js";
+import { serializeShipStatusEffects } from "../shared/game/projection/status-effects.js";
+import { activateKoizumiOrb, beginKoizumiOrbReturn } from "../shared/game/characters/koizumi/orb.js";
+import { applyHaruhiHeroPowerShock } from "../shared/game/characters/haruhi/hero-power.js";
 import { advanceStatusEffects, interpolateStatusEffects } from "../src/battle/status-effect-timing.js";
 import { EN_MESSAGES } from "../src/i18n/messages-en.js";
 import { JA_MESSAGES } from "../src/i18n/messages-ja.js";
@@ -15,31 +18,33 @@ import { createBunnyViewFixture } from "./fixtures/bunny-haruhi-view.mjs";
 
 const examples = new Map();
 const collect = (ship) => { const effects = serializeShipStatusEffects(ship); for (const effect of effects) examples.set(effect.id, effect); return effects; };
-const simulation = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "asakura" }, B: { main: "shamisen", sub1: "koizumi", sub2: "yuki" } } });
+const simulation = new ScenarioSimulation({ mode: "pvp", teamLoadouts: { A: { main: "haruhi", sub1: "kyon", sub2: "asakura" }, B: { main: "shamisen", sub1: "koizumi", sub2: "yuki" } } });
 const team = simulation.teamA;
-team.splitLevel = 2;
-simulation.elapsed = 10;
+team.configureFormation(2);
+sampleScenarioTime(simulation, { elapsed: 10 });
 assert.equal(team.castFlagshipSkill(), true);
 assert.equal(team.castSubSkill("sub1"), true);
 assert.equal(team.castSubSkill("sub2"), true);
 collect(team.ships.sub2);
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 14);
-simulation.elapsed = 11;
+sampleScenarioTime(simulation, { elapsed: 11 });
 assert.equal(collect(team.ships.sub1).find((effect) => effect.id === "reliable").remaining, 13);
-team.haruhiFlagship.supporters = new Set(["alien", "time_traveler", "otherworlder", "esper"]);
+for (const support of ["alien", "time_traveler", "otherworlder", "esper"]) {
+  unlockSupport(team, [support], simulation.elapsed, () => 0);
+}
 const main = team.ships.main;
-main.effects.stunnedUntil = 12;
-main.effects.silencedUntil = 16;
-main.effects.nextShotDamageMultiplier = 2;
-main.collisionSlowUntil = 14;
-main.forcedKnockback = { startedAt: 11, endsAt: 11.58 };
-main.clawMarks = { ...main.clawMarks, stacks: 2, required: 4, expiresAt: 19 };
+main.stunUntil(12);
+main.silenceUntil(16);
+main.chargeNextShot(2);
+setScenarioField(main, 'collisionSlowUntil', 14);
+main.beginForcedKnockback({ startedAt: 11, endsAt: 11.58 });
+for (let hit = 0; hit < 2; hit += 1) main.registerClawHit({ triggerHits: 4, markDuration: 8 }, simulation);
 applyHaruhiHeroPowerShock(main, 11);
-simulation.teamB.shamisenHunt.targetId = main.id;
+selectShamisenHuntTarget(simulation.teamB, team, () => 0);
 const beforeSerialize = JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]);
 collect(main);
 assert.equal(JSON.stringify([main.effects, main.clawMarks, main.heroPowerShock, team.effects, team.koizumiBarrier]), beforeSerialize, "状态序列化不能推进模拟或清理权威状态");
-simulation.teamB.splitLevel = 2;
+simulation.teamB.configureFormation(2);
 activateKoizumiOrb(simulation.teamB.ships.sub1);
 const state = simulation.serializeState();
 assert.ok(!collect(team.ships.sub1).some(({ id }) => id.startsWith("support_")), "旗舰武器支援不可错误显示在副舰上");
@@ -50,16 +55,16 @@ assert.ok(cleaned.includes("haruhi_boost") && cleaned.includes("hunt"), "净化�
 team.clearActiveSkillBuffs({ preserveCurrentTick: false });
 assert.ok(!collect(main).some(({ id }) => id === "broadcast" || id === "haruhi_boost"));
 assert.ok(collect(main).some(({ id }) => id === "support_alien"), "涤除主动增益不能删除常驻支援");
-main.alive = false;
+setScenarioField(main, 'alive', false);
 assert.deepEqual(collect(main), [], "击沉后必须清空状态卡");
 
 for (const characterId of ["tsuruya", "asakura", "future1096", "koizumi", "kyon"]) {
-  const sim = new MatchSimulation({ mode: "pvp", teamLoadouts: { A: { main: characterId, sub1: "shamisen", sub2: "koizumi" } } });
+  const sim = new ScenarioSimulation({ mode: "pvp", teamLoadouts: { A: { main: characterId, sub1: "shamisen", sub2: "koizumi" } } });
   const own = sim.teamA;
-  own.splitLevel = 2;
+  own.configureFormation(2);
   if (["tsuruya", "asakura", "future1096"].includes(characterId)) assert.equal(own.castFlagshipSkill(), true);
   collect(own.ships.main);
-  if (characterId === "future1096") { own.cooldowns.flagship = 0; own.castFlagshipSkill(); collect(own.ships.main); }
+  if (characterId === "future1096") { own.startCooldown("flagship", 0); own.castFlagshipSkill(); collect(own.ships.main); }
   own.castSubSkill("sub1");
   collect(own.ships.sub1);
   const orb = Object.values(own.ships).find((ship) => ship.key !== "main" && ship.characterId === "koizumi");

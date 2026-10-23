@@ -46,8 +46,8 @@
 
 ## 开发边界
 
-- `shared/game/status-effect-definitions.js`：稳定 ID、正负性质、图标语义、效果说明、常驻结束条件。不得在此改变规则。
-- `shared/game/status-effects.js`：从真实舰船/舰队状态读取当前效果，输出 `id`、`expiresAt`、`duration`、`remaining` 以及层数/倍率等公开参数。击沉不输出状态，过期状态不输出；不能推进计时、清理状态或写回模拟。
+- `shared/game/projection/status-effect-definitions.js`：稳定 ID、正负性质、图标语义、效果说明、常驻结束条件。不得在此改变规则。
+- `shared/game/projection/status-effects.js`：从真实舰船/舰队状态读取当前效果，输出 `id`、`expiresAt`、`duration`、`remaining` 以及层数/倍率等公开参数。击沉不输出状态，过期状态不输出；不能推进计时、清理状态或写回模拟。
 - `Ship.serialize()`：统一提供 `statusEffects`，旧 `buffs` 名称数组从同一结果生成。无需分别添加单人、服务端或观战分支。
 - `src/battle/status-effect-timing.js`：仅在显示副本中处理插值与有限外推。当前权威帧已删除的效果不能复活；续期采用新的结束时间，常驻状态不自造时长。
 - `src/battle/status-effects.js` / `.css`：按 ID 复用图标节点、进度环、叠层、桌面交互及顶层效果浮层。HUD 和观战只传入当前舰船快照；页面编排器只挂载/卸载浮层。

@@ -1,7 +1,8 @@
+import { setScenarioField } from './ship-fixture.mjs';
 import assert from "node:assert/strict";
 import { MatchSimulation, throttleForGear } from "../../shared/game-core.js";
 import { AI_ACTION_TYPES, aiActions } from "../../shared/game/ai/actions.js";
-import { AI_ACTION_MODES, createActionPort } from "../../shared/game/ai/bridge/action-port.js";
+import { createActionPort } from "../../shared/game/ai/bridge/action-port.js";
 import { validateMatchAction } from "../../shared/protocol/match-actions.js";
 
 const LOADOUTS = {
@@ -35,10 +36,10 @@ function vocabularyCheck() {
   assert.equal(aiActions.setRoute({ shipKey: "main", endX: 1, endY: 2, throttle: 1 }).anchorToMain, false);
 }
 
-function portCheck(mode) {
+function portCheck() {
   const sim = createMatch();
   const team = sim.teamB;
-  const port = createActionPort(sim, "B", { mode });
+  const port = createActionPort(sim, "B");
 
   const first = port.observe();
   assert.equal(port.observe(), first, "没有动作提交时必须复用同一份观测");
@@ -57,7 +58,7 @@ function portCheck(mode) {
   assert.equal(port.submit(aiActions.setThrottle({ shipKey: "sub1", throttle: 0.72 })), true);
   assert.equal(team.ships.sub1.throttle, throttleForGear(2), "档位值必须归一到离散档");
 
-  team.ships.main.energy = team.ships.main.maxEnergy;
+  setScenarioField(team.ships.main, 'energy', team.ships.main.maxEnergy);
   assert.equal(port.submit(aiActions.launchScout({
     zoneId: 4,
     shipKey: "main",
@@ -82,41 +83,31 @@ function portCheck(mode) {
 }
 
 function permissionCheck() {
-  // 标准执行链下 AI 与玩家受同样的操作权限约束；旧路径不做校验，仅用于行为对照。
-  for (const mode of [AI_ACTION_MODES.DISPATCH, AI_ACTION_MODES.DIRECT]) {
-    const sim = createMatch();
-    const ship = sim.teamB.ships.main;
-    const port = createActionPort(sim, "B", { mode });
-    ship.throttle = throttleForGear(4);
-    ship.effects.stunnedUntil = sim.elapsed + 5;
-    assert.equal(ship.canControl(), false);
-    const accepted = port.submit(aiActions.setThrottle({ shipKey: "main", throttle: throttleForGear(1) }));
-    if (mode === AI_ACTION_MODES.DISPATCH) {
-      assert.equal(accepted, false, "禁控期间 AI 不得换挡");
-      assert.equal(ship.throttle, throttleForGear(4));
-      assert.deepEqual(port.permissionRejections, { count: 1, controlLocked: 1, firstTick: sim.tick });
-    } else {
-      assert.equal(accepted, true);
-      assert.equal(ship.throttle, throttleForGear(1));
-      assert.equal(port.permissionRejections.count, 0);
-    }
-  }
+  const sim = createMatch();
+  const ship = sim.teamB.ships.main;
+  const port = createActionPort(sim, "B");
+  setScenarioField(ship, 'throttle', throttleForGear(4));
+  ship.stunUntil(sim.elapsed + 5);
+  // 即使调用方写入旧模式字段，也没有可切换的执行分支。
+  port.mode = "direct";
+  assert.equal(port.submit(aiActions.setThrottle({ shipKey: "main", throttle: throttleForGear(1) })), false);
+  assert.equal(ship.throttle, throttleForGear(4));
+  assert.deepEqual(port.permissionRejections, { count: 1, controlLocked: 1, firstTick: sim.tick });
 }
 
 function runnerCheck() {
   const sim = createMatch({ aiSeats: ["B"] });
   const runner = sim.aiRunners.B;
-  assert.equal(runner.port.mode, AI_ACTION_MODES.DISPATCH, "AI 默认经标准执行链下发动作");
+  assert.equal(runner.port.mode, undefined, "端口不公开执行模式切换");
   assert.equal(runner.policy, sim.botBySeat("B"));
   assert.equal(Object.hasOwn(runner.policy, "legacyWrite"), false, "AI 不得绕过端口保存己方舰队的写入入口");
-  assert.equal(createMatch({ aiSeats: ["B"], aiActionMode: "direct" }).aiRunners.B.port.mode, AI_ACTION_MODES.DIRECT);
+  assert.equal(createMatch({ aiSeats: ["B"], aiActionMode: "direct" }).aiRunners.B.port.mode, undefined);
   assert.equal(AI_ACTION_TYPES.AI_LAUNCH_SCOUT, "ai_launch_scout");
 }
 
 export function runAiActionsSuite() {
   vocabularyCheck();
-  portCheck(AI_ACTION_MODES.DISPATCH);
-  portCheck(AI_ACTION_MODES.DIRECT);
+  portCheck();
   permissionCheck();
   runnerCheck();
 }

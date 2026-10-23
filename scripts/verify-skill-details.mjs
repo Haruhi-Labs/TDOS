@@ -6,7 +6,7 @@ import { createServer } from "vite";
 import { CHARACTER_ORDER, MatchSimulation, skillMetaForCharacter } from "../shared/game-core.js";
 import { setLocale, skillText } from "../src/i18n.js";
 import { CHARACTER_TEXT } from "../src/i18n/catalog.js";
-import { BUNNY_VIEW_PARAMS } from "../shared/game/bunny-haruhi-view-params.js";
+import { BUNNY_VIEW_PARAMS } from "../shared/game/characters/bunny-haruhi/view-params.js";
 import { skillDetailRows, skillOverview } from "../src/character-select/skill-presentation.js";
 const onlyCharacter = process.argv.find((arg) => arg.startsWith("--character="))?.slice("--character=".length);
 if (onlyCharacter) assert.ok(CHARACTER_ORDER.includes(onlyCharacter), "未知的定向视觉角色");
@@ -48,7 +48,7 @@ assert.equal(value("asakura", "sub", "接触伤害"), "目标最大舰体的15%"
 assert.equal(value("asakura", "sub", "结算间隔"), "1秒");
 for (const id of ["kyon", "asakura"]) {
   const team = new MatchSimulation({ teamLoadouts: { A: { main: "yuki", sub1: id, sub2: "haruhi" } } }).teamA;
-  team.splitLevel = 2;
+  team.configureFormation(2);
   assert.equal(team.castSubSkill("sub1"), true);
   const ship = team.ships.sub1;
   for (const [label, stat] of [["转向倍率", "turnRate"], ["加速倍率", "accel"], ["航速倍率", "speed"], ...(id === "kyon" ? [["伤害倍率", "damage"]] : [])]) {
@@ -57,7 +57,7 @@ for (const id of ["kyon", "asakura"]) {
   }
 }
 const scoutTeam = new MatchSimulation({ teamLoadouts: { A: { main: "koizumi", sub1: "yuki", sub2: "haruhi" } } }).teamA;
-scoutTeam.splitLevel = 2;
+scoutTeam.configureFormation(2);
 assert.equal(scoutTeam.castSubSkill("sub1"), true);
 assert.equal(value("yuki", "sub", "侦察机总数"), `${scoutTeam.scouts.length}架`);
 assert.equal(value("yuki", "sub", "侦察机航速"), String(scoutTeam.scouts[0].speed));
@@ -190,6 +190,12 @@ try {
     const { context, page } = await enter(viewport, mobile, locale);
     await page.locator(mobile ? ".csm-dot" : ".cs-tab").nth(onlyCharacter ? CHARACTER_ORDER.indexOf(onlyCharacter) : index).click();
     if (!mobile) await page.locator(".cs-page-flipper").waitFor({ state: "detached" });
+    const characterIndex = onlyCharacter ? CHARACTER_ORDER.indexOf(onlyCharacter) : index;
+    const text = CHARACTER_TEXT[locale.slice(0, 2)][CHARACTER_ORDER[characterIndex]];
+    const name = mobile ? page.locator(".csm-slide .csm-name").nth(characterIndex + 1) : page.locator(".cs-book > .cs-page-left .cs-page-fullname");
+    const title = mobile ? page.locator(".csm-slide .csm-title").nth(characterIndex + 1) : page.locator(".cs-book > .cs-page-left .cs-page-roman");
+    assert.equal(await name.textContent(), text.name, "角色名必须消费当前语言投影");
+    assert.equal(await title.textContent(), text.title, "角色定位文案必须消费当前语言投影");
     await page.locator(mobile ? ".csm .cs-skill-trigger" : ".cs-book > .cs-page-right .cs-skill-trigger").nth(onlyCharacter && viewport.height === 540 ? 1 : 0).click();
     await page.locator(".cs-skill-popover[data-open=true]").waitFor();
     const geometry = await verifyGeometry(page, viewport);

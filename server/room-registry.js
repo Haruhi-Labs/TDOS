@@ -1,8 +1,6 @@
-import {
-  cloneLoadout,
-  DEFAULT_AI_LOADOUT,
-  randomAiLoadout,
-} from "../shared/game-core.js";
+import { Room } from "./room.js";
+import { copyPlainData } from "../shared/data/plain-data.js";
+import { cloneLoadout, DEFAULT_AI_LOADOUT, randomAiLoadout } from "../shared/game/characters/catalog.js";
 import { ROOM_CAPACITY } from "./config.js";
 
 const PLAYER_SEATS = ["A", "B"];
@@ -15,6 +13,7 @@ export function createRoomRegistry({
   players = new Map(),
   rooms = new Map(),
   resetSnapshotStream = () => {},
+  resetPlayerInputs = () => {},
 } = {}) {
   function getPlayerById(playerId) {
     if (!playerId) {
@@ -78,11 +77,14 @@ export function createRoomRegistry({
       const player = getPlayerById(playerId);
       if (player && player.roomId === room.id && player.spectating) {
         list.push(player);
-      } else {
-        room.spectators.delete(playerId);
       }
     }
     return list;
+  }
+
+  function pruneRoomSpectators(room) {
+    const activeIds = new Set(roomSpectators(room).map((player) => player.id));
+    room.retainSpectators(activeIds);
   }
 
   function spectatorCount(room) {
@@ -96,7 +98,7 @@ export function createRoomRegistry({
       seat: "A",
       name: playerA ? playerA.name : "空位",
       playerId: playerA ? playerA.id : null,
-      loadout: playerA ? playerA.loadout : null,
+      loadout: playerA ? cloneLoadout(playerA.loadout) : null,
       isBot: false,
       ready: Boolean(room.ready?.A),
     }];
@@ -114,7 +116,7 @@ export function createRoomRegistry({
         seat: "B",
         name: playerB ? playerB.name : "空位",
         playerId: playerB ? playerB.id : null,
-        loadout: playerB ? playerB.loadout : null,
+        loadout: playerB ? cloneLoadout(playerB.loadout) : null,
         isBot: false,
         ready: Boolean(room.ready?.B),
       });
@@ -126,6 +128,7 @@ export function createRoomRegistry({
     return {
       roomId: room.id,
       winnerSeat: room.match ? room.match.winnerSeat : null,
+      ...(room.match?.endReason ? { endReason: room.match.endReason } : {}),
       finishedAt: now,
       players: seatPlayerRows(room).map((row) => ({
         ...row,
@@ -136,7 +139,7 @@ export function createRoomRegistry({
 
   function displayPlayerRows(room) {
     if (room && room.result && Array.isArray(room.result.players)) {
-      return room.result.players;
+      return copyPlainData(room.result.players);
     }
     return seatPlayerRows(room);
   }
@@ -160,6 +163,7 @@ export function createRoomRegistry({
         players: displayPlayerRows(room),
         spectatorCount: spectatorCount(room),
         winnerSeat: result ? result.winnerSeat : room.match ? room.match.winnerSeat : null,
+        ...((result?.endReason || room.match?.endReason) ? { endReason: result?.endReason || room.match.endReason } : {}),
         finishedAt: result ? result.finishedAt : room.finishedAt,
         closesAt: room.closesAt || null,
         createdAt: room.createdAt,
@@ -170,7 +174,7 @@ export function createRoomRegistry({
             seat: viewer.seat,
             spectating: Boolean(viewer.spectating),
             isHost,
-            loadout: viewer.loadout,
+            loadout: cloneLoadout(viewer.loadout),
           }
         : null,
     };
@@ -209,43 +213,37 @@ export function createRoomRegistry({
     player.roomId = null;
     player.seat = null;
     player.spectating = false;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
+    resetPlayerInputs(player);
     resetSnapshotStream(player);
   }
 
   function assignPlayerToRoom(player, room, seat) {
+    if (!room.occupySeat(seat, player.id)) return false;
     player.roomId = room.id;
     player.seat = seat;
     player.spectating = false;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
+    resetPlayerInputs(player);
     player.selectedShipKey = "main";
     resetSnapshotStream(player);
-    room.seats[seat] = player.id;
+    return true;
   }
 
   function assignSpectatorToRoom(player, room) {
+    pruneRoomSpectators(room);
+    if (!room.addSpectator(player.id)) return false;
     player.roomId = room.id;
     player.seat = null;
     player.spectating = true;
-    player.inputQueue = [];
-    player.lastProcessedSeq = 0;
-    player.lastQueuedSeq = 0;
+    resetPlayerInputs(player);
     player.selectedShipKey = "main";
     resetSnapshotStream(player);
-    if (!room.spectators) {
-      room.spectators = new Set();
-    }
-    room.spectators.add(player.id);
+    return true;
   }
 
   function createRoomRecord(visibility, mode, now = Date.now(), kind = "standard") {
     const safeVisibility = visibility === "private" ? "private" : "public";
     const safeMode = mode === "ai" ? "ai" : "pvp";
-    return {
+    return new Room({
       id: createRoomId(),
       mode: safeMode,
       kind: safeMode === "pvp" && kind === "tournament" ? "tournament" : "standard",
@@ -259,15 +257,13 @@ export function createRoomRegistry({
       createdAt: now,
       startedAt: null,
       match: null,
-      snapshotAccumulator: 0,
-      snapshotSeq: 0,
       finishedAt: null,
       closesAt: null,
       result: null,
       spectators: new Set(),
       // AI 房每房生成一次随机阵容，房间展示与开局共用同一份。
       aiLoadout: safeMode === "ai" ? randomAiLoadout() : null,
-    };
+    });
   }
 
   function validShipKey(shipKey) {
@@ -299,6 +295,7 @@ export function createRoomRegistry({
     findPrivateRoom,
     getPlayerById,
     resetPlayerRoomState,
+    pruneRoomSpectators,
     roomSpectators,
     seatPlayerRows,
     selectedShipsForRoom,

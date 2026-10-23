@@ -1,0 +1,28 @@
+import { ScenarioSimulation, sampleScenarioTime } from "./core-tests/scenario-simulation.mjs";
+import { updateRadarPassive } from "../shared/game/characters/yuki/radar-port.js";
+import assert from "node:assert/strict";
+import { activateVisionWaveSkill, cancelVisionWaveSkill } from "../shared/game/characters/asakura/vision-wave.js";
+
+const match = new ScenarioSimulation({ seed: 76, teamLoadouts: { A: { main: "yuki", sub1: "koizumi", sub2: "kyon" } } });
+const team = match.teamA;
+assert.equal(team.radarPassive, undefined, "雷达内部回波 Map 不公开");
+const enemy = match.teamB.ships.main;
+enemy.displaceTo(team.ships.main.x + 500, team.ships.main.y);
+sampleScenarioTime(match, { elapsed: 3 });
+updateRadarPassive(team, match.teamB, 3);
+const radar = team.serializeRadarPassive();
+assert.ok(radar.contacts.length > 0);
+radar.contacts[0].x = -100;
+assert.notEqual(team.serializeRadarPassive().contacts[0].x, -100);
+activateVisionWaveSkill(team);
+const state = team.visionWaveSkill;
+assert.equal(team.visionWaveSkill, state, "只读查询不重复复制未变化的波纹");
+assert.throws(() => { state.waves[0].expiresAt = 999; }, TypeError);
+assert.throws(() => state.waves.pop(), TypeError);
+assert.throws(() => { team.visionWaveSkill = {}; }, TypeError);
+cancelVisionWaveSkill(team, { preserveCurrentTick: false });
+assert.equal(state.waves.length, 1);
+assert.equal(team.visionWaveSkill.waves.length, 0);
+assert.throws(() => team.koizumiImpactWaves.push({}), TypeError);
+assert.equal(team.koizumiImpactWaveSequence, undefined);
+console.log("传感与波纹所有权校验通过：雷达存储不外泄、回波副本隔离、波纹历史深只读及取消操作生效。");

@@ -129,6 +129,11 @@ try {
     getPlayerById: () => ({ gameVersion: "v99.0" }),
   });
   assert.equal(authoritative.gameVersion, GAME_VERSION, "多人版本必须来自服务端");
+  const alternateSummary = { ...simulation.statisticsSummary(), battleMode: "objective" };
+  assert.equal(buildServerMatchStatisticsRecord({
+    room: { match: { statisticsSummary: () => alternateSummary } }, getPlayerById: () => null,
+  }), null, "其他规则不能因为使用PVP席位而进入标准胜率");
+  assert.equal(buildSoloStatisticsRecord({ summary: alternateSummary }, {}), null, "单人上报采用相同规则口径");
   assert.equal(buildSoloStatisticsRecord({ gameVersion: "v0.2" }, {}).gameVersion, "v0.2", "单人不得被重标为服务端版本");
   assert.equal(buildSoloStatisticsRecord({}, {}).gameVersion, undefined, "旧端缺失版本不得被猜测填充");
   const oldClient = { ...spoofed, id: "solo:old-client", gameVersion: "v0.2" };
@@ -175,16 +180,15 @@ try {
   await bunnyStore.ready();
   for (const id of ["bunny_haruhi", "haruhi"]) {
     const sim = new MatchSimulation({ mode: "pvp", aiSeats: [], teamLoadouts: { A: { main: "kyon", sub1: id, sub2: "yuki" } } });
-    sim.teamA.splitLevel = 2;
+    sim.teamA.configureFormation(2);
     if (id === "bunny_haruhi") for (let i = 0; i < 4; i++) {
-      sim.teamA.cooldowns.sub1 = 0;
+      sim.teamA.startCooldown("sub1", 0);
       assert.equal(sim.teamA.castSubSkill("sub1"), true);
     }
-    sim.elapsed = 120;
-    sim.tick = 3600;
-    sim.winnerSeat = "A";
+    // 存储测试消费结算读模型，不伪造权威对局的时间或胜者。
+    const summary = { ...sim.statisticsSummary(), durationSeconds: 120, tick: 3600, winnerSeat: "A" };
     const entry = buildServerMatchStatisticsRecord({
-      room: { id, mode: "pvp", seats: { A: "a", B: "b" }, startedAt: time - 120000, match: sim },
+      room: { id, mode: "pvp", seats: { A: "a", B: "b" }, startedAt: time - 120000, match: { statisticsSummary: () => summary } },
       getPlayerById: (key) => ({ id: key }), now: time,
     });
     assert.deepEqual(Object.keys(entry.participants[0].loadout), ["main", "sub1", "sub2"], "伴随舰不能进入阵容 key");

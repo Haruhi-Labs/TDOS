@@ -5,10 +5,10 @@ import {
   TICK_DT,
   __resetEntityIds,
 } from "../shared/game-core.js";
-import { createFixedStepClock } from "../shared/game/fixed-step-clock.js";
+import { createFixedStepClock } from "../shared/game/runtime/fixed-step-clock.js";
 import { matchActions } from "../shared/protocol/match-actions.js";
 import { createInputQueue } from "../server/input-queue.js";
-import { applyHaruhiHeroPowerShock } from "../shared/game/haruhi-hero-power.js";
+import { applyHaruhiHeroPowerShock } from "../shared/game/characters/haruhi/hero-power.js";
 
 const LOADOUTS = {
   A: { main: "kyon", sub1: "asakura", sub2: "koizumi" },
@@ -99,8 +99,8 @@ function replayThroughServerQueue(tickCount) {
   const simulation = createSimulation();
   const inputQueue = createInputQueue({ networkStats: { coalescedInputs: 0 } });
   const players = new Map([
-    ["player-a", { id: "player-a", inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 }],
-    ["player-b", { id: "player-b", inputQueue: [], lastProcessedSeq: 0, lastQueuedSeq: 0 }],
+    ["player-a", { id: "player-a" }],
+    ["player-b", { id: "player-b" }],
   ]);
   const sequences = { A: 0, B: 0 };
   const room = {
