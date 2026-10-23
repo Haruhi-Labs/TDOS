@@ -5,6 +5,7 @@ on:
     types: [opened, synchronize, reopened, edited, ready_for_review]
   push:
     branches: [dev, main]
+  workflow_dispatch:
 permissions:
   contents: read
 concurrency:
@@ -24,7 +25,11 @@ jobs:
           node-version: 22
           cache: npm
       - name: 校验提交格式与 PR 标题
+        if: github.event_name != 'workflow_dispatch'
         run: npm run check:commits -- --event "$GITHUB_EVENT_PATH"
+      - name: 校验手动候选的最新提交格式
+        if: github.event_name == 'workflow_dispatch'
+        run: npm run check:commits -- --range HEAD^ HEAD
       - run: npm ci
       - run: npx playwright install --with-deps chromium
       - name: 校验 main 晋级来源与类型
@@ -36,7 +41,16 @@ jobs:
           case "$GITHUB_HEAD_REF" in release/*|hotfix/*) ;; *) echo 'main 只接受经过评估的晋级候选'; exit 1;; esac
           git fetch origin dev
           node scripts/release/promotion.mjs check "$BASE_SHA" "$HEAD_SHA"
-      - run: npm run test:all
+      - name: 开发 PR 检查
+        if: github.event_name == 'pull_request' && github.base_ref == 'dev'
+        run: |
+          npm run check:static
+          npm run test:logic
+          npm run test:integration
+          npm run test:ui:result
+      - name: 完整回归
+        if: github.event_name != 'pull_request' || github.base_ref != 'dev'
+        run: npm run test:all
       - name: 验证正式基路径
         run: VITE_BASE=/ VITE_DEPLOY_CHANNEL=production npm run build
       - name: 验证测试基路径
