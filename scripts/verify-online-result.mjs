@@ -9,7 +9,7 @@ import { RULESET_VERSION } from "../shared/protocol/ruleset-version.js";
 const vite = await createServer({ root: resolve(import.meta.dirname, ".."), logLevel: "silent", server: { host: "127.0.0.1", port: 0 }, plugins: [{
   name: "result-view-fixture",
   transform(code, id) {
-    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.resultFixture = { get timeline() { return snapshotTransport.state; } };`;
+    if (id.endsWith("/src/online.js")) return `${code}\nglobalThis.resultFixture = { get timeline() { return snapshotTransport.state; }, get connected() { return app.connected && app.ws?.readyState === WebSocket.OPEN; } };`;
     return null;
   },
 }] });
@@ -26,7 +26,9 @@ try {
     let socket;
     const wsUrl = "ws://127.0.0.1:65530/result-fixture";
     await page.routeWebSocket(wsUrl, (ws) => { socket = ws; ws.onMessage((raw) => outgoing.push(JSON.parse(String(raw)))); });
-    await page.goto(`${vite.resolvedUrls.local[0]}online?ws=${encodeURIComponent(wsUrl)}`, { waitUntil: "networkidle" });
+    await page.goto(`${vite.resolvedUrls.local[0]}online?ws=${encodeURIComponent(wsUrl)}`, { waitUntil: "domcontentloaded" });
+    // 网络空闲不代表异步页面初始化和 WebSocket 建连已经完成。
+    await page.waitForFunction(() => window.resultFixture?.connected === true);
     socket.send(JSON.stringify({ type: "connected", playerId: "result-test", rulesetVersion: RULESET_VERSION, tickRate: 30, snapshotRate: 15, protocolVersion: 2 }));
     const room = { roomId: "result-room", status: "running", mode: "pvp", players: ["A", "B"].map((seat) => ({ seat, name: `结算${seat}`, playerId: `player-${seat}`, loadout: DEFAULT_TEAM_LOADOUT })) };
     if (reasonSource === "room") room.endReason = "objective";
@@ -60,6 +62,7 @@ try {
     await page.waitForTimeout(1100);
     assert.equal(await page.locator("#resultSub").textContent(), closedSubtitle, "离房后倒计时不得继续改写已关闭视图");
     await context.close();
+    console.log(`结算场景通过：${reasonSource} / ${spectating ? "观战" : "玩家"} / ${mobile ? "触屏" : "桌面"}`);
   }
   assert.deepEqual(errors, []);
   console.log("结算浏览器校验通过：玩家/观战、桌面/触屏、胜者与阵容、重复终局、关闭倒计时及离房清理。");
