@@ -70,7 +70,7 @@
     "check:commits": "node scripts/check-commits.mjs",
     "test:commits": "node scripts/verify-commits.mjs",
     "test:ui:tournament": "node scripts/verify-tournament-ui.mjs",
-    "test:architecture:replay": "node scripts/verify-architecture-replay.mjs",
+    "test:architecture:replay": "node scripts/verify-architecture-replay.mjs --same-runtime",
     "test:architecture": "node scripts/verify-domain-boundaries.mjs",
     "test:solo:session": "node scripts/verify-solo-session.mjs",
     "test:ui:result": "node scripts/verify-online-result.mjs"
