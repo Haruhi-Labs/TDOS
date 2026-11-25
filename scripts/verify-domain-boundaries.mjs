@@ -268,3 +268,5 @@ await import("./verify-match-outcome.mjs");
 await import("./verify-simulation-time.mjs");
 
 await import("./verify-battle-mode.mjs");
+
+await import("./verify-match-topology.mjs");

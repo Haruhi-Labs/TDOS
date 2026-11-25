@@ -1,5 +1,6 @@
 // 跨实体的数值、标识分配和纯辅助规则；不持有对局或实体引用。
 import { CHARACTER_DEFS } from "../characters/catalog.js";
+import { freezePlainData } from "../../data/plain-data.js";
 
 export const TAU = Math.PI * 2;
 export const BEAM_CHARGE_DURATION = 1.05;
@@ -62,6 +63,23 @@ export const TEAM_PROJECTILE_COLORS = {
   B: "#ffc0bd",
 };
 
+export const TEAM_HUNT_COLORS = Object.freeze({
+  A: "#8fe8ff",
+  B: "#ff9eb8",
+});
+
+// 非 A/B 席位按 seatOrder 下标从该固定调色板派生展示色值，不从外部配置注入。
+export const FLEET_PRESENTATION_PALETTE = freezePlainData([
+  { color: TEAM_COLORS.A, projectileColor: TEAM_PROJECTILE_COLORS.A, huntColor: TEAM_HUNT_COLORS.A },
+  { color: TEAM_COLORS.B, projectileColor: TEAM_PROJECTILE_COLORS.B, huntColor: TEAM_HUNT_COLORS.B },
+  { color: "#7ce38b", projectileColor: "#b4f2bd", huntColor: "#9ef0a9" },
+  { color: "#ffd166", projectileColor: "#ffe5a3", huntColor: "#ffdc85" },
+  { color: "#c49bff", projectileColor: "#dec7ff", huntColor: "#d3b5ff" },
+  { color: "#ff9f5a", projectileColor: "#ffc79c", huntColor: "#ffb57d" },
+  { color: "#5ce1d6", projectileColor: "#9ef0e8", huntColor: "#82ebe1" },
+  { color: "#f78fb3", projectileColor: "#fbc0d4", huntColor: "#faa7c4" },
+]);
+
 export const HARUHI_SUPPORT_ANNOUNCEMENT_KEYS = Object.freeze({
   alien: "找到了宇宙人！",
   time_traveler: "找到了未来人！",
@@ -69,7 +87,70 @@ export const HARUHI_SUPPORT_ANNOUNCEMENT_KEYS = Object.freeze({
   esper: "找到了超能力者！",
 });
 
-export function normalizeAiSeats(mode = "pvp", aiSeats) {
+export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats) {
+  if (registeredSeats !== undefined) {
+    if (!registeredSeats || typeof registeredSeats[Symbol.iterator] !== "function" || typeof registeredSeats === "string") {
+      throw new TypeError("已注册席位集合必须是可迭代对象");
+    }
+    const orderedSeats = [];
+    const registeredSet = new Set();
+    for (const seat of registeredSeats) {
+      if (typeof seat !== "string" || seat.length === 0) {
+        throw new TypeError("已注册席位必须是非空字符串");
+      }
+      if (!registeredSet.has(seat)) {
+        registeredSet.add(seat);
+        orderedSeats.push(seat);
+      }
+    }
+
+    if (aiSeats === undefined) {
+      if (mode === "ai") {
+        if (orderedSeats.length === 2 && orderedSeats[0] === "A" && orderedSeats[1] === "B") {
+          return ["B"];
+        }
+        throw new Error("显式席位拓扑在 ai 模式下必须明确指定 aiSeats");
+      }
+      return [];
+    }
+    if (aiSeats === "all") {
+      return [...orderedSeats];
+    }
+    if (aiSeats === null) {
+      return [];
+    }
+
+    let candidates;
+    if (Array.isArray(aiSeats)) {
+      candidates = aiSeats;
+    } else if (typeof aiSeats === "object") {
+      candidates = [];
+      for (const [seat, enabled] of Object.entries(aiSeats)) {
+        if (!registeredSet.has(seat)) {
+          throw new Error(`非法 AI 席位：${seat} 不在已注册席位集合中`);
+        }
+        if (Boolean(enabled)) {
+          candidates.push(seat);
+        }
+      }
+    } else {
+      candidates = [aiSeats];
+    }
+
+    const result = [];
+    const seen = new Set();
+    for (const seat of candidates) {
+      if (typeof seat !== "string" || !registeredSet.has(seat)) {
+        throw new Error(`非法 AI 席位：${String(seat)} 不在已注册席位集合中`);
+      }
+      if (!seen.has(seat)) {
+        seen.add(seat);
+        result.push(seat);
+      }
+    }
+    return result;
+  }
+
   let source = aiSeats;
   if (source === undefined) {
     source = mode === "ai" ? ["B"] : [];
