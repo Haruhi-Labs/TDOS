@@ -46,6 +46,9 @@ const PERMISSION_CHECKED_TYPES = new Set([
 
 export function createActionPort(match, seat) {
   const team = match.teamBySeat(seat);
+  if (!team) {
+    throw new Error(`无法为未知席位创建 AI 动作端口：${String(seat)}`);
+  }
   let observation = null;
   const permissionRejections = { count: 0, controlLocked: 0, firstTick: null };
   const port = {

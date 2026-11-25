@@ -270,3 +270,5 @@ await import("./verify-simulation-time.mjs");
 await import("./verify-battle-mode.mjs");
 
 await import("./verify-match-topology.mjs");
+
+await import("./verify-fleet-registry.mjs");

@@ -18,7 +18,38 @@ import { visibilityInputs } from "../adapters/visibility-port.js";
 import { FleetFireControl } from "../systems/targeting-system.js";
 import { projectVolleyAttackers, fireCandidates as teamFireCandidates, pickTeamTarget } from "../adapters/fire-control.js";
 import { Ship } from "../model/ship.js";
-import { BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
+import { isValidTopologyId } from "../rules/team-relations.js";
+import { BEAM_CHARGE_DURATION, BEAM_VISUAL_DURATION, BEAM_BASE_RANGE, BEAM_HIT_RADIUS, beamDamageRatioForHitCount, FLAGSHIP_TURN_PENALTIES, TEAM_COLORS, TEAM_HUNT_COLORS, TEAM_PROJECTILE_COLORS } from "../model/model-support.js";
+
+const DEFAULT_LEGACY_SIDES = Object.freeze({ A: "side1", B: "side2" });
+
+function resolveTeamSideId(seat, sideId) {
+  if (sideId !== undefined) {
+    if (!isValidTopologyId(sideId)) {
+      throw new Error(`舰队 ${String(seat)} 的阵营 sideId 非法：${String(sideId)}`);
+    }
+    return sideId;
+  }
+  if (typeof seat === "string" && Object.hasOwn(DEFAULT_LEGACY_SIDES, seat)) {
+    return DEFAULT_LEGACY_SIDES[seat];
+  }
+  throw new Error(`非 A/B 席位 ${String(seat)} 构造舰队时必须提供有效的 sideId`);
+}
+
+function resolvePresentationColor(seat, presentation, field, fallbackTable) {
+  if (presentation !== undefined && Object.hasOwn(presentation, field) && presentation[field] !== undefined) {
+    const value = presentation[field];
+    if (typeof value !== "string" || value.trim().length === 0) {
+      throw new Error(`舰队 ${String(seat)} 的展示颜色 ${field} 必须是非空字符串`);
+    }
+    return value;
+  }
+  const fallback = typeof seat === "string" && Object.hasOwn(fallbackTable, seat) ? fallbackTable[seat] : undefined;
+  if (typeof fallback === "string" && fallback.trim().length > 0) {
+    return fallback;
+  }
+  throw new Error(`舰队 ${String(seat)} 缺少展示颜色 ${field}`);
+}
 
 export class Team {
   #statMult;
@@ -61,13 +92,22 @@ export class Team {
   get splitLevel() { return this.#formation.level; }
   #beamSystem;
   constructor(match, seat, name, spawnX, spawnY, facing, options = {}) {
+    if (options.presentation !== undefined && (!options.presentation || typeof options.presentation !== "object" || Array.isArray(options.presentation))) {
+      throw new TypeError(`舰队 ${String(seat)} 的 presentation 配置必须是普通对象`);
+    }
+    const sideId = resolveTeamSideId(seat, options.sideId);
+    const color = resolvePresentationColor(seat, options.presentation, "color", TEAM_COLORS);
+    const projectileColor = resolvePresentationColor(seat, options.presentation, "projectileColor", TEAM_PROJECTILE_COLORS);
+    const huntColor = resolvePresentationColor(seat, options.presentation, "huntColor", TEAM_HUNT_COLORS);
     this.#roster = new FleetRoster(this);
     Object.defineProperties(this, {
       match: { enumerable: true, value: match },
       seat: { enumerable: true, value: seat },
+      sideId: { enumerable: true, value: sideId },
       name: { enumerable: true, value: name },
-      color: { enumerable: true, value: TEAM_COLORS[seat] },
-      projectileColor: { enumerable: true, value: TEAM_PROJECTILE_COLORS[seat] },
+      color: { enumerable: true, value: color },
+      projectileColor: { enumerable: true, value: projectileColor },
+      huntColor: { enumerable: true, value: huntColor },
     });
     Object.defineProperty(this, "loadout", {
       enumerable: true,
