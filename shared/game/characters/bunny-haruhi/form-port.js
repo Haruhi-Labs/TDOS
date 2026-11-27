@@ -76,8 +76,9 @@ export function bunnyTransformBlockReason(ship) {
 export function commitBunnyTransform(ship) { return forms.get(ship)?.transform() || false; }
 
 export function refreshBunnyVisibility(match) {
-  match.teamA.computeVisibility(match.teamB);
-  match.teamB.computeVisibility(match.teamA);
+  for (const team of match.allTeams()) {
+    team.computeVisibility(match.hostileView(team.seat));
+  }
 }
 
 export function advanceBunnyFormResources(ship, from, to) { forms.get(ship)?.sustain(from, to); }

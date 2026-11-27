@@ -142,6 +142,45 @@ export function leaveBunnyStage(state) {
 }
 
 /**
+ * 在全部覆盖目标的敌对舞台中确定唯一有效来源：
+ * - 若原有效来源仍覆盖目标，则保持原来源以避免重叠抖动与反复重置入圈计时；
+ * - 首次入圈或原来源失效/离开时，按圆心距离更近优先，等距（1e-9 容差内）按 hostileStages 顺序（注册席位顺序）决胜。
+ */
+export function selectBunnyStageSource(target, hostileStages, currentExposure = null) {
+  if (!target?.alive || !Array.isArray(hostileStages) || hostileStages.length === 0) return null;
+  let sticky = null;
+  let best = null;
+  let bestDistSq = Infinity;
+  let bestOrder = Infinity;
+  const currentSourceId = currentExposure?.inside && Number.isSafeInteger(currentExposure.sourceShipId)
+    ? currentExposure.sourceShipId
+    : null;
+  for (let order = 0; order < hostileStages.length; order += 1) {
+    const stage = hostileStages[order];
+    if (!stage || !Number.isSafeInteger(stage.sourceShipId) || stage.sourceShipId < 0
+      || !Number.isFinite(stage.x) || !Number.isFinite(stage.y)
+      || !Number.isFinite(stage.radius) || stage.radius < 0) {
+      continue;
+    }
+    const distSq = (target.x - stage.x) ** 2 + (target.y - stage.y) ** 2;
+    if (distSq > stage.radius ** 2 + 1e-9) continue;
+    if (currentSourceId !== null && stage.sourceShipId === currentSourceId) {
+      sticky = stage;
+      break;
+    }
+    const closer = distSq < bestDistSq - 1e-9;
+    const tied = Math.abs(distSq - bestDistSq) <= 1e-9
+      && (order < bestOrder || (order === bestOrder && stage.sourceShipId < best.sourceShipId));
+    if (!best || closer || tied) {
+      best = stage;
+      bestDistSq = distSq;
+      bestOrder = order;
+    }
+  }
+  return sticky || best;
+}
+
+/**
  * 成员关系由调用者采样：只传存活敌方玩家舰位；源死亡/目标死亡/封印等价于inside=false。
  * 可在同帧重复调用；只在首次进入入迷时返回一次治疗比例，满血也消耗历史。
  */

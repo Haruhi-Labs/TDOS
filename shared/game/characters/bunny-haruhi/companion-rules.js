@@ -34,10 +34,30 @@ function assertTime(now) {
   if (!Number.isFinite(now) || now < 0) throw new RangeError("伴随舰模拟时间必须为非负有限秒数");
 }
 
+const LEGACY_OWNER_SEATS = Object.freeze(["A", "B"]);
+
+function normalizeRegisteredSeats(registeredSeats) {
+  if (!registeredSeats || typeof registeredSeats === "string"
+    || typeof registeredSeats[Symbol.iterator] !== "function") {
+    throw new RangeError("伴随舰已注册席位集合无效");
+  }
+  const seats = new Set();
+  for (const seat of registeredSeats) {
+    if (typeof seat !== "string" || seat.length === 0) {
+      throw new RangeError("伴随舰已注册席位必须为非空字符串");
+    }
+    seats.add(seat);
+  }
+  if (seats.size === 0) {
+    throw new RangeError("伴随舰已注册席位集合不能为空");
+  }
+  return seats;
+}
+
 /**
  * @typedef {Object} BunnyCompanionState
  * @property {number} ownerShipId 永久母舰ID。
- * @property {"A"|"B"} ownerSeat 永久出生阵营，不是实时阵营。
+ * @property {string} ownerSeat 永久母舰席位，不是实时阵营或 sideId。
  * @property {number} convertedUntil 策反截止秒数，0为未策反。
  * @property {number|null} nextReliableAt 下次触发秒数；策反和退场时为null。
  * @property {number} reliableUntil 本次来源效果截止秒数，不替代接收者资格。
@@ -46,10 +66,12 @@ function assertTime(now) {
  */
 
 /** @returns {BunnyCompanionState} */
-export function createBunnyCompanionState(ownerShipId, ownerSeat, now) {
+export function createBunnyCompanionState(ownerShipId, ownerSeat, now, registeredSeats = LEGACY_OWNER_SEATS) {
   assertTime(now);
-  if (!Number.isSafeInteger(ownerShipId) || ownerShipId < 0 || !["A", "B"].includes(ownerSeat)) {
-    throw new RangeError("伴随舰母舰ID或出生阵营无效");
+  const validSeats = normalizeRegisteredSeats(registeredSeats);
+  if (!Number.isSafeInteger(ownerShipId) || ownerShipId < 0
+    || typeof ownerSeat !== "string" || !validSeats.has(ownerSeat)) {
+    throw new RangeError("伴随舰母舰ID或出生席位无效");
   }
   return {
     ownerShipId, ownerSeat, convertedUntil: 0,

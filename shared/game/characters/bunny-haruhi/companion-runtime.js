@@ -63,15 +63,20 @@ export function createBunnyCompanion(owner, createShip) {
   });
   Object.defineProperty(ship, "bunnyCompanion", { enumerable: true, get: () => companions.get(ship) });
   owners.set(ship, owner);
-  commitCompanionState(ship, createBunnyCompanionState(owner.id, team.seat, team.match.elapsed));
+  commitCompanionState(ship, createBunnyCompanionState(owner.id, team.seat, team.match.elapsed, team.match.seatOrder));
   ship.resetHullCapacity(Math.max(1, Math.round(ship.base.hp * (team.statMult || 1))));
   ship.setThrottle(owner.throttle);
   return ship;
 }
 
 export function bunnyCompanions(match) {
-  return [...match.teamA.extraShips, ...match.teamB.extraShips].filter(isBunnyCompanion)
-    .sort((a, b) => a.id - b.id);
+  const result = [];
+  for (const team of match.allTeams()) {
+    for (const ship of team.extraShips) {
+      if (isBunnyCompanion(ship)) result.push(ship);
+    }
+  }
+  return result.sort((a, b) => a.id - b.id);
 }
 
 /** 接收者单独持有资格；来源死亡或换阵营后属性查询立即失效。 */
@@ -85,7 +90,7 @@ export function bunnyReliableState(ship) {
 }
 
 function clearCompanionReliable(ship) {
-  for (const team of [ship.team.match.teamA, ship.team.match.teamB]) {
+  for (const team of ship.team.match.allTeams()) {
     for (const receiver of team.getAllShips()) {
       if (receiver.bunnyReliable?.sourceCompanionId === ship.id) reliableEffects.delete(receiver);
     }
@@ -97,9 +102,19 @@ function clearCompanionProjectiles(ship) {
   ship.team.match.discardProjectilesFrom(ship.id);
 }
 
+function isValidZoneBounds(zone) {
+  return Boolean(
+    zone
+    && Number.isFinite(zone.x) && Number.isFinite(zone.y)
+    && Number.isFinite(zone.width) && Number.isFinite(zone.height),
+  );
+}
+
 function transferCompanion(ship, destination, nextState) {
-  if (!ship.team.extraShips.includes(ship) || ship.team === destination
-    || ship.team.match !== destination.match || !destination.canAcceptAuxiliaryShip(ship)) return false;
+  if (!ship?.isAuxiliary || !ship.team?.extraShips?.includes(ship) || ship.team === destination
+    || !destination || ship.team.match !== destination.match
+    || destination.match.teamBySeat(destination.seat) !== destination
+    || !destination.canAcceptAuxiliaryShip(ship)) return false;
   const oldSpeed = ship.effectiveSpeed();
   const oldRate = ship.effectiveFireRate();
   clearCompanionReliable(ship);
@@ -114,6 +129,7 @@ function transferCompanion(ship, destination, nextState) {
 
 function returnCompanion(ship, now) {
   const owner = bunnyCompanionOwner(ship);
+  if (!owner?.alive) return false;
   if (!transferCompanion(ship, owner.team, {
     ...ship.bunnyCompanion, convertedUntil: 0, nextReliableAt: now + C.companion.intervalSeconds,
     reliableUntil: 0, reliableStartedTick: -1,
@@ -124,16 +140,19 @@ function returnCompanion(ship, now) {
 
 /** 战区资格由鹤屋入口校验；转移仅发生在队伍更新前的动作/生命周期阶段。 */
 export function convertBunnyCompanion(ship, destination, zone) {
-  if (!isBunnyCompanion(ship) || !ship.alive || !bunnyCompanionOwner(ship)?.alive
-    || ship.team === destination || ship.team.match !== destination.match) return false;
+  const owner = bunnyCompanionOwner(ship);
+  if (!isBunnyCompanion(ship) || !ship.alive || !owner?.alive
+    || !destination || ship.team === destination || ship.team.match !== destination.match
+    || destination.match.teamBySeat(destination.seat) !== destination
+    || !destination.match.relations.areEnemies(ship.team.seat, destination.seat)) return false;
   const now = destination.match.elapsed;
-  if (destination.seat === ship.bunnyCompanion.ownerSeat) {
-    // 原阵营反策反视为提前归还，同样重排自动技能和清除旧弹体。
+  if (destination === owner.team && destination.seat === ship.bunnyCompanion.ownerSeat) {
+    // 只有精确原母舰舰队反策反才视为提前归还；同阵营盟友按普通临时策反处理，不伪造母舰身份。
     return returnCompanion(ship, now);
-  } else {
-    if (!transferCompanion(ship, destination, planBunnyCompanionConversion(ship.bunnyCompanion, now).state)) return false;
-    ship.followTarget({ x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 });
   }
+  if (!isValidZoneBounds(zone)) return false;
+  if (!transferCompanion(ship, destination, planBunnyCompanionConversion(ship.bunnyCompanion, now).state)) return false;
+  ship.followTarget({ x: zone.x + zone.width * 0.5, y: zone.y + zone.height * 0.5 });
   return true;
 }
 
@@ -147,7 +166,7 @@ export function cleanupBunnyCompanions(match) {
     clearCompanionReliable(ship);
     clearCompanionProjectiles(ship);
   }
-  for (const team of [match.teamA, match.teamB]) {
+  for (const team of match.allTeams()) {
     for (const receiver of team.getAllShips()) {
       if (receiver.bunnyReliable && !bunnyReliableState(receiver)) reliableEffects.delete(receiver);
     }

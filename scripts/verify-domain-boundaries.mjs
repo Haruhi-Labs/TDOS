@@ -276,3 +276,5 @@ await import("./verify-fleet-registry.mjs");
 await import("./verify-multifleet-combat.mjs");
 
 await import("./verify-multifleet-effects.mjs");
+
+await import("./verify-multifleet-bunny.mjs");

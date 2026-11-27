@@ -47,3 +47,45 @@ assert.deepEqual(form.transform(), { cooldown: 30, refreshVisibility: true });
 assert.deepEqual(steps, ["采样运动", "解锁", "发布", "资源", "换算运动"]);
 assert.equal(neutral.form, "neutral");
 console.log("形态运行时通过：无实体输入、发布与资源/运动事务顺序");
+
+// 多来源样本契约：{ receiverSeat, ownStage, hostileStages } 的粘滞保持、失效接替与历史隔离
+let multiNow = 0;
+let hostileList = [
+  Object.freeze({ sourceShipId: 11, seat: "P3", x: 0, y: 0, radius: 20 }),
+  Object.freeze({ sourceShipId: 12, seat: "P4", x: 5, y: 0, radius: 20 }),
+];
+const multiRuntime = new BunnyStageRuntime({
+  seats: ["P1", "P3", "P4"],
+  now: () => multiNow,
+  tick: () => multiNow * 30,
+  sampleStages: () => Object.freeze([
+    Object.freeze({ receiverSeat: "P1", ownStage: undefined, hostileStages: Object.freeze(hostileList) }),
+    Object.freeze({ receiverSeat: "P3", ownStage: hostileList[0] || null, hostileStages: Object.freeze([]) }),
+    Object.freeze({ receiverSeat: "P4", ownStage: hostileList[1] || null, hostileStages: Object.freeze([]) }),
+  ]),
+  receivers: (seat) => (seat === "P1" ? [{ id: 1, alive: true, x: 0, y: 0, maxHp: 100 }] : []),
+  sourceValid: (sourceId) => hostileList.some((stage) => stage.sourceShipId === sourceId),
+  stageActive: (seat) => hostileList.some((stage) => stage.seat === seat),
+  resources: () => ({ hp: 50, maxHp: 100 }),
+  heal: () => {},
+  stopIfVulnerable: () => {},
+  sustainForm: () => {},
+  cleanupForm: () => {},
+});
+multiRuntime.resolve();
+const firstMulti = multiRuntime.exposure(1);
+assert.equal(firstMulti.sourceShipId, 11, "首次入圈选择更近的敌对舞台");
+hostileList = [
+  Object.freeze({ sourceShipId: 11, seat: "P3", x: 10, y: 0, radius: 20 }),
+  Object.freeze({ sourceShipId: 12, seat: "P4", x: 0, y: 0, radius: 20 }),
+];
+multiNow = 2;
+multiRuntime.resolve();
+assert.equal(multiRuntime.exposure(1).sourceShipId, 11, "原来源仍覆盖时保持原来源不重置入圈");
+hostileList = [Object.freeze({ sourceShipId: 12, seat: "P4", x: 0, y: 0, radius: 20 })];
+multiNow = 4;
+multiRuntime.resolve();
+assert.equal(multiRuntime.exposure(1).sourceShipId, 12, "原来源失效后切换至替补来源");
+assert.equal(multiRuntime.exposure(1).enteredAt, 4);
+assert.equal(firstMulti.sourceShipId, 11, "历史曝光视图不随切换变化");
+console.log("多来源舞台运行时通过：粘滞保持、失效接替与历史隔离");
