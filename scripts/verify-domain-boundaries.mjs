@@ -272,3 +272,5 @@ await import("./verify-battle-mode.mjs");
 await import("./verify-match-topology.mjs");
 
 await import("./verify-fleet-registry.mjs");
+
+await import("./verify-multifleet-combat.mjs");

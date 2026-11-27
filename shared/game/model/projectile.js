@@ -66,7 +66,8 @@ export class Projectile {
   }
 
   resolveImpact(match) {
-    const enemyTeam = match.enemyTeamBySeat(this.team.seat);
+    // 敌对候选通过敌对集合视图读取，保持命中循环、闪避、尾击与伤害投递不变。
+    const enemyTeam = match.hostileView(this.team.seat);
     const candidates = enemyTeam.getEntities();
     let hitTarget = null;
     let nearest = Infinity;

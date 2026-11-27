@@ -108,8 +108,7 @@ function createTeamFixtureHost(topology, seed = 101) {
   host.allTeams = () => registry.allTeams();
   host.enemyTeamsOf = (seat) => registry.enemyTeamsOf(seat);
   host.alliedTeamsOf = (seat) => registry.alliedTeamsOf(seat);
-  // Step 02 不越界修改 team-skill-port.js 的 reveal（归属 Step 04）；
-  // 组件夹具仅在此提供空可见集桩以验证本队技能与同阵营资源隔离，多敌队 enemyTeamBySeat 拒绝由 S02-T7 独立断言。
+  // 组件夹具仅提供空可见集桩以验证本队技能与同阵营资源隔离，多敌队 enemyTeamBySeat 拒绝在下方独立断言。
   host.enemyTeamBySeat = () => ({ visibleEnemyIds: new Set() });
   return { host, teams, registry };
 }
@@ -137,7 +136,7 @@ function teamStateSnapshot(team) {
   });
 }
 
-// ===== S02-T1 / R1：四/六席注册、精确实例查找、未知席位拒绝且无状态副作用 =====
+// ===== 四/六席注册、精确实例查找、未知席位拒绝且无状态副作用 =====
 {
   const fourTopology = normalizeMatchTopology({
     fleets: [
@@ -225,7 +224,7 @@ function teamStateSnapshot(team) {
   assert.equal(JSON.stringify(realMatch.statisticsSummary()), realSummaryBefore, "真实对局未知席位动作不得写入统计");
 }
 
-// ===== S02-T2 / R2：同 sideId 两支独立 Team 的资源、编队、航线、冷却严格隔离 =====
+// ===== 同 sideId 两支独立 Team 的资源、编队、航线、冷却严格隔离 =====
 {
   const topology = normalizeMatchTopology({
     fleets: [
@@ -268,7 +267,7 @@ function teamStateSnapshot(team) {
   assert.equal(teamStateSnapshot(p4), p4Before, "敌方 P4 状态不得受 P1 操作影响");
 }
 
-// ===== S02-T3 / R1、R2：容器只读、sideId/颜色只读、历史开关视图隔离 =====
+// ===== 容器只读、sideId/颜色只读、历史开关视图隔离 =====
 {
   const topology = normalizeMatchTopology({
     fleets: [
@@ -319,7 +318,7 @@ function teamStateSnapshot(team) {
   assert.throws(() => { realMatch.teamB = realMatch.teamA; }, TypeError);
 }
 
-// ===== S02-T4 / R3：固定阶段按注册顺序完成全部舰队，不逐队跑整帧、不重复推进 =====
+// ===== 固定阶段按注册顺序完成全部舰队，不逐队跑整帧、不重复推进 =====
 {
   // 使用故意交错的 4 席顺序，验证严格按 seatOrder 推进
   const customOrder = ["P4", "P1", "P3", "P2"];
@@ -438,7 +437,7 @@ function teamStateSnapshot(team) {
   ], "真实 MatchSimulation 的阶段调用轨迹必须严格匹配原帧序");
 }
 
-// ===== S02-T5 / R3：前席修改后席开关当帧即时生效，时钟每帧仅推进一次 =====
+// ===== 前席修改后席开关当帧即时生效，时钟每帧仅推进一次 =====
 {
   const topology = normalizeMatchTopology({
     fleets: [
@@ -515,7 +514,7 @@ function teamStateSnapshot(team) {
   assert.equal(realMatch.elapsed, elapsedBefore + TICK_DT, "单次 update 推进时长必须精确等于 1 个 TICK_DT");
 }
 
-// ===== S02-T6 / R3：默认 1v1 / 单人 / 教程迁移等价性与兼容别名 =====
+// ===== 默认 1v1 / 单人 / 教程迁移等价性与兼容别名 =====
 {
   const spawns = defaultLegacySpawns(DEFAULT_WORLD_SIZE);
   const loadouts = {
@@ -603,7 +602,7 @@ function teamStateSnapshot(team) {
   }
 }
 
-// ===== S02-T7 / R1：真实多席开局拒绝 & 多敌队/未知席位调用旧单敌队接口明确拒绝 =====
+// ===== 真实多席开局拒绝 & 多敌队/未知席位调用旧单敌队接口明确拒绝 =====
 {
   const fourSeatConfig = {
     fleets: [
@@ -682,7 +681,7 @@ function teamStateSnapshot(team) {
   }
 }
 
-// ===== S02-T8 / R1、R3：两席（A/B）、四席两方、三席混战全面核对 =====
+// ===== 两席（A/B）、四席两方、三席混战配对/开关/颜色/随机流全面核对 =====
 {
   function verifyTopologyContract(label, topology, expectedPairs, expectedUnorderedPairs) {
     const { teams, registry } = createTeamFixtureHost(topology, 801);
@@ -816,4 +815,4 @@ function teamStateSnapshot(team) {
   assert.throws(() => new Team(dummyMatch, "P1", "缺颜色", 300, 750, 0, { sideId: "side1" }), /展示颜色/);
 }
 
-console.log("舰队注册表校验通过：S02-T1~T8 全部覆盖（寻址隔离、资源独立、只读容器、帧序调度、同帧开关、旧对局等价、多席拒绝与配对/颜色/随机流契约）。");
+console.log("舰队注册表校验通过：寻址隔离、资源独立、只读容器、帧序调度、同帧开关、旧对局等价、多席拒绝与配对/颜色/随机流契约全部覆盖。");

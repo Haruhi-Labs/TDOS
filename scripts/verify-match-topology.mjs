@@ -35,7 +35,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   };
 }
 
-// ===== S01-T1 / R1：四席两阵营，稳定输入顺序与精确盟友/敌方查询 =====
+// ===== 四席两阵营：稳定输入顺序与精确盟友/敌方查询 =====
 {
   // 故意交错阵营输入顺序，验证 seatOrder 和查询输出保持输入顺序，不按字母或阵营重排。
   const fourSeatInput = {
@@ -80,7 +80,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   assert.equal(relations.areEnemies("P1", "P4"), true);
 }
 
-// ===== S01-T2 / R1：三席混战（三独立阵营），对称关系且无 A/B 回退 =====
+// ===== 三席混战（三独立阵营）：对称关系且无 A/B 回退 =====
 {
   const ffaTopology = normalizeMatchTopology({
     fleets: [
@@ -113,7 +113,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   assert.equal(relations.areEnemies("A", "B"), false);
 }
 
-// ===== S01-T3 / R2：旧默认配置与等价显式 A/B 配置初始化完全一致，不增加随机或实体 ID 消费 =====
+// ===== 默认配置与等价显式 A/B 配置初始化完全一致，不增加随机或实体 ID 消费 =====
 {
   const spawns = defaultLegacySpawns(DEFAULT_WORLD_SIZE);
   const expectedCenterY = DEFAULT_WORLD_SIZE * 0.5;
@@ -216,7 +216,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   }
 }
 
-// ===== S01-T4 / R3：非法输入、歧义字段及未支持拓扑明确拒绝且不产生部分世界 =====
+// ===== 非法输入、歧义字段及未支持拓扑明确拒绝且不产生部分世界 =====
 {
   const invalidTopologyCases = [
     ["options 为 null", null],
@@ -318,7 +318,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
       },
     ],
     [
-      "旧模式在 Step 01 不静默忽略自定义出生坐标",
+      "旧模式不静默忽略自定义出生坐标",
       {
         mode: "pvp",
         fleets: [
@@ -368,7 +368,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   assert.throws(() => normalizeAiSeats("ai", undefined, ["P1", "P2"]), Error, "无 B 席时 ai 模式必须显式指定 aiSeats");
 }
 
-// ===== S01-T5 / R3：原入参隔离、嵌套冻结与重复查询无副作用 =====
+// ===== 原入参隔离、嵌套冻结与重复查询无副作用 =====
 {
   const originalLoadout = { main: "haruhi", sub1: "koizumi", sub2: "future1096" };
   const originalSpawn = { x: 300, y: 400, facing: 0.25 };
@@ -432,7 +432,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   assert.equal(protoRel.areAllies("constructor", "valueOf"), false);
 }
 
-// ===== S01-T6 / R1, R3：未知席位既非盟友也非敌方，大小写敏感 =====
+// ===== 未知席位既非盟友也非敌方，大小写敏感 =====
 {
   const topology = normalizeMatchTopology({
     fleets: [makeFleet("P1", "side1", 0), makeFleet("P2", "side2", 1)],
@@ -457,7 +457,7 @@ function makeFleet(seat, sideId, index, extra = {}) {
   assert.equal(relations.areEnemies("X", "Y"), false, "两个不同未知 ID 不得视为敌方");
 }
 
-// ===== S01-T7 / R2, R3：presentation 色值契约、不可注入、与关系查询解耦 =====
+// ===== presentation 色值契约、不可注入、与关系查询解耦 =====
 {
   // 原有颜色表保持原样，不追加新键也不修改值
   assert.deepEqual(Object.keys(TEAM_COLORS), ["A", "B"]);
@@ -543,4 +543,4 @@ function makeFleet(seat, sideId, index, extra = {}) {
   }
 }
 
-console.log("开局拓扑与阵营关系校验通过：S01-T1 至 S01-T7 全部行为断言满足契约。");
+console.log("开局拓扑与阵营关系校验通过：全部行为断言满足契约。");

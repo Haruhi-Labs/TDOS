@@ -6,6 +6,7 @@ import { createProjectilePhase } from "../characters/interactions/projectile-pha
 import { ProjectileSystem } from "../systems/projectile-system.js";
 import { Projectile } from "../model/projectile.js";
 import { createHullCollisionPort } from "../adapters/collision-port.js";
+import { createHostileView } from "../adapters/combat-targets.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../foundation/constants.js";
 import { cloneLoadout } from "../characters/catalog.js";
@@ -38,6 +39,7 @@ export class BattleRuntime {
   #modeRules;
   #battleMode;
   #registry;
+  #hostileViews;
   #outcome = Object.freeze({ phase: "running", winnerSeat: null });
   #feedback;
   #projectiles = new ProjectileSystem((profile) => new Projectile(profile));
@@ -103,6 +105,9 @@ export class BattleRuntime {
       },
     ));
     this.#registry = createFleetRegistry(topology, teams);
+    this.#hostileViews = new Map(
+      topology.seatOrder.map((seat) => [seat, createHostileView(this.#registry, seat)]),
+    );
 
     this.#phasePort = Object.freeze({
       allTeams: () => this.#registry.allTeams(),
@@ -119,11 +124,11 @@ export class BattleRuntime {
       afterHull: (dt) => this.#characters.advance("afterHull", dt),
       resolveScoutClashes: () => this.resolveScoutClashes(),
       beforeVisibility: (dt) => this.#characters.advance("beforeVisibility", dt),
-      computeVisibility: (team) => team.computeVisibility(this.enemyTeamBySeat(team.seat)),
+      computeVisibility: (team) => team.computeVisibility(this.hostileView(team.seat)),
       beforeBeams: (dt) => this.#characters.advance("beforeBeams", dt),
       resolveChargedBeams: (team) => team.resolveChargedBeams(this.enemyTeamBySeat(team.seat)),
       isCombatEnabled: (seat) => this.#combatSwitches.isEnabled(seat),
-      stepCombat: (team) => team.stepCombat(this.enemyTeamBySeat(team.seat)),
+      stepCombat: (team) => team.stepCombat(this.hostileView(team.seat)),
       updateProjectiles: (dt) => this.updateProjectiles(dt),
       updateVisualEffects: (dt) => this.updateVisualEffects(dt),
       afterVisuals: (dt) => this.#characters.advance("afterVisuals", dt),
@@ -241,6 +246,13 @@ export class BattleRuntime {
     return this.#registry.hostileUnorderedPairs();
   }
 
+  hostileView(seat) {
+    if (typeof seat !== "string" || !this.#hostileViews.has(seat)) {
+      throw new Error(`未知席位 ${String(seat)}，无法获取敌对集合视图`);
+    }
+    return this.#hostileViews.get(seat);
+  }
+
   // 双舰队兼容入口：仅限两支敌对舰队，多敌方或未知席位明确拒绝。
   enemyTeamBySeat(seat) {
     return this.#registry.enemyTeamBySeat(seat);
@@ -311,7 +323,7 @@ export class BattleRuntime {
   // (用上一帧的接触集做迟滞判定),持续贴着不再反复减速,避免被一路压停。同队编队跟随的舰不互撞。
   resolveShipCollisions() {
     this.#hullCollisions.resolve({
-      ships: [...this.teamA.getAllShips(), ...this.teamB.getAllShips()]
+      ships: this.allTeams().flatMap((team) => team.getAllShips())
         .filter((ship) => ship.alive).map((ship) => createHullCollisionPort(ship, this.rules)),
       elapsed: this.elapsed,
     });
@@ -330,14 +342,17 @@ export class BattleRuntime {
   }
 
   resolveScoutClashes() {
-    resolveMatchScoutClashes({
-      leftScouts: this.teamA.scouts,
-      rightScouts: this.teamB.scouts,
-      collide: (left, right) => {
-        left.takeDamage(1, null, this);
-        right.takeDamage(1, null, this);
-      },
-    });
+    const collide = (left, right) => {
+      left.takeDamage(1, null, this);
+      right.takeDamage(1, null, this);
+    };
+    for (const [leftTeam, rightTeam] of this.hostileUnorderedPairs()) {
+      resolveMatchScoutClashes({
+        leftScouts: leftTeam.scouts,
+        rightScouts: rightTeam.scouts,
+        collide,
+      });
+    }
   }
 
   resolveBladeQueenContacts() {
