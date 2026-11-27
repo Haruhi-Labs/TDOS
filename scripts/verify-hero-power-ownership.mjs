@@ -38,4 +38,14 @@ match.queueHeroPower(caster, {});
 caster.retireWithoutLoss();
 match.updateHaruhiHeroPowers();
 assert.deepEqual(match.haruhiHeroPowerEffects, [], "施法者死亡必须取消尚未释放的事件");
+
+// 施法者退回编队附着状态时同样取消蓄力事件，不产生残余冲击。
+const attachMatch = new ScenarioSimulation({ seed: 573, aiSeats: [], teamLoadouts: {
+  A: { main: "kyon", sub1: "haruhi", sub2: "yuki" },
+} });
+attachMatch.teamA.split(1);
+assert.equal(attachMatch.teamA.castSubSkill("sub1"), true);
+attachMatch.teamA.configureFormation(0);
+attachMatch.updateHaruhiHeroPowers();
+assert.deepEqual(attachMatch.haruhiHeroPowerEffects, [], "施法者附着回编队必须取消蓄力中的勇者之力");
 console.log("勇者之力所有权校验通过：私有队列、历史读视图、恰好一次释放、快照隔离和死亡取消。");

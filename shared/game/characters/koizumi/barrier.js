@@ -81,8 +81,19 @@ function projectileStepEnd(projectile, dt) {
   };
 }
 
+function isHostileProjectile(projectile, defendingTeam) {
+  const sourceSeat = projectile?.team?.seat;
+  const defendingSeat = defendingTeam?.seat;
+  if (!sourceSeat || !defendingSeat) return false;
+  const relations = defendingTeam?.match?.relations;
+  if (relations) {
+    return relations.areEnemies(sourceSeat, defendingSeat);
+  }
+  return projectile.team !== defendingTeam;
+}
+
 export function trackKoizumiBarrierProjectileCrossing(projectile, dt, team, geometry) {
-  if (!projectile?.alive || projectile.team === team || !geometry || states.get(team).remainingHits > 0) return;
+  if (!projectile?.alive || !isHostileProjectile(projectile, team) || !geometry || states.get(team).remainingHits > 0) return;
   const end = projectileStepEnd(projectile, dt);
   const main = team.ships.main;
   const startX = projectile.x - (Number.isFinite(main.previousX) ? main.previousX : main.x);
@@ -261,7 +272,7 @@ export function koizumiBarrierProjectileImpact(
     || !geometry
     || !hasKoizumiBarrier(defendingTeam)
     || states.get(defendingTeam).remainingHits <= 0
-    || projectile.team === defendingTeam
+    || !isHostileProjectile(projectile, defendingTeam)
   ) {
     return null;
   }
@@ -325,7 +336,7 @@ export function disruptKoizumiBarrier(team, impact, { sourceSeat = null, ramKind
 }
 
 export function resolveKoizumiBarrierRamContacts(match) {
-  const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
+  const pairs = match.hostilePairs();
   for (const [attackerTeam, defendingTeam] of pairs) {
     const geometry = koizumiBarrierGeometry(defendingTeam);
     const defendingMain = defendingTeam.ships.main;

@@ -46,15 +46,17 @@ export function createTeamSkillPort(team, flagship) {
     }, meta),
     executeSub: (key, options, meta) => executeSubEffect(team.ships[key].characterId, subEffects(team.ships[key], options), meta),
     refreshVisibility: () => {
-      team.match.teamA.computeVisibility(team.match.teamB);
-      team.match.teamB.computeVisibility(team.match.teamA);
+      for (const item of team.match.allTeams()) {
+        item.computeVisibility(team.match.hostileView(item.seat));
+      }
     },
     record: (action) => team.match.recordAction(team.seat, action),
     reveal: (key) => {
       const ship = team.ships[key];
       if (!ship || ship.nameRevealed) return;
-      const enemy = team.match.enemyTeamBySeat(team.seat);
-      if (enemy?.visibleEnemyIds?.has(ship.id)) ship.revealName();
+      if (team.match.enemyTeamsOf(team.seat).some((enemy) => enemy.visibleEnemyIds.has(ship.id))) {
+        ship.revealName();
+      }
     },
   });
 }

@@ -57,12 +57,11 @@ function applyForcedKnockback(match, source, contactTarget, contact = null) {
 }
 
 export function resolveHaruhiOtherworlderContacts(match) {
-  const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
-  for (const [team, enemyTeam] of pairs) {
+  for (const team of match.allTeams()) {
     const source = team.ships.main;
     if (!source?.alive || !haruhiOtherworlderReady(team)) continue;
     let hit = null;
-    for (const target of enemyTeam.getAllShips()) {
+    for (const target of match.hostileView(team.seat).getAllShips()) {
       if (!target.alive || target.forcedKnockback) continue;
       const contact = haruhiOtherworlderAuraContact(source, target);
       if (contact && (!hit || contact.localX < hit.contact.localX)) {
@@ -76,13 +75,13 @@ export function resolveHaruhiOtherworlderContacts(match) {
 
 /** 在旧春日冲撞后单独处理新来源，共用命中几何、伤害及击退公式。 */
 export function resolveBunnyOtherworlderContacts(match) {
-  for (const team of [match.teamA, match.teamB]) {
-    const enemy = match.enemyTeamBySeat(team.seat);
+  for (const team of match.allTeams()) {
+    const hostileShips = match.hostileView(team.seat).getAllShips();
     for (const support of bunnyTeamSupportSources(team)) {
       if (!supportOtherworlderReady(support, match.elapsed)) continue;
       const source = support.sourceShip;
       let hit = null;
-      for (const target of enemy.getAllShips()) {
+      for (const target of hostileShips) {
         if (!target.alive || target.forcedKnockback || bunnyOwnerDamageBlocked(source, target)) continue;
         const contact = haruhiOtherworlderAuraContact(source, target);
         if (contact && (!hit || contact.localX < hit.contact.localX)) hit = { target, contact };
@@ -93,8 +92,8 @@ export function resolveBunnyOtherworlderContacts(match) {
 }
 
 export function resolveBladeQueenContacts(match) {
-  const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
-  for (const [team, enemyTeam] of pairs) {
+  for (const team of match.allTeams()) {
+    const hostileShips = match.hostileView(team.seat).getAllShips();
     for (const ship of team.getAllShips()) {
       if (!ship.alive || !ship.hasEffect("bladeQueenUntil")) continue;
       let hitLog = bladeHitHistory.get(ship);
@@ -102,8 +101,10 @@ export function resolveBladeQueenContacts(match) {
         hitLog = new Map();
         bladeHitHistory.set(ship, hitLog);
       }
-      for (const target of enemyTeam.getAllShips()) {
-        if (!target.alive) continue;
+      const seenTargetIds = new Set();
+      for (const target of hostileShips) {
+        if (!target.alive || seenTargetIds.has(target.id)) continue;
+        seenTargetIds.add(target.id);
         const hitRadius = (ship.radius + 4) * BLADE_QUEEN_RANGE_MULTIPLIER + target.radius;
         if (distance(ship.x, ship.y, target.x, target.y) > hitRadius) continue;
         const lastHitAt = hitLog.get(target.id);

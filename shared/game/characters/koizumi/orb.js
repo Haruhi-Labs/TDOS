@@ -304,7 +304,7 @@ function applyCollisionKnockback(match, source, contactTarget, direction) {
 }
 
 export function resolveKoizumiOrbContacts(match) {
-  const pairs = [[match.teamA, match.teamB], [match.teamB, match.teamA]];
+  const pairs = match.hostilePairs();
   for (const [team, enemyTeam] of pairs) {
     for (const source of team.getAllShips()) {
       const state = states.get(source);
@@ -345,11 +345,11 @@ export function resolveKoizumiOrbContacts(match) {
 }
 
 export function updateKoizumiImpactWaves(match) {
-  for (const team of [match.teamA, match.teamB]) {
+  for (const team of match.allTeams()) {
     impactStates.get(team).waves = impactStates.get(team).waves.filter((wave) => wave.expiresAt > match.elapsed);
-    const enemyTeam = match.enemyTeamBySeat(team.seat);
+    const hostileShips = match.hostileView(team.seat).getAllShips();
     for (const wave of impactStates.get(team).waves) {
-      for (const target of enemyTeam.getAllShips()) {
+      for (const target of hostileShips) {
         if (!target.alive || wave.hitShipIds.has(target.id)) continue;
         if (!expandingWaveCoversEntity(wave, target, match.elapsed)) continue;
         // 一圈波对每艘敌舰只施加一次，避免宽波带每帧续期眩晕。

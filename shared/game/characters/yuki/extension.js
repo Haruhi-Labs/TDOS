@@ -28,6 +28,10 @@ export default {
     hooks: { initializeMembers: [[10, () => initializeRadar(team, facing)]] },
     capabilities: { serializeRadarPassive: () => serializeRadarPassive(team) },
   }),
-  createBattle: (match) => ({ operations: { radar: { phases: { beforeBeams: 10 }, run: (dt) => { updateRadarPassive(match.teamA, match.teamB, dt); updateRadarPassive(match.teamB, match.teamA, dt); } } } }),
+  createBattle: (match) => ({ operations: { radar: { phases: { beforeBeams: 10 }, run: (dt) => {
+    for (const team of match.allTeams()) {
+      updateRadarPassive(team, match.hostileView(team.seat), dt);
+    }
+  } } } }),
   projectTeam: (team) => ({ radarSweep: serializeRadarSweep(team) }),
 };

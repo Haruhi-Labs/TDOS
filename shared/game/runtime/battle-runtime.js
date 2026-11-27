@@ -126,7 +126,7 @@ export class BattleRuntime {
       beforeVisibility: (dt) => this.#characters.advance("beforeVisibility", dt),
       computeVisibility: (team) => team.computeVisibility(this.hostileView(team.seat)),
       beforeBeams: (dt) => this.#characters.advance("beforeBeams", dt),
-      resolveChargedBeams: (team) => team.resolveChargedBeams(this.enemyTeamBySeat(team.seat)),
+      resolveChargedBeams: (team) => team.resolveChargedBeams(this.hostileView(team.seat)),
       isCombatEnabled: (seat) => this.#combatSwitches.isEnabled(seat),
       stepCombat: (team) => team.stepCombat(this.hostileView(team.seat)),
       updateProjectiles: (dt) => this.updateProjectiles(dt),

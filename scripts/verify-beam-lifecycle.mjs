@@ -55,4 +55,18 @@ assert.throws(() => { match.teamA.beams = []; }, TypeError, "舰队不能替换�
 const before = JSON.stringify(match.serializeState());
 match.teamA.beams; match.teamA.serialize();
 assert.equal(JSON.stringify(match.serializeState()), before);
+
+// 真实敌对集合视图与单敌队实参在同一光线系统中保持完全等价。
+const viewMatch = new MatchSimulation({ seed: 731 });
+viewMatch.teamA.split(1);
+const viewShip = viewMatch.teamA.ships.sub1;
+const viewTarget = viewMatch.teamB.ships.main;
+viewTarget.displaceTo(viewShip.x + 180, viewShip.y);
+match.teamB.ships.main.displaceTo(ship.x + 180, ship.y);
+viewMatch.teamA.queueBeamDirection(viewShip, 1, 0);
+match.teamA.advanceBeams(1.05);
+viewMatch.teamA.advanceBeams(1.05);
+match.teamA.resolveChargedBeams(match.teamB);
+viewMatch.teamA.resolveChargedBeams(viewMatch.hostileView("A"));
+assert.equal(viewTarget.hp, match.teamB.ships.main.hp, "敌对视图实参与单敌队实参的光线结算结果必须一致");
 console.log("光线生命周期校验通过：私有队列、只读查询、禁控暂停、死亡取消、固定命中集合与恰好一次结算。");

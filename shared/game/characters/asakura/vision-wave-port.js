@@ -18,14 +18,25 @@ export function createVisionWavePurgePort(match) {
     return ship;
   }
   return Object.freeze({
+    friendlyPairs: () => Object.freeze(
+      match.allTeams().map((team) => Object.freeze([team.seat, team.seat])),
+    ),
+    hostilePairs: () => Object.freeze(
+      match.hostilePairs().map(([source, target]) => Object.freeze([source.seat, target.seat])),
+    ),
     targets: (sourceSeat, targetSeat) => {
       const source = match.teamBySeat(sourceSeat);
-      return match.teamBySeat(targetSeat).getAllShips().filter(
+      const target = match.teamBySeat(targetSeat);
+      if (!source || !target) return [];
+      return target.getAllShips().filter(
         (ship) => ship.alive && visionWavesCoverEntity(source, ship),
       ).map(handleFor);
     },
     clearNegative: (handle) => shipFor(handle).clearNegativeEffects(),
-    clearPositive: (seat, handle) => match.teamBySeat(seat).clearActiveSkillBuffsForShip(shipFor(handle)),
+    clearPositive: (seat, handle) => {
+      const team = match.teamBySeat(seat);
+      return team ? team.clearActiveSkillBuffsForShip(shipFor(handle)) : false;
+    },
     present: (handle, friendly) => {
       const ship = shipFor(handle);
       match.spawnFloatingTextKey(ship.x + 10, ship.y - 10, "净化", {}, friendly ? "#9eefff" : "#ff9db5");

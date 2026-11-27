@@ -59,4 +59,25 @@ continuous.advance(sample, 2.2);
 continuous.advance({ ...sample, now: 4.4, tick: 132 }, 2.2);
 assert.deepEqual(stopped.snapshot(1, 4.4), continuous.snapshot(1, 4.4), "停用不能重置隐藏扫描序号");
 
+// 多隐藏目标集合：依次返回各自独立的误差回波，不丢失任何隐藏敌舰且只识别真实可见目标。
+const multiTargets = freezePlainData({
+  source,
+  targets: [
+    { id: 21, x: 420, y: 400, angle: 0.2, characterId: "kyon", alive: true, visible: false },
+    { id: 22, x: 560, y: 400, angle: 0.4, characterId: "haruhi", alive: true, visible: true },
+    { id: 23, x: 680, y: 400, angle: 0.6, characterId: "koizumi", alive: true, visible: false },
+  ],
+  now: 2.2,
+  tick: 66,
+  worldSize: 1440,
+});
+const multiRadar = new RadarRuntime(0);
+const multiRevealed = multiRadar.advance(multiTargets, 2.2);
+assert.deepEqual(multiRevealed, [22], "多目标集合下仅真实可见目标触发名称识别");
+assert.deepEqual(
+  multiRadar.snapshot(1, 2.2).contacts.map((contact) => contact.targetId),
+  [21, 23],
+  "多隐藏目标集合应各自产生独立误差回波",
+);
+
 console.log("雷达运行时校验通过：纯数据输入、编号输出、噪声序号、过期清理与输入输出引用隔离。");

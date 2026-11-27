@@ -69,4 +69,36 @@ let sampleCount = 0;
 sim.visionWavePurgePort = { targets: () => { sampleCount += 1; return []; } };
 sim.resolveVisionWavePurges();
 assert.equal(sampleCount, 4, "对局编排必须使用装配的阶段端口");
-console.log("波带净化阶段校验通过：双边四组先采样、先负面后正面、仅有效净化反馈及可替换端口。");
+
+// 多席显式配对端口：先完成全部敌对与本舰队采样，再按先本舰队负面、后敌方正面顺序提交。
+const multiTrace = [];
+let multiMutated = false;
+resolveVisionWavePurges({
+  hostilePairs: () => [["P1", "P3"], ["P3", "P1"], ["P3", "P2"]],
+  friendlyPairs: () => [["P1", "P1"], ["P2", "P2"], ["P3", "P3"]],
+  targets(source, target) {
+    assert.equal(multiMutated, false, "多席波带采样必须在首次净化前全部完成");
+    multiTrace.push(`采样:${source}->${target}`);
+    return source === target ? [`本队:${source}`] : [`敌对:${source}->${target}`];
+  },
+  clearNegative(target) {
+    multiMutated = true;
+    multiTrace.push(`清负面:${target}`);
+    return true;
+  },
+  clearPositive(seat, target) {
+    multiMutated = true;
+    multiTrace.push(`清正面:${seat}:${target}`);
+    return true;
+  },
+  present(target, friendly) {
+    multiTrace.push(`反馈:${target}:${friendly}`);
+  },
+});
+assert.deepEqual(multiTrace.slice(0, 6), [
+  "采样:P1->P3", "采样:P3->P1", "采样:P3->P2",
+  "采样:P1->P1", "采样:P2->P2", "采样:P3->P3",
+]);
+assert.equal(multiTrace[6], "清负面:本队:P1");
+assert.equal(multiTrace.at(-2), "清正面:P2:敌对:P3->P2");
+console.log("波带净化阶段校验通过：多席配对全采样、先负面后正面、仅有效净化反馈及可替换端口。");

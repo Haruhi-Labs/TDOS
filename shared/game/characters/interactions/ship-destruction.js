@@ -5,8 +5,17 @@ import { resolveShamisenHuntKill } from "../shamisen/hunt.js";
 export function resolveShipDestruction(match, ship, feedback) {
   if (!ship) return;
   if (match.bunnyHaruhiActive) cleanupBunnyCompanions(match);
+  if (typeof match.allTeams === "function" && typeof match.hostileView === "function") {
+    for (const hunter of match.allTeams()) {
+      if (ship.team && match.relations && !match.relations.areEnemies(hunter.seat, ship.team.seat)) continue;
+      if (hunter.shamisenHunt?.targetId !== ship.id) continue;
+      feedback.huntKill(hunter.seat, ship);
+      resolveShamisenHuntKill(hunter, match.hostileView(hunter.seat), ship, match.rng.next);
+    }
+    return;
+  }
   for (const [hunter, huntedTeam] of [[match.teamA, match.teamB], [match.teamB, match.teamA]]) {
-    if (hunter.shamisenHunt?.targetId !== ship.id) continue;
+    if (hunter?.shamisenHunt?.targetId !== ship.id) continue;
     feedback.huntKill(hunter.seat, ship);
     resolveShamisenHuntKill(hunter, huntedTeam, ship, match.rng.next);
   }

@@ -18,6 +18,8 @@ function spawnBeamHitParticles(match, x, y) {
   }
 }
 
+const BEAM_BARRIER_TIE_EPSILON = 1e-9;
+
 export function createTeamBeamPort(team) {
   const { match } = team;
   return {
@@ -25,20 +27,37 @@ export function createTeamBeamPort(team) {
     clampX: (x) => match.clampX(x, 0),
     clampY: (y) => match.clampY(y, 0),
     caster: (key) => beamCasterState(team.shipByKey(key)),
-    barrierImpact: (beam, enemyTeam) => {
-      const impact = koizumiBarrierBeamImpact(beam, enemyTeam);
-      return impact ? {
-        x: impact.x, y: impact.y, seat: enemyTeam.seat,
-        consume: () => consumeKoizumiBarrierHit(enemyTeam, impact, team.seat),
-        present: () => match.spawnKoizumiBarrierImpact({ ...impact, teamSeat: enemyTeam.seat, sourceSeat: team.seat, kind: "beam" }),
-      } : null;
+    barrierImpact: (beam) => {
+      // 多个敌对护盾存在交点时，沿射线最先命中优先；等距保持开局注册席位顺序。
+      let best = null;
+      for (const defendingTeam of match.enemyTeamsOf(team.seat)) {
+        const impact = koizumiBarrierBeamImpact(beam, defendingTeam);
+        if (!impact) continue;
+        if (!best || impact.t < best.impact.t - BEAM_BARRIER_TIE_EPSILON) {
+          best = { defendingTeam, impact };
+        }
+      }
+      if (!best) return null;
+      const { defendingTeam, impact } = best;
+      return {
+        x: impact.x, y: impact.y, seat: defendingTeam.seat,
+        consume: () => consumeKoizumiBarrierHit(defendingTeam, impact, team.seat),
+        present: () => match.spawnKoizumiBarrierImpact({ ...impact, teamSeat: defendingTeam.seat, sourceSeat: team.seat, kind: "beam" }),
+      };
     },
     targets: (casterKey, enemyTeam) => {
       const source = team.shipByKey(casterKey);
-      return enemyTeam.getAllShips()
-        .filter((target) => target.alive && target.isTargetableByFire() && match.rules.canDamage(source, target))
-        .map((target) => ({
-          x: target.x, y: target.y, radius: target.radius,
+      const seenIds = new Set();
+      const targets = [];
+      for (const target of enemyTeam.getAllShips()) {
+        if (!target.alive || seenIds.has(target.id)) continue;
+        seenIds.add(target.id);
+        if (!target.isTargetableByFire() || !match.rules.canDamage(source, target)) continue;
+        targets.push(Object.freeze({
+          id: target.id,
+          x: target.x,
+          y: target.y,
+          radius: target.radius,
           hit: (ratio) => {
             const damage = target.maxHp * ratio;
             const damageImmune = target.isDamageImmune();
@@ -48,6 +67,8 @@ export function createTeamBeamPort(team) {
             spawnBeamHitParticles(match, target.x, target.y);
           },
         }));
+      }
+      return targets;
     },
     recordAttack: (count) => match.recordAttack(team.seat, "beam", count),
     miss: (x, y) => match.spawnBurst(x, y, "#78dfff", 9),

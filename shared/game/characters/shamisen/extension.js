@@ -14,8 +14,9 @@ export default {
       if (ship.clawMarks.stacks > 0) add("claw_marks", ship.clawMarks.expiresAt, CHARACTER_DEFS.shamisen.subSkill.markDuration, {
         stacks: ship.clawMarks.stacks, required: ship.clawMarks.required,
       });
-      const enemy = team.match.enemyTeamBySeat(team.seat);
-      if (enemy?.mainCharacterId() === "shamisen" && enemy.shamisenHunt.targetId === ship.id) add("hunt", null, null, { multiplier: CHARACTER_DEFS.shamisen.flagshipSkill.damageMultiplier });
+      const hunted = team.match.enemyTeamsOf(team.seat)
+        .some((enemy) => enemy.mainCharacterId() === "shamisen" && enemy.shamisenHunt.targetId === ship.id);
+      if (hunted) add("hunt", null, null, { multiplier: CHARACTER_DEFS.shamisen.flagshipSkill.damageMultiplier });
     }]
   ],
   activeSkills: {
@@ -29,7 +30,7 @@ export default {
     projectileProfile(ship) {
       const meta = ship.characterId === "shamisen" && ship.hasEffect("catPawUntil") ? ship.character.subSkill : null;
       return {
-        color: meta ? (ship.team.seat === "A" ? "#8fe8ff" : "#ff9eb8") : ship.team.projectileColor,
+        color: meta ? ship.team.huntColor : ship.team.projectileColor,
         visualKind: meta ? "cat_paw" : "shell",
         claw: meta ? { triggerHits: meta.triggerHits || 4, burstDamage: meta.burstDamage || 0, markDuration: meta.markDuration || 8 } : null,
       };
@@ -51,8 +52,9 @@ export default {
   createTeam(team) { initializeShamisenHunt(team); return {}; },
   createBattle(match) {
     const hunt = () => {
-      ensureShamisenHuntTarget(match.teamA, match.teamB, rngFor(match).next);
-      ensureShamisenHuntTarget(match.teamB, match.teamA, rngFor(match).next);
+      for (const team of match.allTeams()) {
+        ensureShamisenHuntTarget(team, match.hostileView(team.seat), rngFor(match).next);
+      }
     };
     return { initialize: [[20, hunt]], operations: { hunts: { phases: { beforeAi: 30 }, run: hunt } } };
   },

@@ -110,9 +110,11 @@ export function createHaruhiHeroPowerEvent({ id, ship, now, worldSize, meta = {}
 
 function destroyAircraftWithin(match, event, caster) {
   const destroyedIds = [];
-  for (const team of [match.teamA, match.teamB]) {
+  const seenIds = new Set();
+  for (const team of match.allTeams()) {
     for (const aircraft of [...team.scouts, ...team.wingmen]) {
-      if (!aircraft.alive) continue;
+      if (!aircraft.alive || seenIds.has(aircraft.id)) continue;
+      seenIds.add(aircraft.id);
       if (distance(event.x, event.y, aircraft.x, aircraft.y) > event.radius + (aircraft.radius || 0)) {
         continue;
       }
@@ -127,7 +129,13 @@ function destroyAircraftWithin(match, event, caster) {
 
 function releaseHaruhiHeroPower(match, event, caster) {
   const now = match.elapsed;
-  const enemyTeam = match.enemyTeamBySeat(event.teamSeat);
+  const seenShipIds = new Set();
+  const hostileShips = [];
+  for (const ship of match.hostileView(event.teamSeat).getAllShips()) {
+    if (seenShipIds.has(ship.id)) continue;
+    seenShipIds.add(ship.id);
+    hostileShips.push(ship);
+  }
   event.phase = "shock";
   event.x = caster.x;
   event.y = caster.y;
@@ -136,7 +144,7 @@ function releaseHaruhiHeroPower(match, event, caster) {
   event.life = HARUHI_HERO_POWER_VISUAL_SECONDS;
   event.maxLife = HARUHI_HERO_POWER_VISUAL_SECONDS;
   event.progress = 0;
-  event.hitShipIds = enemyTeam.getAllShips()
+  const hitShips = hostileShips
     .filter((ship) => (
       ship.alive
       && distance(event.x, event.y, ship.x, ship.y) <= event.radius + ship.radius
@@ -144,13 +152,12 @@ function releaseHaruhiHeroPower(match, event, caster) {
     .filter((ship) => applyHaruhiHeroPowerShock(ship, now, {
       lockDuration: event.lockDuration,
       recoveryDuration: event.recoveryDuration,
-    }))
-    .map((ship) => ship.id);
+    }));
+  event.hitShipIds = hitShips.map((ship) => ship.id);
   event.destroyedAircraftIds = destroyAircraftWithin(match, event, caster);
 
   match.spawnBurst(event.x, event.y, "#fff0b5", 14);
-  for (const ship of enemyTeam.getAllShips()) {
-    if (!event.hitShipIds.includes(ship.id)) continue;
+  for (const ship of hitShips) {
     match.spawnFloatingTextKey(ship.x + 10, ship.y - 14, "震慑", {}, "#ffe29a");
   }
 }

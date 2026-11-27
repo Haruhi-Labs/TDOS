@@ -101,4 +101,43 @@ for (const actor of [ship, scout, wingman]) {
 }
 assert.deepEqual(requests.map((request) => request.source), [ship, scout, wingman]);
 assert.equal(firing.projectiles.length, 0, "替换创建能力后，攻击者不得绕过端口自行修改对局集合");
+
+// 真实古泉护盾在弹体阶段拒绝拦截己方弹体且仅消费敌方弹体。
+const barrierMatch = new MatchSimulation({
+  seed: 599,
+  aiSeats: [],
+  teamLoadouts: {
+    A: { main: "koizumi", sub1: "kyon", sub2: "yuki" },
+    B: { main: "kyon", sub1: "asakura", sub2: "yuki" },
+  },
+});
+const aMain = barrierMatch.teamA.ships.main;
+const bMain = barrierMatch.teamB.ships.main;
+const radius = barrierMatch.teamA.serialize().koizumiBarrier.radius;
+const friendlyShot = barrierMatch.spawnProjectile({
+  team: barrierMatch.teamA,
+  source: aMain,
+  x: aMain.x - radius - 25,
+  y: aMain.y,
+  targetX: aMain.x + radius + 25,
+  targetY: aMain.y,
+  speed: 500,
+  damage: 5,
+  radius: 3,
+});
+const enemyShot = barrierMatch.spawnProjectile({
+  team: barrierMatch.teamB,
+  source: bMain,
+  x: aMain.x + radius + 25,
+  y: aMain.y,
+  targetX: aMain.x - radius - 25,
+  targetY: aMain.y,
+  speed: 500,
+  damage: 5,
+  radius: 3,
+});
+barrierMatch.updateProjectiles(0.5);
+assert.equal(friendlyShot.alive, true, "己方弹体穿过本队护盾不得被拦截");
+assert.equal(enemyShot.alive, false, "敌方弹体穿过护盾必须被拦截");
+assert.equal(barrierMatch.teamA.koizumiBarrier.remainingHits, 14, "仅敌方弹体消费 1 次护盾次数");
 console.log("弹体阶段校验通过：所有者创建、载荷隔离、即时拦截、活集合迭代及发布后收尾。");
