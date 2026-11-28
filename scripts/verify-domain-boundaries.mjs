@@ -280,3 +280,5 @@ await import("./verify-multifleet-effects.mjs");
 await import("./verify-multifleet-bunny.mjs");
 
 await import("./verify-multifleet-ai.mjs");
+
+await import("./verify-side-outcome.mjs");

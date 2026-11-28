@@ -69,7 +69,7 @@ export default {
 
 比赛房仍使用 pvp 战斗；观战不是另一套规则。不要让模式名称同时承担这三个维度。
 
-新开局配置或胜负规则在 `battle-mode.js` 的 `modes` 登记普通规则对象，通过开局选项 `battleMode` 选择；它与控制席位用的 `mode` 分开。未知规则编号立即拒绝，旧 `tutorialMode` 仍作为默认选择。规则对象提供 `initialize` 与 `evaluateOutcome`。初始化只取得训练/开关等所需命令；求值只接收 `{ elapsed, aAlive, bAlive }` 事实，返回 `null` 表示继续，返回 `{ winnerSeat }` 表示候选结果（`winnerSeat: null` 是平局）。非歼灭终局附带非空字符串 `reason`，由运行时原子提交并投影为 `endReason`，房间与结算界面统一消费，不能让页面猜测结束原因。BattleRuntime 在原阶段提交终局，MatchSimulation 决定下一步是否继续推进时间。
+新开局配置或胜负规则在 `battle-mode.js` 的 `modes` 登记普通规则对象，通过开局选项 `battleMode` 选择；它与控制席位用的 `mode` 分开。未知规则编号立即拒绝，旧 `tutorialMode` 仍作为默认选择。规则对象提供 `initialize` 与 `evaluateOutcome`。初始化只取得训练/开关等所需命令；求值接收普通只读事实对象：帧尾按 `seatOrder` 一次采样冻结 `fleets = [{ seat, sideId, alive }]`（由模式登记的资格采样器计算），当且仅当拓扑恰为旧 A/B 时复用同次采样额外提供 `{ aAlive, bAlive }`，形成 `{ elapsed, aAlive?, bAlive?, fleets }`。旧模式返回 `null` 表示继续，返回 `{ winnerSeat }` 表示候选结果（`winnerSeat: null` 是平局）；多舰队阵营模式返回 `null` 或 `{ type: "win" | "draw", winnerSideId, winnerSeats, reason? }`，由运行时按模式结果形态声明校验后原子提交，保留旧 `winnerSeat` getter 并提供只读 `outcome` getter（新模式不伪造代表席位作为赢家）。非歼灭终局附带非空字符串 `reason`，由运行时原子提交并投影为 `endReason`，房间与结算界面统一消费，不能让页面猜测结束原因。BattleRuntime 在原阶段提交终局，MatchSimulation 决定下一步是否继续推进时间。
 
 如果新玩法需要比分或占领进度，显式扩展事实样本及对应所有者；不要把完整 Match 传给纯求值器。只有新增持续模式状态时才引入其状态组件。非标准规则的结算摘要带 `battleMode`；现有胜率入口明确拒绝这类记录，新增模式需要统计时应另行定义统计口径，不能混入标准歼灭胜率。多队伍、不同地图拓扑或新协议动作需要单独评估相关契约，不能假装填一张模式表就能支持。
 

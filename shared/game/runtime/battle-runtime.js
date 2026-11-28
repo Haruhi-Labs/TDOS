@@ -7,9 +7,10 @@ import { ProjectileSystem } from "../systems/projectile-system.js";
 import { Projectile } from "../model/projectile.js";
 import { createHullCollisionPort } from "../adapters/collision-port.js";
 import { createHostileView } from "../adapters/combat-targets.js";
+import { createBattleStateProjector } from "../projection/battle-state.js";
+import { buildVictoryFacts, validateModeOutcome } from "../rules/side-outcome.js";
 // 权威对局的装配与阶段编排。
 import { DEFAULT_MAP_PADDING, DEFAULT_WORLD_SIZE, TICK_DT } from "../foundation/constants.js";
-import { cloneLoadout } from "../characters/catalog.js";
 import { buildZones, clamp } from "../foundation/math.js";
 import { createAmbientRng, createSeededRng } from "../foundation/rng.js";
 import { createAiRunner } from "../ai/bridge/runner.js";
@@ -38,20 +39,29 @@ export class BattleRuntime {
   #characters;
   #modeRules;
   #battleMode;
+  #formatId;
+  #outcomeShape;
+  #isFleetAlive;
+  #stateProjector;
+  #projectionSource;
+  #isLegacyAbTopology;
   #registry;
   #hostileViews;
-  #outcome = Object.freeze({ phase: "running", winnerSeat: null });
+  #outcome = Object.freeze({ phase: "running", winnerSeat: null, outcome: null });
   #feedback;
   #projectiles = new ProjectileSystem((profile) => new Projectile(profile));
   #hullCollisions = new HullCollisionSystem();
-  #telemetry = new MatchTelemetry();
+  #telemetry;
   #combatSwitches;
   #aiSwitches;
   #phasePort;
 
   get phase() { return this.#outcome.phase; }
   get winnerSeat() { return this.#outcome.winnerSeat; }
+  get outcome() { return this.#outcome.outcome; }
   get endReason() { return this.#outcome.endReason; }
+  get battleMode() { return this.#battleMode; }
+  get formatId() { return this.#formatId; }
   get projectiles() { return this.#projectiles.items; }
   get combatEnabled() { return this.#combatSwitches.snapshot; }
   get aiEnabled() { return this.#aiSwitches.snapshot; }
@@ -61,9 +71,25 @@ export class BattleRuntime {
   get relations() { return this.#registry.relations; }
   constructor(options, readTime) {
     this.#readTime = readTime;
-    const { mode, battleMode, aiSeats, tutorialMode, rules, topology } = resolveBattleMode(options);
+    const {
+      mode,
+      battleMode,
+      formatId,
+      aiSeats,
+      tutorialMode,
+      rules,
+      outcomeShape,
+      stateSchema,
+      isFleetAlive,
+      topology,
+    } = resolveBattleMode(options);
     this.#modeRules = rules;
     this.#battleMode = battleMode;
+    this.#formatId = formatId;
+    this.#outcomeShape = outcomeShape;
+    this.#isFleetAlive = isFleetAlive;
+    this.#stateProjector = createBattleStateProjector(stateSchema);
+    this.#telemetry = new MatchTelemetry(topology.seatOrder);
     const worldSize = Number.isFinite(options.worldSize) ? options.worldSize : DEFAULT_WORLD_SIZE;
     const mapPadding = Number.isFinite(options.mapPadding) ? options.mapPadding : DEFAULT_MAP_PADDING;
     const aiAutoBeam = Boolean(options.aiAutoBeam);
@@ -105,9 +131,40 @@ export class BattleRuntime {
       },
     ));
     this.#registry = createFleetRegistry(topology, teams);
+    this.#isLegacyAbTopology = topology.seatOrder.length === 2
+      && topology.seatOrder[0] === "A"
+      && topology.seatOrder[1] === "B"
+      && this.#registry.relations.areEnemies("A", "B");
     this.#hostileViews = new Map(
       topology.seatOrder.map((seat) => [seat, createHostileView(this.#registry, seat)]),
     );
+    const runtime = this;
+    this.#projectionSource = Object.freeze({
+      get battleMode() { return runtime.#battleMode; },
+      get formatId() { return runtime.#formatId; },
+      get worldSize() { return runtime.worldSize; },
+      get mode() { return runtime.mode; },
+      get seatOrder() { return runtime.seatOrder; },
+      get aiSeats() { return runtime.aiSeats; },
+      get zones() { return runtime.zones; },
+      get phase() { return runtime.phase; },
+      get winnerSeat() { return runtime.winnerSeat; },
+      get outcome() { return runtime.outcome; },
+      get endReason() { return runtime.endReason; },
+      get elapsed() { return runtime.elapsed; },
+      get tick() { return runtime.tick; },
+      get projectiles() { return runtime.projectiles; },
+      get bursts() { return runtime.bursts; },
+      get floatingTexts() { return runtime.floatingTexts; },
+      get teamA() { return runtime.teamA; },
+      get teamB() { return runtime.teamB; },
+      allTeams: () => this.#registry.allTeams(),
+      botBySeat: (seat) => this.botBySeat(seat),
+      projectHeroPowers: () => this.#characters.projectHeroPowers(),
+      serializeHuntKills: () => this.#feedback.serializeHuntKills(),
+      serializeBarrierImpacts: () => this.#feedback.serializeBarrierImpacts(),
+      serializeTelemetry: () => this.#telemetry.serialize(),
+    });
 
     this.#phasePort = Object.freeze({
       allTeams: () => this.#registry.allTeams(),
@@ -290,36 +347,7 @@ export class BattleRuntime {
   }
 
   statisticsSummary() {
-    const summarizeTeam = (team) => ({
-      seat: team.seat,
-      loadout: cloneLoadout(team.loadout),
-      splitLevel: team.splitLevel,
-      hullRatio: Math.round(team.hullRatio() * 10000) / 10000,
-      ships: Object.fromEntries(["main", "sub1", "sub2"].map((key) => {
-        const ship = team.ships[key];
-        return [key, {
-          alive: Boolean(ship.alive),
-          hp: Math.round(Math.max(0, ship.hp) * 100) / 100,
-          maxHp: Math.round(Math.max(0, ship.maxHp) * 100) / 100,
-          energy: Math.round(Math.max(0, ship.energy) * 100) / 100,
-          maxEnergy: Math.round(Math.max(0, ship.maxEnergy) * 100) / 100,
-        }];
-      })),
-      survivingScouts: team.scouts.filter((item) => item.alive).length,
-      survivingWingmen: team.wingmen.filter((item) => item.alive).length,
-    });
-    return {
-      tick: this.tick,
-      durationSeconds: Math.round(this.elapsed * 1000) / 1000,
-      winnerSeat: this.winnerSeat,
-      ...(this.#battleMode !== "standard" ? { battleMode: this.#battleMode } : {}),
-      worldSize: this.worldSize,
-      teams: {
-        A: summarizeTeam(this.teamA),
-        B: summarizeTeam(this.teamB),
-      },
-      telemetry: this.#telemetry.serialize(),
-    };
+    return this.#stateProjector.statisticsSummary(this.#projectionSource);
   }
 
   // 撞击:任意两艘存活舰船的船体重叠时把彼此推开解除重叠;减速只在「刚撞上」的那一帧施加一次
@@ -382,17 +410,21 @@ export class BattleRuntime {
     if (this.phase !== "running") {
       return;
     }
-    const result = this.#modeRules.evaluateOutcome({
+    const sampledFleets = this.#registry.allTeams().map((team) => ({
+      seat: team.seat,
+      sideId: team.sideId,
+      alive: Boolean(this.#isFleetAlive(team)),
+    }));
+    const facts = buildVictoryFacts({
       elapsed: this.elapsed,
-      aAlive: this.teamA.hasLivingShips(), bAlive: this.teamB.hasLivingShips(),
+      fleets: sampledFleets,
+      legacyAb: this.#isLegacyAbTopology,
     });
+    const result = this.#modeRules.evaluateOutcome(facts);
     if (!result) return;
-    if (result.reason !== undefined && (typeof result.reason !== "string" || !result.reason)) {
-      throw new TypeError("终局原因必须是非空字符串");
-    }
-    this.#outcome = Object.freeze({
-      phase: "finished", winnerSeat: result.winnerSeat,
-      ...(result.reason ? { endReason: result.reason } : {}),
+    this.#outcome = validateModeOutcome(result, {
+      outcomeShape: this.#outcomeShape,
+      fleets: facts.fleets,
     });
   }
 
@@ -470,31 +502,6 @@ export class BattleRuntime {
   }
 
   serializeState() {
-    return {
-      world: {
-        size: this.worldSize,
-      },
-      mode: this.mode,
-      aiSeats: [...this.aiSeats],
-      zones: this.zones.map((zone) => ({ ...zone })),
-      phase: this.phase,
-      winnerSeat: this.winnerSeat,
-      ...(this.endReason ? { endReason: this.endReason } : {}),
-      elapsed: this.elapsed,
-      projectiles: this.projectiles.map((projectile) => projectile.serialize()),
-      bursts: this.bursts.map((burst) => burst.serialize()),
-      haruhiHeroPowerEffects: this.#characters.projectHeroPowers(),
-      shamisenHuntKillEffects: this.#feedback.serializeHuntKills(),
-      koizumiBarrierImpacts: this.#feedback.serializeBarrierImpacts(),
-      floatingTexts: this.floatingTexts.map((label) => label.serialize()),
-      teams: {
-        A: this.teamA.serialize(),
-        B: this.teamB.serialize(),
-      },
-      bots: {
-        A: this.botBySeat("A") ? this.botBySeat("A").serializeDebugState() : null,
-        B: this.botBySeat("B") ? this.botBySeat("B").serializeDebugState() : null,
-      },
-    };
+    return this.#stateProjector.serializeState(this.#projectionSource);
   }
 }

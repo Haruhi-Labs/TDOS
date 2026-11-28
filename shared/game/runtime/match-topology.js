@@ -22,6 +22,9 @@ function isPlainObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
+export const MIN_MULTI_FLEET_SPAWN_DISTANCE_RATIO = 0.12;
+export const MULTI_FLEET_SPAWN_MARGIN_RATIO = 0.05;
+
 export function defaultLegacySpawns(worldSize = DEFAULT_WORLD_SIZE) {
   const centerY = worldSize * 0.5;
   const zoneWidth = worldSize / 3;
@@ -32,6 +35,95 @@ export function defaultLegacySpawns(worldSize = DEFAULT_WORLD_SIZE) {
     A: { x: leftX, y: centerY, facing: 0 },
     B: { x: rightX, y: centerY, facing: Math.PI },
   });
+}
+
+function assertValidWorldSize(worldSize) {
+  if (typeof worldSize !== "number" || !Number.isFinite(worldSize) || worldSize <= 0) {
+    throw new RangeError(`非法地图尺寸 worldSize：${String(worldSize)}`);
+  }
+}
+
+/**
+ * 组队多舰队默认出生布局：左右两阵营沿纵轴错开摆放，面向中线，保证安全间距且不与旧双席重叠。
+ */
+export function defaultTeamSpawns(formatId, worldSize = DEFAULT_WORLD_SIZE) {
+  assertValidWorldSize(worldSize);
+  if (formatId === "2v2") {
+    return freezePlainData({
+      side1: [
+        { x: worldSize * 0.22, y: worldSize * 0.3, facing: 0 },
+        { x: worldSize * 0.22, y: worldSize * 0.7, facing: 0 },
+      ],
+      side2: [
+        { x: worldSize * 0.78, y: worldSize * 0.3, facing: Math.PI },
+        { x: worldSize * 0.78, y: worldSize * 0.7, facing: Math.PI },
+      ],
+    });
+  }
+  if (formatId === "3v3") {
+    return freezePlainData({
+      side1: [
+        { x: worldSize * 0.2, y: worldSize * 0.22, facing: 0 },
+        { x: worldSize * 0.2, y: worldSize * 0.5, facing: 0 },
+        { x: worldSize * 0.2, y: worldSize * 0.78, facing: 0 },
+      ],
+      side2: [
+        { x: worldSize * 0.8, y: worldSize * 0.22, facing: Math.PI },
+        { x: worldSize * 0.8, y: worldSize * 0.5, facing: Math.PI },
+        { x: worldSize * 0.8, y: worldSize * 0.78, facing: Math.PI },
+      ],
+    });
+  }
+  throw new Error(`不支持的组队出生布局格式：${String(formatId)}`);
+}
+
+/**
+ * 混战多舰队默认出生布局：3 至 6 支舰队按正多边形均匀分布于中环并面向地图中心。
+ */
+export function defaultFfaSpawns(count, worldSize = DEFAULT_WORLD_SIZE) {
+  assertValidWorldSize(worldSize);
+  if (!Number.isInteger(count) || count < 3 || count > 6) {
+    throw new RangeError(`混战出生布局仅支持 3 至 6 支舰队，收到：${String(count)}`);
+  }
+  const centerX = worldSize * 0.5;
+  const centerY = worldSize * 0.5;
+  const radius = worldSize * 0.34;
+  const spawns = [];
+  for (let index = 0; index < count; index += 1) {
+    const theta = (Math.PI * 2 * index) / count - Math.PI * 0.5;
+    const x = centerX + Math.cos(theta) * radius;
+    const y = centerY + Math.sin(theta) * radius;
+    const facing = Math.atan2(centerY - y, centerX - x);
+    spawns.push({ x, y, facing });
+  }
+  return freezePlainData(spawns);
+}
+
+/**
+ * 校验多舰队出生布局：保留安全边界余量并确保任意两支舰队间隔不小于最小出生距离。
+ */
+export function validateMultiFleetSpawns(fleets, worldSize = DEFAULT_WORLD_SIZE) {
+  assertValidWorldSize(worldSize);
+  const margin = worldSize * MULTI_FLEET_SPAWN_MARGIN_RATIO;
+  const minDistance = worldSize * MIN_MULTI_FLEET_SPAWN_DISTANCE_RATIO;
+  for (const fleet of fleets) {
+    const { x, y } = fleet.spawn;
+    if (x < margin || x > worldSize - margin || y < margin || y > worldSize - margin) {
+      throw new Error(`舰队 ${fleet.seat} 的出生坐标距离地图边界过近，要求在 [${margin}, ${worldSize - margin}] 范围内`);
+    }
+  }
+  for (let i = 0; i < fleets.length; i += 1) {
+    for (let j = i + 1; j < fleets.length; j += 1) {
+      const left = fleets[i];
+      const right = fleets[j];
+      const dist = Math.hypot(left.spawn.x - right.spawn.x, left.spawn.y - right.spawn.y);
+      if (dist < minDistance) {
+        throw new Error(
+          `舰队 ${left.seat} 与 ${right.seat} 的出生距离过近（${Math.round(dist)} < ${Math.round(minDistance)}），禁止重叠出生`,
+        );
+      }
+    }
+  }
 }
 
 export function presentationForSeat(seat, seatIndex) {

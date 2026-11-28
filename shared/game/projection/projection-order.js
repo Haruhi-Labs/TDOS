@@ -9,3 +9,4 @@ export function orderedProjection(base, extension, order) {
 }
 export const SHIP_WIRE_FIELDS = Object.freeze("id key slotKey characterId characterName name x y angle speed cooldown hp maxHp energy maxEnergy fleetEnergy fleetMaxEnergy alive radius throttle vision range attached canControl bladeQueen catPawVolley silenced stunRemaining silenceRemaining heroPowerShock koizumiOrb knockedBack haruhiImpactReady clawMarks nameRevealed buffs statusEffects bunnyHaruhi bunnyStageExposure entityRole bunnyCompanion bunnyReliable route".split(" "));
 export const TEAM_WIRE_FIELDS = Object.freeze("seat name color splitLevel loadout bunnyStage energy maxEnergy hullRatio future1096Form haruhiFlagship koizumiBarrier shamisenHunt skillsDisabled autoScout cooldowns visibleEnemyIds radarSweep visionWaves koizumiImpactWaves ships extraShips scouts wingmen beams".split(" "));
+export const MULTI_FLEET_TEAM_WIRE_FIELDS = Object.freeze(["seat", "sideId", ...TEAM_WIRE_FIELDS.slice(1)]);
