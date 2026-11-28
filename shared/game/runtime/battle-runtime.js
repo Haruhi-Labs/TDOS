@@ -13,7 +13,7 @@ import { cloneLoadout } from "../characters/catalog.js";
 import { buildZones, clamp } from "../foundation/math.js";
 import { createAmbientRng, createSeededRng } from "../foundation/rng.js";
 import { createAiRunner } from "../ai/bridge/runner.js";
-import { aiHandicapFor } from "../ai/params/index.js";
+import { aiHandicapFor, validateAiParamsForSeats } from "../ai/params/index.js";
 import { applyMatchAction } from "./action-dispatcher.js";
 import { resolveScoutClashes as resolveMatchScoutClashes, HullCollisionSystem } from "../systems/collision-system.js";
 import { createVisionWavePurgePort } from "../characters/asakura/vision-wave-port.js";
@@ -144,16 +144,19 @@ export class BattleRuntime {
     // 旧版 AI 只用于调试对照，必须显式指定。不能沿用 aiSeats 的 mode=ai 默认值，
     // 否则单人模式会把唯一的 B 席 AI 悄悄降级为旧策略。
     const hasExplicitFleets = Object.hasOwn(options, "fleets") && options.fleets !== undefined;
-    const legacyAiSeats = hasExplicitFleets
-      ? normalizeAiSeats("pvp", options.legacyAiSeats, topology.seatOrder)
-      : normalizeAiSeats("pvp", options.legacyAiSeats);
+    const legacyAiSeats = normalizeAiSeats("pvp", options.legacyAiSeats, topology.seatOrder, {
+      legacyNormalize: !hasExplicitFleets,
+    });
     const aiDifficulty = options.aiDifficulty || "master"; // 单人难度(默认满状态)
+    validateAiParamsForSeats(options.aiParams, topology.seatOrder);
     for (const seat of this.aiSeats) {
       // aiParams 可按席位指定预设与参数覆盖：{ A: { preset, overrides } }。
-      const seatParams = options.aiParams?.[seat] || {};
+      const seatParams = options.aiParams && Object.hasOwn(options.aiParams, seat) && options.aiParams[seat]
+        ? options.aiParams[seat]
+        : {};
       const runner = createAiRunner(this, seat, {
         params: {
-          difficulty: aiDifficulty,
+          difficulty: seatParams.difficulty ?? aiDifficulty,
           preset: legacyAiSeats.includes(seat) ? "legacy" : seatParams.preset ?? null,
           overrides: seatParams.overrides ?? null,
         },

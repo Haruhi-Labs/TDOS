@@ -6,7 +6,14 @@ import { freezePlainData } from "../../../data/plain-data.js";
 import {
   buildObservation,
   observeEnemySpawn,
+  observeEnemySpawns,
 } from "./observation.js";
+
+const OWN_SHIP_KEYS = new Set(["main", "sub1", "sub2"]);
+
+function isPlainObject(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
 
 function pureData(value) {
   return JSON.parse(JSON.stringify(value));
@@ -45,9 +52,12 @@ const PERMISSION_CHECKED_TYPES = new Set([
 ]);
 
 export function createActionPort(match, seat) {
-  const team = match.teamBySeat(seat);
-  if (!team) {
+  if (typeof seat !== "string" || seat.length === 0) {
     throw new Error(`无法为未知席位创建 AI 动作端口：${String(seat)}`);
+  }
+  const team = typeof match?.teamBySeat === "function" ? match.teamBySeat(seat) : null;
+  if (!team || team.seat !== seat) {
+    throw new Error(`无法为未知席位创建 AI 动作端口：${seat}`);
   }
   let observation = null;
   const permissionRejections = { count: 0, controlLocked: 0, firstTick: null };
@@ -75,17 +85,46 @@ export function createActionPort(match, seat) {
       return freezePlainData(observeEnemySpawn(match, seat));
     },
 
+    enemySpawns() {
+      const spawns = observeEnemySpawns(match, seat);
+      return spawns === null ? null : freezePlainData(spawns);
+    },
+
     // 立即执行并返回是否被接受。被拒绝的动作也可能触发规则层的状态整理，因此一律让观测失效。
     submit(action) {
-      const accepted = Boolean(applyDispatch(team, action));
-      if (!accepted && PERMISSION_CHECKED_TYPES.has(action.type)) {
-        const ship = team.ships[action.shipKey];
-        permissionRejections.count += 1;
-        if (ship?.alive && !ship.canControl()) permissionRejections.controlLocked += 1;
-        permissionRejections.firstTick ??= match.tick;
+      let accepted = false;
+      try {
+        if (!isPlainObject(action)) {
+          return false;
+        }
+        // 动作中的 seat / sideId / team 不具跨席授权效力；与本席冲突的身份字段一律拒绝。
+        if (Object.hasOwn(action, "team")) {
+          return false;
+        }
+        if (Object.hasOwn(action, "seat") && action.seat !== seat) {
+          return false;
+        }
+        if (Object.hasOwn(action, "sideId") && action.sideId !== team.sideId) {
+          return false;
+        }
+        // 合法槽位只能映射本席 main / sub1 / sub2，不允许跨席寻址或原型键穿透。
+        if (action.shipKey !== undefined && (typeof action.shipKey !== "string" || !OWN_SHIP_KEYS.has(action.shipKey))) {
+          return false;
+        }
+        accepted = Boolean(applyDispatch(team, action));
+        if (!accepted && PERMISSION_CHECKED_TYPES.has(action.type)) {
+          const shipKey = typeof action.shipKey === "string" && OWN_SHIP_KEYS.has(action.shipKey)
+            ? action.shipKey
+            : "main";
+          const ship = team.ships[shipKey];
+          permissionRejections.count += 1;
+          if (ship?.alive && !ship.canControl()) permissionRejections.controlLocked += 1;
+          permissionRejections.firstTick ??= match.tick;
+        }
+        return accepted;
+      } finally {
+        observation = null;
       }
-      observation = null;
-      return accepted;
     },
   };
   return port;

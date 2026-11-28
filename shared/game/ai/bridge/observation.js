@@ -6,8 +6,10 @@ import { bunnyTransformBlockReason } from "../../characters/bunny-haruhi/form-po
 import { haruhiOtherworlderReady } from "../../characters/haruhi/flagship.js";
 import { koizumiBarrierGeometry } from "../../characters/koizumi/barrier.js";
 import { distance } from "../../foundation/math.js";
+import { freezePlainData } from "../../../data/plain-data.js";
 
 export const OBSERVATION_SCHEMA = 1;
+export const MULTI_FLEET_OBSERVATION_SCHEMA = "multi-fleet-ai-v1";
 
 function remaining(until, now) {
   return Math.max(0, Number(until || 0) - now);
@@ -185,8 +187,71 @@ function observeOwnWingman(wingman) {
   };
 }
 
-// 敌方旗舰的出生点对称且公开，仅在 AI 建立初始情报时读取一次。
+function resolveRegisteredTeam(match, seat, actionLabel) {
+  if (typeof seat !== "string" || seat.length === 0) {
+    throw new Error(`无法为未知席位${actionLabel}：${String(seat)}`);
+  }
+  const team = typeof match?.teamBySeat === "function" ? match.teamBySeat(seat) : null;
+  if (!team || team.seat !== seat) {
+    throw new Error(`无法为未知席位${actionLabel}：${seat}`);
+  }
+  return team;
+}
+
+export function isLegacyTwoFleetMatch(match) {
+  if (typeof match?.allTeams !== "function") {
+    return typeof match?.enemyTeamBySeat === "function";
+  }
+  const teams = match.allTeams();
+  if (!Array.isArray(teams) || teams.length !== 2) return false;
+  if (teams[0]?.seat !== "A" || teams[1]?.seat !== "B") return false;
+  if (typeof match.enemyTeamsOf === "function") {
+    const enemiesOfA = match.enemyTeamsOf("A");
+    const enemiesOfB = match.enemyTeamsOf("B");
+    return enemiesOfA.length === 1 && enemiesOfA[0]?.seat === "B"
+      && enemiesOfB.length === 1 && enemiesOfB[0]?.seat === "A";
+  }
+  return teams[0].sideId !== teams[1].sideId;
+}
+
+function resolveEnemyTeams(match, seat) {
+  if (typeof match?.enemyTeamsOf === "function") {
+    return match.enemyTeamsOf(seat);
+  }
+  if (typeof match?.enemyTeamBySeat === "function") {
+    return [match.enemyTeamBySeat(seat)];
+  }
+  return [];
+}
+
+function resolveAlliedTeams(match, seat) {
+  if (typeof match?.alliedTeamsOf === "function") {
+    return match.alliedTeamsOf(seat);
+  }
+  return [];
+}
+
+function cloneVisionSources(visionSources) {
+  return (visionSources || []).map((source) => primitiveFields(source));
+}
+
+function observeAllySummary(ally) {
+  const ships = ally.getAllShips();
+  return {
+    seat: ally.seat,
+    sideId: ally.sideId,
+    alive: Boolean(ally.hasLivingShips()),
+    aliveShipCount: ships.filter((ship) => ship && ship.alive).length,
+    hullRatio: ally.hullRatio(),
+  };
+}
+
+// 敌方旗舰的出生点对称且公开，仅在旧双舰队 AI 建立初始情报时读取一次。
 export function observeEnemySpawn(match, seat) {
+  resolveRegisteredTeam(match, seat, "读取敌方出生点");
+  if (!isLegacyTwoFleetMatch(match)) {
+    throw new Error(`单敌方出生点接口仅适用于旧双舰队拓扑，多席拓扑请改用公开出生集合接口（席位：${seat}）`);
+  }
   const enemyMain = match.enemyTeamBySeat(seat).ships.main;
   return {
     id: enemyMain.id,
@@ -198,8 +263,52 @@ export function observeEnemySpawn(match, seat) {
   };
 }
 
-export function buildObservation(match, seat) {
-  const team = match.teamBySeat(seat);
+// 公开敌方出生事实集合：仅在模式显式允许公开出生点时提供，且多席模式只读取开局冻结坐标，绝不推测隐藏实时坐标。
+export function observeEnemySpawns(match, seat) {
+  resolveRegisteredTeam(match, seat, "读取公开敌方出生集合");
+  const isLegacy = isLegacyTwoFleetMatch(match);
+  const publicAllowed = isLegacy
+    ? match.publicEnemySpawns !== false
+    : Boolean(match.publicEnemySpawns === true || match.rules?.publicEnemySpawns === true);
+  if (!publicAllowed) {
+    return null;
+  }
+
+  const topologyFleets = Array.isArray(match.topology?.fleets) ? match.topology.fleets : null;
+  const spawnBySeat = new Map();
+  if (topologyFleets) {
+    for (const fleet of topologyFleets) {
+      if (fleet && typeof fleet.seat === "string" && fleet.spawn) {
+        spawnBySeat.set(fleet.seat, fleet.spawn);
+      }
+    }
+  }
+
+  const enemies = resolveEnemyTeams(match, seat);
+  const result = [];
+  for (const enemy of enemies) {
+    const enemyMain = enemy.ships.main;
+    const frozenSpawn = spawnBySeat.get(enemy.seat);
+    if (!isLegacy && !frozenSpawn) {
+      return null;
+    }
+    result.push({
+      seat: enemy.seat,
+      sideId: enemy.sideId,
+      id: enemyMain.id,
+      key: enemyMain.key,
+      slotKey: enemyMain.slotKey,
+      x: frozenSpawn ? frozenSpawn.x : enemyMain.x,
+      y: frozenSpawn ? frozenSpawn.y : enemyMain.y,
+      angle: frozenSpawn ? frozenSpawn.facing : enemyMain.angle,
+      sourceType: "public_spawn",
+    });
+  }
+  return freezePlainData(result);
+}
+
+function buildLegacyObservation(match, seat) {
+  const team = resolveRegisteredTeam(match, seat, "构建 AI 观测");
   const enemy = match.enemyTeamBySeat(seat);
   const now = match.elapsed;
   const visibleIds = team.visibleEnemyIds;
@@ -333,4 +442,210 @@ export function buildObservation(match, seat) {
       hasHiddenEnemyShip: enemyShips.some((ship) => ship.alive && !visibleIds.has(ship.id)),
     },
   };
+}
+
+// 多敌对舰队观测 DTO：显式 schema 标识、按来源归属敌对效果、队友仅公开许可摘要、不扩大旧 1v1 跨迷雾特权。
+export function buildMultiFleetObservation(match, seat) {
+  const team = resolveRegisteredTeam(match, seat, "构建多舰队 AI 观测");
+  const allies = resolveAlliedTeams(match, seat);
+  const enemies = resolveEnemyTeams(match, seat);
+  const enemySeatSet = new Set(enemies.map((enemy) => enemy.seat));
+  const now = match.elapsed;
+  const visibleIds = team.visibleEnemyIds;
+  const visionSources = cloneVisionSources(team.getVisionSources());
+  const ownShips = team.getAllShips();
+
+  const visibleHostiles = [];
+  const visibleShipCountBySeat = new Map();
+  const aliveEnemyShips = [];
+  for (const enemyTeam of enemies) {
+    let visibleShipCount = 0;
+    for (const entity of enemyTeam.getEntities()) {
+      if (!entity || !entity.alive || !visibleIds.has(entity.id)) continue;
+      visibleHostiles.push({
+        ...observeEnemyEntity(entity, now),
+        sourceSeat: enemyTeam.seat,
+        sourceSideId: enemyTeam.sideId,
+        sourceType: "vision",
+      });
+      if (entity.kind === "ship") visibleShipCount += 1;
+    }
+    visibleShipCountBySeat.set(enemyTeam.seat, visibleShipCount);
+    for (const ship of enemyTeam.getAllShips()) {
+      if (ship && ship.alive) aliveEnemyShips.push(ship);
+    }
+  }
+
+  // 仅当至少看见该敌对舰队一艘存活舰船时，才收录其公开的编队增益。
+  const visibleTeamBuffs = [];
+  for (const enemyTeam of enemies) {
+    if ((visibleShipCountBySeat.get(enemyTeam.seat) || 0) <= 0) continue;
+    visibleTeamBuffs.push({
+      sourceSeat: enemyTeam.seat,
+      sourceSideId: enemyTeam.sideId,
+      sourceType: "vision",
+      sponsorUntil: enemyTeam.effects.sponsorUntil,
+      haruhiBoostUntil: enemyTeam.effects.haruhiBoostUntil,
+      visionWaveActiveUntil: enemyTeam.visionWaveSkill.activeUntil,
+    });
+  }
+
+  // 公开视野波只归属到对应敌对来源，不含队友，且不泄露隐藏朝仓的实时舰位。
+  const visionWaves = [];
+  for (const enemyTeam of enemies) {
+    const waveState = enemyTeam.visionWaveSkill;
+    if (!waveState) continue;
+    const hasActivity = Number(waveState.activeUntil || 0) > now
+      || Number(waveState.pulsesRemaining || 0) > 0
+      || (Array.isArray(waveState.waves) && waveState.waves.length > 0);
+    if (!hasActivity) continue;
+    visionWaves.push({
+      sourceSeat: enemyTeam.seat,
+      sourceSideId: enemyTeam.sideId,
+      sourceType: "public_wave",
+      activeUntil: waveState.activeUntil,
+      nextPulseAt: waveState.nextPulseAt,
+      pulsesRemaining: waveState.pulsesRemaining,
+      waves: waveState.waves.map((wave) => primitiveFields(wave)),
+    });
+  }
+
+  // 多敌方猎杀来源：只收录以本席存活舰船为目标的敌方三味线来源。
+  const huntedBy = [];
+  for (const enemyTeam of enemies) {
+    if (!hasShamisenFlagship(enemyTeam)) continue;
+    const targetId = enemyTeam.shamisenHunt?.targetId;
+    const ship = ownShips.find((candidate) => candidate?.alive && candidate.id === targetId);
+    if (!ship) continue;
+    huntedBy.push({
+      sourceSeat: enemyTeam.seat,
+      sourceSideId: enemyTeam.sideId,
+      sourceType: "hunt_mark",
+      shipId: ship.id,
+      shipKey: ship.key,
+    });
+  }
+
+  // 己方三味线施加的猎杀标记：保留精确坐标与可见性，但不暴露目标角色、席位、血量或朝向。
+  const huntMarks = [];
+  if (hasShamisenFlagship(team)) {
+    const targetId = team.shamisenHunt?.targetId;
+    const target = aliveEnemyShips.find((ship) => ship.id === targetId);
+    if (target) {
+      huntMarks.push({
+        targetId: target.id,
+        sourceType: "hunt_mark",
+        x: target.x,
+        y: target.y,
+        visible: visibleIds.has(target.id),
+      });
+    }
+  }
+
+  // 长门私有雷达：只收录跨敌对舰队存活目标的带误差接触，不升级为普通视野。
+  const radarContacts = [];
+  let radar = null;
+  if (team.hasYukiFlagship()) {
+    const aliveEnemyShipIds = new Set(aliveEnemyShips.map((ship) => ship.id));
+    for (const contact of team.serializeRadarPassive()?.contacts || []) {
+      if (!aliveEnemyShipIds.has(Number(contact?.targetId ?? contact?.id))) continue;
+      radarContacts.push({
+        ...primitiveFields(contact),
+        sourceType: "radar",
+      });
+    }
+    radar = { contacts: radarContacts };
+  }
+
+  // 仅收录被本席视野源覆盖且来自敌对舰队的存活弹体，排除本席与同阵营队友弹体。
+  const projectiles = [];
+  for (const projectile of match.projectiles || []) {
+    if (!projectile || !projectile.alive || !projectile.team || !enemySeatSet.has(projectile.team.seat)) continue;
+    if (!visionSources.some((source) => distance(projectile.x, projectile.y, source.x, source.y) <= source.range)) {
+      continue;
+    }
+    projectiles.push({
+      sourceSeat: projectile.team.seat,
+      sourceSideId: projectile.team.sideId,
+      sourceType: "vision",
+      x: projectile.x,
+      y: projectile.y,
+      targetX: projectile.targetX,
+      targetY: projectile.targetY,
+    });
+  }
+
+  const publicEnemySpawns = observeEnemySpawns(match, seat);
+
+  return freezePlainData({
+    schema: MULTI_FLEET_OBSERVATION_SCHEMA,
+    tick: match.tick,
+    time: now,
+    selfSeat: team.seat,
+    selfSideId: team.sideId,
+    world: {
+      size: match.worldSize,
+      mapPadding: match.mapPadding,
+      zones: match.zones.map((zone) => ({ ...zone })),
+    },
+    rules: {
+      bunnyStage: Boolean(match.bunnyHaruhiActive),
+      publicEnemySpawns: publicEnemySpawns !== null,
+    },
+    self: {
+      seat: team.seat,
+      sideId: team.sideId,
+      loadout: { main: team.loadout.main, sub1: team.loadout.sub1, sub2: team.loadout.sub2 },
+      flags: {
+        yukiFlagship: team.hasYukiFlagship(),
+        kyonFlagship: team.hasKyonFlagship(),
+        shamisenFlagship: Boolean(hasShamisenFlagship(team)),
+      },
+      splitLevel: team.splitLevel,
+      hullRatio: team.hullRatio(),
+      cooldowns: {
+        scout: team.cooldowns.scout,
+        flagship: team.cooldowns.flagship,
+        sub1: team.cooldowns.sub1,
+        sub2: team.cooldowns.sub2,
+      },
+      scoutsDisabled: team.areScoutsDisabled(),
+      skillsDisabled: team.areSkillsDisabled(),
+      future1096Form: team.future1096Form ?? null,
+      ships: {
+        main: observeOwnShip(team.ships.main),
+        sub1: observeOwnShip(team.ships.sub1),
+        sub2: observeOwnShip(team.ships.sub2),
+      },
+      extraShips: team.extraShips.map(observeOwnShip),
+      scouts: team.scouts.map(observeOwnScout),
+      wingmen: team.wingmen.map(observeOwnWingman),
+      visionSources,
+      radar,
+      hunt: huntMarks[0] || null,
+      huntedBy,
+      koizumiBarrier: koizumiBarrierGeometry(team),
+      haruhiOtherworlderReady: Boolean(haruhiOtherworlderReady(team)),
+    },
+    allies: allies.map(observeAllySummary),
+    visibleHostiles,
+    hostileEffects: {
+      visibleTeamBuffs,
+      visionWaves,
+      huntedBy,
+      huntMarks,
+      radarContacts,
+      projectiles,
+    },
+    publicEnemySpawns,
+    privileged: null,
+  });
+}
+
+export function buildObservation(match, seat, options = {}) {
+  resolveRegisteredTeam(match, seat, "构建 AI 观测");
+  if (options?.schema === MULTI_FLEET_OBSERVATION_SCHEMA || !isLegacyTwoFleetMatch(match)) {
+    return buildMultiFleetObservation(match, seat);
+  }
+  return buildLegacyObservation(match, seat);
 }

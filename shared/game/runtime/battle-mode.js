@@ -1,5 +1,8 @@
 import { DEFAULT_WORLD_SIZE } from "../foundation/constants.js";
-import { normalizeAiSeats } from "../model/model-support.js";
+import {
+  assertSupportedAiSeatsForTopology,
+  normalizeAiSeats,
+} from "../model/model-support.js";
 import { defaultLegacySpawns, normalizeMatchTopology } from "./match-topology.js";
 import { createTeamRelations } from "../rules/team-relations.js";
 
@@ -56,9 +59,10 @@ export function resolveBattleMode(options = {}) {
   const topology = normalizeMatchTopology(options);
   const relations = createTeamRelations(topology);
   const hasExplicitFleets = Object.hasOwn(options, "fleets") && options.fleets !== undefined;
-  const aiSeats = hasExplicitFleets
-    ? normalizeAiSeats(mode, options.aiSeats, topology.seatOrder)
-    : normalizeAiSeats(mode, options.aiSeats);
+  const aiSeats = normalizeAiSeats(mode, options.aiSeats, topology.seatOrder, {
+    legacyNormalize: !hasExplicitFleets,
+  });
+  assertSupportedAiSeatsForTopology(topology, aiSeats);
 
   // 当前已注册的旧模式仅支持 A/B 双舰队对立拓扑；未支持的多席或非 A/B 拓扑在此明确拒绝，避免回退 B。
   const isSupportedLegacyAb = topology.seatOrder.length === 2

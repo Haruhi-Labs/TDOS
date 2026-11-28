@@ -87,11 +87,12 @@ export const HARUHI_SUPPORT_ANNOUNCEMENT_KEYS = Object.freeze({
   esper: "找到了超能力者！",
 });
 
-export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats) {
+export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats, options = {}) {
   if (registeredSeats !== undefined) {
     if (!registeredSeats || typeof registeredSeats[Symbol.iterator] !== "function" || typeof registeredSeats === "string") {
       throw new TypeError("已注册席位集合必须是可迭代对象");
     }
+    const legacyNormalize = Boolean(options?.legacyNormalize);
     const orderedSeats = [];
     const registeredSet = new Set();
     for (const seat of registeredSeats) {
@@ -103,6 +104,17 @@ export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats) {
         orderedSeats.push(seat);
       }
     }
+
+    const resolveCandidateSeat = (rawSeat) => {
+      if (typeof rawSeat !== "string") {
+        throw new Error(`非法 AI 席位：${String(rawSeat)} 不在已注册席位集合中`);
+      }
+      const seat = legacyNormalize ? rawSeat.trim().toUpperCase() : rawSeat;
+      if (!registeredSet.has(seat)) {
+        throw new Error(`非法 AI 席位：${rawSeat} 不在已注册席位集合中`);
+      }
+      return seat;
+    };
 
     if (aiSeats === undefined) {
       if (mode === "ai") {
@@ -125,10 +137,8 @@ export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats) {
       candidates = aiSeats;
     } else if (typeof aiSeats === "object") {
       candidates = [];
-      for (const [seat, enabled] of Object.entries(aiSeats)) {
-        if (!registeredSet.has(seat)) {
-          throw new Error(`非法 AI 席位：${seat} 不在已注册席位集合中`);
-        }
+      for (const [rawSeat, enabled] of Object.entries(aiSeats)) {
+        const seat = resolveCandidateSeat(rawSeat);
         if (Boolean(enabled)) {
           candidates.push(seat);
         }
@@ -139,10 +149,8 @@ export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats) {
 
     const result = [];
     const seen = new Set();
-    for (const seat of candidates) {
-      if (typeof seat !== "string" || !registeredSet.has(seat)) {
-        throw new Error(`非法 AI 席位：${String(seat)} 不在已注册席位集合中`);
-      }
+    for (const rawSeat of candidates) {
+      const seat = resolveCandidateSeat(rawSeat);
       if (!seen.has(seat)) {
         seen.add(seat);
         result.push(seat);
@@ -177,6 +185,44 @@ export function normalizeAiSeats(mode = "pvp", aiSeats, registeredSeats) {
         .filter((seat) => seat === "A" || seat === "B"),
     ),
   );
+}
+
+// 当前版本的内置 AI 策略仅适配精确 A/B 双舰队对立拓扑；多席或非 A/B 拓扑启用 AI 时由入口明确拒绝。
+export function isSupportedAiTopology(topology) {
+  if (!topology || typeof topology !== "object") return false;
+  const seatOrder = topology.seatOrder;
+  const fleets = topology.fleets;
+  if (!Array.isArray(seatOrder) || !Array.isArray(fleets)) return false;
+  if (seatOrder.length !== 2 || fleets.length !== 2) return false;
+  if (seatOrder[0] !== "A" || seatOrder[1] !== "B") return false;
+  const [fleetA, fleetB] = fleets;
+  if (!fleetA || !fleetB || fleetA.seat !== "A" || fleetB.seat !== "B") return false;
+  return typeof fleetA.sideId === "string"
+    && typeof fleetB.sideId === "string"
+    && fleetA.sideId.length > 0
+    && fleetB.sideId.length > 0
+    && fleetA.sideId !== fleetB.sideId;
+}
+
+export function assertSupportedAiSeatsForTopology(topology, aiSeats = []) {
+  if (!topology || !Array.isArray(topology.seatOrder) || topology.seatOrder.length === 0) {
+    throw new TypeError("校验 AI 支持范围时必须提供有效的开局拓扑");
+  }
+  if (!Array.isArray(aiSeats)) {
+    throw new TypeError("aiSeats 必须是席位数组");
+  }
+  const registeredSet = new Set(topology.seatOrder);
+  for (const seat of aiSeats) {
+    if (typeof seat !== "string" || !registeredSet.has(seat)) {
+      throw new Error(`非法 AI 席位：${String(seat)} 不在已注册席位集合中`);
+    }
+  }
+  if (aiSeats.length === 0) {
+    return;
+  }
+  if (!isSupportedAiTopology(topology)) {
+    throw new Error(`当前版本不支持在多席或非 A/B 拓扑下启用 AI（请求席位：${aiSeats.join(", ")}）`);
+  }
 }
 
 let globalEntityId = 1;

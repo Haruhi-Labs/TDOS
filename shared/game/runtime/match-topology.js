@@ -117,7 +117,7 @@ export function normalizeMatchTopology(options = {}) {
 
   if (!hasExplicitFleets) {
     const mode = options.mode || "pvp";
-    const aiSeats = normalizeAiSeats(mode, options.aiSeats);
+    const aiSeats = normalizeAiSeats(mode, options.aiSeats, ["A", "B"], { legacyNormalize: true });
     const spawns = defaultLegacySpawns(worldSize);
     const loadoutA = normalizeLoadout(options.teamLoadouts?.A || DEFAULT_TEAM_LOADOUT, DEFAULT_TEAM_LOADOUT);
     const loadoutB = normalizeLoadout(
