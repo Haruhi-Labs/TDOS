@@ -5,11 +5,17 @@ import { randomUUID } from "node:crypto";
 import { cloneLoadout, DEFAULT_AI_LOADOUT, DEFAULT_TEAM_LOADOUT } from "../shared/game/characters/catalog.js";
 import { MatchSimulation } from "../shared/game-core.js";
 import { DEFAULT_WORLD_SIZE, TICK_RATE, SNAPSHOT_RATE } from "../shared/game/foundation/constants.js";
+import { defaultFfaSpawns, defaultTeamSpawns } from "../shared/game/runtime/match-topology.js";
 import { quantizeNetworkState } from "../shared/network-patch.js";
 import {
   evaluateRulesetCompatibility,
   RULESET_VERSION,
 } from "../shared/protocol/ruleset-version.js";
+import {
+  evaluateRoomFormatCapability,
+  ROOM_FORMAT_IDS,
+  SUPPORTED_STATE_SCHEMAS,
+} from "../shared/protocol/room-formats.js";
 import {
   HEARTBEAT_INTERVAL_MS,
   FINISHED_ROOM_CLOSE_DELAY_MS,
@@ -61,6 +67,8 @@ if (!gameIdentityVerifier.enabled) {
 
 const players = new Map();
 const rooms = new Map();
+// 仅服务端私有持有开局参与者统计档案快照，供运行中离房玩家结算归档，绝不进入公开状态或快照。
+const roomStatisticsParticipants = new Map();
 let lobbyBroadcastTimer = null;
 const networkStats = {
   snapshotMessages: 0,
@@ -94,6 +102,7 @@ const {
   findPrivateRoom,
   getPlayerById,
   roomSpectators,
+  seatedPlayers,
   selectedShipsForRoom,
   spectatorCount,
   streamCapacityUnits,
@@ -170,22 +179,87 @@ function broadcastLobby() {
 
 function sendRoomStateToMembers(room) {
   const sent = new Set();
-  const pA = getPlayerById(room.seats.A);
-  const pB = getPlayerById(room.seats.B);
-  if (pA) {
-    sent.add(pA.id);
-    sendToPlayer(pA, buildRoomStatePayload(room, pA.id));
-  }
-  if (room.mode === "pvp" && pB) {
-    sent.add(pB.id);
-    sendToPlayer(pB, buildRoomStatePayload(room, pB.id));
+  for (const { seat, player } of seatedPlayers(room)) {
+    if (room.mode === "ai" && seat !== "A") {
+      continue;
+    }
+    sent.add(player.id);
+    sendToPlayer(player, buildRoomStatePayload(room, player.id));
   }
   for (const spectator of roomSpectators(room)) {
     if (sent.has(spectator.id)) {
       continue;
     }
+    sent.add(spectator.id);
     sendToPlayer(spectator, buildRoomStatePayload(room, spectator.id));
   }
+}
+
+function captureStatsParticipant(player) {
+  if (!player) return null;
+  return {
+    id: player.id,
+    name: player.name,
+    statisticsProfile: player.statisticsProfile ? { ...player.statisticsProfile } : null,
+  };
+}
+
+function buildMultiFleetSetup(room) {
+  const entries = seatedPlayers(room);
+  const formatId = room.formatId;
+  const fleets = [];
+  const matchRoster = [];
+  const statsParticipants = {};
+
+  if (formatId === "2v2" || formatId === "3v3") {
+    const spawnsBySide = defaultTeamSpawns(formatId, DEFAULT_WORLD_SIZE);
+    const sideIndices = new Map();
+    for (const { seat, sideId, player } of entries) {
+      const index = sideIndices.get(sideId) || 0;
+      sideIndices.set(sideId, index + 1);
+      const spawn = spawnsBySide[sideId][index];
+      const loadout = cloneLoadout(player.loadout || DEFAULT_TEAM_LOADOUT);
+      fleets.push({
+        seat,
+        sideId,
+        name: `${player.name}舰队`,
+        loadout,
+        spawn,
+      });
+      matchRoster.push({
+        seat,
+        sideId,
+        name: player.name,
+        loadout,
+        isBot: false,
+      });
+      statsParticipants[seat] = captureStatsParticipant(player);
+    }
+  } else {
+    const ffaSpawns = defaultFfaSpawns(entries.length, DEFAULT_WORLD_SIZE);
+    for (let index = 0; index < entries.length; index += 1) {
+      const { seat, sideId, player } = entries[index];
+      const spawn = ffaSpawns[index];
+      const loadout = cloneLoadout(player.loadout || DEFAULT_TEAM_LOADOUT);
+      fleets.push({
+        seat,
+        sideId,
+        name: `${player.name}舰队`,
+        loadout,
+        spawn,
+      });
+      matchRoster.push({
+        seat,
+        sideId,
+        name: player.name,
+        loadout,
+        isBot: false,
+      });
+      statsParticipants[seat] = captureStatsParticipant(player);
+    }
+  }
+
+  return { fleets, matchRoster, statsParticipants };
 }
 
 function startMatch(room) {
@@ -193,45 +267,79 @@ function startMatch(room) {
     return;
   }
 
-  const playerA = getPlayerById(room.seats.A);
-  const playerB = getPlayerById(room.seats.B);
-  const teamNames = {
-    A: playerA ? `${playerA.name}舰队` : "玩家A舰队",
-    B: room.mode === "ai" ? "统合思念体AI舰队" : playerB ? `${playerB.name}舰队` : "玩家B舰队",
-  };
-
   const needsCountdown = room.mode === "pvp";
-  beginRoomMatch(room, { countdownMs: PVP_COUNTDOWN_MS, createMatch: () => new MatchSimulation({
-    mode: room.mode,
-    worldSize: DEFAULT_WORLD_SIZE,
-    teamNames,
-    teamLoadouts: {
-      A: playerA ? playerA.loadout : DEFAULT_TEAM_LOADOUT,
-      B: room.mode === "ai" ? (room.aiLoadout || DEFAULT_AI_LOADOUT) : playerB ? playerB.loadout : DEFAULT_TEAM_LOADOUT,
-    },
-  }) });
+  if ((room.formatId || "duel") === "duel") {
+    const playerA = getPlayerById(room.seats.A);
+    const playerB = getPlayerById(room.seats.B);
+    const teamNames = {
+      A: playerA ? `${playerA.name}舰队` : "玩家A舰队",
+      B: room.mode === "ai" ? "统合思念体AI舰队" : playerB ? `${playerB.name}舰队` : "玩家B舰队",
+    };
 
-  for (const seat of ["A", "B"]) {
-    const p = getPlayerById(room.seats[seat]);
-    if (!p) {
-      continue;
-    }
-    inputQueue.reset(p);
+    beginRoomMatch(room, {
+      countdownMs: PVP_COUNTDOWN_MS,
+      createMatch: () => new MatchSimulation({
+        mode: room.mode,
+        worldSize: DEFAULT_WORLD_SIZE,
+        teamNames,
+        teamLoadouts: {
+          A: playerA ? playerA.loadout : DEFAULT_TEAM_LOADOUT,
+          B: room.mode === "ai" ? (room.aiLoadout || DEFAULT_AI_LOADOUT) : playerB ? playerB.loadout : DEFAULT_TEAM_LOADOUT,
+        },
+      }),
+    });
+  } else {
+    const { fleets, matchRoster, statsParticipants } = buildMultiFleetSetup(room);
+    roomStatisticsParticipants.set(room.id, statsParticipants);
+    beginRoomMatch(room, {
+      countdownMs: PVP_COUNTDOWN_MS,
+      matchRoster,
+      createMatch: () => new MatchSimulation({
+        mode: "pvp",
+        battleMode: room.battleMode,
+        formatId: room.formatId,
+        worldSize: DEFAULT_WORLD_SIZE,
+        fleets,
+      }),
+    });
+  }
+
+  for (const { player } of seatedPlayers(room)) {
+    inputQueue.reset(player);
   }
 
   sendRoomStateToMembers(room);
   if (needsCountdown) {
-    // 倒计时期间先下发静止的初始战场，客户端可展示双方阵容但不能操作。
+    // 倒计时期间先下发静止的初始战场，客户端可展示全部参战阵容但不能操作。
     sendSnapshot(room);
   }
 }
 
+function checkRuntimeCapability(player, room) {
+  if (!room || (room.formatId || "duel") === "duel") {
+    return { ok: true };
+  }
+  return evaluateRoomFormatCapability(room.formatId, {
+    rulesetVersion: player.rulesetVersion,
+    stateSchemas: player.supportedStateSchemas,
+    roomFormats: player.supportedRoomFormats,
+  });
+}
+
 function handleInput(player, data) {
-  if (!player.roomId || !player.seat) {
+  if (!player.roomId || !player.seat || player.spectating) {
     return;
   }
   const room = rooms.get(player.roomId);
   if (!room || room.status !== "running" || !room.match) {
+    return;
+  }
+  if (room.seats[player.seat] !== player.id) {
+    return;
+  }
+  const capability = checkRuntimeCapability(player, room);
+  if (!capability.ok) {
+    sendError(player, capability.message);
     return;
   }
   inputQueue.queueInput(player, data);
@@ -258,6 +366,13 @@ function buildSnapshotFrame(room, advanceSeq = true) {
     zones,
     selectedShips: selectedShipsForRoom(room),
   };
+  const activeSeats = Array.isArray(room.match.seatOrder) && room.match.seatOrder.length > 0
+    ? room.match.seatOrder
+    : room.seatOrder;
+  const radarBySeat = {};
+  for (const seat of activeSeats) {
+    radarBySeat[seat] = quantizeNetworkState(room.match.serializeRadarForSeat(seat));
+  }
   // AI 调试状态只供本地 /debug 推演页使用,却占快照 JSON 约 40% 体积——不进网络快照。
   return {
     roomId: room.id,
@@ -267,10 +382,7 @@ function buildSnapshotFrame(room, advanceSeq = true) {
     serverTime,
     state,
     stateBytes: Buffer.byteLength(JSON.stringify(state)),
-    radarBySeat: {
-      A: quantizeNetworkState(room.match.serializeRadarForSeat("A")),
-      B: quantizeNetworkState(room.match.serializeRadarForSeat("B")),
-    },
+    radarBySeat,
   };
 }
 
@@ -280,29 +392,31 @@ function sendSnapshot(room) {
     return;
   }
 
-  const pA = getPlayerById(room.seats.A);
-  const pB = getPlayerById(room.seats.B);
-
-  if (pA) {
-    sendSnapshotToPlayer(pA, frame, {
-      ackSeq: inputQueue.acknowledgedSequence(pA),
-      radar: frame.radarBySeat.A,
-    });
-  }
-  if (room.mode === "pvp" && pB) {
-    sendSnapshotToPlayer(pB, frame, {
-      ackSeq: inputQueue.acknowledgedSequence(pB),
-      radar: frame.radarBySeat.B,
+  for (const { seat, player } of seatedPlayers(room)) {
+    if (room.mode === "ai" && seat !== "A") {
+      continue;
+    }
+    sendSnapshotToPlayer(player, frame, {
+      ackSeq: inputQueue.acknowledgedSequence(player),
+      radar: frame.radarBySeat[seat] || null,
     });
   }
   // 观战者默认使用7.5Hz权威快照；每条连接会根据端到端确认独立降档，
-  // 慢观战端不会拖累同房玩家或其他观战者。
+  // 慢观战端不会拖累同房玩家或其他观战者，且不获得任何玩家私有雷达。
   for (const spectator of roomSpectators(room)) {
     sendSnapshotToPlayer(spectator, frame, {
       ackSeq: 0,
       spectating: true,
     });
   }
+}
+
+function roomHasBunnyHaruhi(room) {
+  if (!room?.match) return false;
+  if (typeof room.match.allTeams === "function") {
+    return room.match.allTeams().some((team) => Object.values(team.loadout || {}).includes("bunny_haruhi"));
+  }
+  return Boolean(room.match.bunnyHaruhiActive);
 }
 
 const {
@@ -312,8 +426,9 @@ const {
   leaveRoom,
   spectateRoom,
   updateLoadout,
+  setPlayerSide,
   setPlayerReady,
-  startTournament,
+  startRoomMatch,
 } = createRoomLifecycle({
   rooms,
   registry: roomRegistry,
@@ -321,6 +436,9 @@ const {
   sendRoomStateToMembers,
   broadcastLobby,
   startMatch,
+  onRoomClosed(roomId) {
+    roomStatisticsParticipants.delete(roomId);
+  },
 });
 
 const wss = new WebSocketServer({
@@ -364,6 +482,8 @@ wss.on("connection", (ws) => {
     rulesetVersion: "",
     rulesetCompatible: true,
     supportsTournamentRooms: false,
+    supportedStateSchemas: new Set(),
+    supportedRoomFormats: new Set(),
     statisticsProfile: null,
     identity: null,
   };
@@ -378,6 +498,8 @@ wss.on("connection", (ws) => {
     gameVersion: GAME_VERSION,
     buildId: process.env.GAME_BUILD_ID || "local",
     roomKinds: ["standard", "tournament"],
+    stateSchemas: [...SUPPORTED_STATE_SCHEMAS],
+    roomFormats: [...ROOM_FORMAT_IDS],
     protocolVersion: NETWORK_PROTOCOL_VERSION,
     rulesetVersion: RULESET_VERSION,
     serverTime: Date.now(),
@@ -393,6 +515,10 @@ wss.on("connection", (ws) => {
     try {
       data = JSON.parse(String(raw));
     } catch (_error) {
+      sendError(player, "消息格式错误");
+      return;
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
       sendError(player, "消息格式错误");
       return;
     }
@@ -479,8 +605,14 @@ wss.on("connection", (ws) => {
       return;
     }
 
+    if (type === "set_side") {
+      const result = setPlayerSide(player, data.sideId);
+      if (!result.ok) sendError(player, result.message);
+      return;
+    }
+
     if (type === "set_ready" || type === "start_match") {
-      const result = type === "set_ready" ? setPlayerReady(player, data.ready) : startTournament(player);
+      const result = type === "set_ready" ? setPlayerReady(player, data.ready) : startRoomMatch(player);
       if (!result.ok) sendError(player, result.message);
       return;
     }
@@ -528,7 +660,7 @@ wss.on("connection", (ws) => {
     if (type === "create_room") {
       const visibility = data.visibility === "private" ? "private" : "public";
       const mode = data.mode === "ai" ? "ai" : "pvp";
-      const result = createRoom(player, visibility, mode, data.kind);
+      const result = createRoom(player, visibility, mode, data.kind, data.formatId);
       if (!result.ok) {
         sendError(player, result.message);
       }
@@ -538,7 +670,7 @@ wss.on("connection", (ws) => {
     if (type === "join_room") {
       const roomId = String(data.roomId || "");
       const room = rooms.get(roomId);
-      const result = joinRoom(player, room);
+      const result = joinRoom(player, room, { sideId: data.sideId });
       if (!result.ok) {
         sendError(player, result.message);
       }
@@ -558,7 +690,7 @@ wss.on("connection", (ws) => {
     if (type === "join_private") {
       const code = String(data.code || "").replace(/\D/g, "").slice(0, 6);
       const room = findPrivateRoom(code);
-      const result = joinRoom(player, room);
+      const result = joinRoom(player, room, { sideId: data.sideId });
       if (!result.ok) {
         sendError(player, result.message);
       }
@@ -573,6 +705,15 @@ wss.on("connection", (ws) => {
 
     if (type === "select_ship") {
       if (player.roomId && player.seat && !player.spectating) {
+        const room = rooms.get(player.roomId);
+        if (!room || room.seats[player.seat] !== player.id) {
+          return;
+        }
+        const capability = checkRuntimeCapability(player, room);
+        if (!capability.ok) {
+          sendError(player, capability.message);
+          return;
+        }
         player.selectedShipKey = validShipKey(data.shipKey);
       }
       return;
@@ -580,6 +721,16 @@ wss.on("connection", (ws) => {
 
     if (type === "protocol_hello") {
       player.supportsTournamentRooms = Array.isArray(data.roomKinds) && data.roomKinds.includes("tournament");
+      player.supportedStateSchemas = new Set(
+        Array.isArray(data.stateSchemas)
+          ? data.stateSchemas.filter((item) => typeof item === "string" && SUPPORTED_STATE_SCHEMAS.includes(item))
+          : [],
+      );
+      player.supportedRoomFormats = new Set(
+        Array.isArray(data.roomFormats)
+          ? data.roomFormats.filter((item) => typeof item === "string" && ROOM_FORMAT_IDS.includes(item))
+          : [],
+      );
       const protocolVersion = Number(data.protocolVersion);
       if (Number.isInteger(protocolVersion) && protocolVersion >= 2 && player.networkProtocolVersion < 2) {
         player.networkProtocolVersion = Math.min(protocolVersion, NETWORK_PROTOCOL_VERSION);
@@ -589,7 +740,9 @@ wss.on("connection", (ws) => {
       const rulesetCompatibility = evaluateRulesetCompatibility(player.rulesetVersion);
       player.rulesetCompatible = rulesetCompatibility.compatible;
       const currentRoom = rooms.get(player.roomId);
-      if (!player.rulesetVersion && currentRoom?.match?.bunnyHaruhiActive) player.rulesetCompatible = false;
+      if (!player.rulesetVersion && (roomHasBunnyHaruhi(currentRoom) || (currentRoom && currentRoom.formatId !== "duel"))) {
+        player.rulesetCompatible = false;
+      }
       if (!player.rulesetCompatible) {
         sendRulesetMismatch(player);
       }
@@ -718,6 +871,7 @@ const matchRuntime = createMatchRuntime({
     const record = buildServerMatchStatisticsRecord({
       room,
       getPlayerById,
+      fallbackParticipantsBySeat: roomStatisticsParticipants.get(room.id) || null,
       hashSalt: STATS_HASH_SALT,
       now: currentTime,
     });

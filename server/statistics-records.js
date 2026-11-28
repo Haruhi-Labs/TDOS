@@ -97,7 +97,13 @@ export function buildMultiFleetStatisticsRecord({
   };
 }
 
-export function buildServerMatchStatisticsRecord({ room, getPlayerById, hashSalt = "", now = Date.now() }) {
+export function buildServerMatchStatisticsRecord({
+  room,
+  getPlayerById,
+  fallbackParticipantsBySeat = null,
+  hashSalt = "",
+  now = Date.now(),
+}) {
   if (!room?.match) return null;
   const summary = room.match.statisticsSummary();
   if (summary?.schema === MULTI_FLEET_STATE_SCHEMA) {
@@ -105,7 +111,11 @@ export function buildServerMatchStatisticsRecord({ room, getPlayerById, hashSalt
     const playersBySeat = {};
     for (const seat of summary.seatOrder || []) {
       const playerId = room.seats && Object.hasOwn(room.seats, seat) ? room.seats[seat] : null;
-      playersBySeat[seat] = playerId && typeof getPlayerById === "function" ? getPlayerById(playerId) : null;
+      const online = playerId && typeof getPlayerById === "function" ? getPlayerById(playerId) : null;
+      const fallback = fallbackParticipantsBySeat && Object.hasOwn(fallbackParticipantsBySeat, seat)
+        ? fallbackParticipantsBySeat[seat]
+        : null;
+      playersBySeat[seat] = online || fallback || null;
     }
     return buildMultiFleetStatisticsRecord({
       id: `server:${room.id}:${room.startedAt || room.createdAt}`,

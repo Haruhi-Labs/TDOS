@@ -238,9 +238,53 @@ function catchupLimitCheck() {
   assert.equal(runtime.advanceLoop(1100), 1, "触发上限后应丢弃过期积压而非持续追赶");
 }
 
+function multiFleetInputAndRoomOwnershipCheck() {
+  const room = new Room({ id: "mf6", formatId: "3v3", mode: "pvp" });
+  assert.deepEqual(room.seatOrder, ["P1", "P2", "P3", "P4", "P5", "P6"]);
+  assert.equal(room.capacity, 6);
+  assert.equal(room.battleMode, "team_elimination");
+  assert.throws(() => new Room({ formatId: "3v3", disconnectedSeats: ["P1"] }), /不能从房间记录注入/);
+  assert.throws(() => new Room({ formatId: "3v3", matchRoster: [] }), /不能从房间记录注入/);
+
+  const queue = createInputQueue();
+  const players = new Map();
+  const applied = [];
+  for (const seat of room.seatOrder) {
+    const p = { id: `user-${seat}`, roomId: room.id, seat };
+    players.set(p.id, p);
+    assert.equal(room.occupySeat(seat, p.id), true);
+  }
+  beginRoomMatch(room, {
+    countdownMs: 0,
+    createMatch: () => ({
+      phase: "running",
+      applyActionForSeat(seat, action) {
+        applied.push({ seat, action });
+      },
+    }),
+  });
+  room.startRunning(Date.now());
+
+  // 六名玩家使用完全相同的 seq=1、seq=2 并发提交，各自独立消费且不串席位；seq=2 携带伪造 seat/sideId 被拦截但仍推进 ACK
+  for (const seat of room.seatOrder) {
+    const p = players.get(`user-${seat}`);
+    assert.equal(queue.queueInput(p, { seq: 1, action: { type: "set_throttle", shipKey: "main", throttle: 1 } }), true);
+    assert.equal(queue.queueInput(p, { seq: 2, action: { type: "set_throttle", shipKey: "main", throttle: 1.4, seat: "P1", sideId: "side2" } }), true);
+    assert.equal(queue.queueInput(p, { seq: 1, action: { type: "split", level: 1 } }), false, "重复 seq 应被拒绝");
+  }
+  queue.applyQueuedInputs(room, (id) => players.get(id) || null);
+  assert.equal(applied.length, 6, "伪造身份字段的动作不得提交给模拟器");
+  assert.deepEqual(applied.map((item) => item.seat), ["P1", "P2", "P3", "P4", "P5", "P6"], "六席动作应按 seatOrder 稳定消费");
+  for (const seat of room.seatOrder) {
+    const p = players.get(`user-${seat}`);
+    assert.equal(queue.acknowledgedSequence(p), 2, "每席 ACK 应独立推进到已处理的最新序号");
+  }
+}
+
 roomStateOwnershipCheck();
 memberOwnershipCheck();
 inputQueueCheck();
 matchLifecycleCheck();
 catchupLimitCheck();
-console.log("服务端运行时校验通过：输入合并、顺序确认、开局倒计时、结算强制回收、快照与追帧上限保持稳定。");
+multiFleetInputAndRoomOwnershipCheck();
+console.log("服务端运行时校验通过：输入合并、多席独立队列与防越权、顺序确认、开局倒计时、结算强制回收、快照与追帧上限保持稳定。");

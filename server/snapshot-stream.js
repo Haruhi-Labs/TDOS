@@ -192,14 +192,15 @@ export function createSnapshotStream({ networkStats, now = Date.now }) {
   
     if (!keyframeDue) {
       const baseRoomSeq = stream.lastRoomSnapshotSeq;
+      const cacheKey = `${String(options.viewKey || "shared")}:${baseRoomSeq}`;
       if (!framePatches.has(frame)) framePatches.set(frame, new Map());
       const patchCache = framePatches.get(frame);
-      let patch = patchCache.get(baseRoomSeq);
-      if (!patchCache.has(baseRoomSeq)) {
-        // 同一房间、同一发送档位的连接拥有相同基线。差量树只计算一次，
-        // 玩家与观战扇出时复用结果，避免连接数增加后重复遍历整份战场状态。
+      let patch = patchCache.get(cacheKey);
+      if (!patchCache.has(cacheKey)) {
+        // 同一房间、同一视图权限与基线序号的连接复用差量树，
+        // 避免连接数增加后重复遍历整份战场状态，并隔离不同权限视图。
         patch = createStatePatch(stream.lastState, frame.state);
-        patchCache.set(baseRoomSeq, patch);
+        patchCache.set(cacheKey, patch);
       }
       const deltaPayload = {
         type: "snapshot_delta",
